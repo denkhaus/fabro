@@ -588,8 +588,23 @@ sandbox = false
 | `blocking` | Whether the hook must complete before execution continues. Defaults vary by event. |
 | `timeout` | Human-readable hook timeout (e.g. `"30s"`, `"1m"`). Default: `"60s"`. |
 | `sandbox` | Run inside the sandbox (`true`, default) or on the host (`false`). |
+| `files` | Static file references the hook needs at execution time (e.g. `["../../scripts/shadow.nu"]`). Paths resolve against the declaring config file's directory and must not use interpolation tokens. |
 
 Hook merge semantics: hooks with matching `id` values replace in place. Hooks without an `id` from a higher-precedence layer append after the fully merged inherited hook list.
+
+#### Host-side hook files
+
+A host-side hook (`sandbox = false`) runs in the worker process, where no repository checkout exists — sandbox files are not on the host filesystem. A hook that needs a script file declares it in `files`: the file travels inside the workflow closure, and the server stages every declared file under a run-scoped directory exposed as `FABRO_HOOK_ASSETS`, mirroring the closure's package-root-relative layout:
+
+```toml title="run.toml"
+[[run.hooks]]
+event = "stage_complete"
+sandbox = false
+files = ["../../scripts/shadow.nu"]
+script = 'nu "${FABRO_HOOK_ASSETS:-.}/.fabro/scripts/shadow.nu"'
+```
+
+The `:-` fallback keeps the same entry working for local `fabro run` invocations, where the variable is unset and the repository root is the working directory. A declared file that is missing fails workflow bundling.
 
 See [Hooks](/agents/hooks) for hook types beyond scripts (HTTP, prompt, agent).
 

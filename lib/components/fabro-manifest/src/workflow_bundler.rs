@@ -431,6 +431,10 @@ impl<'a> WorkflowBundler<'a> {
         // The goal file rides with the manifest: Petri reads `[run.goal]
         // file` from the bundle at check, as it does for a version.
         self.collect_config_goal_files(files, base_dir, config_path, entrypoint, &layer)?;
+        // Hook-declared files ride the closure so host-side hooks can
+        // execute them from a run-scoped staging directory instead of
+        // embedding their bytes inside the hook command.
+        self.collect_config_hook_files(files, base_dir, config_path, &layer)?;
         Ok(())
     }
 
@@ -469,6 +473,30 @@ impl<'a> WorkflowBundler<'a> {
             TemplateSource::new(entrypoint.clone(), workflow_package_root(), content),
             Some(config_path),
         )
+    }
+
+    fn collect_config_hook_files(
+        &self,
+        files: &mut HashMap<String, types::ManifestFileEntry>,
+        base_dir: &Path,
+        config_path: &ManifestPath,
+        layer: &SettingsLayer,
+    ) -> Result<()> {
+        let Some(run) = layer.run.as_ref() else {
+            return Ok(());
+        };
+        for file in run.hook_files() {
+            let reference = file.as_source();
+            self.collect_bundled_file(
+                files,
+                base_dir,
+                &reference,
+                types::ManifestFileRefType::HookFile,
+                ReferenceKind::HookFile,
+                Some(config_path.clone()),
+            )?;
+        }
+        Ok(())
     }
 
     fn collect_environment_dockerfile(

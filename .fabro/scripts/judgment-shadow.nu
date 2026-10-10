@@ -47,12 +47,14 @@
 # Secrets: OPENROUTER_API_KEY comes from the server process env only
 # (server-secrets-strategy); it never enters a run sandbox or a prompt.
 #
-# EMBEDDING CONTRACT: this file is embedded verbatim inside the four
-# workflow.toml hook entries, so it must contain no line equal to the
-# heredoc delimiter (JSEOF) and no run of three single quotes. The entry
-# explicit call at the bottom (not `def main`) so the same bytes run
-# identically as a script file (nu auto-calls only `main`) and through
-# `nu -c` (which auto-calls nothing).
+# TRANSPORT CONTRACT (fabro-091b): the four workflow.toml hook entries
+# declare this file in `files` and run it by path
+# (`nu "$FABRO_HOOK_ASSETS/.fabro/scripts/judgment-shadow.nu"`); the
+# bundler carries it in the closure and the server stages it host-side.
+# No embedding constraints remain. The explicit call at the bottom (not
+# `def main`) is kept so the same bytes run identically as a script file
+# (nu auto-calls only `main`) and through `nu -c` (which auto-calls
+# nothing).
 
 const JUDGED_NODES = [evidence reviewer analyze]
 const MODEL = "jev-latest"

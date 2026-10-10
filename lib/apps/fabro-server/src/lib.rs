@@ -27,6 +27,7 @@ pub mod diagnostics;
 pub mod error;
 mod git_checkout;
 pub mod github_webhooks;
+mod hook_assets;
 pub mod install;
 mod interp;
 pub mod jwt_auth;

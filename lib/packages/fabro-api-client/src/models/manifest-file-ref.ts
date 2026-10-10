@@ -23,7 +23,8 @@ export interface ManifestFileRef {
 export const ManifestFileRefTypeEnum = {
     FILE_INLINE: 'file_inline',
     IMPORT: 'import',
-    DOCKERFILE: 'dockerfile'
+    DOCKERFILE: 'dockerfile',
+    HOOK_FILE: 'hook_file'
 } as const;
 
 export type ManifestFileRefTypeEnum = typeof ManifestFileRefTypeEnum[keyof typeof ManifestFileRefTypeEnum];

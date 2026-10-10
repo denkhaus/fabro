@@ -162,7 +162,8 @@ use crate::worker_runtime::{
 };
 use crate::worker_token::{WorkerScopeSet, WorkerTokenKeys, issue_worker_token_with_scopes};
 use crate::{
-    canonical_host, demo, diagnostics, run_manifest, security_headers, static_files, web_auth,
+    canonical_host, demo, diagnostics, hook_assets, run_manifest, security_headers, static_files,
+    web_auth,
 };
 
 pub(crate) mod automation_breaker;
@@ -3926,6 +3927,7 @@ fn worker_launch_spec(
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
     github_app_private_key: Option<String>,
+    hook_assets: Option<std::path::PathBuf>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -3965,6 +3967,7 @@ fn worker_launch_spec(
         active_config_path: state.active_config_path().to_path_buf(),
         github_app_private_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
+        hook_assets,
     })
 }
 
@@ -4297,6 +4300,35 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
+    // Hook-declared files stage host-side before the worker launches, so a
+    // `sandbox = false` hook executes them from FABRO_HOOK_ASSETS instead
+    // of embedding their bytes in the hook command.
+    let hook_assets = match run_state.spec.workflow_version_id {
+        Some(version_id) => {
+            match hook_assets::stage(
+                &fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs()),
+                run_id,
+                version_id,
+                &run_dir,
+            )
+            .await
+            {
+                Ok(dir) => dir,
+                Err(err) => {
+                    fail_run_before_execution(
+                        &state,
+                        run_id,
+                        FailureReason::WorkflowError,
+                        format!("Staging hook assets failed: {err}"),
+                    )
+                    .await;
+                    tracing::error!(run_id = %run_id, error = ?err, "Staging hook assets failed");
+                    return;
+                }
+            }
+        }
+        None => None,
+    };
     let state_for_build = Arc::clone(&state);
     let run_dir_for_build = run_dir.clone();
     let start_result = spawn_blocking(move || {
@@ -4307,6 +4339,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             &run_dir_for_build,
             agent_fabro_tools_enabled,
             github_app_private_key,
+            hook_assets,
         )
     })
     .await

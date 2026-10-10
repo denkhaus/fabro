@@ -2277,6 +2277,7 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
         storage_dir.path(),
         false,
         Some("test-private-key".to_string()),
+        None,
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
@@ -2287,6 +2288,52 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
     );
     assert_eq!(
         command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
+        EnvOverride::Unchanged
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn worker_command_exports_hook_assets_dir_when_staged() {
+    let storage_dir = tempfile::tempdir().unwrap();
+    let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
+    let spec = worker_launch_spec(
+        state.as_ref(),
+        RunId::new(),
+        RunExecutionMode::Start,
+        storage_dir.path(),
+        false,
+        None,
+        Some(std::path::PathBuf::from("/run/hook-assets")),
+    )
+    .unwrap();
+    let cmd = LocalWorkerRuntime::command_for_spec(&spec);
+
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::FABRO_HOOK_ASSETS),
+        EnvOverride::Set("/run/hook-assets".to_string())
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn worker_command_leaves_hook_assets_unset_without_staging() {
+    let storage_dir = tempfile::tempdir().unwrap();
+    let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
+    let spec = worker_launch_spec(
+        state.as_ref(),
+        RunId::new(),
+        RunExecutionMode::Start,
+        storage_dir.path(),
+        false,
+        None,
+        None,
+    )
+    .unwrap();
+    let cmd = LocalWorkerRuntime::command_for_spec(&spec);
+
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::FABRO_HOOK_ASSETS),
         EnvOverride::Unchanged
     );
 }
@@ -2492,6 +2539,7 @@ fn worker_command(
         mode,
         run_dir,
         agent_fabro_tools_enabled,
+        None,
         None,
     )?;
     Ok(LocalWorkerRuntime::command_for_spec(&spec))

@@ -10329,6 +10329,7 @@ components:
             - file_inline
             - import
             - dockerfile
+            - hook_file
         original:
           type: string
         from:

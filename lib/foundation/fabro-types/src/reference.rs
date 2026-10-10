@@ -2,7 +2,8 @@
 //!
 //! A workflow names other files from its graph (`import`,
 //! `stack.child_workflow`, `@`-prefixed `prompt`, `output_schema` and `goal`
-//! values) and from its `workflow.toml` (a Dockerfile, a run goal file).
+//! values) and from its `workflow.toml` (a Dockerfile, a run goal file, a
+//! hook-declared file).
 //! Every such reference is static: it is resolved before any template
 //! renders, so it may not contain template syntax. The kind names which rule
 //! a reference was read under, for error messages.
@@ -22,4 +23,6 @@ pub enum ReferenceKind {
     GraphGoalFile,
     #[strum(to_string = "run goal file reference")]
     RunGoalFile,
+    #[strum(to_string = "hook file reference")]
+    HookFile,
 }

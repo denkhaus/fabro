@@ -17,6 +17,11 @@ impl EnvVars {
         "FABRO_ENABLE_FETCH_FEATURE_OCI_INTEGRATION";
     pub const FABRO_GIT_SHA: &'static str = "FABRO_GIT_SHA";
     pub const FABRO_HOME: &'static str = "FABRO_HOME";
+    /// Host-side staging directory for hook-declared workflow files. Set
+    /// per run by the server when the run's workflow version declares
+    /// `[[run.hooks]] files`; never inherited from the server's own process
+    /// environment.
+    pub const FABRO_HOOK_ASSETS: &'static str = "FABRO_HOOK_ASSETS";
     pub const FABRO_HTTP_PROXY_POLICY: &'static str = "FABRO_HTTP_PROXY_POLICY";
     pub const FABRO_JSON: &'static str = "FABRO_JSON";
     pub const FABRO_LOG: &'static str = "FABRO_LOG";

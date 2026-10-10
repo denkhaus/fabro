@@ -133,6 +133,7 @@ sandbox = false
 | `blocking` | Whether the hook must complete before execution continues. Defaults vary by event. |
 | `timeout_ms` | Hook timeout in milliseconds. Default: `60000` (60s) for most types, `30000` (30s) for prompt hooks. |
 | `sandbox` | Run inside the sandbox (`true`, default) or on the host (`false`). |
+| `files` | Static file references a host-side hook needs at execution time. The files travel in the workflow closure and the server stages them under the directory exposed as `FABRO_HOOK_ASSETS` (see [host-side hook files](/execution/run-configuration#host-side-hook-files)). |
 
 ## Blocking vs. non-blocking
 

@@ -64,6 +64,15 @@ pub struct RunLayer {
     pub integrations:  Option<RunIntegrationsLayer>,
 }
 
+impl RunLayer {
+    /// Every `[[run.hooks]]` file declaration, in declaration order: the
+    /// static references whose files ride the workflow closure so
+    /// host-side hooks can execute them from run-scoped staging.
+    pub fn hook_files(&self) -> impl Iterator<Item = &InterpString> {
+        self.hooks.iter().flat_map(|hook| hook.files.iter())
+    }
+}
+
 /// `[run.integrations]` — run-level integration knobs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
@@ -763,6 +772,16 @@ pub struct HookEntry {
     pub timeout:         Option<Duration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox:         Option<bool>,
+    /// Files this hook needs at execution time, declared as static
+    /// references. Relative paths resolve against the directory of the
+    /// config file that declares them (climbing `../../` included) and ride
+    /// the workflow closure under their package-root-relative key, so a
+    /// host-side hook (`sandbox = false`) can execute them from the
+    /// run-scoped staging directory the server exposes as
+    /// `FABRO_HOOK_ASSETS`. Interpolation tokens are rejected at bundle
+    /// time, like every static reference.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files:           Vec<InterpString>,
     // Exactly one of the following groups is expected:
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script:          Option<InterpString>,

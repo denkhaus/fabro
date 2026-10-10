@@ -51,6 +51,12 @@ pub(crate) struct WorkerLaunchSpec {
     /// The Fabro home the server resolved, so a Petri run's skills step
     /// reads the same home whatever the worker's environment says.
     pub(crate) fabro_home:             PathBuf,
+    /// Host-side directory holding the run's hook-declared files, exported
+    /// to the worker as `FABRO_HOOK_ASSETS` so host-side hooks execute the
+    /// staged bytes instead of embedding them in the hook command. `None`
+    /// leaves the variable unset and hook scripts fall back to
+    /// workspace-relative paths.
+    pub(crate) hook_assets:            Option<PathBuf>,
 }
 
 pub(crate) struct StartedWorker {
@@ -108,6 +114,9 @@ impl LocalWorkerRuntime {
         cmd.env(EnvVars::FABRO_WORKER_TOKEN, &spec.worker_token);
         if let Some(pem) = spec.github_app_private_key.as_deref() {
             cmd.env(EnvVars::GITHUB_APP_PRIVATE_KEY, pem);
+        }
+        if let Some(hook_assets) = spec.hook_assets.as_deref() {
+            cmd.env(EnvVars::FABRO_HOOK_ASSETS, hook_assets);
         }
 
         #[cfg(unix)]

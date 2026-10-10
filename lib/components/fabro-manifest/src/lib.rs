@@ -1808,6 +1808,161 @@ file = "prompts/goal.md"
         );
     }
 
+    /// A `[[run.hooks]] files = [...]` declaration rides the workflow
+    /// closure under its package-root-relative key, so a host-side hook can
+    /// execute the file from run-scoped staging instead of embedding its
+    /// bytes in the hook command. Climbing references resolve against the
+    /// declaring config file's directory.
+    #[test]
+    fn build_manifest_bundles_hook_declared_files_into_the_closure() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let workflow_dir = project.join(".fabro/workflows/demo");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::create_dir_all(project.join(".fabro/scripts")).unwrap();
+        std::fs::write(project.join(".fabro/project.toml"), "_version = 1\n").unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+[[run.hooks]]
+name = "shadow"
+event = "stage_complete"
+sandbox = false
+files = ["../../scripts/shadow.nu"]
+script = "true"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project.join(".fabro/scripts/shadow.nu"),
+            "def main [] { 0 }",
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .unwrap();
+
+        let built = build_run_manifest(ManifestBuildInput {
+            workflow: PathBuf::from(".fabro/workflows/demo/workflow.toml"),
+            cwd: project.to_path_buf(),
+            environment_defaults: test_environment_defaults(),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let root = &built.manifest.workflows[".fabro/workflows/demo/workflow.fabro"];
+        let entry = root
+            .files
+            .get(".fabro/scripts/shadow.nu")
+            .expect("hook-declared file should be bundled");
+        assert_eq!(entry.content, "def main [] { 0 }");
+        assert_eq!(entry.ref_.original, "../../scripts/shadow.nu");
+        assert_eq!(
+            entry.ref_.from.as_deref(),
+            Some(".fabro/workflows/demo/workflow.toml")
+        );
+        assert_eq!(
+            serde_json::to_value(entry.ref_.type_).unwrap(),
+            serde_json::json!("hook_file")
+        );
+    }
+
+    /// A hook declaring a file that does not exist is a hard bundling error
+    /// naming the path — the closure is the hook's only transport, so a
+    /// silent skip would strand the hook at execution time.
+    #[test]
+    fn build_manifest_rejects_a_missing_hook_declared_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let workflow_dir = project.join(".fabro/workflows/demo");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::write(project.join(".fabro/project.toml"), "_version = 1\n").unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+[[run.hooks]]
+name = "shadow"
+event = "stage_complete"
+sandbox = false
+files = ["../../scripts/missing-shadow.nu"]
+script = "true"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .unwrap();
+
+        let err = build_run_manifest(ManifestBuildInput {
+            workflow: PathBuf::from(".fabro/workflows/demo/workflow.toml"),
+            cwd: project.to_path_buf(),
+            environment_defaults: test_environment_defaults(),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("missing-shadow.nu"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    /// Hook file declarations are static references: interpolation tokens
+    /// are rejected at bundle time like every other file reference family.
+    #[test]
+    fn build_manifest_rejects_templated_hook_file_reference() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let workflow_dir = project.join(".fabro/workflows/demo");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::write(project.join(".fabro/project.toml"), "_version = 1\n").unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+[[run.hooks]]
+name = "shadow"
+event = "stage_complete"
+sandbox = false
+files = ["{{ inputs.script }}.nu"]
+script = "true"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .unwrap();
+
+        let err = build_run_manifest(ManifestBuildInput {
+            workflow: PathBuf::from(".fabro/workflows/demo/workflow.toml"),
+            cwd: project.to_path_buf(),
+            environment_defaults: test_environment_defaults(),
+            ..Default::default()
+        })
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("templates are not supported in hook file references"),
+            "unexpected error: {err:#}"
+        );
+    }
+
     /// The wire-level goal carries only the resolved kind and content:
     /// inline and file-sourced goals serialize to exactly `type` + `text`.
     #[test]

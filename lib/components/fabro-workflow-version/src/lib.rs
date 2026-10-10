@@ -133,6 +133,37 @@ impl ValidatedWorkflowVersion {
         .expect("validated goal-file reference must resolve");
         Some(content)
     }
+
+    /// Contents of every hook-declared file in this version's
+    /// `workflow.toml`, paired with the package-root-relative path each
+    /// declaration resolves to. Validation proved every declared file
+    /// present; consumers that stage these bytes for host-side hook
+    /// execution read the same content validation certified. Only the
+    /// run's own config executes hooks, so child-workflow configs in the
+    /// closure are not walked here.
+    #[must_use]
+    pub fn hook_file_contents(&self) -> Vec<(WorkflowPath, &str)> {
+        let config_path = self.0.config_path();
+        let Some(source) = self.0.files().get(&config_path) else {
+            return Vec::new();
+        };
+        let layer: SettingsLayer = source.parse().expect("validated workflow.toml must parse");
+        let Some(run) = layer.run.as_ref() else {
+            return Vec::new();
+        };
+        run.hook_files()
+            .map(|file| {
+                let (path, content) = validate_config_file_reference(
+                    &self.0,
+                    &config_path,
+                    ReferenceKind::HookFile,
+                    &unresolved_source(file),
+                )
+                .expect("validated hook-file reference must resolve");
+                (path.clone(), content)
+            })
+            .collect()
+    }
 }
 
 /// Template sources that anchor static dependency discovery, all rooted at
@@ -190,6 +221,22 @@ fn validate_config(
 
     for image in layer.environment_images() {
         validate_dockerfile(version, &config_path, image)?;
+    }
+
+    // Hook-declared files must ride the version: a host-side hook executes
+    // them from run-scoped staging, so a supplied version missing them fails
+    // here instead of stranding the hook at execution time.
+    if let Some(run) = layer.run.as_ref() {
+        for hook in &run.hooks {
+            for file in &hook.files {
+                validate_config_file_reference(
+                    version,
+                    &config_path,
+                    ReferenceKind::HookFile,
+                    &unresolved_source(file),
+                )?;
+            }
+        }
     }
 
     // The run engine inlines the effective goal (file contents included) into
@@ -585,6 +632,56 @@ mod tests {
                 if source_path == path("workflow.toml")
                     && kind == ReferenceKind::RunGoalFile
                     && target == path("prompts/goal.md")
+        ));
+    }
+
+    fn config_with_hook_files(files: &str) -> String {
+        format!(
+            "_version = 1
+[[run.hooks]]
+name = \"shadow\"
+event = \"stage_complete\"
+sandbox = false
+files = {files}
+script = \"true\"\n"
+        )
+    }
+
+    #[test]
+    fn validates_hook_declared_files_in_the_config() {
+        let config = config_with_hook_files("[\"scripts/shadow.nu\"]");
+        version_with_config(config, [("scripts/shadow.nu", "def main [] { 0 }")])
+            .expect("a declared hook file present in the version must validate");
+    }
+
+    #[test]
+    fn rejects_a_missing_hook_declared_file() {
+        let config = config_with_hook_files("[\"scripts/missing-shadow.nu\"]");
+        let error = version_with_config(config, []).unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::MissingFile {
+                path: source_path,
+                kind,
+                target,
+            }
+                if source_path == path("workflow.toml")
+                    && kind == ReferenceKind::HookFile
+                    && target == path("scripts/missing-shadow.nu")
+        ));
+    }
+
+    #[test]
+    fn rejects_a_templated_hook_file_reference() {
+        let config = config_with_hook_files("[\"{{ inputs.script }}.nu\"]");
+        let error = version_with_config(config, [("{{ inputs.script }}.nu", "x")]).unwrap_err();
+
+        assert!(matches!(
+            error,
+            WorkflowVersionError::StaticReference { source, .. }
+                if source.to_string()
+                    .contains("templates are not supported in hook file references")
         ));
     }
 
