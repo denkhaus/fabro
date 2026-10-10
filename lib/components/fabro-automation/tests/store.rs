@@ -322,6 +322,30 @@ async fn create_requires_an_environment_and_environment_changes_revision() {
 }
 
 #[tokio::test]
+async fn replace_rejects_an_unknown_environment_with_a_typed_error() {
+    let (_dir, database) = test_database().await;
+    let store = AutomationStore::new(database.clone_pool());
+    let created = store.create(draft("nightly", true)).await.unwrap();
+    let mut update = replacement("Nightly", "0 1 * * *");
+    update.environment_id = Some("missing-env".to_string());
+
+    let error = store
+        .replace(&created.id, &created.revision, update)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        AutomationStoreError::EnvironmentNotFound { ref environment }
+            if environment == "missing-env"
+    ));
+
+    // The rejected replace leaves the stored automation untouched.
+    let stored = store.get(&created.id).await.unwrap().unwrap();
+    assert_eq!(stored.revision, created.revision);
+    assert_eq!(stored.environment_id.as_deref(), Some("default"));
+}
+
+#[tokio::test]
 async fn legacy_environment_backfill_prefers_default_then_a_single_compatible_environment() {
     let (_dir, database) = test_database().await;
     insert_incomplete_automation(database.pool(), "with-default").await;
