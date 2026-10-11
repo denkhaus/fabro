@@ -162,8 +162,8 @@ use crate::worker_runtime::{
 };
 use crate::worker_token::{WorkerScopeSet, WorkerTokenKeys, issue_worker_token_with_scopes};
 use crate::{
-    canonical_host, demo, diagnostics, hook_assets, run_manifest, security_headers, static_files,
-    web_auth,
+    canonical_host, demo, diagnostics, fork_hook_assets, run_manifest, security_headers,
+    static_files, web_auth,
 };
 
 pub(crate) mod automation_breaker;
@@ -4305,7 +4305,7 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     // of embedding their bytes in the hook command.
     let hook_assets = match run_state.spec.workflow_version_id {
         Some(version_id) => {
-            match hook_assets::stage(
+            match fork_hook_assets::stage(
                 &fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs()),
                 run_id,
                 version_id,

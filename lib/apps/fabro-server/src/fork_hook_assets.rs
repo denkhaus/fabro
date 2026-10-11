@@ -172,4 +172,78 @@ mod tests {
                 .is_none()
         );
     }
+    /// The transport end to end through the REAL bundler (fabro-091b): a
+    /// package whose `[[run.hooks]]` entry declares a file bundles it into
+    /// the closure, the version validates and exposes it, and staging
+    /// lands the source bytes under the run's hook-assets directory with
+    /// the package-root key — the shape `$FABRO_HOOK_ASSETS/<key>`
+    /// addresses. The sibling tests build the version by hand; this one
+    /// proves the declaration rides a closure the bundler actually built.
+    #[tokio::test]
+    async fn a_bundler_built_closure_stages_its_hook_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path();
+        let workflow_dir = project.join(".fabro/workflows/demo");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::create_dir_all(project.join(".fabro/scripts")).unwrap();
+        tokio::fs::write(project.join(".fabro/project.toml"), "_version = 1\n")
+            .await
+            .unwrap();
+        tokio::fs::write(
+            workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+[[run.hooks]]
+name = "shadow"
+event = "stage_complete"
+sandbox = false
+files = ["../../scripts/shadow.nu"]
+script = "true"
+"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            project.join(".fabro/scripts/shadow.nu"),
+            "def main [] { 0 }",
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .await
+        .unwrap();
+
+        // The create path's collector: package the checkout the way a
+        // `fabro create` does — validation included — instead of
+        // hand-assembling the version.
+        let closure = fabro_manifest::collect_workflow_versions(
+            std::path::Path::new(".fabro/workflows/demo/workflow.toml"),
+            project,
+        )
+        .unwrap();
+
+        let database = test_support::test_database();
+        let store = fabro_workflow_version::WorkflowVersionStore::new(database.blobs());
+        for (_id, version) in closure.versions() {
+            store.put(version).await.unwrap();
+        }
+        let run_dir = tempfile::tempdir().unwrap();
+
+        let staged = stage(&store, RunId::new(), closure.root_id(), run_dir.path())
+            .await
+            .unwrap()
+            .expect("a collected closure with hook files must stage a directory");
+        assert_eq!(
+            fs::read_to_string(staged.join(".fabro/scripts/shadow.nu"))
+                .await
+                .unwrap(),
+            "def main [] { 0 }"
+        );
+    }
 }
