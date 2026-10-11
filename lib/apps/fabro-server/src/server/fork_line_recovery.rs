@@ -587,7 +587,21 @@ pub(crate) async fn manual_window_refusal(
             let mut gate = state.provider_gate.lock().await;
             if gate.poll_due(provider, now) {
                 let known = gate.window(provider).unwrap_or(ProviderWindow::Open);
-                let selector = probe_selector(state, requirement.provider.as_str());
+                // The stage's own model when the admission stated one
+                // (fabro-99a2, user decision 2026-10-11 option A): the
+                // catalog probe default can live on a different window —
+                // zai's 5h limit is per model. Without a stated model the
+                // catalog probe offering stays the selector.
+                let selector = requirement.model.as_deref().map_or_else(
+                    || probe_selector(state, requirement.provider.as_str()),
+                    |model| {
+                        if model.contains('/') {
+                            model.to_string()
+                        } else {
+                            format!("{provider}/{model}")
+                        }
+                    },
+                );
                 gate.note_probe(provider, known, &selector, now);
                 Some(selector)
             } else {
@@ -661,12 +675,14 @@ fn window_signal(
         .then(|| (run_id.to_string(), message.clone()))
 }
 
-/// The selector a requirement's probe runs with: the provider's PROBE
-/// model from the catalog (the row marked `probe`, else its default
-/// offering) — the cheap model the catalog designates for exactly this
-/// question. The stage's own model is deliberately not used: probing the
-/// stage's model spends it on a one-word request and, in scripted test
-/// scenarios, would consume the answer the stage itself expects.
+/// The selector a requirement's probe runs with when nothing was
+/// observed: the provider's PROBE model from the catalog (the row marked
+/// `probe`, else its default offering). Since fabro-99a2 (user decision
+/// 2026-10-11) the OBSERVED model wins whenever a terminal run recorded
+/// one — a per-model window (zai's 5h limit closed for glm-5.3 while the
+/// catalog default glm-5.2 answered) otherwise passes the gate and burns
+/// the run. The catalog probe stays the fallback for a provider the
+/// workflow has never run with.
 fn probe_selector(state: &AppState, provider: &str) -> String {
     let probe_model = state
         .catalog()
@@ -1036,6 +1052,37 @@ mod tests {
             ],
             "every provider of the run is gated (fabro-b869 step 2); one probe per provider, \
              the alphabetically first of its models as the deterministic representative"
+        );
+    }
+
+    /// fabro-99a2 (user decision 2026-10-11, option A): the pair the gate
+    /// probes with is the run's OBSERVED model, so a per-model window (zai's
+    /// 5h limit closed for glm-5.3 while the catalog default glm-5.2
+    /// answered) holds the fire instead of burning the run.
+    #[test]
+    fn the_gate_probes_the_observed_model_not_the_catalog_default() {
+        let mut run = run_body();
+        run.models = vec![fabro_types::RunModel {
+            provider: Some("zai".to_string()),
+            name:     "glm-5.3".to_string(),
+        }];
+        let pairs = run_providers(Some(&run));
+        assert_eq!(
+            pairs,
+            vec![("zai".to_string(), "zai/glm-5.3".to_string())],
+            "the observed model is the probe selector"
+        );
+
+        // The probe loop consumes the pair's selector (it used to recompute
+        // the catalog probe model and discard this).
+        let source = include_str!("fork_line_recovery.rs");
+        assert!(
+            source.contains("requirement.model.as_deref().map_or_else("),
+            "the manual gate's probe must prefer the stage's stated model (fabro-99a2)"
+        );
+        assert!(
+            source.contains("gate.note_probe(provider, known, selector, now)"),
+            "the scheduled gate already probes the pair's own selector"
         );
     }
 
