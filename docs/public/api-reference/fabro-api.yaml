@@ -11621,6 +11621,7 @@ components:
       type: string
       enum:
         - human_input_required
+        - quota_rate_limit
 
     RunControlAction:
       description: Run control action requested by the API.

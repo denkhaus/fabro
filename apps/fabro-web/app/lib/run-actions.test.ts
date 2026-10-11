@@ -22,6 +22,7 @@ import {
   isTerminalRunStatus,
   isCancellationPending,
   isCancellationPendingState,
+  isQuotaPark,
   mapError,
   unarchiveRun,
   unarchiveRuns,
@@ -425,6 +426,18 @@ describe("run lifecycle actions", () => {
 
     expect(canUnarchive("archived")).toBe(true);
     expect(canUnarchive("failed")).toBe(false);
+  });
+
+  test("the quota park is the resumable blocked shape (fabro-2c4a)", () => {
+    expect(
+      isQuotaPark({ lifecycleStatus: "blocked", blockedReason: "quota_rate_limit" }),
+    ).toBe(true);
+    expect(
+      isQuotaPark({ lifecycleStatus: "blocked", blockedReason: "human_input_required" }),
+    ).toBe(false);
+    expect(isQuotaPark({ lifecycleStatus: "blocked", blockedReason: null })).toBe(false);
+    expect(isQuotaPark({ lifecycleStatus: "failed", blockedReason: null })).toBe(false);
+    expect(isQuotaPark({ lifecycleStatus: null, blockedReason: null })).toBe(false);
   });
 
   test("approval predicate requires pending status and pending approval state", () => {

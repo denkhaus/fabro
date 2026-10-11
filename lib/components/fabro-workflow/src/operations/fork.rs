@@ -78,15 +78,18 @@ pub fn ensure_forkable(source: &RunProjection, run_id: &RunId) -> Result<(), Err
 }
 
 /// A run must be terminal to be rewound or retried: its records are
-/// complete, and nothing is writing them.
+/// complete, and nothing is writing them. A parked, resumable quota-class
+/// run qualifies too (fabro-2c4a): its worker finished, the park wrote the
+/// terminal conclusion, and retry/rewind IS the resume the coordinator's
+/// park promises — refusing it left every quota-parked run unresumable.
 pub fn ensure_terminal(source: &RunProjection, run_id: &RunId, verb: &str) -> Result<(), Error> {
     let current = source.status;
-    if current.is_terminal() {
+    if current.is_terminal() || current.is_resumable_park() {
         Ok(())
     } else {
         Err(Error::Precondition(format!(
-            "run {run_id} must be terminal (succeeded, failed, or dead) to {verb}; current status \
-             is {current}"
+            "run {run_id} must be terminal (succeeded, failed, or dead) or a resumable \
+             quota-class park to {verb}; current status is {current}"
         )))
     }
 }
@@ -249,9 +252,25 @@ mod tests {
             RunStatus::Succeeded {
                 reason: fabro_types::SuccessReason::Completed,
             },
+            // A quota-class park is resumable: its worker finished, so
+            // retry/rewind is the promised resume (fabro-2c4a).
+            RunStatus::Blocked {
+                blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+            },
         ] {
             ensure_terminal(&source(status), &fixtures::RUN_1, "retry").unwrap();
         }
+        // An active block waits for an answer, not for a resume.
+        assert!(matches!(
+            ensure_terminal(
+                &source(RunStatus::Blocked {
+                    blocked_reason: fabro_types::BlockedReason::HumanInputRequired,
+                }),
+                &fixtures::RUN_1,
+                "retry",
+            ),
+            Err(Error::Precondition(message)) if message.contains("must be terminal")
+        ));
         ensure_forkable(&running, &fixtures::RUN_1).unwrap();
     }
 }

@@ -5,6 +5,7 @@ import {
   type Run,
   type RunControlAction,
   type RunSize,
+  type BlockedReason,
   type RunStatus as ApiRunStatus,
 } from "@qltysh/fabro-api-client";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
@@ -27,6 +28,9 @@ export interface RunItem {
   column?: BoardColumn;
   lifecycleStatus?: RunStatus | null;
   lifecycleStatusLabel?: string;
+  /** The block reason of a blocked run (a quota-class park resumes; an
+   * active block waits for an answer). */
+  blockedReason?: BlockedReason | null;
   pendingControl?: RunControlAction | null;
   number?: number;
   pullRequestUrl?: string;
@@ -102,6 +106,10 @@ export function mapRunListItem(item: Run): RunItem {
     column: columnForRun(item) ?? undefined,
     lifecycleStatus,
     lifecycleStatusLabel: lifecycleStatusLabel(item.lifecycle.status, item.lifecycle.archived),
+    blockedReason:
+      item.lifecycle.status.kind === "blocked"
+        ? item.lifecycle.status.blocked_reason
+        : null,
     pendingControl: item.lifecycle.pending_control,
     number: item.pull_request?.number,
     pullRequestUrl: item.pull_request?.html_url,

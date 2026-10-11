@@ -84,6 +84,21 @@ impl RunStatus {
         )
     }
 
+    /// Whether the run is a parked, resumable park (fabro-2c4a): its worker
+    /// finished — nothing writes its records — but its status is not a
+    /// terminal verdict. A quota-class park keeps the run's work and the
+    /// operator resumes it through retry/rewind once the provider window
+    /// reopens (ADR-0021; the fork's coordinator writes
+    /// `Blocked { QuotaRateLimit }` for a window that closed in flight).
+    /// An active block (`HumanInputRequired`) is NOT a park: that run waits
+    /// for an answer, not for a resume.
+    #[must_use]
+    pub fn is_resumable_park(self) -> bool {
+        matches!(self, Self::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        })
+    }
+
     /// Whether the run's status is frozen and cannot transition outbound
     /// through normal lifecycle events. Deletion and the `* -> Dead` escape
     /// hatch are allowed separately.
@@ -418,8 +433,10 @@ pub enum BlockedReason {
     HumanInputRequired,
     /// Fork (fabro-986b/ADR-0021, PR #240 heritage): the run is parked on a
     /// quota-class provider outage with its work preserved; the pre-fire
-    /// provider gate re-fires when the window reopens. Petri's fold does
-    /// not produce this yet — W3-1's tier routing will.
+    /// provider gate re-fires when the window reopens. The fork's
+    /// coordinator writes this for a provider usage window that closed
+    /// while the run was in flight (fabro-2e7b, generalized by fabro-6ac5);
+    /// the operator resumes the run through retry/rewind (fabro-2c4a).
     QuotaRateLimit,
 }
 

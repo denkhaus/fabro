@@ -70,6 +70,19 @@ function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
 }
 
 describe("runs route board mapping", () => {
+  test("a quota-blocked run carries its block reason into the board item (fabro-2c4a)", () => {
+    const quota = boardRun("quota-parked-run", "blocked");
+    quota.lifecycle.status = { kind: "blocked", blocked_reason: "quota_rate_limit" };
+    const waiting = boardRun("waiting-run", "blocked", "Answer me?");
+
+    const quotaItem = mapRunListItem(quota);
+    const waitingItem = mapRunListItem(waiting);
+
+    expect(quotaItem.blockedReason).toBe("quota_rate_limit");
+    expect(quotaItem.lifecycleStatus).toBe("blocked");
+    expect(waitingItem.blockedReason).toBe("human_input_required");
+  });
+
   test("keeps blocked runs in the blocked lane and preserves question text", () => {
     const columns = buildBoardColumns(
       {

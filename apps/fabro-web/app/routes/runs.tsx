@@ -38,7 +38,7 @@ import { RunsListView } from "../components/runs-list/runs-list-view";
 import { mutateRunListCaches } from "../lib/board-cache";
 import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events";
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
-import { approveRun, archiveRuns, canArchive, mapError } from "../lib/run-actions";
+import { approveRun, archiveRuns, canArchive, isQuotaPark, mapError, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
 import { useToast } from "../components/toast";
 import type {
@@ -313,6 +313,12 @@ function PrCard({
   actions?: string[];
 }) {
   const lifecycleLabel = boardLifecycleStatusLabel(pr);
+  // A quota-class park (ADR-0021) has no question to answer: its action is
+  // Resume (Retry keeps the committed stages and reruns the interrupted
+  // one). The column's Answer Question would send the operator to an empty
+  // interview, so it is suppressed for this run (fabro-2c4a).
+  const quotaPark = isQuotaPark(pr);
+  const cardActions = quotaPark ? [] : actions;
 
   return (
     <div className="group rounded-md border border-line bg-panel p-4 transition-all duration-200 hover:border-line-strong hover:shadow-lg hover:shadow-black/20">
@@ -345,7 +351,13 @@ function PrCard({
         <p className="mt-3 truncate text-xs italic text-amber/70">{pr.question}</p>
       )}
 
-      <PrCardFooter pr={pr} actions={actions} />
+      <PrCardFooter pr={pr} actions={cardActions} />
+
+      {quotaPark && (
+        <div className="mt-3 flex items-center gap-1.5">
+          <ResumeBoardButton runId={pr.id} />
+        </div>
+      )}
 
       {pr.pendingApproval && (
         <div className="mt-3 flex items-center gap-1.5">
@@ -471,6 +483,40 @@ function ApproveBoardButton({ runId }: { runId: string }) {
     >
       <CheckIcon className="size-3" aria-hidden="true" />
       {pending ? "Approving…" : "Approve"}
+    </button>
+  );
+}
+
+function ResumeBoardButton({ runId }: { runId: string }) {
+  const { mutate } = useSWRConfig();
+  const { push } = useToast();
+  const [pending, setPending] = useState(false);
+
+  async function resumeBoardRun(event: React.MouseEvent) {
+    event.stopPropagation();
+    event.preventDefault();
+    if (pending) return;
+    setPending(true);
+    try {
+      const resumed = await retryRun(runId);
+      mutateRunListCaches(mutate);
+      push({ message: `Resumed as run ${resumed.id} — earlier progress is kept.` });
+    } catch (error) {
+      push({ message: mapError(error, "resume"), tone: "error" });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={resumeBoardRun}
+      onPointerDown={(event) => event.stopPropagation()}
+      disabled={pending}
+      className="inline-flex items-center gap-1.5 rounded-md border border-teal-500/20 px-2.5 py-1 text-[11px] font-medium text-teal-500 transition-colors hover:border-teal-500/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {pending ? "Resuming…" : "Resume"}
     </button>
   );
 }

@@ -679,6 +679,20 @@ describe("RunDetail full-height child routes", () => {
     expect(submitAnswerMock).toHaveBeenCalledWith({ questionId: "q_1", answer: { kind: "yes" } });
   });
 
+  test("a quota-parked board card offers Resume, not Answer Question (fabro-2c4a)", async () => {
+    const parked = makeRunSummary({ status: "blocked" });
+    parked.lifecycle.status = { kind: "blocked", blocked_reason: "quota_rate_limit" };
+    currentBoardRuns = [parked];
+    const { renderer } = await renderRunDetailHarness({
+      initialEntry: "/runs?view=columns",
+      status: "blocked",
+      questions: [],
+    });
+
+    expect(findButtonByText(renderer, "Resume")).toBeTruthy();
+    expect(findButtonsByText(renderer, "Answer Question")).toHaveLength(0);
+  });
+
   for (const status of ["blocked", "running"]) {
     test(`a stale blocked card opens the ${status} run without an already answered question`, async () => {
       currentBoardRuns = [makeRunSummary({ status: "blocked" })];

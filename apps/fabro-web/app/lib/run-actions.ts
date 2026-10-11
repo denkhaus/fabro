@@ -16,7 +16,7 @@ import {
   requestSignalOptions,
   runsApi,
 } from "./api-client";
-import type { RunStatus } from "../data/runs";
+import type { RunItem, RunStatus } from "../data/runs";
 
 export type LifecycleAction =
   | "cancel"
@@ -146,6 +146,18 @@ export function canRetry(status: string | null | undefined): boolean {
   return status === "failed" || status === "dead";
 }
 
+/**
+ * Whether the run is a quota-class park (ADR-0021): its provider window
+ * closed in flight, its worker finished, and its work is preserved. The
+ * resume IS Retry — the engine reruns the interrupted stage and keeps
+ * every committed stage (fabro-5eed, extended by fabro-2c4a). The server
+ * gates the retry on provider readiness, so a resume while the window is
+ * still closed is refused with a teaching error.
+ */
+export function isQuotaPark(run: Pick<RunItem, "lifecycleStatus" | "blockedReason">): boolean {
+  return run.lifecycleStatus === "blocked" && run.blockedReason === "quota_rate_limit";
+}
+
 export function canCancel(status: string | null | undefined): boolean {
   return !!status && CANCELABLE_STATUSES.has(status as RunStatus);
 }
@@ -217,7 +229,7 @@ export function deleteErrorMessage(error: unknown): string {
   return "Couldn't delete the run right now. Try again.";
 }
 
-export function mapError(error: unknown, action: LifecycleAction): string {
+export function mapError(error: unknown, action: LifecycleAction | "resume"): string {
   if (isLifecycleActionError(error)) {
     if (error.status === 404) {
       return "This run no longer exists.";
@@ -233,6 +245,8 @@ export function mapError(error: unknown, action: LifecycleAction): string {
           return "Only terminal runs can be archived.";
         case "unarchive":
           return "Active runs can't be unarchived.";
+        case "resume":
+          return "The provider window is still closed — resume once it reopens.";
       }
     }
 
@@ -253,6 +267,8 @@ export function mapError(error: unknown, action: LifecycleAction): string {
       return "Couldn't archive the run right now. Try again.";
     case "unarchive":
       return "Couldn't unarchive the run right now. Try again.";
+    case "resume":
+      return "Couldn't resume the run right now. Try again.";
   }
 }
 
