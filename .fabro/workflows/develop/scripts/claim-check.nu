@@ -44,50 +44,15 @@ source anchor_check.nu
 # anchor pins them.
 const ROOTED_PREFIXES = ['.fabro' 'lib' 'apps' 'scripts' 'docs' '.seeds' '.github' 'public']
 
-# Creation-intent verbs: a path named immediately after one of these is
-# the file the seed proposes to CREATE, not evidence it claims exists —
-# blocking there would reject every forward-looking seed body. Plain
-# const string (never interpolated: paren-heavy regex + $"..." would
-# misparse).
-const CREATE_INTENT = '(?i)\b(add|adds|adding|create|creates|created|creating|introduce|introduces|introduced|introducing|new|write|writes|writing|propose|proposes|proposed|proposing|sibling|missing|absent|nonexistent)\W*$'
-
-def all-occurrences [hay: string, needle: string]: nothing -> list<int> {
-    mut out = []
-    mut rest = $hay
-    mut offset = 0
-    let n = ($needle | str length)
-    let hlen = ($hay | str length)
-    loop {
-        let i = ($rest | str index-of $needle)
-        if $i < 0 { break }
-        $out = ($out | append ($offset + $i))
-        let adv = $i + $n
-        $offset = ($offset + $adv)
-        if $offset >= $hlen { break }
-        $rest = ($rest | str substring $adv..)
-    }
-    $out
-}
-
 def rooted? [p: string]: nothing -> bool {
     let seg = ($p | split row '/' | first)
     ($ROOTED_PREFIXES | any {|r| $r == $seg})
 }
 
-# True when EVERY occurrence of the path sits inside a creation-intent
-# window (a creation verb within 64 chars before it). One non-creation
-# occurrence is enough to treat the citation as existing-evidence.
-def creation-named? [desc: string, needle: string]: nothing -> bool {
-    let idxs = (all-occurrences $desc $needle)
-    if ($idxs | is-empty) { return false }
-    ($idxs | any {|i|
-        if $i < 2 { false } else {
-            let start = ([0 ($i - 64)] | math max)
-            let window = ($desc | str substring $start..($i - 1))
-            ($window =~ $CREATE_INTENT)
-        }
-    })
-}
+# The creation-intent window (CREATE_INTENT, all-occurrences,
+# creation-named?) moved to anchor_check.nu as the shared seam: the
+# preflight's bare-path arm applies the same window (fabro-f2eb), so a
+# proposed-file citation is false-flagged nowhere.
 
 # Pure decision core: a `complete`-style record of `seeds show <id>
 # --format json` plus the worktree root -> the claim-path verdict.

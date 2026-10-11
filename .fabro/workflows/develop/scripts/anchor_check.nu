@@ -195,3 +195,54 @@ export def check-bare-paths [desc: string, root: string] {
         if ($roots | any {|r| $r | path join $p | path exists}) { null } else { {path: $p, line: null, status: "missing_file"} }
     } | compact
 }
+
+# Creation-intent window (fabro-f2eb): a path named immediately after a
+# creation verb is the file the seed proposes to CREATE, not evidence it
+# claims exists. Shared by claim-check's blocking arm and the preflight's
+# bare-path arm so proposed-file citations stop generating false
+# missing_file flags. Plain const string (never interpolated:
+# paren-heavy regex + $"..." would misparse).
+const CREATE_INTENT = '(?i)\b(add|adds|adding|create|creates|created|creating|introduce|introduces|introduced|introducing|new|write|writes|writing|propose|proposes|proposed|proposing|sibling|missing|absent|nonexistent)\W*$'
+
+def all-occurrences [hay: string, needle: string]: nothing -> list<int> {
+    mut out = []
+    mut rest = $hay
+    mut offset = 0
+    let n = ($needle | str length)
+    let hlen = ($hay | str length)
+    loop {
+        let i = ($rest | str index-of $needle)
+        if $i < 0 { break }
+        $out = ($out | append ($offset + $i))
+        let adv = $i + $n
+        $offset = ($offset + $adv)
+        if $offset >= $hlen { break }
+        $rest = ($rest | str substring $adv..)
+    }
+    $out
+}
+
+# True when EVERY occurrence of the path sits inside a creation-intent
+# window (a creation verb within 64 chars before it). One non-creation
+# occurrence is enough to treat the citation as existing-evidence.
+export def creation-named? [desc: string, needle: string]: nothing -> bool {
+    let idxs = (all-occurrences $desc $needle)
+    if ($idxs | is-empty) { return false }
+    ($idxs | any {|i|
+        if $i < 2 { false } else {
+            let start = ([0 ($i - 64)] | math max)
+            let window = ($desc | str substring $start..($i - 1))
+            ($window =~ $CREATE_INTENT)
+        }
+    })
+}
+
+# Filter arm for flag assemblies: drop missing_file bare-path flags whose
+# path is creation-named in the description (the seed's own proposed
+# target file). Everything else passes through untouched.
+export def drop-proposed [desc: string, flags: list]: nothing -> list {
+    $flags | where {|f|
+        not (($f.status == "missing_file") and ($f.line == null) and (creation-named? $desc $f.path))
+    }
+}
+

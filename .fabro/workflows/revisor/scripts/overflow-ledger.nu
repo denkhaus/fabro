@@ -42,6 +42,7 @@
 #
 # Usage:
 #   nu overflow-ledger.nu open [--dir <revisions-dir>]
+#   nu overflow-ledger.nu verify --file <marker.md>
 #   nu overflow-ledger.nu stats [--dir <revisions-dir>]
 #   nu overflow-ledger.nu consume --file <path> --line <n> --seed fabro-xxxx [--run-id <id>]
 # Exit 0 on success; 2 on bad invocation/usage; 3 on consume of an
@@ -99,6 +100,30 @@ def all-entries [dir: path] {
     $files | each {|f|
         entries-in (open --raw $f) | each {|e| $e | insert file ($f | path basename) }
     } | flatten
+}
+
+# Marker shape guard: every finding the marker records as a NEW overflow
+# (a `**N. Title** — overflow ...` finding header) must also exist as a
+# canonical machine-visible `- overflow:` bullet — prose-only overflow
+# findings are invisible to `open` and rot the ledger (the pass-2
+# painpoint: one repair commit per malformed marker). `overflow-dup:`
+# links are exempt: they link to an existing entry, they do not journal
+# one. Exit 0 = shape consistent; exit 1 = mismatch, message names both
+# counts and the fix.
+def "main verify" [--file: path] {
+    if ($file == null or (not ($file | path expand | path exists))) {
+        print -e $"overflow-ledger verify: file not found: ($file)"
+        exit 2
+    }
+    let text = (open --raw $file)
+    let lines = ($text | lines)
+    let claimed = ($lines | where {|l| ($l | parse --regex '^\*\*[0-9]+[a-z]?\.\s.*\*\*\s*—\s*overflow(\s|\()' | is-not-empty)} | length)
+    let bullets = ($lines | where {|l| ($l | parse --regex '^\s*[-*]\s*overflow:\s*\S' | is-not-empty)} | length)
+    if $claimed != $bullets {
+        print -e $"overflow-ledger verify: FAIL — ($file): ($claimed) overflow findings but ($bullets) canonical dash-overflow bullets. Prose-only overflow is not machine-visible: every overflow finding needs its canonical bullet before commit."
+        exit 1
+    }
+    print $"overflow-ledger verify: ok — ($file): ($claimed) overflow findings, ($bullets) canonical bullets"
 }
 
 def "main open" [--dir: path = '.fabro/revisions'] {

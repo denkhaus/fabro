@@ -22,8 +22,9 @@ use fabro_store::platform_records::{
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::{ApprovalMode, RunMode};
 use fabro_types::{
-    AuthMethod, BlobHash, GitRunTarget, InterviewQuestionRecord, ModelRef, QuestionType, RunId,
-    RunTarget, SandboxProviderKind, SuccessReason, SystemActorKind, fixtures,
+    AuthMethod, BlobHash, FailureReason, GitRunTarget, InterviewQuestionRecord, ModelRef,
+    QuestionType, RunId, RunStatus, RunTarget, SandboxProviderKind, SuccessReason, SystemActorKind,
+    fixtures,
 };
 use fabro_util::check_report::CheckStatus;
 use httpmock::Method::{GET, POST};

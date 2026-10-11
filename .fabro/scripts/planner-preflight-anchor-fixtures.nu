@@ -114,6 +114,22 @@ def main [] {
         # no flags; a path that exists at either root stays silent.
         expect '12: empty description bare paths' (extract-bare-paths "") []
         expect '12: no paths prose flags' (check-bare-paths "no paths, just words and 'quotes'" $scratch | length) 0
+
+        # (13) creation-intent window: a missing bare path named right
+        # after a creation verb is the seed's PROPOSED target file, not
+        # rot — check-bare-paths still flags it (claim-check's advisory
+        # consumes that), but the preflight arm's drop-proposed filter
+        # removes it. A non-creation missing path stays flagged.
+        let desc13 = "add scripts/new-hook.nu beside the existing gone/x.rs citation"
+        expect '13: creation-named detected' (creation-named? $desc13 'scripts/new-hook.nu') true
+        expect '13: non-creation not windowed' (creation-named? $desc13 'gone/x.rs') false
+        let flags13 = (check-bare-paths $desc13 $scratch)
+        expect '13: raw flags include proposed' ($flags13 | get path | sort) (['gone/x.rs' 'scripts/new-hook.nu'] | sort)
+        let dropped13 = (drop-proposed $desc13 $flags13)
+        expect '13: drop-proposed keeps only real rot' ($dropped13 | get path) ['gone/x.rs']
+        let far = ("create " + (1..20 | each {"filler "} | str join "") + "then cite gone/x.rs as evidence")
+        expect '13: distant verb does not window' (creation-named? $far 'gone/x.rs') false
+        expect '13: distant verb keeps the flag' (drop-proposed $far (check-bare-paths $far $scratch) | get path) ['gone/x.rs']
     } finally {
         cd $home_dir
         rm -rf $scratch

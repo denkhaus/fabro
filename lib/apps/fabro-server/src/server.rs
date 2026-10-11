@@ -174,6 +174,8 @@ mod fork_line_recovery;
 pub(crate) mod fork_seeds_git_source;
 #[cfg(test)]
 mod fork_seeds_read_api_tests;
+#[cfg(test)]
+mod fork_slack_recovery_tests;
 pub(crate) mod fork_staleness_supervisor;
 #[cfg(test)]
 mod fork_staleness_supervisor_tests;
@@ -703,7 +705,7 @@ impl SlackService {
                             .await;
                         }
                         PlatformRecord::RunLifecycle(lifecycle) => {
-                            if let Some(details) = slack_lifecycle_details(&lifecycle) {
+                            if let Some(details) = slack_lifecycle_details(run_id, &lifecycle) {
                                 self.handle_lifecycle(
                                     state,
                                     run_id,
@@ -994,7 +996,10 @@ impl SlackService {
     }
 }
 
-fn slack_lifecycle_details(record: &RunLifecycleRecord) -> Option<SlackLifecycleDetails> {
+fn slack_lifecycle_details(
+    run_id: RunId,
+    record: &RunLifecycleRecord,
+) -> Option<SlackLifecycleDetails> {
     match record.transition {
         RunLifecycleKind::Running => Some(SlackLifecycleDetails {
             kind:        slack_blocks::RunLifecycleKind::Started,
@@ -1014,23 +1019,38 @@ fn slack_lifecycle_details(record: &RunLifecycleRecord) -> Option<SlackLifecycle
         RunLifecycleKind::Failed | RunLifecycleKind::Dead => Some(SlackLifecycleDetails {
             kind:        slack_blocks::RunLifecycleKind::Failed,
             event_name:  "run.failed",
-            result:      Some(slack_lifecycle_failed_result(record)),
+            result:      Some(slack_lifecycle_failed_result(run_id, record)),
             duration_ms: None,
         }),
         _ => None,
     }
 }
 
-fn slack_lifecycle_failed_result(record: &RunLifecycleRecord) -> String {
+fn slack_lifecycle_failed_result(run_id: RunId, record: &RunLifecycleRecord) -> String {
     let reason = match record.status {
         Some(RunStatus::Failed { reason }) => reason.to_string(),
         Some(RunStatus::Dead) => "dead".to_string(),
         _ => "failed".to_string(),
     };
-    match record.reason.as_deref().map(str::trim) {
+    let mut text = match record.reason.as_deref().map(str::trim) {
         Some(message) if !message.is_empty() => format!("{reason} — {message}"),
         _ => reason,
+    };
+    // A quota-park soft stop (ADR-0021: SoftStop + transient-infra + the
+    // window reset prose in the message) is recoverable by hand: make the
+    // recovery path copy-pasteable instead of leaving the operator to
+    // derive it from event forensics.
+    if matches!(
+        record.status,
+        Some(RunStatus::Failed {
+            reason: FailureReason::SoftStop,
+        })
+    ) {
+        text = format!(
+            "{text} — recovery: fabro rewind {run_id} re-enters the run at the window reset"
+        );
     }
+    text
 }
 
 /// The platform record a stream item carries, when it carries one.

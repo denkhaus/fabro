@@ -108,7 +108,11 @@ Backlog-starvation measurement for this mechanism is open seed fabro-27bb
 <one block per finding: title, filed id (or duplicate-of / overflow-to-journal note), the concrete change and expected effect>
 ```
 
-3. Commit via shell, EXACTLY these paths (the run-scope gate rejects any workflow-asset touch — that rule applies to this run too, by design):
+3. Before committing, run the marker shape guard (exit 0 required):
+   `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu verify --file .fabro/revisions/<run-id>.md`
+   It proves every finding you recorded as overflow carries its canonical machine-visible bullet. If it fails, rewrite the marker's findings as canonical bullets and re-run — a prose-only overflow entry is invisible to the ledger's `open` listing and rots the filing pipeline.
+
+4. Commit via shell, EXACTLY these paths (the run-scope gate rejects any workflow-asset touch — that rule applies to this run too, by design):
    `git add .fabro/reviews .fabro/revisions .seeds && git commit -m "revisor: revise run <run-id> (<N> seeds)"`
    Never `git add -A`. Never amend, push, or merge — the host-side integrate step owns merging, only after the human gate approves.
 

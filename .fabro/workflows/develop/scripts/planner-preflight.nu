@@ -67,8 +67,11 @@
 #     path-resolution of seed-cited anchors. The existing anchor
 #     verification covers path:line/path:line-line anchors against the
 #     worktree; fabro-9ec3 extended it to bare path-only citations
-#     (anchor_check.nu extract-bare-paths/check-bare-paths) — no gap
-#     remains, both flag classes ship in anchor_flags. The TEETH for
+#     (anchor_check.nu extract-bare-paths/check-bare-paths); the same
+#     shared seam applies the creation-intent window (anchor_check.nu
+#     drop-proposed, fabro-f2eb): a citation naming a file the seed
+#     itself proposes to create is NOT a missing_file flag. Both real
+#     flag classes ship in anchor_flags. The TEETH for
 #     fabro-4c81 live in the claim gate (claim-check.nu), not here:
 #     this table stays report-only (fabro-83df), the claim node blocks.
 #   arm 2 (complements engine-side fabro-9372): in-flight run/PR
@@ -219,7 +222,8 @@ def envelope-risk? [desc: string]: nothing -> bool {
 def row [v: record, desc: string, root: string, claims: list] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
-    let flags = ((extract-anchors $desc | each {|a| check-anchor $a $root} | append (check-bare-paths $desc $root)) | where {|f| $f.status != "ok"})
+    let checked = ((extract-anchors $desc | each {|a| check-anchor $a $root}) | append (check-bare-paths $desc $root))
+    let flags = ((drop-proposed $desc $checked) | where {|f| $f.status != "ok"})
     # in-flight is advisory: never marked for candidates whose
     # implementation already landed (the duplicate close path owns them).
     let hit = (if $v.verdict == "duplicate" { null } else { $claims | where {|c| $c.seed == $v.seed} | first | default null })

@@ -20,6 +20,21 @@
 
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
+# fabro-f750: FAIL paths print a bounded TAIL of the captured output.
+# Cargo emits the actual diagnostics AFTER the warning preamble, so a
+# head-bound can push the error past the cut (run 01M4KZ2BCS4C: an E0004
+# sat behind a 2k-char warning preamble on a FAIL clippy verdict).
+def output-tail [text: string, bound: int] {
+    let trimmed = ($text | str trim)
+    let length = ($trimmed | str length)
+    if $length <= $bound {
+        $trimmed
+    } else {
+        $trimmed | str substring ($length - $bound)..
+    }
+}
+
+
 # A test file by the repo's layout: tests/ dirs, *_tests.rs companions,
 # or a tests.rs module file inside src/.
 def is-test-file [p: string] {
@@ -112,7 +127,7 @@ def stage-implementer [] {
         print $label
         let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' clippy -p $c --all-targets -- -D warnings } | complete)
         if $res.exit_code != 0 {
-            print ($res.stderr | str substring 0..2000)
+            print (output-tail $res.stderr 2000)
             print $"verify: FAIL clippy ($c)"
             return
         }
@@ -123,7 +138,7 @@ def stage-implementer [] {
         print $"== compile check -p ($c) =="
         let res = (do { ^cargo check -p $c --quiet } | complete)
         if $res.exit_code != 0 {
-            print ($res.stderr | str substring 0..2000)
+            print (output-tail $res.stderr 2000)
             print $"verify: FAIL compile ($c)"
             return
         }
@@ -134,7 +149,7 @@ def stage-implementer [] {
         print $label
         let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
         if $res.exit_code != 0 {
-            print ($res.stdout + $res.stderr | str substring 0..3000)
+            print (output-tail ($res.stdout + $res.stderr) 3000)
             print $"verify: FAIL nextest ($c)"
             return
         }

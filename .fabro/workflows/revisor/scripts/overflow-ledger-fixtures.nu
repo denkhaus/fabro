@@ -150,6 +150,60 @@ def main [] {
         print 'SKIP (g): real revision file absent'
     }
 
+
+    # (h) marker shape guard (verify subcommand): a prose-only overflow
+    # draft REDs (the pass-2 painpoint class), the canonical shape
+    # passes, and a marker whose finding count drifts from its bullet
+    # count REDs in both directions.
+    let draft = ($scratch | path join 'draft.md')
+    [
+        '# Revision — run 01MTEST'
+        ''
+        '- status reviewed: failed'
+        '- seeds filed: none — zero-credit pass; 2 new overflow entries'
+        ''
+        '## Findings'
+        ''
+        '**1. Something rotted** — overflow (zero credit this pass). Prose only, no bullet.'
+        ''
+        '**2. Another gap** — overflow (zero credit this pass). Also prose only.'
+    ] | str join "\n" | save -f $draft
+    let draft_res = (do { nu $LEDGER verify --file $draft } | complete)
+    expect '(h) prose-only draft reds' $draft_res.exit_code 1
+
+    let fixed = ($scratch | path join 'fixed.md')
+    [
+        '# Revision — run 01MTEST'
+        ''
+        '- status reviewed: failed'
+        '- seeds filed: none — zero-credit pass; 2 new overflow entries'
+        ''
+        '## Findings'
+        ''
+        '**1. Something rotted** — overflow (zero credit this pass).'
+        ''
+        '**2. Another gap** — overflow (zero credit this pass).'
+        ''
+        '- overflow: Something rotted — fix it; effect: good'
+        '- overflow: Another gap — fix it too; effect: good'
+    ] | str join "\n" | save -f $fixed
+    let fixed_res = (do { nu $LEDGER verify --file $fixed } | complete)
+    expect '(h) canonical shape passes' $fixed_res.exit_code 0
+
+    let drift = ($scratch | path join 'drift.md')
+    [
+        '# Revision — run 01MTEST'
+        ''
+        '## Findings'
+        ''
+        '**1. Only one finding** — overflow (zero credit this pass).'
+        ''
+        '- overflow: Only one finding — fix it; effect: good'
+        '- overflow: Ghost bullet with no finding; effect: drift'
+    ] | str join "\n" | save -f $drift
+    let drift_res = (do { nu $LEDGER verify --file $drift } | complete)
+    expect '(h) ghost bullet reds' $drift_res.exit_code 1
+
     rm -rf $scratch
     print 'overflow-ledger fixtures green'
 }
