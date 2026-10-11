@@ -31,8 +31,8 @@ use fabro_store::platform_records::{
 };
 use fabro_store::{BlobStore, test_support};
 use fabro_types::{
-    BlobHash, FailureReason, PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler,
-    StageId, StageState, test_support as types_support,
+    BlobHash, BlockedReason, FailureReason, PetriAdmission, PetriGraphRef, RunId, RunStatus,
+    StageHandler, StageId, StageState, test_support as types_support,
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
@@ -1457,6 +1457,63 @@ async fn a_plain_exit_beside_a_soft_kind_edge_projects_green() {
         stored.status
     );
     assert!(stored.conclusion.is_some(), "the run concluded");
+}
+
+/// A provider usage window that killed a STAGE parks the run even when an
+/// EXPLICIT conditional edge consumed the failure (fabro-2e7b/6ac5 gap,
+/// run 01M4NSBKV6ZBPAFFEFND65HEP9, 2026-10-11): the loop lane's
+/// `planner -> exit [outcome=failed]` arm leaves the invocation-level
+/// failure empty, so the park had no message and the run concluded green
+/// (`succeeded/completed`, `conclusion.failure = null`). The failing
+/// stage's own reason is the park's message source.
+const WINDOW_CONSUMED_WORKFLOW: &str = r#"digraph WindowConsumed {
+    graph [goal="Park a window a designed edge consumed"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    work [shape=parallelogram,
+          script="echo 'quota exceeded: your usage will reset at 2879-05-29T07:15:00Z' >&2; exit 1"]
+    green [shape=parallelogram, script="echo done"]
+    start -> work
+    work -> exit [label="Stage failed", condition="outcome=failed"]
+    work -> green [label="Green path"]
+    green -> exit
+}"#;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_window_a_conditional_edge_consumed_still_parks_the_run() {
+    let scenario = scenario(
+        "window-consumed",
+        &[
+            ("workflow.fabro", WINDOW_CONSUMED_WORKFLOW),
+            ("workflow.toml", SETTINGS),
+        ],
+        false,
+    )
+    .await;
+    run_live(&scenario).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(
+        stored.status,
+        RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        },
+        "a window a designed edge consumed parks the run: {:?}",
+        stored.status
+    );
+    let conclusion = stored.conclusion.as_ref().expect("the run concluded");
+    let failure = conclusion
+        .failure
+        .as_ref()
+        .expect("the park names the window");
+    assert_eq!(failure.reason, FailureReason::SoftStop);
+    assert!(
+        failure.detail.message.contains("will reset at"),
+        "the failure names the window: {}",
+        failure.detail.message
+    );
 }
 
 /// The control for the same seam: when the soft exit is the node's SOLE

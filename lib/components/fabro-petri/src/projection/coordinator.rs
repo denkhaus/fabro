@@ -252,12 +252,24 @@ impl RunView {
         // does not outrank a closed provider window. The green arm of the
         // match above dropped the engine's recorded failure — the park
         // restores it so the conclusion names the provider window.
-        if super::fork_taxonomy::parks_on_rate_limit(&run_status, failure_message.as_deref()) {
+        // The park's message source (gap found 2026-10-11, run
+        // 01M4NSBKV6ZBPAFFEFND65HEP9): the invocation-level failure alone
+        // misses a window an EXPLICIT conditional edge consumed — the loop
+        // lane's `planner -> exit [outcome=failed]` arm — because a routed
+        // failure never sets it, so a provider window that killed the
+        // stage concluded green (succeeded/completed with
+        // `conclusion.failure = null`). The park's contract outranks
+        // designed exits; the failing STAGE's reason is its authoritative
+        // source.
+        let park_message = failure_message
+            .clone()
+            .or_else(|| first_failed_stage_failure(projection));
+        if super::fork_taxonomy::parks_on_rate_limit(&run_status, park_message.as_deref()) {
             run_status = RunStatus::Blocked {
                 blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
             };
             if failure.is_none() {
-                failure = failure_message.map(|message| RunFailure {
+                failure = park_message.map(|message| RunFailure {
                     reason: FailureReason::SoftStop,
                     detail: FailureDetail::new(message, FailureCategory::TransientInfra),
                 });
@@ -377,6 +389,33 @@ fn catch_all_leg_failure(
         return None;
     }
     message.clone()
+}
+
+/// The first failed stage's failure reason, in execution order: the quota
+/// park's message source when an explicit conditional edge consumed the
+/// failure (the invocation-level failure stays empty for routed
+/// failures). A retried-then-succeeded leg's final outcome is success,
+/// so it never appears here — the same rule `catch_all_leg_failure`
+/// applies.
+fn first_failed_stage_failure(projection: &fabro_types::RunProjection) -> Option<String> {
+    let mut stages: Vec<(u32, Option<String>)> = projection
+        .iter_stages()
+        .map(|(_stage_id, stage)| {
+            (
+                stage.first_event_seq.get(),
+                stage.completion.as_ref().and_then(|completion| {
+                    completion
+                        .outcome
+                        .is_failure()
+                        .then(|| completion.failure_reason.clone().unwrap_or_default())
+                }),
+            )
+        })
+        .collect();
+    stages.sort_by_key(|(seq, _)| *seq);
+    stages
+        .into_iter()
+        .find_map(|(_, failure)| failure.filter(|message| !message.is_empty()))
 }
 
 #[cfg(test)]
