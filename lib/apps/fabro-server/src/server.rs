@@ -3845,8 +3845,18 @@ pub(in crate::server) fn settle_managed_run_at_terminal_record(
 /// store ended it differently; and a worker that died with no terminal
 /// record and no failure recorded for it is a termination.
 fn status_after_worker_exit(live: RunStatus, stored: RunStatus, exit_success: bool) -> RunStatus {
-    if live.is_terminal() {
-        if stored.is_terminal() { stored } else { live }
+    // A resumable quota park is SETTLED (fabro-2c4a/2e7b): its worker
+    // finished and the park owns the status. Without this the exit path
+    // read `Blocked` as unsettled and clobbered the park with
+    // `Failed { Terminated }` — observed 2026-10-11, run
+    // 01M4NV2HNFF0KGWZ8BF23J375C: the conclusion carried the 5h-window
+    // park (soft_stop + transient_infra) while the run read failed.
+    if live.is_terminal() || live.is_resumable_park() {
+        if stored.is_terminal() || stored.is_resumable_park() {
+            stored
+        } else {
+            live
+        }
     } else if stored != live {
         stored
     } else if exit_success {

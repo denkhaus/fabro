@@ -11556,4 +11556,27 @@ fn an_unsettled_run_takes_the_stores_status_or_a_termination_at_worker_exit() {
         status_after_worker_exit(RunStatus::Running, RunStatus::Running, true),
         RunStatus::Running
     );
+
+    // A resumable quota park is SETTLED: the exit path keeps it (fabro-2c4a)
+    // — before this the park was clobbered into Failed { Terminated }
+    // (production run 01M4NV2HNFF0KGWZ8BF23J375C: the conclusion carried the
+    // 5h-window park while the run read failed).
+    let parked = RunStatus::Blocked {
+        blocked_reason: BlockedReason::QuotaRateLimit,
+    };
+    assert_eq!(
+        status_after_worker_exit(parked, parked, false),
+        parked,
+        "an unsuccessful exit keeps the park"
+    );
+    assert_eq!(
+        status_after_worker_exit(parked, parked, true),
+        parked,
+        "a successful exit keeps the park"
+    );
+    assert_eq!(
+        status_after_worker_exit(parked, RunStatus::Running, false),
+        parked,
+        "the live park wins over a stale running store status"
+    );
 }
