@@ -27,6 +27,9 @@ const LINT = (path self | path dirname | path join 'prompt-lint.nu')
 # resolve, nor a real justfile anchor.
 const MARKER = '# prompt-lint: ' + 'synthetic-seed-ids'
 const DEAD = 'fabro-' + 'dead'
+# fabro-e3c7: the prefixed id family — an unresolvable meta-shaped id
+# must red exactly like a bare one (the old hex-only regex was blind).
+const METADEAD = 'fabro-meta-' + 'dead'
 const REAL = 'fabro-' + 'cb5c'
 const ANCHOR = 'justfile' + ':1'
 
@@ -54,13 +57,15 @@ def run-lint [root: string]: nothing -> record {
 def main [] {
     let base = (mktemp -d)
 
-    # 1. unmarked + unresolvable -> red, naming the id
+    # 1. unmarked + unresolvable -> red, naming the id — for BOTH id
+    #    shapes: the bare family and the prefixed (fabro-e3c7) family
     let r1 = (new-root $base 'unmarked')
-    write-fixture $r1 'plain-fixtures.nu' $"# fixture\n# ($DEAD)\n"
+    write-fixture $r1 'plain-fixtures.nu' $"# fixture\n# ($DEAD)\n# ($METADEAD)\n"
     let one = (run-lint $r1)
     if $one.code == 0 { fail $"an unresolvable id in an unmarked file passed the lint: ($one.out)" }
     if not ($one.out | str contains $DEAD) { fail $"the red does not name ($DEAD): ($one.out)" }
-    print 'ok: an unresolvable id in an unmarked battery reds'
+    if not ($one.out | str contains $METADEAD) { fail $"the red does not name the prefixed-family id ($METADEAD): ($one.out)" }
+    print 'ok: an unresolvable id reds in an unmarked battery, both id shapes'
 
     # 2. marked battery silenced; an unmarked sibling stays checked
     let r2 = (new-root $base 'mixed')
@@ -100,5 +105,14 @@ def main [] {
     if not ($five.out | str contains 'comment line') { fail $"the anchor red is not the drifted-anchor finding: ($five.out)" }
     print 'ok: the justfile-anchor check stays live on a marked file'
 
-    print 'prompt-lint-fixtures: green — 6 assertions'
+    # 6. prose tokens never mint (fabro-e3c7): repo/tool names sharing the
+    #    fabro- prefix are not seed ids — a file citing them stays green
+    #    (the whitelist arm of the shared predicate)
+    let r6 = (new-root $base 'prose')
+    write-fixture $r6 'plain-fixtures.nu' $"# fixture: run fabro-workflow, see fabro-web and fabro-validate docs\n"
+    let six = (run-lint $r6)
+    if $six.code != 0 { fail $"prose tokens were minted as ids: ($six.out)" }
+    print 'ok: prose tokens (fabro-workflow et al) never mint ids'
+
+    print 'prompt-lint-fixtures: green — 8 assertions'
 }

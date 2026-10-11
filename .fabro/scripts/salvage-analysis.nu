@@ -5,6 +5,10 @@
 # (.fabro/scripts/salvage-sweep-smoke.nu). No main here by design —
 # sourcing a file that defines one makes nu run it after the caller.
 
+# Seed ids are minted by the ONE shared predicate (fabro-e3c7): both id
+# shapes with the word-boundary guard and the prose-token whitelist.
+source lib/seed_id.nu
+
 # Terminal status kinds (the engine's terminal set).
 const TERMINAL = [succeeded failed canceled cancelled]
 
@@ -30,10 +34,10 @@ const TRACKER = ['.seeds/']
 # line carries. A rewrite (claim, status change, close) keeps its id on both
 # sides and never counts.
 def added-seed-records [lines: list<string>]: nothing -> int {
-  let removed = ($lines | where {|l| $l starts-with '-' } | str join "\n" | parse -r 'fabro-(?<id>[0-9a-f]{4})' | get id? | default [])
-  let added = ($lines | where {|l| $l starts-with '+' } | str join "\n" | parse -r 'fabro-(?<id>[0-9a-f]{4})' | get id? | default [])
-  let fresh = ($added | where {|id| not ($removed | any {|old| $old == $id }) })
-  ($fresh | uniq | length)
+  let removed = (seed-ids-in ($lines | where {|l| $l starts-with '-' } | str join "\n"))
+  let added = (seed-ids-in ($lines | where {|l| $l starts-with '+' } | str join "\n"))
+  let fresh = ($added | where {|id| $id not-in $removed })
+  ($fresh | length)
 }
 
 # The diff lines of the tracker files in one patch: every line after the

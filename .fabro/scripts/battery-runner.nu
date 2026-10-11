@@ -119,6 +119,11 @@ const BATTERIES = [
     # twins, daytona-sdk-rust) must equal the recorded list — a dep bump
     # cannot ride in silently; it is a deliberate edit plus a reason.
     '.fabro/scripts/dep-pins-fixtures.nu'
+    # seed-id predicate battery (fabro-e3c7): the ONE shared mint
+    # (lib/seed_id.nu) pins both id shapes (bare hex, prefixed family),
+    # the word-boundary guard, and the prose-token whitelist —
+    # 'fabro-workflow' never mints an id for any consumer.
+    '.fabro/scripts/seed-id-fixtures.nu'
 ]
 
 def run-list [kind: string, paths: list<string>]: nothing -> bool {

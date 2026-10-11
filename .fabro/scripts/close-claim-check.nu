@@ -11,15 +11,22 @@
 # smoke battery; `source` here is safe because main only runs when invoked.
 
 # Seed ids a subject claims to close: after the word close/closes/closed/
-# closing, collect fabro-<id> tokens while only ids and list separators
-# (`,`, `+`, `and`) follow. Anything else ends the list — `reconcile
-# fabro-x`, `file fabro-x`, `residual: fabro-x` are NOT close claims.
+# closing, collect seed-id tokens (minted by the ONE shared predicate,
+# fabro-e3c7 — a prose token like 'fabro-workflow' is not an id) while
+# only ids and list separators (`,`, `+`, `and`) follow. Anything else
+# ends the list — `reconcile fabro-x`, `file fabro-x`,
+# `residual: fabro-x` are NOT close claims. The mint comes from the ONE
+# shared predicate (fabro-e3c7) — `use`, not `source`, because the smoke
+# battery loads this file as a module, where `source` is not allowed.
+use lib/seed_id.nu [seed-ids-in]
+
 export def close-claims [subject: string] {
     let words = ($subject | split row ' ')
     mut claims = []
     mut collecting = false
     for word in $words {
-        let id = ($word | parse --regex '(?P<id>fabro-[a-z0-9]+)' | get -o id.0?)
+        let minted = (seed-ids-in $word)
+        let id = (if ($minted | is-empty) { null } else { $minted | first })
         if $collecting {
             if ($id != null) {
                 $claims = ($claims | append $id)
