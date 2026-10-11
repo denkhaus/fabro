@@ -171,6 +171,8 @@ mod automation_scheduler;
 #[cfg(test)]
 mod fork_inspection_guard_tests;
 mod fork_line_recovery;
+#[cfg(test)]
+mod fork_publish_gate_tests;
 pub(crate) mod fork_seeds_git_source;
 #[cfg(test)]
 mod fork_seeds_read_api_tests;

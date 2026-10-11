@@ -476,7 +476,7 @@ fn published(run_id: &RunId, run_branch: &str, head_sha: &str) -> RunBranchPubli
 /// successful publish: the same `pull_request.requested` record the
 /// `POST /runs/{id}/pull_request` handler appends, handed to the pull
 /// request supervisor.
-async fn request_pull_request_if_enabled(state: &AppState, run_id: &RunId) {
+pub(crate) async fn request_pull_request_if_enabled(state: &AppState, run_id: &RunId) {
     let run_state = match run_records::projection(state, *run_id).await {
         Ok(Some(run_state)) => run_state,
         Ok(None) => return,
@@ -501,6 +501,22 @@ async fn request_pull_request_if_enabled(state: &AppState, run_id: &RunId) {
     let Ok(Some(run_state)) = run_records::projection(state, *run_id).await else {
         return;
     };
+    // A pull request is a review vehicle for success-terminated runs. A
+    // failed run must not open one even when a boundary conclusion
+    // remains under the failure (a quota-park SoftStop rewrites the run
+    // to Failed; observed: run 01M4KMWYRQDJ54ZSS08NJNH74N — PR #391,
+    // auto-merge enabled 6s after the failed exit, for work that never
+    // reached tester/reviewer). The pushed run branch stays as the
+    // salvage instrument; the manual endpoint's force override is the
+    // deliberate salvage-PR path.
+    if !matches!(run_state.status, fabro_types::RunStatus::Succeeded { .. }) {
+        info!(
+            run_id = %run_id,
+            status = ?run_state.status,
+            "run did not end succeeded — skipping the automatic pull request"
+        );
+        return;
+    }
     if run_state.pull_request.is_some()
         || run_state
             .pull_request_creation

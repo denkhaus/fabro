@@ -227,6 +227,26 @@ impl<'a> RunPrInputs<'a> {
         if let Some(record) = run_state.pull_request.as_ref() {
             return Err(pull_request_exists_error(record));
         }
+        // The RUN's terminal status governs pull request creation (user
+        // decision A, 2026-10-11): a failed run must not open one even
+        // when a boundary conclusion remains under the failure (a
+        // quota-park SoftStop rewrites the run to Failed; observed: run
+        // 01M4KMWYRQDJ54ZSS08NJNH74N — PR #391 opened auto-merge-enabled
+        // 6s after the failed exit, for work that never reached
+        // tester/reviewer). The pushed run branch stays as the salvage
+        // instrument; `force` is the deliberate salvage-PR path. The
+        // CONCLUSION check further down guards the outcome record.
+        if !force && !matches!(run_state.status, fabro_types::RunStatus::Succeeded { .. }) {
+            return Err(ApiError::with_code(
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Run status is '{}', expected succeeded — pull requests are created only \
+                     for success-terminated runs (force to override)",
+                    run_state.status
+                ),
+                "run_not_successful",
+            ));
+        }
         let run_spec = &run_state.spec;
         let origin_url = run_spec.repo_origin_url().ok_or_else(|| {
             ApiError::with_code(
@@ -301,12 +321,13 @@ impl<'a> RunPrInputs<'a> {
             return Err(ApiError::with_code(
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "Run status is '{}', expected succeeded or partially_succeeded",
+                    "Run's conclusion outcome is '{}', expected succeeded or partially_succeeded",
                     conclusion.status
                 ),
-                "run_not_successful",
+                "conclusion_not_successful",
             ));
         }
+
         let normalized_origin = fabro_github::normalize_repo_origin_url(origin_url);
         parse_github_owner_repo_from_url(&normalized_origin, "repo origin URL")?;
         Ok(Self {
