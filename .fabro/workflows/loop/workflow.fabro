@@ -214,7 +214,11 @@ digraph Loop {
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
     planner -> exit [x.kind="deadlock", label="Blocked", condition="preferred_label=\"Blocked\""]
-    planner -> exit        [label="Planner failed", condition="outcome=failed"]
+    // A planner death is a soft stop, never a green pass (run
+    // 01M4NSBKV6ZBPAFFEFND65HEP9): Failed{SoftStop} counts toward the
+    // breaker and reads resumable, where the plain edge concluded green
+    // and reset the breaker on every rate-limited pass.
+    planner -> exit        [x.kind="soft", label="Planner failed (next run re-enters)", condition="outcome=failed"]
     planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
     planner -> claim_check [label="Seed claimed"]
     claim_check -> implementer [label="Seed id present"]
