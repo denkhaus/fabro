@@ -5,6 +5,7 @@ import {
   automationFormValuesFromRun,
   automationToFormValues,
   isFormValid,
+  triggersFromFormValues,
   workflowSourceFromFormValues,
 } from "./automation-form";
 
@@ -94,5 +95,54 @@ describe("automation workflow source form values", () => {
       ...values,
       usesRemoteWorkflow: false,
     })).toBeUndefined();
+  });
+});
+
+describe("automation breaker threshold round-trip (fabro-3d97)", () => {
+  const automation = (breaker_threshold: number | null | undefined) =>
+    ({
+      id:               "nightly",
+      revision:         "a".repeat(64),
+      name:             "Nightly",
+      description:      null,
+      environment_id:   "docker",
+      last_error:       null,
+      model_providers:  null,
+      target:           { kind: "git", repo: "fabro-sh/fabro", branch: "main" },
+      workflow:         "nightly",
+      workflow_source:  null,
+      on_overlap:       "skip",
+      triggers:         [
+        {
+          id:         "schedule",
+          type:       "schedule",
+          enabled:    true,
+          expression: "0 3 * * *",
+          ...(breaker_threshold == null ? {} : { breaker_threshold }),
+        },
+      ],
+    }) as any;
+
+  test("a configured threshold is read into the form and re-emitted on save", () => {
+    const values = automationToFormValues(automation(7));
+    expect(values.breakerThreshold).toBe("7");
+
+    const triggers = triggersFromFormValues(values);
+    expect(triggers).toEqual([
+      { id: "schedule", type: "schedule", enabled: true, expression: "0 3 * * *", breaker_threshold: 7 },
+    ]);
+  });
+
+  test("an unset threshold stays absent so the server default applies", () => {
+    const values = automationToFormValues(automation(null));
+    expect(values.breakerThreshold).toBe("");
+
+    const triggers = triggersFromFormValues(values);
+    expect(triggers[0]).toEqual({
+      id:         "schedule",
+      type:       "schedule",
+      enabled:    true,
+      expression: "0 3 * * *",
+    });
   });
 });

@@ -26,6 +26,10 @@ import {
   gitTarget,
   workflowSourceLabel,
 } from "../lib/automation";
+import {
+  automationToFormValues,
+  triggersFromFormValues,
+} from "../components/automation-form";
 import { useAutomation, useAutomationRuns } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import { useDataUpdatedAt } from "../hooks/use-data-updated-at";
@@ -103,6 +107,50 @@ function AutomationHeader({ automation }: { automation: Automation }) {
   const target = gitTarget(automation.target);
   const canRun = apiTrigger?.enabled === true && automation.environment_id !== null;
 
+  // The breaker (fabro-3d97): the schedule pauses after consecutive
+  // same-signature failures, and a 429 park counts like any other failure.
+  // Resetting re-enables the trigger, which clears the facts server-side
+  // (the same path `fabro automations breaker reset` uses).
+  const breaker = scheduleTrigger?.breaker;
+  const breakerPaused = breaker?.paused_at != null;
+  const breakerCount = breaker?.consecutive_count ?? 0;
+  const breakerThreshold = scheduleTrigger?.breaker_threshold ?? 3;
+  const breakerVisible = breaker != null && (breakerPaused || breakerCount > 0);
+  const [resetting, setResetting] = useState(false);
+
+  async function onResetBreaker() {
+    if (resetting) return;
+    setResetting(true);
+    try {
+      const values = { ...automationToFormValues(automation), scheduleEnabled: true };
+      await apiData(() =>
+        automationsApi.replaceAutomation(automation.id, automation.revision, {
+          name:            automation.name,
+          description:     automation.description,
+          environment_id:  automation.environment_id ?? "",
+          target:          automation.target,
+          workflow:        automation.workflow,
+          workflow_source: automation.workflow_source,
+          on_overlap:      automation.on_overlap ?? "skip",
+          triggers:        triggersFromFormValues(values),
+        }),
+      );
+      await mutate(queryKeys.automations.detail(automation.id));
+      await mutate(queryKeys.automations.list());
+      toast.push({ message: `Breaker reset — “${automation.name}” can fire again.` });
+    } catch (cause) {
+      toast.push({
+        tone: "error",
+        message:
+          cause instanceof ApiError && cause.message
+            ? cause.message
+            : "Couldn't reset the breaker. Please try again.",
+      });
+    } finally {
+      setResetting(false);
+    }
+  }
+
   async function onRun() {
     if (!canRun || running) return;
     setRunning(true);
@@ -177,6 +225,27 @@ function AutomationHeader({ automation }: { automation: Automation }) {
             <p className="mt-3 max-w-prose rounded-md border border-coral/20 bg-coral/5 px-3 py-2 text-sm leading-relaxed text-coral">
               Last scheduled run failed: {automation.last_error}
             </p>
+          ) : null}
+          {breakerVisible ? (
+            <div className="mt-3 flex max-w-prose flex-wrap items-center gap-3 rounded-md border border-amber/20 bg-amber/5 px-3 py-2 text-sm leading-relaxed text-amber">
+              <span>
+                {breakerPaused
+                  ? `Breaker paused this schedule after ${breakerCount} consecutive failures.`
+                  : `Breaker: ${breakerCount} of ${breakerThreshold} consecutive failures.`}
+                {breaker?.signature ? (
+                  <span className="text-amber/70"> Last signature: {breaker.signature}.</span>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                onClick={onResetBreaker}
+                disabled={resetting}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber/30 px-2.5 py-1 text-[11px] font-medium text-amber transition-colors hover:border-amber/60 hover:text-fg disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowPathIcon className="size-3" aria-hidden="true" />
+                {resetting ? "Resetting…" : "Reset breaker"}
+              </button>
+            </div>
           ) : null}
         </div>
 

@@ -16,6 +16,9 @@
 // May contain unused imports in some cases
 // @ts-ignore
 import type { AutomationProviderWindowState } from './automation-provider-window-state';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { AutomationScheduleBreakerState } from './automation-schedule-breaker-state';
 
 /**
  * Cron schedule trigger evaluated in UTC.
@@ -28,6 +31,14 @@ export interface AutomationScheduleTrigger {
      * Five-field cron expression evaluated in UTC.
      */
     'expression': string;
+    /**
+     * Consecutive same-signature failures before the breaker pauses this trigger (fork, fabro-3d97). Null uses the server default (3).
+     */
+    'breaker_threshold'?: number | null;
+    /**
+     * Scheduler-maintained breaker facts (fork, fabro-3d97): the consecutive same-signature failure count and, once the breaker tripped, the pause timestamp. Read-only; input values are stripped on create and replace.
+     */
+    'breaker'?: AutomationScheduleBreakerState;
     /**
      * Scheduler-maintained provider window facts (fork, fabro-b869): one fact per provider the provider-window gate last held this trigger\'s fires for. Read-only; input values are stripped.
      */

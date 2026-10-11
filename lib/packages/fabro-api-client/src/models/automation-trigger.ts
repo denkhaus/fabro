@@ -21,6 +21,9 @@ import type { AutomationApiTrigger } from './automation-api-trigger';
 import type { AutomationProviderWindowState } from './automation-provider-window-state';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AutomationScheduleBreakerState } from './automation-schedule-breaker-state';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { AutomationScheduleTrigger } from './automation-schedule-trigger';
 
 /**

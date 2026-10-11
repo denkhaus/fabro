@@ -26,6 +26,10 @@ pub mod types {
         ProviderWindowFact as AutomationProviderWindowFact,
         ProviderWindowKind,
         ProviderWindowState as AutomationProviderWindowState,
+        // Fork (fabro-3d97): the breaker read model rides the domain type
+        // like the window facts, so the scheduler's bookkeeping and the API
+        // payload cannot drift into parallel shapes.
+        ScheduleBreakerState as AutomationScheduleBreakerState,
     };
     pub use fabro_environment::Environment;
     pub use fabro_types::settings::run::{

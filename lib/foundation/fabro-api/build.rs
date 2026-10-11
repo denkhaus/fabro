@@ -812,6 +812,14 @@ fn main() {
         // Fork (fabro-b869 step 5b): the provider-window read model rides
         // the domain types, so gate bookkeeping, the stored trigger and the
         // API output cannot drift into parallel shapes.
+        // Fork (fabro-3d97): the breaker read model rides the domain type
+        // like the window facts, so the scheduler's bookkeeping and the API
+        // output cannot drift into parallel shapes.
+        (
+            "AutomationScheduleBreakerState",
+            "fabro_automation::ScheduleBreakerState",
+            &[],
+        ),
         (
             "AutomationProviderWindowState",
             "fabro_automation::ProviderWindowState",

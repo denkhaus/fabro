@@ -7403,6 +7403,21 @@ components:
           type: string
           description: Five-field cron expression evaluated in UTC.
           example: "0 3 * * *"
+        breaker_threshold:
+          type: ["integer", "null"]
+          description: >-
+            Consecutive same-signature failures before the breaker pauses this
+            trigger (fork, fabro-3d97). Null uses the server default (3).
+          example: 3
+        breaker:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AutomationScheduleBreakerState"
+          description: >-
+            Scheduler-maintained breaker facts (fork, fabro-3d97): the
+            consecutive same-signature failure count and, once the breaker
+            tripped, the pause timestamp. Read-only; input values are
+            stripped on create and replace.
         provider_window:
           nullable: true
           allOf:
@@ -7411,6 +7426,34 @@ components:
             Scheduler-maintained provider window facts (fork, fabro-b869):
             one fact per provider the provider-window gate last held this
             trigger's fires for. Read-only; input values are stripped.
+
+    AutomationScheduleBreakerState:
+      description: >-
+        The breaker's per-trigger read model (fork, fabro-3d97): how close
+        the trigger is to pausing on repeated failures and whether it
+        already paused.
+      type: object
+      additionalProperties: false
+      required:
+        - signature
+        - consecutive_count
+        - last_run_id
+      properties:
+        signature:
+          type: string
+          description: Failure signature of the current consecutive run.
+          example: "api_transient|zai|rate_limited"
+        consecutive_count:
+          type: integer
+          description: Consecutive terminal runs with that signature (0 = clean).
+          example: 2
+        last_run_id:
+          type: string
+          description: Last terminal run processed by the breaker.
+        paused_at:
+          type: ["string", "null"]
+          format: date-time
+          description: Set when the breaker paused the trigger.
 
     AutomationProviderWindowState:
       description: >-

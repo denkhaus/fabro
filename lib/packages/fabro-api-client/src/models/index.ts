@@ -46,6 +46,7 @@ export * from './automation-overlap-policy';
 export * from './automation-provider-window-fact';
 export * from './automation-provider-window-state';
 export * from './automation-ref';
+export * from './automation-schedule-breaker-state';
 export * from './automation-schedule-trigger';
 export * from './automation-trigger';
 export * from './batch-delete-runs-request';

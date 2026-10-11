@@ -3,13 +3,14 @@ use fabro_api::types::{
     AutomationModelProvider as ApiModelProvider,
     AutomationProviderWindowFact as ApiProviderWindowFact,
     AutomationProviderWindowState as ApiProviderWindowState,
+    AutomationScheduleBreakerState as ApiScheduleBreakerState,
     AutomationTrigger as ApiAutomationTrigger,
     CreateAutomationRequest as ApiCreateAutomationRequest,
     ReplaceAutomationRequest as ApiReplaceAutomationRequest,
 };
 use fabro_automation::{
     Automation, AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
-    ProviderWindowFact, ProviderWindowState,
+    ProviderWindowFact, ProviderWindowState, ScheduleBreakerState,
 };
 use serde_json::json;
 
@@ -26,6 +27,9 @@ const _: fn(ApiReplaceAutomationRequest) -> AutomationReplace = |value| value;
 // domain types, so the gate's facts and the API payload cannot drift.
 const _: fn(ApiProviderWindowState) -> ProviderWindowState = |value| value;
 const _: fn(ApiProviderWindowFact) -> ProviderWindowFact = |value| value;
+// Fork (fabro-3d97): the breaker read model reuses the domain type, so the
+// scheduler's bookkeeping and the API payload cannot drift.
+const _: fn(ApiScheduleBreakerState) -> ScheduleBreakerState = |value| value;
 // Fork (fabro-0611): the admission-derived model providers reuse the domain
 // type, so the gate's stored fallback and the API payload cannot drift.
 const _: fn(ApiModelProvider) -> fabro_automation::ModelProviderRequirement = |value| value;
@@ -234,4 +238,21 @@ fn provider_window_facts_round_trip_the_public_json_shape() {
         fabro_automation::ProviderWindowKind::Closed
     );
     assert_eq!(serde_json::to_value(state).unwrap(), value);
+}
+
+#[test]
+fn the_breaker_read_model_round_trips_the_public_json_shape() {
+    // The trigger read model as the fork's scheduler writes it (fabro-3d97):
+    // a tripped breaker names the signature, the count, the run and the pause.
+    let value = json!({
+        "signature": "api_transient|zai|rate_limited",
+        "consecutive_count": 3,
+        "last_run_id": "01M4KMWYRQDJ54ZSS08NJNH74N",
+        "paused_at": "2026-10-11T05:04:33Z"
+    });
+
+    let breaker: ApiScheduleBreakerState = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(breaker.consecutive_count, 3);
+    assert!(breaker.paused_at.is_some());
+    assert_eq!(serde_json::to_value(breaker).unwrap(), value);
 }

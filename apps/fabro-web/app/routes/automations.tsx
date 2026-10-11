@@ -60,6 +60,7 @@ interface AutomationRow {
   workflowSource?: string;
   schedule?: string;
   scheduleEnabled: boolean;
+  breakerPaused: boolean;
   apiEnabled: boolean;
   icon: ComponentType<{ className?: string }>;
   color: string;
@@ -106,6 +107,7 @@ function mapAutomations(result: AutomationListResponse | undefined): AutomationR
         : undefined,
       schedule:   findScheduleTrigger(a)?.expression,
       scheduleEnabled: findScheduleTrigger(a)?.enabled ?? false,
+      breakerPaused: findScheduleTrigger(a)?.breaker?.paused_at != null,
       apiEnabled: hasEnabledApiTrigger(a),
       icon:       slugIconMap[a.workflow] ?? CodeBracketIcon,
       color:      slugColorMap[a.workflow] ?? "var(--color-teal-500)",
@@ -155,6 +157,11 @@ function AutomationCard({
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-fg-2 group-hover:text-fg">{automation.name}</span>
             <span className="font-mono text-xs text-fg-muted">{automation.workflow}</span>
+            {automation.breakerPaused && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber/20 bg-amber/10 px-2 py-0.5 text-[11px] font-medium text-amber">
+                Breaker paused
+              </span>
+            )}
             {automation.schedule && (
               <span
                 className={

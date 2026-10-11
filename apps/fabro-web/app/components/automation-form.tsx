@@ -40,6 +40,9 @@ export interface AutomationFormValues {
   manualEnabled: boolean;
   scheduleEnabled: boolean;
   cron: string;
+  /** Consecutive same-signature failures before the breaker pauses the
+   * schedule (fabro-3d97). Empty string keeps the server default (3). */
+  breakerThreshold: string;
 }
 
 export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
@@ -60,6 +63,7 @@ export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
   manualEnabled:             true,
   scheduleEnabled:           false,
   cron:                      "0 9 * * 1-5",
+  breakerThreshold:          "",
 };
 
 const CRON_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
@@ -92,6 +96,10 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
     manualEnabled:             apiTrigger?.enabled ?? false,
     scheduleEnabled:           scheduleTrigger?.enabled ?? false,
     cron:                      scheduleTrigger?.expression ?? "0 9 * * 1-5",
+    breakerThreshold:
+      scheduleTrigger?.breaker_threshold != null
+        ? String(scheduleTrigger.breaker_threshold)
+        : "",
   };
 }
 
@@ -148,11 +156,15 @@ export function triggersFromFormValues(values: AutomationFormValues): Automation
     triggers.push({ id: "manual", type: "api", enabled: true });
   }
   if (values.scheduleEnabled) {
+    const threshold = values.breakerThreshold.trim();
     triggers.push({
       id:         "schedule",
       type:       "schedule",
       enabled:    true,
       expression: values.cron.trim(),
+      // A configured threshold round-trips through every save; an empty
+      // field stays absent so the server default applies (fabro-3d97).
+      ...(threshold === "" ? {} : { breaker_threshold: Number(threshold) }),
     });
   }
   return triggers;
