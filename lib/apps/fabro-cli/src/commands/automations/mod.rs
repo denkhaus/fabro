@@ -64,6 +64,12 @@ pub(super) fn automation_to_replace_request(
     object.remove("id");
     object.remove("revision");
     object.remove("last_error");
+    // Read-only fields the replace request does not accept: the model
+    // providers a fire learns (fabro-0611) are server-owned state, and a
+    // body carrying them is refused ("unknown field `model_providers`") —
+    // which broke pause/unpause/breaker-reset for every automation that
+    // had fired at least once.
+    object.remove("model_providers");
     serde_json::from_value(value)
         .with_context(|| format!("converting automation {id} to a replace request"))
 }
@@ -171,7 +177,44 @@ pub(super) fn cron_interval(expression: &str, after: DateTime<Utc>) -> Result<Op
 mod tests {
     use chrono::{TimeZone, Utc};
 
-    use super::{cron_interval, next_fire_after};
+    use super::{automation_to_replace_request, cron_interval, next_fire_after};
+
+    /// The replace request must drop every read-only field the server
+    /// refuses: `model_providers` is learned at a fire (fabro-0611) and a
+    /// body carrying it broke pause/unpause/breaker-reset (observed
+    /// 2026-10-11 on loop-fabro right after its first fired pass).
+    #[test]
+    fn the_replace_request_drops_read_only_automation_fields() {
+        let automation: fabro_automation::Automation = serde_json::from_value(serde_json::json!({
+            "id": "loop-fabro",
+            "revision": "a".repeat(64),
+            "name": "Loop",
+            "description": null,
+            "environment_id": "toolchain",
+            "last_error": "old error",
+            "model_providers": [{"provider": "zai", "model": "glm-5.3"}],
+            "target": {"kind": "git", "repo": "denkhaus/fabro", "branch": "denkhaus"},
+            "workflow": "loop",
+            "workflow_source": null,
+            "on_overlap": "skip",
+            "triggers": [
+                {"type": "api", "id": "manual", "enabled": true},
+                {"type": "schedule", "id": "schedule", "enabled": false, "expression": "0 */2 * * *"}
+            ]
+        }))
+        .expect("the automation fixture deserializes");
+
+        let request = automation_to_replace_request(&automation)
+            .expect("a fired automation converts to a replace request");
+        let encoded = serde_json::to_value(&request).expect("the request serializes");
+        for read_only in ["id", "revision", "last_error", "model_providers"] {
+            assert!(
+                encoded.get(read_only).is_none(),
+                "the replace request must not carry {read_only}: {encoded}"
+            );
+        }
+        assert_eq!(encoded.get("name").and_then(|v| v.as_str()), Some("Loop"));
+    }
 
     #[test]
     fn next_fire_after_computes_the_next_utc_occurrence() {
