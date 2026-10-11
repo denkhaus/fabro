@@ -9,6 +9,12 @@
 # locked engine package missing from PINS REDs, and a PINS entry that the
 # lock no longer carries REDs.
 #
+# Bump 2026-10-11 (petri b03b0c3a5079 -> 8fcb47197ac1): Fabro's retry fix —
+# a retryable native (Pebble) LLM failure now rides `retry_requested`, the
+# one class every retry policy retries (run 01M4NSBKV6ZBPAFFEFND65HEP9: a
+# zai 429 killed the loop planner with retries: 0). Patching our forks is
+# expected; the rev move is recorded here per ADR-0027 decision 2/3.
+#
 # Scope: the engine dependency repos only (petri, pebble, lithos-llm,
 # sandbox-driver, twins, daytona-sdk-rust). Our own seeds crate is tag-pinned.
 
@@ -25,21 +31,21 @@ const PINS = {
     "pebble-agent": ["208f391c2b38"]
     "pebble-cli-core": ["208f391c2b38"]
     "pebble-coding-agent": ["208f391c2b38"]
-    "petri-attractor-steps": ["b03b0c3a5079"]
-    "petri-driver": ["b03b0c3a5079"]
-    "petri-engine": ["b03b0c3a5079"]
-    "petri-execution": ["b03b0c3a5079"]
-    "petri-executor": ["b03b0c3a5079"]
-    "petri-executor-sandbox": ["b03b0c3a5079"]
-    "petri-frontend": ["b03b0c3a5079"]
-    "petri-frontend-attractor": ["b03b0c3a5079"]
-    "petri-frontend-fabro": ["b03b0c3a5079"]
-    "petri-frontend-native": ["b03b0c3a5079"]
-    "petri-ir": ["b03b0c3a5079"]
-    "petri-runtime": ["b03b0c3a5079"]
-    "petri-steps": ["b03b0c3a5079"]
-    "petri-store": ["b03b0c3a5079"]
-    "petri-testkit": ["b03b0c3a5079"]
+    "petri-attractor-steps": ["8fcb47197ac1"]
+    "petri-driver": ["8fcb47197ac1"]
+    "petri-engine": ["8fcb47197ac1"]
+    "petri-execution": ["8fcb47197ac1"]
+    "petri-executor": ["8fcb47197ac1"]
+    "petri-executor-sandbox": ["8fcb47197ac1"]
+    "petri-frontend": ["8fcb47197ac1"]
+    "petri-frontend-attractor": ["8fcb47197ac1"]
+    "petri-frontend-fabro": ["8fcb47197ac1"]
+    "petri-frontend-native": ["8fcb47197ac1"]
+    "petri-ir": ["8fcb47197ac1"]
+    "petri-runtime": ["8fcb47197ac1"]
+    "petri-steps": ["8fcb47197ac1"]
+    "petri-store": ["8fcb47197ac1"]
+    "petri-testkit": ["8fcb47197ac1"]
     "sandbox-driver": ["90b0d8257671"]
     "sandbox-driver-daytona": ["236196ed134d"]
     "sandbox-driver-daytona-config": ["90b0d8257671"]
