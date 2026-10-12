@@ -97,6 +97,15 @@ const BATTERIES = [
     # selection deterministically, plus the live real-tree invariant
     # for the memoize entry in revision 01M2X8458MDWMRVBRVEMDX9W4J.
     '.fabro/workflows/revisor/scripts/overflow-ledger-fixtures.nu'
+    # revisor closeout-race battery (fabro-74d4): the closeout race —
+    # the target run's own closeout files seeds between analyze and
+    # filing — must be mechanically visible; the fixtures pin the live
+    # listing logic (match, watermark, malformed-line tolerance,
+    # fail-open degraded) over a scratch tracker plus BOTH prompt
+    # ordering pins (analyze dedupes against the listing, file re-runs
+    # it at filing time and treats a match as duplicate, never
+    # overflow).
+    '.fabro/workflows/revisor/scripts/closeout-race-fixtures.nu'
     # run-scope fixtures (fabro-70b5 part D): the run-scope
     # classification RED both ways, both lanes, plus the git base
     # derivation — this tier proves the meta lane's diff boundary.
