@@ -58,7 +58,7 @@ but had no balance credit. The script
 deterministic consumer surface — THIS stage owns filing; the conductor
 survey may only REPORT counts via `stats` and never files.
 
-1. EVERY pass, before step 1 of the procedure: run
+1. EVERY pass, before the filing procedure: run
    `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu open` and
    merge the listed open overflows into your filing candidates alongside
    `revision_findings` — they consolidate, dedupe, and balance exactly
@@ -86,12 +86,14 @@ Backlog-starvation measurement for this mechanism is open seed fabro-27bb
 
 ## Procedure
 
-1. If `revision_findings` is non-empty: FIRST consolidate same-file findings into one multi-arm seed each (filing-balance section above), then for each surviving finding, `seeds search` its central theme (see the reference above); only when nothing matches the concrete change, `seeds create` with `--labels revision`, its title, description, and priority. Record every created id.
+1. Filing-time closeout re-check (fabro-74d4) BEFORE the first `seeds create`: run `nu .fabro/workflows/revisor/scripts/closeout-race.nu <revisor_target_run_id>` yourself — the analyst's dedupe ran at analyze time, and the target run's own closeout can file seeds in the window between analyze and this filing stage (a `degraded` outcome means the listing failed: re-check with `seeds list --format compact` and eyeball every seed citing the run instead). Any finding whose concrete change is covered by a listed seed drops NOW as `duplicate_of: <id>` (journal it) — it is a duplicate, NEVER an overflow entry: overflow is for findings with no balance credit, and a closeout-covered finding has no filing claim at all.
+
+2. If `revision_findings` is non-empty: FIRST consolidate same-file findings into one multi-arm seed each (filing-balance section above), then for each surviving finding, `seeds search` its central theme (see the reference above); only when nothing matches the concrete change, `seeds create` with `--labels revision`, its title, description, and priority. Record every created id.
 
    Basis line (ADR-0015, MANDATORY in every seed description, last line): `Basis: run <run-id>, workflow version <workflow_version_id or "absent">, commit <git rev-parse HEAD of this worktree>`. The develop planner's stale-basis check consumes exactly this line — a seed without a basis is judged against the current tree before claiming anyway, so omitting it only degrades triage.
 
    Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `seeds close <old-id> --reason "superseded by <new-id>: <one-line why the new one replaces it>"`. Ownership boundary (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning): `seeds close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor. When a finding supersedes a user-owned or unassigned seed: file the new seed with the old id cross-referenced in its description, close NOTHING, and journal `supersession candidate (user-owned, not closed): <id>` for the human gate. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate. Reason-before-close (fabro-02c4), mirror of the planner rule: emit the note-append and the close as ONE chained shell call — `seeds update <old-id> --description "<full existing body> + closure note: superseded by <new-id>: <why> (run <run-id>)" && seeds close <old-id> --reason "superseded by <new-id>: <one-line why>"` — never two separate LLM turns; `--description` replaces the body wholesale, so re-emit the FULL existing body with the closure note appended, and the `&&` ordering is what guarantees the note lands before the close; the tracker record, not the revisor journal, must carry why a seed died. Motivation: fabro-a0e3 was absorbed into fabro-45bf by run 01M2368YQ with the reason recorded ONLY in the revisor journal — the closed seed looked like lost work until someone grepped journals.
-2. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:
+3. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:
 
 ```
 # Revision — run <run-id>
@@ -108,11 +110,11 @@ Backlog-starvation measurement for this mechanism is open seed fabro-27bb
 <one block per finding: title, filed id (or duplicate-of / overflow-to-journal note), the concrete change and expected effect>
 ```
 
-3. Before committing, run the marker shape guard (exit 0 required):
+4. Before committing, run the marker shape guard (exit 0 required):
    `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu verify --file .fabro/revisions/<run-id>.md`
    It proves every finding you recorded as overflow carries its canonical machine-visible bullet. If it fails, rewrite the marker's findings as canonical bullets and re-run — a prose-only overflow entry is invisible to the ledger's `open` listing and rots the filing pipeline.
 
-4. Commit via shell, EXACTLY these paths (the run-scope gate rejects any workflow-asset touch — that rule applies to this run too, by design):
+5. Commit via shell, EXACTLY these paths (the run-scope gate rejects any workflow-asset touch — that rule applies to this run too, by design):
    `git add .fabro/reviews .fabro/revisions .seeds && git commit -m "revisor: revise run <run-id> (<N> seeds)"`
    Never `git add -A`. Never amend, push, or merge — the host-side integrate step owns merging, only after the human gate approves.
 
