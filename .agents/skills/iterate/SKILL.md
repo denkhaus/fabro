@@ -409,6 +409,15 @@ stores it belongs to; reach them by phase need:
   line first (automation replace with FULL body + `If-Match` revision +
   explicit `on_overlap: skip`; re-GET and verify it survived), deploy
   nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.
+  POST-DEPLOY PROOF CEREMONY (2026-10-12, fork.14 lesson): a deploy is only
+  'done & working' after ONE live proof of the shipped behavior — for
+  gate/automation changes fire the automation once (between ticks,
+  on_overlap-safe) and observe the run starting; never report success from
+  version strings alone (the 17:30 Berlin tick ran 13 min BEFORE the 17:43
+  apply and faked a 'fix does not work'). FAST DEPLOY RECIPE (same lesson):
+  warm gopass BEFORE the build, edit the tofu pin DURING the build, skip
+  CLI install + prune when unchanged — mechanical target <=30 min from
+  commit to live proof.
 - Tooling-repin rule (user directive 2026-10-04, "simple but
   consistent"; GB era ended 2026-10-09): a GitButler-fork release repin
   is COMMITTED locally and NEVER pushed on its own — the session owns
@@ -509,6 +518,13 @@ stores it belongs to; reach them by phase need:
 
 ## Standing rules
 
+- COMPLEXITY BRAKE (ADR-0028 lesson, user Grundsatz-review 2026-10-12): a SECOND
+  patch on the same mechanism within days is a smell — the mandatory response
+  is simplify-or-REVERT the mechanism (cite the ADR that owns it), never a
+  third patch. Patches on engine gate behavior cite the owning ADR; a patch
+  that contradicts a standing decision (even a code-comment one like
+  2026-09-14's recheck design) stops for an explicit supersession, never a
+  silent additive layer.
 - NO LANGUAGE SPRAWL (user top priority, directive 2026-10-03): every script invoked by workflows, justfile, or gate/tooling entry points MUST be a nu script. Never add, extend, or split non-nu script assets. The one standing violation — the upstream code-review lane's 16-file / 8.5k-line python engine — was RETIRED on 2026-10-08 (user GO) as never used in this fork instead of ported (fabro-c16a closed; the graph, rules, templates and pins are gone, the upstream asset stays recoverable from upstream history). POSIX sh survives only where the failure mode it guards is a sandbox WITHOUT nu (`.fabro/scripts/toolchain-guard.sh`). Architecture scans and sprint plans check the language axis BEFORE proposing splits/refactors.
 - Style-guide pair invariant (fabro-6538, 591a decision 2026-10-03):
   `.fabro/skills/rust-style-guide/` is canonical, `.agents/skills/rust-style-guide/`
