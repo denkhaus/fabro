@@ -1,9 +1,13 @@
 #!/usr/bin/env nu
+# prompt-lint: synthetic-seed-ids
 # Fixture battery for dup-run-check.nu (fabro-4b76): exercises the closure
 # identity (--self) semantics end-to-end against a synthetic git repo — no
 # /tmp seeds wrappers, no dependence on the live tracker or the real
-# merge-target branch. Fixture seed ids (fabro-fix*) do not exist in the
-# tracker, so the tracker arm degrades to `unknown` and the verdicts below
+# merge-target branch. Fixture seed ids (fabro-fix-00NN) use the canonical
+# family shape fabro-[a-z]+-[0-9a-f]{4} — the shared seed-id predicate
+# (lib/seed_id.nu) must see journal-claimed fixture ids — and do not
+# exist in the tracker, so the tracker arm degrades to `unknown` and the
+# verdicts below
 # are driven purely by the landed-PR history the battery fabricates —
 # exactly the closure-identity surface the seed asks to verify.
 #
@@ -126,27 +130,27 @@ def main [] {
         ^git checkout -q -b main
         ^git commit -q --allow-empty -m 'root'
 
-        # (a)/(b) landed squash-PR implementing fabro-fix001, closed by the
+        # (a)/(b) landed squash-PR implementing fabro-fix-0001, closed by the
         # invoking run RUN-SELF (Fabro-Run trailer names it).
-        ^git commit -q --allow-empty -m 'Implement thing for fabro-fix001 (#101)' -m 'Fabro-Run: RUN-SELF'
-        # (c) landed squash-PR implementing fabro-fix002, closed by a
+        ^git commit -q --allow-empty -m 'Implement thing for fabro-fix-0001 (#101)' -m 'Fabro-Run: RUN-SELF'
+        # (c) landed squash-PR implementing fabro-fix-0002, closed by a
         # FOREIGN run's trailer.
-        ^git commit -q --allow-empty -m 'Implement other for fabro-fix002 (#102)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement other for fabro-fix-0002 (#102)' -m 'Fabro-Run: RUN-OTHER'
         ^git push -q origin main
 
         # Case (a): self trailer + --self -> clean, closure self, note present
-        let a = (check $script 'fabro-fix001' 'RUN-SELF')
+        let a = (check $script 'fabro-fix-0001' 'RUN-SELF')
         expect 'a: self trailer with --self verdict' $a.verdict 'clean'
         expect 'a: self trailer with --self closure' ($a.implementation_matches | first | get closure) 'self'
         expect 'a: self trailer with --self closure_note' ($a.closure_note | str contains 'RUN-SELF') true
 
         # Case (b): same trailer, no --self -> duplicate (closure foreign)
-        let b = (check $script 'fabro-fix001' '')
+        let b = (check $script 'fabro-fix-0001' '')
         expect 'b: self trailer without --self verdict' $b.verdict 'duplicate'
         expect 'b: self trailer without --self closure' ($b.implementation_matches | first | get closure) 'foreign'
 
         # Case (c): foreign trailer + --self -> duplicate
-        let c = (check $script 'fabro-fix002' 'RUN-SELF')
+        let c = (check $script 'fabro-fix-0002' 'RUN-SELF')
         expect 'c: foreign trailer with --self verdict' $c.verdict 'duplicate'
         expect 'c: foreign trailer with --self closure' ($c.implementation_matches | first | get closure) 'foreign'
 
@@ -157,15 +161,15 @@ def main [] {
         # seeds".) Without the extended classifier these read as landed
         # implementations and would mechanically close live seeds in the
         # pre-planner preflight.
-        ^git commit -q --allow-empty -m 'Revise run RUNX; file fabro-fix003 (#103)'
-        ^git commit -q --allow-empty -m 'Revisor pass: file 2 seeds incl fabro-fix004 (#104)'
+        ^git commit -q --allow-empty -m 'Revise run RUNX; file fabro-fix-0003 (#103)'
+        ^git commit -q --allow-empty -m 'Revisor pass: file 2 seeds incl fabro-fix-0004 (#104)'
         ^git push -q origin main
 
-        let d = (check $script 'fabro-fix003' 'RUN-SELF')
+        let d = (check $script 'fabro-fix-0003' 'RUN-SELF')
         expect 'd: revise-run file verdict' $d.verdict 'clean'
         expect 'd: revise-run file filed_only' $d.filed_only_matches 1
 
-        let e = (check $script 'fabro-fix004' 'RUN-SELF')
+        let e = (check $script 'fabro-fix-0004' 'RUN-SELF')
         expect 'e: revisor file-N-seeds verdict' $e.verdict 'clean'
         expect 'e: revisor file-N-seeds filed_only' $e.filed_only_matches 1
 
@@ -177,15 +181,15 @@ def main [] {
         # foreign_impl > 0 forced verdict=duplicate even when the run's
         # own self-closure PR existed. Both mentioned seeds must read
         # filed-only -> clean.
-        ^git commit -q --allow-empty -m 'Improve: revise develop run RUN-REV, file seeds fabro-fix005 and fabro-fix006 (#105)'
+        ^git commit -q --allow-empty -m 'Improve: revise develop run RUN-REV, file seeds fabro-fix-0005 and fabro-fix-0006 (#105)'
         ^git push -q origin main
 
-        let i1 = (check $script 'fabro-fix005' 'RUN-SELF')
+        let i1 = (check $script 'fabro-fix-0005' 'RUN-SELF')
         expect 'i: file-seeds-and verdict (first seed)' $i1.verdict 'clean'
         expect 'i: file-seeds-and filed_only (first seed)' $i1.filed_only_matches 1
         expect 'i: file-seeds-and impl matches (first seed)' ($i1.implementation_matches | length) 0
 
-        let i2 = (check $script 'fabro-fix006' 'RUN-SELF')
+        let i2 = (check $script 'fabro-fix-0006' 'RUN-SELF')
         expect 'i: file-seeds-and verdict (second seed)' $i2.verdict 'clean'
         expect 'i: file-seeds-and filed_only (second seed)' $i2.filed_only_matches 1
         expect 'i: file-seeds-and impl matches (second seed)' ($i2.implementation_matches | length) 0
@@ -198,16 +202,16 @@ def main [] {
         # filed-only, never landed implementations — otherwise the
         # pre-planner preflight mechanically re-closes deliberately
         # reopened seeds.
-        ^git commit -q --allow-empty -m 'fabro-fix013: reopen gate seed, verify upstream offers remain unmerged (#109)'
-        ^git commit -q --allow-empty -m 'Verify fabro-fix014 fix in-tree; move seed to in_progress (#110)'
+        ^git commit -q --allow-empty -m 'fabro-fix-0013: reopen gate seed, verify upstream offers remain unmerged (#109)'
+        ^git commit -q --allow-empty -m 'Verify fabro-fix-0014 fix in-tree; move seed to in_progress (#110)'
         ^git push -q origin main
 
-        let o = (check $script 'fabro-fix013' 'RUN-SELF')
+        let o = (check $script 'fabro-fix-0013' 'RUN-SELF')
         expect 'o: reopen squash verdict' $o.verdict 'clean'
         expect 'o: reopen squash filed_only' $o.filed_only_matches 1
         expect 'o: reopen squash impl matches' ($o.implementation_matches | length) 0
 
-        let p = (check $script 'fabro-fix014' 'RUN-SELF')
+        let p = (check $script 'fabro-fix-0014' 'RUN-SELF')
         expect 'p: verify/move-seed squash verdict' $p.verdict 'clean'
         expect 'p: verify/move-seed squash filed_only' $p.filed_only_matches 1
         expect 'p: verify/move-seed squash impl matches' ($p.implementation_matches | length) 0
@@ -221,17 +225,17 @@ def main [] {
         # short-id form and whose body carries the id on a NARRATIVE line
         # ("Root cause (fabro-x): ...", e.g. real 9df5f5c4f 'fix(2093):
         # ...') still matches -> duplicate.
-        ^git commit -q --allow-empty -m 'cherry-pick #911: foreign fix lands here (#111)' -m '* sprint ledger bootstrap (ADR-0024, fabro-fix015 skeleton): scope narrowed'
-        ^git commit -q --allow-empty -m 'fix(16): automation edit keeps overlap policy (#112)' -m 'Root cause (fabro-fix016): the replace payload could not carry the field'
+        ^git commit -q --allow-empty -m 'cherry-pick #911: foreign fix lands here (#111)' -m '* sprint ledger bootstrap (ADR-0024, fabro-fix-0015 skeleton): scope narrowed'
+        ^git commit -q --allow-empty -m 'fix(16): automation edit keeps overlap policy (#112)' -m 'Root cause (fabro-fix-0016): the replace payload could not carry the field'
         ^git push -q origin main
 
-        let q = (check $script 'fabro-fix015' 'RUN-SELF')
+        let q = (check $script 'fabro-fix-0015' 'RUN-SELF')
         expect 'q: bullet-only mention verdict' $q.verdict 'clean'
         expect 'q: bullet-only mention count' $q.mention_only_matches 1
         expect 'q: bullet-only mention impl matches' ($q.implementation_matches | length) 0
         expect 'q: bullet-only mention filed_only count' $q.filed_only_matches 0
 
-        let rr = (check $script 'fabro-fix016' 'RUN-SELF')
+        let rr = (check $script 'fabro-fix-0016' 'RUN-SELF')
         expect 'r: narrative-body implementation verdict' $rr.verdict 'duplicate'
         expect 'r: narrative-body implementation matches' ($rr.implementation_matches | length) 1
         expect 'r: narrative-body not mention-only' $rr.mention_only_matches 0
@@ -243,9 +247,9 @@ def main [] {
         # real "Already landed" route). fix009 gets NO commit at all: it
         # is tracker-closed with no landed evidence — the ambiguous
         # duplicate that must stay for planner adjudication.
-        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix010 (#106)' -m 'Fabro-Run: RUN-OTHER'
-        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix011 (#107)' -m 'Fabro-Run: RUN-OTHER'
-        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix012 (#108)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix-0010 (#106)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix-0011 (#107)' -m 'Fabro-Run: RUN-OTHER'
+        ^git commit -q --allow-empty -m 'Implement dup-close arm for fabro-fix-0012 (#108)' -m 'Fabro-Run: RUN-OTHER'
         ^git push -q origin main
 
         # (f)-(h) fabro-a32f pre-planner preflight routing (report-only
@@ -253,12 +257,12 @@ def main [] {
         # advisory planner input, never exits or closes).
         let pre = ($FIXTURES_DIR | path join '..' 'workflows' 'develop' 'scripts' 'planner-preflight.nu')
 
-        let f = (preflight $pre 'fabro-fix002' 'RUN-PREFLIGHT')
+        let f = (preflight $pre 'fabro-fix-0002' 'RUN-PREFLIGHT')
         expect 'f: landed top candidate routes to planner (report-only)' $f.preferred_next_label 'Preflight done'
         expect 'f: landed top candidate verdict' ($f.context_updates | get 'output.preflight' | get candidates | first | get verdict) 'duplicate'
         expect 'f: landed top candidate sha' ((($f.context_updates | get 'output.preflight' | get candidates | first | get sha | str length) >= 7)) true
 
-        let g = (preflight $pre 'fabro-fix003' 'RUN-PREFLIGHT')
+        let g = (preflight $pre 'fabro-fix-0003' 'RUN-PREFLIGHT')
         expect 'g: filed-only top candidate route' $g.preferred_next_label 'Preflight done'
         expect 'g: filed-only top candidate verdict' ($g.context_updates | get 'output.preflight' | get candidates | first | get verdict) 'clean'
 
@@ -267,19 +271,19 @@ def main [] {
         expect 'h: empty candidates mode' ($h.context_updates | get 'output.preflight' | get mode) 'degraded'
 
         # (j) fabro-9ec3 arm 2: run-branch -> journal -> seed-id mapping.
-        # RUN-LIVE claims fabro-fix007 on its journal and is NOT merged
+        # RUN-LIVE claims fabro-fix-0007 on its journal and is NOT merged
         # into main -> in flight. The invoking run's own branch also
-        # claims fabro-fix007 (self must never mark). RUN-DONE claims
-        # fabro-fix008 but sits at main's tip (merged ancestor) -> not
+        # claims fabro-fix-0007 (self must never mark). RUN-DONE claims
+        # fabro-fix-0008 but sits at main's tip (merged ancestor) -> not
         # in flight; that seed is the landed arm's business.
         ^git checkout -q -b run-live
         mkdir .fabro/journal
-        ('{"$schema":"fabro-journal-v1","run_id":"RUN-LIVE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix007 claimed; preflight clean"]}}' | save -f .fabro/journal/RUN-LIVE.jsonl)
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-LIVE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix-0007 claimed; preflight clean"]}}' | save -f .fabro/journal/RUN-LIVE.jsonl)
         ^git add .fabro
         ^git commit -q -m 'journal RUN-LIVE'
         ^git push -q origin HEAD:refs/heads/fabro/run/RUN-LIVE
         ^git checkout -q -b run-self
-        ('{"$schema":"fabro-journal-v1","run_id":"RUN-PREFLIGHT","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix007 claimed by self"]}}' | save -f .fabro/journal/RUN-PREFLIGHT.jsonl)
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-PREFLIGHT","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix-0007 claimed by self"]}}' | save -f .fabro/journal/RUN-PREFLIGHT.jsonl)
         ^git add .fabro
         ^git commit -q -m 'journal RUN-PREFLIGHT'
         ^git push -q origin HEAD:refs/heads/fabro/run/RUN-PREFLIGHT
@@ -289,24 +293,24 @@ def main [] {
         ^git checkout -q main
         ^git checkout -q -b run-done
         mkdir .fabro/journal
-        ('{"$schema":"fabro-journal-v1","run_id":"RUN-DONE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix008 claimed but merged"]}}' | save -f .fabro/journal/RUN-DONE.jsonl)
+        ('{"$schema":"fabro-journal-v1","run_id":"RUN-DONE","node":"planner","visit":1,"status":"succeeded","ts":"2026-09-17T00:00:00Z","data":{"painpoints":[],"observations":["fabro-fix-0008 claimed but merged"]}}' | save -f .fabro/journal/RUN-DONE.jsonl)
         ^git add .fabro
         ^git commit -q -m 'journal RUN-DONE'
         ^git push -q origin HEAD:refs/heads/fabro/run/RUN-DONE
         # Fast-forward main over run-done's journal commit: run-done is
         # now a true ancestor of base while its journal still claims
-        # fabro-fix008 — merged branches must never mark in flight.
+        # fabro-fix-0008 — merged branches must never mark in flight.
         ^git checkout -q main
         ^git merge -q --ff-only run-done
         ^git push -q origin main
         ^git checkout -q main
 
-        let j1 = (preflight $pre 'fabro-fix007' 'RUN-PREFLIGHT')
+        let j1 = (preflight $pre 'fabro-fix-0007' 'RUN-PREFLIGHT')
         let jrow = ($j1.context_updates | get 'output.preflight' | get candidates | first)
         expect 'j: unmerged foreign run marks in_flight' $jrow.in_flight true
         expect 'j: in_flight_run names the live run' $jrow.in_flight_run 'RUN-LIVE'
 
-        let j2 = (preflight $pre 'fabro-fix008' 'RUN-PREFLIGHT')
+        let j2 = (preflight $pre 'fabro-fix-0008' 'RUN-PREFLIGHT')
         let j2row = ($j2.context_updates | get 'output.preflight' | get candidates | first)
         expect 'j: merged run branch never marks' $j2row.in_flight false
 
@@ -316,39 +320,39 @@ def main [] {
         # "Preflight done" as advisory verdicts and the rows stay
         # untouched (the planner owns decisions and closures).
         seeds init | ignore
-        [(fixture-row 'fabro-fix003' 'open')
-         (fixture-row 'fabro-fix009' 'closed')
-         (fixture-row 'fabro-fix010' 'open')
-         (fixture-row 'fabro-fix012' 'open')] | save --append .seeds/issues.jsonl
+        [(fixture-row 'fabro-fix-0003' 'open')
+         (fixture-row 'fabro-fix-0009' 'closed')
+         (fixture-row 'fabro-fix-0010' 'open')
+         (fixture-row 'fabro-fix-0012' 'open')] | save --append .seeds/issues.jsonl
 
         # (l) mixed batch: clean top, trackerless duplicate, non-top
         # duplicate — all route "Preflight done", nothing closes, no
         # close_log exists, mode stays "checked" (no aborts possible:
         # the report-only script has no failing side effects).
-        let l = (preflight $pre 'fabro-fix003,fabro-fix011,fabro-fix010' 'RUN-PREFLIGHT')
+        let l = (preflight $pre 'fabro-fix-0003,fabro-fix-0011,fabro-fix-0010' 'RUN-PREFLIGHT')
         expect 'l: mixed batch routes to planner' $l.preferred_next_label 'Preflight done'
         let lrep = ($l.context_updates | get 'output.preflight')
         expect 'l: no closed field in report' ($lrep | get -o closed | default null) null
         expect 'l: no close_log field in report' ($lrep | get -o close_log | default null) null
         expect 'l: mode stays checked' $lrep.mode 'checked'
-        expect 'l: trackerless duplicate verdict still duplicate' ($lrep.candidates | where {|c| $c.seed == 'fabro-fix011'} | first | get verdict) 'duplicate'
+        expect 'l: trackerless duplicate verdict still duplicate' ($lrep.candidates | where {|c| $c.seed == 'fabro-fix-0011'} | first | get verdict) 'duplicate'
         expect 'l: legend maps duplicate' ($lrep.legend.duplicate | str contains 'merge-target base') true
         expect 'l: legend maps clean' ($lrep.legend.clean | str contains 'no landed implementation') true
         expect 'l: legend maps degraded' ($lrep.legend.degraded | str contains 'check failed') true
-        expect 'l: clean top stays open' (sd-stat 'fabro-fix003').status 'open'
-        expect 'l: non-top duplicate stays open' (sd-stat 'fabro-fix010').status 'open'
+        expect 'l: clean top stays open' (sd-stat 'fabro-fix-0003').status 'open'
+        expect 'l: non-top duplicate stays open' (sd-stat 'fabro-fix-0010').status 'open'
 
         # (m) ambiguous duplicate: fix009 is tracker-closed with no
         # landed implementation and no closing evidence — verdict
         # duplicate without a sha. Report-only: it is reported as-is,
         # nothing closes, the tracker row stays byte-identical.
-        let m = (preflight $pre 'fabro-fix009' 'RUN-PREFLIGHT')
+        let m = (preflight $pre 'fabro-fix-0009' 'RUN-PREFLIGHT')
         expect 'm: ambiguous top routes to planner' $m.preferred_next_label 'Preflight done'
         let mrep = ($m.context_updates | get 'output.preflight')
         expect 'm: ambiguous duplicate verdict reported' ($mrep.candidates | first | get verdict) 'duplicate'
         expect 'm: ambiguous duplicate sha null' ($mrep.candidates | first | get sha) null
-        let mrow = (sd-stat 'fabro-fix009')
-        expect 'm: tracker description untouched' $mrow.description 'fixture body (fabro-fix009)'
+        let mrow = (sd-stat 'fabro-fix-0009')
+        expect 'm: tracker description untouched' $mrow.description 'fixture body (fabro-fix-0009)'
         expect 'm: no spurious closeReason' ($mrow | get -o closeReason | default null) null
         expect 'm: status still closed (fixture state)' $mrow.status 'closed'
 
@@ -356,11 +360,11 @@ def main [] {
         # already-landed signal that USED to auto-close — it still only
         # routes "Preflight done"; the tracker row stays open for the
         # planner's two-branch-rule decision.
-        let n = (preflight $pre 'fabro-fix012' 'RUN-PREFLIGHT')
+        let n = (preflight $pre 'fabro-fix-0012' 'RUN-PREFLIGHT')
         expect 'n: top duplicate routes to planner' $n.preferred_next_label 'Preflight done'
         let nrep = ($n.context_updates | get 'output.preflight')
         expect 'n: duplicate sha still reported' (($nrep.candidates | first | get sha | default null | str length) >= 7) true
-        expect 'n: tracker shows top seed still open' (sd-stat 'fabro-fix012').status 'open'
+        expect 'n: tracker shows top seed still open' (sd-stat 'fabro-fix-0012').status 'open'
 
         # (k) fabro-9ec3 arm 3: schema ban semantics + graph wiring.
         let wf = ($FIXTURES_DIR | path join '..' 'workflows' 'develop')
