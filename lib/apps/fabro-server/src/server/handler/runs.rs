@@ -814,23 +814,11 @@ async fn finalize_created_run(
             // record exists — the scheduler's holds and the create path
             // share one probe per provider per cadence.
             let gate_now = Utc::now();
-            let last_run_window = match prepared.automation() {
-                Some(automation) => {
-                    super::super::fork_line_recovery::last_run_window_signal(
-                        state.as_ref(),
-                        automation.id.as_str(),
-                        gate_now,
-                    )
-                    .await
-                }
-                None => None,
-            };
             if let Some(refusal) = super::super::fork_line_recovery::manual_window_refusal(
                 state.as_ref(),
                 &admitted.required_providers,
                 force,
                 gate_now,
-                last_run_window.as_ref(),
             )
             .await
             {
