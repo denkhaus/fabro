@@ -5,8 +5,10 @@
 #
 # Checks (.fabro/workflows/{conductor,develop,revisor}/ prompts + graph +
 # toml, plus .fabro/scripts/*.nu):
-#   1. every `fabro-<hex>{4,}` literal resolves in the tracker (`sd show`)
-#      — an unresolvable id is provenance rot. Errors.
+#   1. every seed-id literal — short `fabro-<4>` and family
+#      `fabro-<prefix>-<hex>` shapes, via the shared `lib/seed_id.nu`
+#      predicate — resolves in the tracker (`seeds show`); an
+#      unresolvable id is provenance rot. Errors.
 #   2. every `justfile:<line>` anchor must point at a NON-comment line —
 #      a comment line means the anchor drifted (the planner qualitygate
 #      anchor rot class). Errors.
@@ -28,6 +30,12 @@
 # can never self-skip its seed-id check)
 const SYNTHETIC_IDS_MARKER = '# prompt-lint: ' + 'synthetic-seed-ids'
 
+# Shared seed-id predicate: ONE accept-set for the short (fabro-e3c7) and
+# family (fabro-meta-c9f2) shapes — imported, not re-implemented;
+# planner-preflight's journal-claims, close-claim-check and
+# salvage-analysis use the same lib.
+use lib/seed_id.nu seed-ids-in
+
 def lint-files [] {
     (glob .fabro/workflows/conductor/**/*)
     | append (glob .fabro/workflows/develop/**/*)
@@ -36,17 +44,6 @@ def lint-files [] {
     | append (glob .fabro/scripts/*.nu)
     | where {|p| ([$p '.md' '.fabro' '.toml' '.nu'] | any {|ext| ($p | str ends-with $ext)})}
     | where {|p| ($p | path type) == 'file'}
-}
-
-def seed-ids-in [text] {
-    let matches = ($text | parse --regex 'fabro-(?<id>[0-9a-f]{4,})')
-    if ($matches | is-empty) { return [] }
-    # word-boundary guard: reject candidates directly followed by another
-    # identifier char or dash (a longer non-seed word must not yield a
-    # shorter hex-looking prefix)
-    $matches.id | uniq | where {|id|
-        not ($text | parse --regex ('fabro-' + $id + '(?![0-9a-zA-Z-])') | is-empty)
-    }
 }
 
 def prompt-md-files [] {
@@ -145,11 +142,10 @@ def main [] {
             $errors = ($errors | append $"($f): the synthetic-fixture-id marker is only honored in a -smoke.nu / -fixtures.nu battery")
         }
         if ($declared and $is_battery) {
-            let skipped = (seed-ids-in $text | each {|id| $"fabro-($id)"})
+            let skipped = (seed-ids-in $text)
             print $"note: ($f) declares synthetic fixture ids — resolvable-id check skipped for ($skipped | length) ids: ($skipped | str join ', ')"
         } else {
-            for id in (seed-ids-in $text) {
-                let full = $"fabro-($id)"
+            for full in (seed-ids-in $text) {
                 # sd -> seeds cutover (2026-09-26): the Rust tracker CLI is
                 # `seeds` on PATH everywhere now (host + toolchain image);
                 # exit codes match (0 resolves, 1 not found).

@@ -5,6 +5,12 @@
 # (.fabro/scripts/salvage-sweep-smoke.nu). No main here by design —
 # sourcing a file that defines one makes nu run it after the caller.
 
+# Shared seed-id predicate (lib/seed_id.nu): tracker-hunk ids and the
+# goal's affected seed use the one accept-set — short and family shapes.
+# (`use`, not `source`: this file is itself sourced by the sweep CLI and
+# its smoke battery, and nu allows no nested `source`.)
+use lib/seed_id.nu seed-ids-in
+
 # Terminal status kinds (the engine's terminal set).
 const TERMINAL = [succeeded failed canceled cancelled]
 
@@ -30,8 +36,8 @@ const TRACKER = ['.seeds/']
 # line carries. A rewrite (claim, status change, close) keeps its id on both
 # sides and never counts.
 def added-seed-records [lines: list<string>]: nothing -> int {
-  let removed = ($lines | where {|l| $l starts-with '-' } | str join "\n" | parse -r 'fabro-(?<id>[0-9a-f]{4})' | get id? | default [])
-  let added = ($lines | where {|l| $l starts-with '+' } | str join "\n" | parse -r 'fabro-(?<id>[0-9a-f]{4})' | get id? | default [])
+  let removed = (seed-ids-in ($lines | where {|l| $l starts-with '-' } | str join "\n"))
+  let added = (seed-ids-in ($lines | where {|l| $l starts-with '+' } | str join "\n"))
   let fresh = ($added | where {|id| not ($removed | any {|old| $old == $id }) })
   ($fresh | uniq | length)
 }
@@ -84,7 +90,7 @@ def analyze-dump [dir: path]: nothing -> record {
   # Added tracker records are stranded work in their own right: the run filed
   # seeds and never published them.
   let noteworthy = (((($real_files > 0) and (($changed > $CHANGED_LINE_THRESHOLD) or ($new_files > 0))) or ($added_seeds > 0)))
-  let affected = ($run.spec.settings.run.goal?.value? | default '' | parse -r '(?<s>fabro-[0-9a-f]{4})' | get s? | first | default '')
+  let affected = (seed-ids-in ($run.spec.settings.run.goal?.value? | default '') | first | default '')
   {
     candidate: ($run_failed or $green_lie),
     green_lie: $green_lie,
