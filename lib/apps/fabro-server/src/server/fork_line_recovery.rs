@@ -43,7 +43,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use fabro_types::{Run, RunFailure, RunId, RunStatus};
+use fabro_types::{Run, RunFailure, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
 
 use super::AppState;
