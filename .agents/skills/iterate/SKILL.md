@@ -125,8 +125,13 @@ stores it belongs to; reach them by phase need:
 - Pick the highest-value open seed respecting family order (ADR-0009:
   900e -> 47b5 -> e47c -> e804 -> ba96), blockers (`!`), and the user's
   focus.
-- Pivotal or unclear choice/design: grill-with-docs FIRST (grilling +
-  domain-modeling; evidence = CONTEXT.md, ADRs, seeds, code, guide).
+- EVERY decision point is grilled BEFORE implementation (user directive
+  2026-10-12, Grundsatz-review): grill-with-docs FIRST (grilling +
+  domain-modeling; evidence = CONTEXT.md, ADRs, seeds, code, guide) for
+  EVERY design/mechanism/standing-rule choice — not only pivotal ones.
+  No tacit decisions: an ungrilled fork that ships is a finding. The
+  grill names the alternatives and picks the optimal path WITH the user;
+  the chosen path and its rejected alternatives land in the seed/ADR.
   Weichenstellende decisions belong to the user. Public-contract NAMES
   (graph attributes, API fields, tool names, CLI flags) are pivotal too:
   name the capability, surface naming for user decision before the first
