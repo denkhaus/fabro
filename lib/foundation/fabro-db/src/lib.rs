@@ -76,7 +76,17 @@ impl Database {
             .foreign_keys(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
-            .busy_timeout(Duration::from_secs(5));
+            .busy_timeout(Duration::from_secs(5))
+            // fabro-9dff: the store DB outgrew SQLite's per-connection
+            // default page cache (~2 MiB) — on a 3 GB database every run
+            // stream tail page became a disk read while the run itself
+            // wrote, and concurrent followers/SSE/UI readers starved the
+            // pool (2026-10-12: 747% CPU, API timeouts). mmap_size shares
+            // the OS page cache across connections; the negative
+            // cache_size form is KiB, so -65536 = 64 MiB per connection
+            // (10-connection pool worst case 640 MiB on a 15.6 GiB host).
+            .pragma("mmap_size", "2147483648")
+            .pragma("cache_size", "-65536");
 
         let pool = SqlitePoolOptions::new()
             .connect_with(options)
