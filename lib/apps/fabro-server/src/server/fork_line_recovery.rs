@@ -43,7 +43,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use chrono::{DateTime, Utc};
-use fabro_llm::gateway::reset_window;
+use fabro_llm::gateway::{RateLimitWindow, reset_window};
 use fabro_types::{Run, RunFailure, RunId, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
 
@@ -658,21 +658,47 @@ pub(crate) async fn last_run_window_signal(
         .ok()?
         .into_iter()
         .next()?;
-    window_signal(&run.id, run.lifecycle.conclusion_failure.as_ref(), now)
+    window_signal(
+        &run.id,
+        run.lifecycle.conclusion_failure.as_ref(),
+        run.timestamps.completed_at,
+        now,
+    )
 }
 
+/// How long a timezone-naive window announce stays first-hand evidence,
+/// measured from the announcing run's completion: our largest usage window
+/// (zai's 5 hours) plus slack. The prose reset deadline carries no UTC
+/// offset, so it can never expire on its own; without this bound the
+/// announce held every fire FOREVER — 5h18m past the real reset in the
+/// 2026-10-12 re-arm wedge (fabro-f73b).
+const NAIVE_ANNOUNCE_TTL_SECS: i64 = 6 * 60 * 60;
+
 /// The window signal a recorded conclusion carries, as `(run_id, message)`:
-/// `Some` only when the conclusion names a provider usage window (the same
-/// grammar the park predicate reads).
+/// `Some` only while the conclusion's usage-window announce is still live
+/// (the same grammar the park predicate reads). An offset-carrying deadline
+/// expires the moment it passes (the parser already drops it); a
+/// timezone-naive deadline (zai's offset-less prose) is bounded by
+/// [`NAIVE_ANNOUNCE_TTL_SECS`] from the run's completion — without an
+/// anchor there is no first-hand evidence, and the cadence probe decides
+/// (fabro-f73b).
 fn window_signal(
     run_id: &RunId,
     conclusion_failure: Option<&RunFailure>,
+    completed_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
 ) -> Option<(String, String)> {
     let message = &conclusion_failure?.detail.message;
-    reset_window(message, SystemTime::from(now))
-        .is_some()
-        .then(|| (run_id.to_string(), message.clone()))
+    let announced = || (run_id.to_string(), message.clone());
+    match reset_window(message, SystemTime::from(now)) {
+        Some(RateLimitWindow::Reopens(_)) => Some(announced()),
+        Some(RateLimitWindow::UnknownEta) => {
+            let completed_at = completed_at?;
+            (now < completed_at + chrono::Duration::seconds(NAIVE_ANNOUNCE_TTL_SECS))
+                .then(announced)
+        }
+        None => None,
+    }
 }
 
 /// The selector a requirement's probe runs with when nothing was
@@ -903,23 +929,31 @@ mod tests {
     }
 
     /// A terminal run's conclusion feeds the gate only when it names a
+    /// A conclusion failure carrying `message` as a transient-infra soft stop.
+    fn window_failure(message: &str) -> fabro_types::RunFailure {
+        fabro_types::RunFailure {
+            reason: fabro_types::FailureReason::SoftStop,
+            detail: fabro_types::outcome::FailureDetail::new(
+                message,
+                FailureCategory::TransientInfra,
+            ),
+        }
+    }
+
     /// window (fabro-2f03): the live zai body must signal, an unrelated
-    /// failure must not.
+    /// failure must not. Since fabro-f73b a naive announce also needs a
+    /// completion anchor inside the TTL.
     #[test]
     fn a_runs_conclusion_signals_only_a_usage_window() {
-        fn failure_with(message: &str) -> fabro_types::RunFailure {
-            fabro_types::RunFailure {
-                reason: fabro_types::FailureReason::SoftStop,
-                detail: fabro_types::outcome::FailureDetail::new(
-                    message,
-                    FailureCategory::TransientInfra,
-                ),
-            }
-        }
-
         let run_id: fabro_types::RunId = "01M4KMWYRQDJ54ZSS08NJNH74N".parse().unwrap();
         let live = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-11 05:04:33 [provider zai, status 429, code 1308]";
-        let signal = window_signal(&run_id, Some(&failure_with(live)), Utc::now());
+        let now = Utc.with_ymd_and_hms(2026, 10, 11, 16, 0, 0).unwrap();
+        let signal = window_signal(
+            &run_id,
+            Some(&window_failure(live)),
+            Some(now - chrono::Duration::minutes(30)),
+            now,
+        );
         assert!(
             signal.is_some(),
             "the live zai conclusion must signal a window"
@@ -929,13 +963,67 @@ mod tests {
         assert!(
             window_signal(
                 &run_id,
-                Some(&failure_with("bad_output after 2 repair turns")),
-                Utc::now()
+                Some(&window_failure("bad_output after 2 repair turns")),
+                Some(now - chrono::Duration::minutes(30)),
+                now,
             )
             .is_none(),
             "a non-window failure must not feed the gate"
         );
-        assert!(window_signal(&run_id, None, Utc::now()).is_none());
+        assert!(window_signal(&run_id, None, None, now).is_none());
+    }
+
+    /// fabro-f73b: a timezone-naive announce (zai's offset-less prose)
+    /// expires NAIVE_ANNOUNCE_TTL_SECS after the announcing run completed —
+    /// the 2026-10-12 re-arm wedge held fires 5h18m past the real reset
+    /// because the prose deadline can never expire on its own. An
+    /// offset-carrying deadline keeps the parser's own expiry.
+    #[test]
+    fn a_naive_window_announce_expires_after_its_ttl() {
+        let run_id: fabro_types::RunId = "01M4NV2HNFF0KGWZ8BF23J375C".parse().unwrap();
+        let naive = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-12 03:58:35 [provider zai, status 429, code 1308]";
+        let completed = Utc.with_ymd_and_hms(2026, 10, 11, 16, 14, 0).unwrap();
+
+        let inside = completed + chrono::Duration::seconds(NAIVE_ANNOUNCE_TTL_SECS)
+            - chrono::Duration::minutes(1);
+        assert!(
+            window_signal(
+                &run_id,
+                Some(&window_failure(naive)),
+                Some(completed),
+                inside
+            )
+            .is_some(),
+            "a naive announce inside its TTL is first-hand evidence"
+        );
+
+        let wedged = Utc.with_ymd_and_hms(2026, 10, 12, 9, 0, 15).unwrap();
+        assert!(
+            window_signal(
+                &run_id,
+                Some(&window_failure(naive)),
+                Some(completed),
+                wedged
+            )
+            .is_none(),
+            "a naive announce past its TTL must not hold fires (fabro-f73b)"
+        );
+
+        assert!(
+            window_signal(&run_id, Some(&window_failure(naive)), None, wedged).is_none(),
+            "without a completion anchor the cadence probe decides, not the announce"
+        );
+
+        let future = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-12T19:00:00+00:00 [provider zai, status 429, code 1308]";
+        assert!(
+            window_signal(&run_id, Some(&window_failure(future)), None, wedged).is_some(),
+            "an offset-carrying future deadline signals without an anchor"
+        );
+        let passed = "model request failed (rate_limit): provider zai Usage limit reached for 5 hour. Your limit will reset at 2026-10-12T03:58:35+00:00 [provider zai, status 429, code 1308]";
+        assert!(
+            window_signal(&run_id, Some(&window_failure(passed)), None, wedged).is_none(),
+            "an offset-carrying passed deadline is no evidence"
+        );
     }
 
     #[test]
