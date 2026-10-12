@@ -71,6 +71,11 @@ const SMOKES = [
     # unmarked files and every other prompt-lint check stays live on a
     # marked one. Runs the real lint against temp roots.
     '.fabro/scripts/prompt-lint-fixtures.nu'
+    # seed-id predicate battery (fabro-e3c7): pins both shapes of the
+    # shared lib/seed_id.nu accept-set (short + family) and both failure
+    # modes — prompt-lint REDS on an unresolvable family literal, and the
+    # predicate mints no id from ordinary repo words ('fabro-workflow').
+    '.fabro/scripts/seed-id-fixtures.nu'
     # release-sha battery (fabro-06da): release tags must name the
     # PUSHABLE line tip — only the allow-listed files may derive a short
     # sha, the two release scripts must call the policy site, and the

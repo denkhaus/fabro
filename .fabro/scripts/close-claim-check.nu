@@ -10,6 +10,12 @@
 # The pure core (close-claims + close-claim-findings) is exported for the
 # smoke battery; `source` here is safe because main only runs when invoked.
 
+# Shared seed-id predicate (lib/seed_id.nu): a close claim names a seed id
+# of EITHER shape — never a prose repo word riding the fabro- prefix.
+# (`use`, not `source`: this file is itself sourced by the smoke battery,
+# and nu allows no nested `source`.)
+use lib/seed_id.nu seed-ids-in
+
 # Seed ids a subject claims to close: after the word close/closes/closed/
 # closing, collect fabro-<id> tokens while only ids and list separators
 # (`,`, `+`, `and`) follow. Anything else ends the list — `reconcile
@@ -19,7 +25,7 @@ export def close-claims [subject: string] {
     mut claims = []
     mut collecting = false
     for word in $words {
-        let id = ($word | parse --regex '(?P<id>fabro-[a-z0-9]+)' | get -o id.0?)
+        let id = (seed-ids-in $word | first | default null)
         if $collecting {
             if ($id != null) {
                 $claims = ($claims | append $id)

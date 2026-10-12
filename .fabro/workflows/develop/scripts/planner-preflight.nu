@@ -98,6 +98,11 @@
 # (dead) seeds surface mechanically in the verdict table below.
 source anchor_check.nu
 
+# Shared seed-id predicate: journal-claims below mints seed ids from run
+# journal text and must accept BOTH shapes (short + family) without
+# minting ids from ordinary repo words riding the fabro- prefix.
+use ../../../scripts/lib/seed_id.nu seed-ids-in
+
 # Run terminality, tip-subject form (fabro-32db): the shared definition
 # is "a seed claim is in flight ONLY while its run is non-terminal".
 # Git-only terminality proof is the run branch's TIP COMMIT SUBJECT —
@@ -154,12 +159,9 @@ def journal-claims [sha: string, run: string] {
     if $j.exit_code != 0 { return [] }
     let lines = ($j.stdout | lines | where {|l| $l | str contains '"node":"planner"'})
     if ($lines | is-empty) { return [] }
-    $lines
-    | parse --regex 'fabro-(?<seed>(?:[a-z][a-z0-9]*-)?[0-9a-z]{4,})(?![0-9a-z-])'
-    | get -o seed
-    | default []
-    | uniq
-    | each {|seed| $"fabro-($seed)"}
+    # Shared predicate (lib/seed_id.nu): the old inline wide accept-set
+    # minted ids from ordinary repo words ('fabro-workflow' -> 'workflow').
+    seed-ids-in ($lines | str join "\n")
 }
 
 def in-flight-claims [remote: string, base: string, self_id: string] {

@@ -9,6 +9,10 @@
 # cwd:
 #   nu .fabro/workflows/develop/scripts/tracker-guard-smoke.nu
 
+# prompt-lint: synthetic-seed-ids
+# (the fabro-none placeholder argument below is a synthetic id, never a
+# tracker row — the marker scopes exactly that to this battery)
+
 const GUARD = "tracker-guard.nu"
 source $GUARD
 
