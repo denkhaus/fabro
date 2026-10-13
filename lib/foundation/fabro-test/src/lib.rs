@@ -2310,6 +2310,7 @@ impl TwinScenarios {
 pub struct TwinScenario {
     matcher: Map<String, Value>,
     script:  Value,
+    sticky:  bool,
 }
 
 impl TwinScenario {
@@ -2324,6 +2325,7 @@ impl TwinScenario {
                 ("model".to_string(), Value::String(model.into())),
             ]),
             script:  json!({ "kind": "success" }),
+            sticky:  false,
         }
     }
 
@@ -2338,6 +2340,7 @@ impl TwinScenario {
                 ("model".to_string(), Value::String(model.into())),
             ]),
             script:  json!({ "kind": "success" }),
+            sticky:  false,
         }
     }
 
@@ -2421,11 +2424,29 @@ impl TwinScenario {
         self
     }
 
+    /// Answer every matching request until the namespace is reset (the
+    /// twin's `sticky` flag; `repeat` is ignored when set). A retrying
+    /// client keeps meeting the scripted answer instead of running past
+    /// the scenario.
+    #[must_use]
+    pub fn sticky(mut self) -> Self {
+        self.sticky = true;
+        self
+    }
+
     fn into_json(self) -> Value {
-        json!({
+        let mut envelope = json!({
             "matcher": self.matcher,
             "script": self.script,
-        })
+        });
+        if self.sticky {
+            // The twin spends a scenario after one matching answer by
+            // default; a sticky scenario answers every match until the
+            // namespace is reset, so a client that retries a scripted
+            // failure (the gate probe's 429s) never runs past the script.
+            envelope["sticky"] = Value::Bool(true);
+        }
+        envelope
     }
 
     fn assert_script_kind(&self, expected: &str, method: &str) {

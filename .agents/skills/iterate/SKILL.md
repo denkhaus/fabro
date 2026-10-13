@@ -410,7 +410,12 @@ stores it belongs to; reach them by phase need:
   push cell). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
   may push as soon as no pass runs. Evidence and history: `ml prime git`.
-- Deploy windows: deploy only while no conductor pass runs. Pause the
+- Deploy windows: deploy only while no conductor pass runs. GATE-TOUCHING
+  DEPLOYS (fabro-2919, Grundsatz-review 2026-10-12): before the window,
+  run `just smoke-window-gate` (the twin-scenario smoke: scripted 429 ->
+  tick holds + manual fire refused; reopen -> next recheck tick fires) —
+  a gate fix that needs a deploy to find out is a 40-minute turnaround;
+  the smoke answers it in seconds, locally. Pause the
   line first (automation replace with FULL body + `If-Match` revision +
   explicit `on_overlap: skip`; re-GET and verify it survived), deploy
   nonblocking, smoke on mirtuell.net, re-enable, monitor via heartbeat.

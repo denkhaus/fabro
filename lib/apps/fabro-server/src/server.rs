@@ -181,6 +181,8 @@ mod fork_slack_recovery_tests;
 pub(crate) mod fork_staleness_supervisor;
 #[cfg(test)]
 mod fork_staleness_supervisor_tests;
+#[cfg(test)]
+mod fork_window_gate_twin_tests;
 mod handler;
 pub(crate) mod petri_runs;
 pub(crate) mod pull_request_conflict;

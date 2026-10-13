@@ -272,3 +272,12 @@ validate-workflows target="":
 # interpolated-regex scan that parse tools cannot see (verify.nu class).
 lint-nu:
     nu scripts/lint-nu.nu
+
+# Provider-window gate twin smoke (fabro-2919): the three gate behaviors —
+# a scripted 429 holds the tick and refuses manual fires, a reopened window
+# fires on the next recheck tick — proven against the real twin-openai
+# provider in seconds. Run this BEFORE any deploy that touches the gate
+# (fork_line_recovery.rs, automation_scheduler.rs, the llm probe path);
+# it also runs in every plain fabro-server test round.
+smoke-window-gate:
+    cargo nextest run -p fabro-server window_gate

@@ -81,6 +81,12 @@ const SMOKES = [
     # sha, the two release scripts must call the policy site, and the
     # scanner proves it has teeth on a planted fixture.
     '.fabro/scripts/release-sha-fixtures.nu'
+    # Provider-window gate twin-smoke presence battery (fabro-2919): the
+    # twin scenarios are a Rust pin that runs in every plain fabro-server
+    # test round; this battery is the silent-deletion net for the pin
+    # file, its scenario names, its TOUCHPOINTS row, and the justfile
+    # ceremony recipe (`just smoke-window-gate`) that names it pre-deploy.
+    '.fabro/scripts/window-gate-smoke.nu'
     # judgment-shadow sync battery (fabro-d367): the host hook's script
     # travels INSIDE the four workflow.toml hook commands (quoted
     # heredoc through nu -c — a host-side hook has no workspace cwd on
