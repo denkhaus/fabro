@@ -397,7 +397,9 @@ fn catch_all_leg_failure(
 /// failures). A retried-then-succeeded leg's final outcome is success,
 /// so it never appears here — the same rule `catch_all_leg_failure`
 /// applies.
-fn first_failed_stage_failure(projection: &fabro_types::RunProjection) -> Option<String> {
+pub(super) fn first_failed_stage_failure(
+    projection: &fabro_types::RunProjection,
+) -> Option<String> {
     let mut stages: Vec<(u32, Option<String>)> = projection
         .iter_stages()
         .map(|(_stage_id, stage)| {

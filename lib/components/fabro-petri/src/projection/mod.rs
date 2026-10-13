@@ -29,6 +29,8 @@ mod coordinator;
 mod edge_conditions;
 mod engine;
 mod fork_exit_kinds;
+#[cfg(test)]
+mod fork_quota_park_message_tests;
 pub mod fork_taxonomy;
 mod model;
 mod platform;

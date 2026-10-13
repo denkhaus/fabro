@@ -183,6 +183,8 @@ pub(crate) mod fork_staleness_supervisor;
 mod fork_staleness_supervisor_tests;
 #[cfg(test)]
 mod fork_window_gate_twin_tests;
+#[cfg(test)]
+mod fork_worker_exit_park_tests;
 mod handler;
 pub(crate) mod petri_runs;
 pub(crate) mod pull_request_conflict;

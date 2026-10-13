@@ -28,6 +28,7 @@ mod env_update;
 mod events;
 mod exec;
 mod fabro;
+mod fork_automations_replace;
 mod graph;
 mod inspect;
 mod install;
