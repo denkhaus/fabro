@@ -68,6 +68,15 @@ into a check command: `$?` expands at the outer shell before the wrapper
 runs, and that once recorded a green code for a check whose guard script
 actually failed. Assert negative paths by the wrapper's own recorded
 `-> exit N` line and exit code, not by echoing codes inside the command.
+NESTED-SHELL PROBES: a check command that itself shells out (`sh -c "..."`,
+nested quotes, embedded both-quote strings) is quoting-fragile — the outer
+shell layers can mangle the quotes before the wrapper sees them, and the
+wrapped probe dies with a bash parse error recorded as exit 2. The CANONICAL
+probe pattern for anything nested: write the probe as a nu script under
+`mktemp` OUTSIDE the worktree (`mktemp -d` dir, probe asserts and exits with
+the real code), then wrap the one-word call `nu /tmp/<probe-dir>/probe.nu`
+through the wrapper — one quoting layer, exact round-trip. A flat command
+with no nested quoting goes through the wrapper directly as always.
 
 This report lives ONLY inside the JSON `implementation_summary` field —
 never duplicate it in the pre-JSON markdown text of your response. The
