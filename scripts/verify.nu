@@ -41,6 +41,66 @@ def is-test-file [p: string] {
     ($p | str contains '/tests/') or ($p | str ends-with '_tests.rs') or ($p | str ends-with '/tests.rs')
 }
 
+# fabro-2f70: a diff touching an inline `#[cfg(test)]` module (the repo's
+# dominant test convention) also marks the file test-touched — previously
+# only test-path filenames counted, so inline-module edits silently
+# degraded verify to a compile check. Two signals from the per-file diff,
+# both fail-safe (over-detection only widens to the full crate suite):
+#   1. a CHANGED line (+/-, not context) contains `cfg(test)` — the
+#      attribute itself was added/removed (whole-file deletions land here
+#      too, since removing the file removes the attribute line);
+#   2. a changed line falls inside the file's cfg(test) region: at/after
+#      the first `#[cfg(test)]` attribute line. The region extends toward
+#      EOF (approximation: content after a closed mid-file module counts
+#      too), which only widens verification, never narrows it. Added
+#      lines are judged in new-file numbering against the current file;
+#      removed lines in old-file numbering against the base blob.
+def first-cfg-line [content: list<string>] {
+    let idx = ($content
+        | enumerate
+        | where {|r| $r.item | str contains '#[cfg(test)]'}
+        | get -o index)
+    if ($idx | is-empty) { null } else { ($idx | first) + 1 } # 1-based
+}
+
+def is-inline-test-diff [base: string, p: string] {
+    let diff = (git diff $base -- $p)
+    if ($diff | is-empty) { return false }
+    let lines = ($diff | lines)
+    let changed = ($lines | where {|l|
+        ((($l | str starts-with '+') and (not ($l | str starts-with '+++'))) or
+            (($l | str starts-with '-') and (not ($l | str starts-with '---'))))})
+    if ($changed | any {|l| $l | str contains 'cfg(test)'}) { return true }
+    if (not ($p | path exists)) { return false }
+    let new_cfg = (first-cfg-line (open --raw $p | lines))
+    let old_blob = (do { git show $"($base):($p)" } | complete)
+    let old_cfg = (if $old_blob.exit_code == 0 {
+        first-cfg-line ($old_blob.stdout | lines)
+    } else { null })
+    mut old_ln = 0
+    mut new_ln = 0
+    for l in $lines {
+        if ($l | str starts-with '@@') {
+            let h = ($l | parse --regex '^@@ -(?P<o>\d+)(?:,\d+)? \+(?P<n>\d+)(?:,\d+)? @@')
+            if ($h | is-not-empty) {
+                $old_ln = ($h.o | first | into int)
+                $new_ln = ($h.n | first | into int)
+            }
+        } else if ($l | str starts-with '+') and (not ($l | str starts-with '+++')) {
+            if ($new_cfg != null) and ($new_ln >= $new_cfg) { return true }
+            $new_ln = $new_ln + 1
+        } else if ($l | str starts-with '-') and (not ($l | str starts-with '---')) {
+            if ($old_cfg != null) and ($old_ln >= $old_cfg) { return true }
+            $old_ln = $old_ln + 1
+        } else if ($l | str starts-with ' ') {
+            $old_ln = $old_ln + 1
+            $new_ln = $new_ln + 1
+        }
+        # headers, \-no-newline markers, and everything else: no advance
+    }
+    false
+}
+
 def current-branch [] {
     (git branch --show-current | str trim)
 }
@@ -94,7 +154,7 @@ def touched [] {
         | uniq
         | compact)
     let test_crates = ($crate_paths
-        | where {|p| is-test-file $p }
+        | where {|p| (is-test-file $p) or (is-inline-test-diff $base $p) }
         | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
         | flatten
         | get -o crate
