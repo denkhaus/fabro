@@ -1,3 +1,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M4XS4DQSVBRX5S1V30RRZ8KQ","node":"start","visit":1,"status":"succeeded","ts":"2026-10-14T18:00:35Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M4XS4DQSVBRX5S1V30RRZ8KQ","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-14T18:00:36Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M4XS4DQSVBRX5S1V30RRZ8KQ","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-14T18:00:37Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M4XS4DQSVBRX5S1V30RRZ8KQ","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-14T18:00:41Z","data":{}}
