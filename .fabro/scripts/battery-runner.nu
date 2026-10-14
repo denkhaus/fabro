@@ -100,6 +100,11 @@ const SMOKES = [
 # must EXECUTE the fixture scripts, not just parse them.
 const BATTERIES = [
     '.fabro/scripts/dup-run-check-fixtures.nu'
+    # Tool-pin parity battery (fabro-1893's missing net): the seeds CLI
+    # pin must agree between .mise.toml and Dockerfile.toolchain — a
+    # drift means run sandboxes and dev hosts speak different CLI
+    # dialects. RED names both versions.
+    '.fabro/scripts/tool-pin-parity-fixtures.nu'
     # planner-preflight anchor battery (fabro-83df report-only
     # end-to-end case included; 0.5s measured 2026-09-19)
     '.fabro/scripts/planner-preflight-anchor-fixtures.nu'

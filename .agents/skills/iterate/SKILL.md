@@ -450,7 +450,13 @@ stores it belongs to; reach them by phase need:
   usually means the same sha — verify, never assume).
 - Production deploy after substantial engine changes (binary-need check:
   any `lib/` path in the merged work): `just image-release` +
-  fabro-tofu apply (`cd ~/dev/fabro-tofu`, mise exec tofu). `just up`
+  fabro-tofu apply — NON-INTERACTIVE (the justfile profile picker is
+  fzf-only by design; name the profile explicitly instead): cd
+  ~/dev/fabro-tofu && export TF_VAR_state_passphrase="$(mise exec --
+  gopass show -o fabro-tofu/state-encryption)" && TF_DATA_DIR=
+  .terraform-prod mise exec -- tofu plan -var-file=envs/prod.tfvars —
+  apply identically with `apply -auto-approve` after reviewing the
+  3/0/3-style plan. `just up`
   refreshes the LOCAL test stack only. gopass cold cache hangs
   non-interactively — ask the user to warm it before tofu runs.
 - After EVERY tofu deploy: commit the fabro-tofu `variables.tf` image pin
