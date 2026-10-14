@@ -10,6 +10,7 @@
 #   nu .fabro/workflows/develop/scripts/evidence-smoke.nu
 
 const EVIDENCE = "evidence.nu"
+const SCRIPTS_DIR = (path self | path dirname)
 source $EVIDENCE
 
 def fail [what: string]: nothing -> nothing {
@@ -119,6 +120,37 @@ if not ($sec | str contains "`/tmp` dir") {
     fail $"checks-section must sanitize bare /word tokens: ($sec)"
 }
 
+# Negative-path pin (the wrapper records the guarded command's OWN exit
+# code): run check-transcript.nu as a subprocess with an isolated
+# transcript dir (the FABRO_CHECK_TRANSCRIPT_DIR override exists for
+# exactly this battery) against a command that exits 7 with stderr —
+# the wrapper must exit 7 AND the transcript record must carry
+# `-> exit 7` plus the command's stderr, never a later command's code.
+let tdir_pin = (mktemp -d)
+let wrapped = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_pin } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "sh -c 'echo boom >&2; exit 7'"
+    }
+} | complete)
+if $wrapped.exit_code != 7 {
+    fail $"negative-path pin: wrapper must pass through exit 7, got ($wrapped.exit_code)"
+}
+if not ($wrapped.stdout | str contains "-> exit 7") {
+    fail $"negative-path pin: streamed record must show exit 7: ($wrapped.stdout)"
+}
+let pin_files = (ls $"($tdir_pin)/*.md")
+let pin_rec = (open --raw ($pin_files | get name | first))
+rm -rf $tdir_pin
+if not ($pin_rec | str contains "-> exit 7") {
+    fail $"negative-path pin: transcript must record exit 7: ($pin_rec)"
+}
+if not ($pin_rec | str contains "[stderr] boom") {
+    fail $"negative-path pin: transcript must carry the command's stderr: ($pin_rec)"
+}
+if ($pin_rec | str contains "exit-fallback") {
+    fail $"negative-path pin: marker capture must not degrade: ($pin_rec)"
+}
+
 # spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
 # null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
 # are extracted from the description (sentence punctuation stripped);
@@ -185,7 +217,7 @@ if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
     fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
