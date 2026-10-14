@@ -12,7 +12,7 @@ from immutable registered workflow versions, never from inline
 workflow names):
 
 a. Workflow version: read `revisor_workflow_version_id` from context —
-the survey stage pre-registered it (fabro-978d). If present, use it
+the survey stage pre-registered it. If present, use it
 directly and do NOT re-register (the ~36 KB transcription is the cost
 this avoids). If ABSENT (continuity break), register yourself with ONE small call —
 `fabro_workflow_version_create {"entrypoint": "revisor/workflow.toml",
@@ -32,7 +32,7 @@ pass 01M2E2805XB4, 2026-09-13); `auto_approve` lives under `args`. It
 revises the newest revisable run of develop OR merge-upstream (the
 pass child). The revisor itself selects the newest revisable run
 (ADR-0015) — no goal needed.
-3. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 1800000}`; on `reached=timeout` call again (fabro-571e, no sleep loops). Route "Cycle complete" on any terminal state (the revisor's own soft exits are legitimate outcomes); route "Revisor child failed" only when the run failed hard.
+3. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 1800000}`; on `reached=timeout` call again (no sleep loops). Route "Cycle complete" on any terminal state (the revisor's own soft exits are legitimate outcomes); route "Revisor child failed" only when the run failed hard.
 
 ## Workflow addressing (#832 run-intent contract)
 

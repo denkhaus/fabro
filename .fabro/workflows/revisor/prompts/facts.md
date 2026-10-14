@@ -7,7 +7,7 @@ workflow graph, not the prompts. A stale value here is loop friction:
 report it in the journal, never silently work around it.
 
 - Issue tracker — the `seeds` CLI (Seeds, git-native in `.seeds/`). Seed ids
-  carry the prefix `fabro-` (e.g. `fabro-37a6`); the supported read path
+  carry the prefix `fabro-` followed by four hex characters; the supported read path
   is `seeds show <id> --format json`. `seeds search` matches title/description
   text only and is AND-strict: use ONE keyword per query (broaden by
   dropping words), and use `seeds show` — never `seeds search` — for id

@@ -12,11 +12,11 @@ Two steps (#832 contract): register the merge-upstream workflow version with ONE
 2. Record the child id in context key `child_run_id` (the revise leg
    reuses it for continuity) — then wait terminal: ONE call
    `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 2400000}`.
-   `reached=timeout` (still running): call again. Never shell-sleep poll loops (fabro-571e).
+   `reached=timeout` (still running): call again. Never shell-sleep poll loops.
 3. If the child FAILED: route "Merge child failed" and journal the failure reason — the manual merge-upstream skill owns hard conflicts. Do not retry in this pass.
-4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` (fabro-571e: the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route "Infra pass complete". `reached=timeout` -> call again. `reached=blocked` -> "Merge child failed" with a journal note (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait — fabro-bde4). `reached=closed_unmerged` or terminal-failed -> "Merge child failed" with a journal note (gate stuck; check the PR).
+4. If the child SUCCEEDED: wait for the PR auto-merge (Dogfood Gate): `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}` (the server checks the PR state — no git fetch/tree diff here). `reached=merged` -> route "Infra pass complete". `reached=timeout` -> call again. `reached=blocked` -> "Merge child failed" with a journal note (merge gate stuck: failed required checks or dirty/blocked base; NEVER re-wait). `reached=closed_unmerged` or terminal-failed -> "Merge child failed" with a journal note (gate stuck; check the PR).
 
-## Workflow addressing (fabro-e297, #832 run-intent contract)
+## Workflow addressing (run-intent contract)
 
 Registration is the SAME two-step contract as the other legs: register the
 merge-upstream workflow version FIRST (`fabro_workflow_version_create`,

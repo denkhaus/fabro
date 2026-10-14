@@ -15,7 +15,7 @@ You are the Conductor's Surveyor. One decision: what does THIS pass run? You nev
    block + uncomment the merge node and its edges.
 3. "Nothing to do" is RESERVED for maintenance cases you cannot handle (e.g. tools unavailable); default to "Work" — a cheap develop pass is fine even when the tracker turns out empty.
 
-## Workflow version pre-registration (fabro-978d, when routing "Work")
+## Workflow version pre-registration (when routing "Work")
 
 When your decision is "Work":
 
@@ -38,7 +38,7 @@ When your decision is "Work":
    to registering itself. Do not re-register after a success to
    "make sure".
 
-## Revisor backfill (best-effort, fabro-1dc9)
+## Revisor backfill (best-effort)
 
 Before deciding, one cheap check with `fabro_run_search`: are there
 COMPLETED develop runs with no revisor pass? Signal: a finished develop run
@@ -50,10 +50,11 @@ each subsequent pass burns the backlog down one run at a time; do NOT
 create any run here (this leg never starts runs). Keep it best-effort: if
 the signal is ambiguous, say so in the journal and move on.
 
-Open-overflow counts (fabro-552a) may be REPORTED the same way — run
+Open-overflow counts may be REPORTED the same way — run
 `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu stats` and note
-`revisor open overflows: <N>` under `observations` when N > 0 (starvation
-signal for open seed fabro-27bb, measured 2026-09-25). REPORT-ONLY: this
+`revisor open overflows: <N>` under `observations` when N > 0 (a
+persistently high count is the backlog-starvation signal for the ledger —
+its measurement is tracked as a seed). REPORT-ONLY: this
 survey NEVER files, consumes, or marks overflow entries — the revisor
 file stage is the one deterministic consumer of the overflow ledger.
 

@@ -26,7 +26,7 @@ never silently work around it.
 - Issue tracker: the `seeds` CLI (Seeds, git-native in `.seeds/`). The
   loop line works EXCLUSIVELY on seeds assigned to assignee `loop` —
   the assignee is the ownership switch (ADR-0018, symmetric to @fabro).
-  Seed ids carry the prefix `fabro-` (e.g. `fabro-37a6`). The supported
+  Seed ids carry the prefix `fabro-` followed by four hex characters. The supported
   read path is `seeds show <id> --format json`; never parse the raw
   tracker file by hand. Exact command reference (never invent flags):
 

@@ -7,7 +7,7 @@ workflow graph, not the prompts. A stale value here is loop friction:
 report it in the journal, never silently work around it.
 
 - Issue tracker — the `seeds` CLI (Seeds, git-native in `.seeds/`). Seed ids
-  carry the prefix `fabro-` (e.g. `fabro-37a6`); the supported read path
+  carry the prefix `fabro-` followed by four hex characters; the supported read path
   is `seeds show <id> --format json`. `seeds search` matches title/description
   text only and is AND-strict: use ONE keyword per query (broaden by
   dropping words); `seeds show`, never `seeds search`, for id lookups.
@@ -53,11 +53,10 @@ report it in the journal, never silently work around it.
   names its upstream interplay: the target surface (fork-owned file /
   loop asset / minimal seam / content-only edit of an upstream-owned
   file) and, whenever an upstream-owned file is touched at all, that
-  file's upstream churn rate. Negative example (fabro-90ae, rejected
-  2026-09-18): a "locality" proposal that split upstream's hottest file
+  file's upstream churn rate. Negative example (user-rejected): a "locality" proposal that split upstream's hottest file
   (`server/tests.rs`, 112 upstream commits/12w) into 19 fork modules —
   pure recurring merge tax; only a pre-merge close of the offending PR stopped
-  it. The constructive direction is fabro-ab8e: extract fork additions
+  it. The constructive direction: extract fork additions
   into fork-owned files, upstream files stay structurally
   upstream-identical.
 - Engine-provided credentials (ADR-0019 review axis): the engine injects
