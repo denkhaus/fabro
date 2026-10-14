@@ -18,6 +18,8 @@
 #      prompts (`.fabro/workflows/**/prompts/*.md`) whose payload contains
 #      `$` — bash double-quote interpolation strips nu variables
 #      (mx-e606d5; run 01M2N36HV2). Errors; single quotes pass.
+#   7. seed-id literals in ANY workflow's prompt .md files — the strict
+#      id-free prompt set: prompts carry rules, never seed ids. Errors.
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
@@ -85,6 +87,20 @@ def provenance-errors [f] {
     $errors
 }
 
+# check 7: seed-id literals are FORBIDDEN in prompt .md files — the
+# strict id-free prompt set (the fabro-41de strict default): a closed id
+# in a status-claiming sentence rots into a lie, and provenance
+# citations cost attention on every stage read. Prompts state the RULE
+# semantically; provenance lives in the seed Basis. Scripts/schemas
+# keep the resolvable-id check 1 — synthetic fixture ids never appear
+# in prompts, so no marker applies here. Errors.
+def seed-id-literal-errors [f] {
+    let text = (open --raw $f)
+    (seed-ids-in $text) | each {|full|
+        $"($f): seed id literal '($full)' in a prompt file — prompts stay id-free; state the rule semantically, provenance belongs in the seed Basis"
+    }
+}
+
 # check 5: routing-named top-level properties in workflow @schemas/*.json —
 # warnings only: a payload containing such a field opts the node into
 # routing semantics even under a custom schema (fabro-a211)
@@ -118,6 +134,8 @@ def main [] {
     # 6. provenance literals in prompts (run ids, PR refs)
     for f in (prompt-md-files) {
         $errors = ($errors | append (provenance-errors $f))
+        # 7. seed-id literals in prompts — strict id-free prompt set
+        $errors = ($errors | append (seed-id-literal-errors $f))
     }
 
     let justfile_lines = (if ('justfile' | path exists) { open --raw justfile | lines } else { [] })

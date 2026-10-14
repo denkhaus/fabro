@@ -30,7 +30,7 @@ a PREVIOUS pass earns nothing now.
 
 - Consolidate same-file findings FIRST, unconditionally, independent of
   the balance: findings targeting the SAME file merge into ONE multi-arm
-  seed using fabro-ae74's structured arms schema instead of N siblings.
+  seed using the structured arms schema instead of N siblings.
   The merged seed's description carries a structured arms list — one arm
   per finding: arm title, the concrete change, the expected effect — so
   the planner reads arms instead of re-deriving them from prose. The
@@ -49,7 +49,7 @@ a PREVIOUS pass earns nothing now.
   files zero non-exempt seeds and journals every surviving finding as
   overflow.
 
-## Overflow ledger — deterministic re-file (fabro-552a)
+## Overflow ledger — deterministic re-file
 
 Revision files are the overflow ledger: every `- overflow:` bullet in
 `.fabro/revisions/*.md` is a machine-visible finding that survived dedupe
@@ -81,18 +81,18 @@ survey may only REPORT counts via `stats` and never files.
    `- overflow: <title> — <concrete change>; effect: <expected effect>`
    (legacy prose shapes are not machine-visible and will be lost).
 
-Backlog-starvation measurement for this mechanism is open seed fabro-27bb
-(re-measure revisor creates:closes around 2026-09-25).
+Backlog-starvation measurement for this mechanism is tracked as a seed
+(re-measure revisor creates:closes periodically).
 
 ## Procedure
 
-1. Filing-time closeout re-check (fabro-74d4) BEFORE the first `seeds create`: run `nu .fabro/workflows/revisor/scripts/closeout-race.nu <revisor_target_run_id>` yourself — the analyst's dedupe ran at analyze time, and the target run's own closeout can file seeds in the window between analyze and this filing stage (a `degraded` outcome means the listing failed: re-check with `seeds list --format compact` and eyeball every seed citing the run instead). Any finding whose concrete change is covered by a listed seed drops NOW as `duplicate_of: <id>` (journal it) — it is a duplicate, NEVER an overflow entry: overflow is for findings with no balance credit, and a closeout-covered finding has no filing claim at all.
+1. Filing-time closeout re-check BEFORE the first `seeds create`: run `nu .fabro/workflows/revisor/scripts/closeout-race.nu <revisor_target_run_id>` yourself — the analyst's dedupe ran at analyze time, and the target run's own closeout can file seeds in the window between analyze and this filing stage (a `degraded` outcome means the listing failed: re-check with `seeds list --format compact` and eyeball every seed citing the run instead). Any finding whose concrete change is covered by a listed seed drops NOW as `duplicate_of: <id>` (journal it) — it is a duplicate, NEVER an overflow entry: overflow is for findings with no balance credit, and a closeout-covered finding has no filing claim at all.
 
 2. If `revision_findings` is non-empty: FIRST consolidate same-file findings into one multi-arm seed each (filing-balance section above), then for each surviving finding, `seeds search` its central theme (see the reference above); only when nothing matches the concrete change, `seeds create` with `--labels revision`, its title, description, and priority. Record every created id.
 
    Basis line (ADR-0015, MANDATORY in every seed description, last line): `Basis: run <run-id>, workflow version <workflow_version_id or "absent">, commit <git rev-parse HEAD of this worktree>`. The develop planner's stale-basis check consumes exactly this line — a seed without a basis is judged against the current tree before claiming anyway, so omitting it only degrades triage.
 
-   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `seeds close <old-id> --reason "superseded by <new-id>: <one-line why the new one replaces it>"`. Ownership boundary (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning): `seeds close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor. When a finding supersedes a user-owned or unassigned seed: file the new seed with the old id cross-referenced in its description, close NOTHING, and journal `supersession candidate (user-owned, not closed): <id>` for the human gate. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate. Reason-before-close (fabro-02c4), mirror of the planner rule: emit the note-append and the close as ONE chained shell call — `seeds update <old-id> --append-description "closure note: superseded by <new-id>: <why> (run <run-id>)" && seeds close <old-id> --reason "superseded by <new-id>: <one-line why>"` — never two separate LLM turns; `--append-description` appends the note with one blank line between (never re-emit the whole body), and the `&&` ordering is what guarantees the note lands before the close; the tracker record, not the revisor journal, must carry why a seed died. Motivation: fabro-a0e3 was absorbed into fabro-45bf by run 01M2368YQ with the reason recorded ONLY in the revisor journal — the closed seed looked like lost work until someone grepped journals.
+   Supersession rule (distinct from duplication): a finding DUPLICATES an existing seed when it names the same change — drop it and note `duplicate_of: <id>` in the journal. A finding SUPERSEDES an existing open seed only when it replaces the SAME target (same file/mechanism) with a strictly better solution — file the new seed, then immediately `seeds close <old-id> --reason "superseded by <new-id>: <one-line why the new one replaces it>"`. Ownership boundary (ADR-0018 D2 — the revisor owns nothing; reviewing is not owning): `seeds close` under supersession applies ONLY to seeds labeled `revision` or assigned `@fabro`; user-owned or unassigned seeds are NEVER closed by the revisor. When a finding supersedes a user-owned or unassigned seed: file the new seed with the old id cross-referenced in its description, close NOTHING, and journal `supersession candidate (user-owned, not closed): <id>` for the human gate. Mere thematic overlap (different files or complementary cases) is NOT supersession: cross-reference the old id in the new description instead and close nothing. When unsure, close nothing — the journal records the suspicion for the human gate. Reason-before-close, mirror of the planner rule: emit the note-append and the close as ONE chained shell call — `seeds update <old-id> --append-description "closure note: superseded by <new-id>: <why> (run <run-id>)" && seeds close <old-id> --reason "superseded by <new-id>: <one-line why>"` — never two separate LLM turns; `--append-description` appends the note with one blank line between (never re-emit the whole body), and the `&&` ordering is what guarantees the note lands before the close; the tracker record, not the revisor journal, must carry why a seed died. Motivation: a superseded close whose reason was recorded ONLY in the revisor journal made the closed seed look like lost work until someone grepped journals.
 3. Write the revision report to `.fabro/revisions/<run-id>.md`. This file IS the bookkeeping marker — its absence from the base branch is what marks the run unrevised. Shape:
 
 ```

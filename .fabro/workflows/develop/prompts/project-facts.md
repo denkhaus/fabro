@@ -11,7 +11,7 @@ in the journal, never silently work around it.
   under `lib/` (crates in `lib/apps/`, `lib/components/`, `lib/foundation/`),
   rarely `apps/` for the web UI.
 - Loop-asset paths — the dev loop's own machinery, hidden from FILE TOOLS by
-  the per-node `fs_hide` envelope (fabro-1dae, ADR-0009 stage-envelope
+  the per-node `fs_hide` envelope (ADR-0009 stage-envelope
   family): `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`,
   `justfile`. FILE TOOLS (read_file, write_file, edit_file, glob discovery)
   fail on them — reads and writes both; the shell is unaffected (reads AND
@@ -29,19 +29,19 @@ in the journal, never silently work around it.
 - Issue tracker: the `seeds` CLI (Seeds, git-native in `.seeds/`). The develop
   line works EXCLUSIVELY on seeds assigned to assignee `fabro` — the
   assignee is the ownership switch (see `docs/agents/issue-tracker.md`).
-  Seed ids carry the prefix `fabro-` (e.g. `fabro-37a6`). The supported
+  Seed ids carry the prefix `fabro-` followed by four hex characters. The supported
   read path is `seeds show <id> --format json`; never parse the raw tracker
   file (`.seeds/issues.jsonl`) by hand. Exact command reference (never
   invent flags):
 
 | Command | Purpose |
 |---|---|
-| `seeds ready --assignee fabro --limit 200` | Unblocked open seeds ASSIGNED TO fabro — start here, and the ONLY candidate source: the develop line works exclusively on seeds the user assigned to fabro (assignee is the ownership switch, see `docs/agents/issue-tracker.md`). If it answers the question, do NOT also run `seeds list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing (fabro-c16d). |
+| `seeds ready --assignee fabro --limit 200` | Unblocked open seeds ASSIGNED TO fabro — start here, and the ONLY candidate source: the develop line works exclusively on seeds the user assigned to fabro (assignee is the ownership switch, see `docs/agents/issue-tracker.md`). If it answers the question, do NOT also run `seeds list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing. |
 | `seeds list --format json --assignee fabro --limit 200` | Full tracker picture, still filtered to fabro-assigned seeds only (only when `seeds ready` was not enough). Same limit rule as `seeds ready`. NEVER list without the `--assignee fabro` filter: unassigned or user-owned seeds are not the line's business. |
 | `seeds show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). |
-| `seeds update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (observed failure, run 01M0T9B7T6: `unknown option '--format'`). |
+| `seeds update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (a `unknown option '--format'` failure is on record). |
 | `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction when the basis RESOLVES but the seed's named path/target/details are wrong (see STALE-BASIS CHECK, step 3) — run it BEFORE the claim. `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts. Like the claim form above, takes NO `--format` flag. |
-| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception (fabro-d183): the planner's superseded-close `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold (reason string mandatory). Every other close form remains forbidden to every role. |
+| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception: the planner's superseded-close `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold (reason string mandatory). Every other close form remains forbidden to every role. |
 
 
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
