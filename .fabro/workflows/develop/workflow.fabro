@@ -484,7 +484,7 @@ digraph Develop {
     // paths (repo-rooted, or line-anchored, outside an add/create window)
     // that resolve nowhere in the worktree. Both arms bounce the planner
     // via the edge below; the path arm's payload carries the stale path
-    // list plus the full body so the `seeds update --description`
+    // list plus the full body so the `seeds update --set-description`
     // correction is one call. Fail-open on seeds CLI failure.
     claim_check [
         label="Claim check: seed id + body path contract",

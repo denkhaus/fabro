@@ -12,8 +12,8 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 | Command | Purpose |
 |---|---|
-| `seeds create --title "..." --type task --priority <1-2> --labels revision --desc "..."` | File one normal finding (English title and description). `--labels revision` is MANDATORY: it marks loop-originated systemic seeds. |
-| `seeds create --title "..." --type task --priority <1-2> --labels needs-user,revision --desc "..."` | File a capability/design fork (finding kind `needs-user`) — stays for user assignment per ADR-0018 D3. |
+| `seeds create --title "..." --type task --priority <1-2> --labels revision --description "..."` | File one normal finding (English title and description). `--labels revision` is MANDATORY: it marks loop-originated systemic seeds. |
+| `seeds create --title "..." --type task --priority <1-2> --labels needs-user,revision --description "..."` | File a capability/design fork (finding kind `needs-user`) — stays for user assignment per ADR-0018 D3. |
 | `seeds list --format compact` | Existing seeds; the title-level overview before creating. |
 | `seeds search "<theme keyword>" --format compact` | Run ONE search per finding's central theme BEFORE creating — content duplicates hide behind different titles. Only create when no existing seed (open OR closed) names the same concrete change; the analyzer pre-deduplicates, you are the guard for races and title-blind misses. |
 

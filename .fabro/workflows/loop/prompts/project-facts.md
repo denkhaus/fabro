@@ -36,7 +36,7 @@ never silently work around it.
 | `seeds list --format json --assignee loop --limit 200` | Full tracker picture, loop-assigned only (only when `seeds ready` was not enough). NEVER list without the assignee filter. |
 | `seeds show <id> --format json` | One seed in full (the supported path). |
 | `seeds update <id> --status in_progress --assignee loop` | Claim (the exact claim form). Takes NO `--format` flag. |
-| `seeds update <id> --description "<full corrected body>"` | Record a stale-spec correction BEFORE the claim — `--description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line. Takes NO `--format` flag. |
+| `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction BEFORE the claim — `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line. Takes NO `--format` flag. |
 | `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception: the planner's superseded-close `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold. Every other close form is forbidden to every role. |
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every

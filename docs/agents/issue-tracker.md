@@ -11,7 +11,7 @@ work lives in seeds.
 - **Read an issue**: `seeds show <id>` (full body incl. status, labels, evidence).
 - **List**: `seeds list` (filters: `--status open|in_progress|closed`, `--type`, `--assignee`); `seeds ready` = unblocked work; `seeds search <query>` = full text.
 - **Claim work**: `seeds update <id> --status in_progress` (optionally `--assignee`).
-- **Record findings**: edit the seed body (`seeds update <id> --description ...`); there are no separate comment threads.
+- **Body verbs**: `seeds update <id> --append-description "<text>"` extends the narrative (appends, one blank line between — never re-emit the whole body); `--set-description "<text>"` replaces wholesale (amend only this way when you truly mean a rewrite); `--replace-in-description '{"find": "...", "replace": "..."}'` corrects one exact span. The old `--description`/`--desc`/`--body` are gone from `update`; `create` keeps `--description` only. No separate comment threads.
 - **Dependencies**: `seeds dep add <id> <depends-on>`; `seeds ready` respects them.
 - **Close**: `seeds close <id>` when done. Before pushing: `seeds sync`.
 

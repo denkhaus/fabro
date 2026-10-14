@@ -14,7 +14,7 @@
 #    seed body cites as EXISTING evidence must resolve in the current
 #    worktree before the claim is legal. The preflight flags rotted
 #    citations advisory-only; the planner's mandated
-#    `seeds update --description` correction was skipped at
+#    `seeds update --set-description` correction was skipped at
 #    reasoning_effort=low, so the wrong path stayed frozen in the seed
 #    row and every later pass re-derived it. This gate gives that
 #    mandate teeth: on a stale citation the node FAILS, the graph's
@@ -131,7 +131,7 @@ def main []: nothing -> nothing {
         if ($v.advisory | is-not-empty) {
             print -e ('  advisory (non-blocking, preflight table): ' + ($v.advisory | to json --raw))
         }
-        print -e ('claim-check: correct the tracker row FIRST — seeds update ' + $seed_id + ' --description "<full corrected body>" (re-emit the FULL body incl. the Basis: line, fix or drop the stale paths) — then route Seed claimed again. Current body follows.')
+        print -e ('claim-check: correct the tracker row FIRST — seeds update ' + $seed_id + ' --set-description "<full corrected body>" (re-emit the FULL body incl. the Basis: line, fix or drop the stale paths) — then route Seed claimed again. Current body follows.')
         print ($v.body)
         exit 1
     } else if ($v.advisory | is-not-empty) {
