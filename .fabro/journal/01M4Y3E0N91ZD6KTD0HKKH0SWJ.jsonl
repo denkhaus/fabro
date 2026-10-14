@@ -2,3 +2,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M4Y3E0N91ZD6KTD0HKKH0SWJ","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-14T21:00:36Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M4Y3E0N91ZD6KTD0HKKH0SWJ","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-14T21:00:37Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M4Y3E0N91ZD6KTD0HKKH0SWJ","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-14T21:00:41Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M4Y3E0N91ZD6KTD0HKKH0SWJ","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-14T21:01:59Z","data":{"painpoints":[],"observations":["fabro_run_search tool absent this pass — in-flight PR check degraded to preflight table only (e32c in_flight=false)","probe: multi-arg form of wrapper invocation loses inner quoting and lets `; exit N` bypass the marker (exit-fallback path engaged)"]}}
