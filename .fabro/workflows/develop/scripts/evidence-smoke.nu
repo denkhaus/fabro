@@ -151,6 +151,33 @@ if ($pin_rec | str contains "exit-fallback") {
     fail $"negative-path pin: marker capture must not degrade: ($pin_rec)"
 }
 
+# Fail-open fallback pin: a guarded command that KILLS the inner bash
+# (SIGKILL never runs the marker write) — the wrapper must fail open,
+# taking the code from `complete`. Nu encodes the signal as -9 in the
+# record (`-> exit -9`); the wrapper's own `exit -9` wraps to a u8
+# process code of 247 (256-9) as the parent observes it.
+let tdir_fb = (mktemp -d)
+let killed = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_fb } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "kill -9 \$BASHPID"
+    }
+} | complete)
+if $killed.exit_code != 247 {
+    fail $"fallback pin: wrapper must fail open with the wrapped 247, got ($killed.exit_code)"
+}
+let fb_files = (ls $"($tdir_fb)/*.md")
+let fb_rec = (open --raw ($fb_files | get name | first))
+rm -rf $tdir_fb
+if not ($fb_rec | str contains "[exit-fallback] marker unreadable — code from complete") {
+    fail $"fallback pin: record must carry the fallback line: ($fb_rec)"
+}
+if not ($fb_rec | str contains "-> exit -9") {
+    fail $"fallback pin: record must carry complete's signal code -9: ($fb_rec)"
+}
+if ($fb_rec | str contains "-> exit 0") {
+    fail $"fallback pin: killed bash must never record a green code: ($fb_rec)"
+}
+
 # spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
 # null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
 # are extracted from the description (sentence punctuation stripped);
@@ -217,7 +244,7 @@ if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
     fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin/fail-open-fallback-pin verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
