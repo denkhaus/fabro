@@ -178,6 +178,33 @@ if ($fb_rec | str contains "-> exit 0") {
     fail $"fallback pin: killed bash must never record a green code: ($fb_rec)"
 }
 
+# Quoting-death hint pin (nested-shell mangling): a guarded command with
+# UNBALANCED quotes (what a nested `sh -c "..."` probe mangled by an
+# outer shell layer looks like) makes bash die at parse with exit 2 and
+# no marker — the wrapper must fail open, record exit 2, and append the
+# `[quoting]` hint pointing at the canonical mktemp nu-probe escape.
+let tdir_q = (mktemp -d)
+let mangled = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_q } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- 'sh -c "echo never-runs; exit 4'
+    }
+} | complete)
+if $mangled.exit_code != 2 {
+    fail $"quoting pin: wrapper must pass through bash parse exit 2, got ($mangled.exit_code)"
+}
+let q_files = (ls $"($tdir_q)/*.md")
+let q_rec = (open --raw ($q_files | get name | first))
+rm -rf $tdir_q
+if not ($q_rec | str contains "-> exit 2") {
+    fail $"quoting pin: transcript must record exit 2: ($q_rec)"
+}
+if not ($q_rec | str contains "[quoting]") {
+    fail $"quoting pin: record must carry the quoting hint: ($q_rec)"
+}
+if not ($q_rec | str contains "mktemp") {
+    fail $"quoting pin: hint must name the mktemp nu-probe escape: ($q_rec)"
+}
+
 # spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
 # null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
 # are extracted from the description (sentence punctuation stripped);
@@ -244,7 +271,7 @@ if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
     fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin/fail-open-fallback-pin verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

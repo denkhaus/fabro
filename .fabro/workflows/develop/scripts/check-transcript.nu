@@ -88,6 +88,16 @@ def main [...command: string, --path, --by: string = "implementer"]: nothing -> 
     if ($out | is-not-empty) { $record = $"($record)($out)\n" }
     if ($err | is-not-empty) { $record = $"($record)[stderr] ($err)\n" }
     if ($recorded | is-empty) { $record = $"($record)[exit-fallback] marker unreadable — code from complete\n" }
+    # Quoting-death hint: bash exiting 2 with no marker means the guarded
+    # script never parsed — the command's quoting was mangled BEFORE the
+    # wrapper saw it (nested `sh -c "..."` probes through an extra outer
+    # shell layer). The wrapper cannot repair pre-arrival quoting; point
+    # the caller at the canonical escape: a nu probe script under mktemp
+    # (outside the worktree), wrapped as `nu /tmp/<probe>.nu`. Fail-open:
+    # the hint rides the record and never changes the exit code.
+    if ($recorded | is-empty) and ($res.exit_code | default 0) == 2 {
+        $record = $"($record)[quoting] guarded command broke bash parsing — quoting was likely mangled before the wrapper saw it; write the probe as a nu script under `mktemp` outside the worktree and wrap `nu /tmp/<probe>.nu` instead\n"
+    }
     $record = $"($record)-> exit ($code)\n\n"
     mkdir (transcript-dir)
     $record | save --append (transcript-path (current-run-id))
