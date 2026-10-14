@@ -35,7 +35,7 @@ Write the answer to `.fabro/reviews/develop/<run-id>.md` with this header (same 
 
 ## Step 3 — check the tracker BEFORE distilling (fabro-7461 fix, 2026-09-02)
 
-The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. So:
+The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. This check covers EVERY distill input — the ask answer AND the journal painpoints (Step 4). So:
 
 1. Run `seeds list --format compact` — that is the current tracker, INCLUDING seeds this revisor run already filed (they are committed on this branch).
 2. For each recurring theme in the answer, run `seeds search "<theme keyword>"` — title matches are not enough; content duplicates hide behind different titles. Query discipline at the call site: search is AND-strict, so pass exactly ONE keyword per query (a multi-word phrase returns zero hits even when the words all appear in a seed); on zero hits, retry once with a broader single token before concluding "no duplicate"; for a candidate the answer cites by id, use `seeds show <id> --format json`, never `seeds search` (search matches title/description text only, not ids).
@@ -57,7 +57,14 @@ The target run may itself be a duplicate: two overlapping conductor passes can c
 
 ## Step 4 — distill
 
-Convert the SURVIVING recommendations into `revision_findings`: an array of seed candidates. A candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Drop generic advice, drop praise, merge duplicates among themselves. A recommendation missing BOTH a known seed id and a new-seed justification is dropped as non-actionable (consistent with the other drop rules). Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates with their seed ids in the journal observation — the report must show what was withheld and why.
+Distill BOTH inputs into `revision_findings` — they get the same path, the same rules, and one shared array:
+
+1. The SURVIVING recommendations from the ask answer.
+2. The journal `painpoints` already in your context from earlier revisor stages (select) — the engine accumulates the journal key across stages, so those painpoints are seed-candidate material here. They are NOT verdicts to relay: you CONTRIBUTE your analysis of each painpoint, re-expressed as a proper candidate (what/where/effect grounded in the painpoint's evidence). A painpoint too vague to name one concrete change is dropped as non-actionable, same as a vague recommendation.
+
+For both sources, a candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Apply the Step 3 tracker rules to painpoint-derived candidates exactly as to ask-answer ones (search first; a same-change match drops with `duplicate_of: <id>` recorded for the journal; closeout-race coverage drops likewise). Drop generic advice, drop praise, merge duplicates among themselves — including a painpoint that duplicates an ask-answer recommendation (keep the better-grounded one). A recommendation or painpoint missing BOTH a known seed id and a new-seed justification is dropped as non-actionable (consistent with the other drop rules). Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates (with their seed ids) and the non-actionable painpoints in the journal observation — the report must show what was withheld and why.
+
+Role split is unchanged: you analyze and distill, the bookkeeper (file step) runs the mechanical seed search and `seeds create` — the finding objects reach it in the standard shape above.
 
 ## seeds command reference (exact — never invent flags)
 
