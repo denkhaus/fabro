@@ -484,9 +484,10 @@ def worktree-section [wt_lines: list<string>]: nothing -> string {
 
 # Pure path builder for the per-criterion check transcript written by
 # check-transcript.nu (implementer-side half; dir constant kept in sync
-# there). Takes the run id so the smoke can exercise it without git.
+# there, including the FABRO_CHECK_TRANSCRIPT_DIR battery override).
+# Takes the run id so the smoke can exercise it without git.
 def checks-transcript-path [run_id: string]: nothing -> string {
-    $"/tmp/fabro-check-transcript/($run_id).md"
+    $"($env.FABRO_CHECK_TRANSCRIPT_DIR? | default '/tmp/fabro-check-transcript')/($run_id).md"
 }
 
 # Per-criterion check transcript (fabro-d89a + fabro-f759): checks the

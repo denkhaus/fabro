@@ -29,8 +29,14 @@
 # The wrapper streams the command's stdout/stderr to YOU unchanged and
 # appends the record to the transcript; it exits with the COMMAND's own
 # exit code, so failure semantics are identical to running the check
-# bare. Keep the transcript dir constant in sync with evidence.nu's
-# checks-section (shared script, two entry points — one file each side).
+# bare. The recorded code is captured by an EXPLICIT MARKER (fabro-0577):
+# the inner bash writes the guarded command's exit code to a marker file
+# immediately after the command, so the recorded `-> exit N` line can
+# never be the exit of a later command in this shell invocation (a
+# hand-rolled `$?` echo in the check command expands at the OUTER shell
+# and once recorded a green code for a failing guard). Keep the
+# transcript dir constant in sync with evidence.nu's checks-section
+# (shared script, two entry points — one file each side).
 
 # Run id from the run branch; "local" off a run branch. Mirrors
 # evidence.nu's current-run-id — change both together.
@@ -39,9 +45,16 @@ def current-run-id []: nothing -> string {
     if ($id | is-empty) { "local" } else { $id }
 }
 
+# Shared transcript dir. The env override exists so the transcript
+# battery can isolate its pins; production never sets it. Mirror any
+# change in evidence.nu's checks-transcript-path — change both together.
+def transcript-dir []: nothing -> string {
+    $env.FABRO_CHECK_TRANSCRIPT_DIR? | default "/tmp/fabro-check-transcript"
+}
+
 # Pure path builder (testable without git): <dir>/<run-id>.md.
 def transcript-path [run_id: string]: nothing -> string {
-    $"/tmp/fabro-check-transcript/($run_id).md"
+    $"(transcript-dir)/($run_id).md"
 }
 
 def main [...command: string, --path, --by: string = "implementer"]: nothing -> nothing {
@@ -50,17 +63,36 @@ def main [...command: string, --path, --by: string = "implementer"]: nothing -> 
         return
     }
     let cmd = ($command | str join ' ')
-    let res = (do { bash -c $cmd } | complete)
+    # Explicit marker capture: append an immediate-exit block AFTER the
+    # guarded command (leading newline so a trailing `# comment` in the
+    # command cannot swallow it). The inner bash writes the guarded
+    # command's `$?` to the marker before anything else can run, then
+    # exits with it — the recorded code comes from the marker, never
+    # from a `$?` read after an intervening command.
+    let marker = (mktemp -t fabro-check-exit.XXXXXX)
+    let guarded = $"($cmd)\n__fabro_guard_exit=\$?\nprintf '%s' \"\$__fabro_guard_exit\" > \"($marker)\"\nexit \"\$__fabro_guard_exit\"\n"
+    let res = (do { bash -c $guarded } | complete)
+    let recorded = (try { open --raw $marker | str trim } catch { '' })
+    rm -f $marker
+    let code = (if ($recorded | is-empty) {
+        # Fail-open: the marker is unreadable only if bash itself died
+        # before the capture; `complete` still holds that same bash's
+        # exit code, and the record says which path produced the code.
+        $res.exit_code
+    } else {
+        $recorded | into int
+    })
     let out = ($res.stdout | str trim -r -c "\n")
     let err = ($res.stderr | str trim -r -c "\n")
     mut record = $"$ [by ($by)] ($cmd)\n"
     if ($out | is-not-empty) { $record = $"($record)($out)\n" }
     if ($err | is-not-empty) { $record = $"($record)[stderr] ($err)\n" }
-    $record = $"($record)-> exit ($res.exit_code)\n\n"
-    mkdir /tmp/fabro-check-transcript
+    if ($recorded | is-empty) { $record = $"($record)[exit-fallback] marker unreadable — code from complete\n" }
+    $record = $"($record)-> exit ($code)\n\n"
+    mkdir (transcript-dir)
     $record | save --append (transcript-path (current-run-id))
     # Caller sees exactly what a bare run would show, plus the record
     # framing; exit code passes through so checks fail loud.
     print --no-newline ($record | str trim -r -c "\n")
-    exit $res.exit_code
+    exit $code
 }

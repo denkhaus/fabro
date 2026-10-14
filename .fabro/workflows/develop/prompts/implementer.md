@@ -62,6 +62,12 @@ the recorded proof, and a check whose evidence lives in temporary fixtures
 transcript — without it the reviewer must re-run the entire proof itself.
 A PASS line whose check was not run through the wrapper is unverifiable
 prose; prefer re-running the check through the wrapper over asserting it.
+The wrapper records the exit code itself, captured by an explicit marker
+from the guarded command — so NEVER hand-roll an `echo $?` exit assertion
+into a check command: `$?` expands at the outer shell before the wrapper
+runs, and that once recorded a green code for a check whose guard script
+actually failed. Assert negative paths by the wrapper's own recorded
+`-> exit N` line and exit code, not by echoing codes inside the command.
 
 This report lives ONLY inside the JSON `implementation_summary` field —
 never duplicate it in the pre-JSON markdown text of your response. The
