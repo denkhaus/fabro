@@ -2,10 +2,13 @@
 //! invocations and executions, pause and unpause, its finish, and the
 //! release of its sandbox (VIEWS.md "Run", "Sandbox").
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use fabro_types::{
     Conclusion, FailureCategory, FailureDetail, FailureReason, RunControlAction, RunFailure,
-    RunSandbox, RunStatus, RunTiming, StageOutcome, StartRecord, SuccessReason, usage_rollup,
+    RunProjection, RunSandbox, RunStatus, RunTiming, StageOutcome, StartRecord, SuccessReason,
+    usage_rollup,
 };
 use petri_execution::CoordinatorEvent;
 use petri_execution::events::RunEvent;
@@ -172,7 +175,12 @@ impl RunView {
         // its own success reason, and the x.kind exit edges below are an
         // explicit graph decision that consumes the failure deliberately.
         // A parent whose child died must never read as a clean success.
-        let catch_all_failure = catch_all_leg_failure(projection, failure_message.as_deref());
+        let final_visits = final_visit_stages(projection);
+        let catch_all_failure = catch_all_leg_failure(
+            &final_visits,
+            projection.spec.graph_source.as_deref().unwrap_or_default(),
+            failure_message.as_deref(),
+        );
         if super::fork_taxonomy::refuses_green_conclusion(&run_status, catch_all_failure.as_deref())
         {
             tracing::warn!(
@@ -261,9 +269,18 @@ impl RunView {
         // `conclusion.failure = null`). The park's contract outranks
         // designed exits; the failing STAGE's reason is its authoritative
         // source.
-        let park_message = failure_message
-            .clone()
-            .or_else(|| first_failed_stage_failure(projection));
+        // fabro-29e3: the invocation-level message can be the echo of a
+        // visit a later visit superseded (the engine records the first
+        // failure), so the stages' final outcomes lead. The recorded
+        // message still covers a failed final visit whose own reason is
+        // empty.
+        let park_message = first_failed_stage_failure(&final_visits).or_else(|| {
+            final_visits
+                .iter()
+                .any(|visit| visit.failed)
+                .then(|| failure_message.clone())
+                .flatten()
+        });
         if super::fork_taxonomy::parks_on_rate_limit(&run_status, park_message.as_deref()) {
             run_status = RunStatus::Blocked {
                 blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
@@ -338,6 +355,59 @@ fn branch_slot(slot: &str) -> Option<(u64, u32)> {
     Some((firing, index))
 }
 
+/// One node's FINAL visit as the conclusion reads it (fabro-29e3).
+pub(super) struct FinalVisit {
+    seq:     u32,
+    node:    String,
+    /// Keyed on the stage OUTCOME, not on the reason: a failed final
+    /// visit with no recorded reason still counts, and the callers'
+    /// recorded-message fallback voices it.
+    failed:  bool,
+    failure: Option<String>,
+}
+
+/// The stages a conclusion reads (fabro-29e3): each node once, at its
+/// LATEST visit, in execution order. A bounce cycle re-enters a node,
+/// and the visit that follows supersedes the one before it: a failure
+/// the same node's later successful visit replaced is the recovery the
+/// graph designed, not a leg failure the conclusion names. `StageId`
+/// orders lexicographically; the run's own order lives in each stage's
+/// first event sequence, with the node name breaking ties so parallel
+/// branches stay deterministic.
+pub(super) fn final_visit_stages(projection: &RunProjection) -> Vec<FinalVisit> {
+    let mut latest: HashMap<&str, (u32, FinalVisit)> = HashMap::new();
+    for (stage_id, stage) in projection.iter_stages() {
+        let visit = FinalVisit {
+            seq:     stage.first_event_seq.get(),
+            node:    stage_id.node_id().to_string(),
+            failed:  stage
+                .completion
+                .as_ref()
+                .is_some_and(|completion| completion.outcome.is_failure()),
+            failure: stage.completion.as_ref().and_then(|completion| {
+                completion
+                    .outcome
+                    .is_failure()
+                    .then(|| completion.failure_reason.clone())
+                    .flatten()
+            }),
+        };
+        let visit_number = stage_id.visit();
+        let entry = latest.entry(stage_id.node_id()).or_insert((0, FinalVisit {
+            seq:     0,
+            node:    String::new(),
+            failed:  false,
+            failure: None,
+        }));
+        if visit_number > entry.0 {
+            *entry = (visit_number, visit);
+        }
+    }
+    let mut stages: Vec<FinalVisit> = latest.into_iter().map(|(_, (_, visit))| visit).collect();
+    stages.sort_by(|left, right| (left.seq, &left.node).cmp(&(right.seq, &right.node)));
+    stages
+}
+
 /// The first leg failure a catch-all (unconditional) edge consumed, as
 /// the message the downgrade names: `None` when every failed leg rode an
 /// explicit conditional route — or when no leg failed at all (a
@@ -345,50 +415,31 @@ fn branch_slot(slot: &str) -> Option<(u64, u32)> {
 /// appears here). The failed leg's consumer is the next stage in the
 /// projection's execution order, or `exit` when the leg is last.
 fn catch_all_leg_failure(
-    projection: &fabro_types::RunProjection,
+    final_visits: &[FinalVisit],
+    graph_source: &str,
     recorded: Option<&str>,
 ) -> Option<String> {
-    // Stages in EXECUTION order: `StageId` orders lexicographically, the
-    // run's own order lives in each stage's first event sequence.
-    let mut stages: Vec<(u32, String, Option<String>)> = projection
-        .iter_stages()
-        .map(|(stage_id, stage)| {
-            (
-                stage.first_event_seq.get(),
-                stage_id.node_id().to_string(),
-                stage.completion.as_ref().and_then(|completion| {
-                    completion.outcome.is_failure().then(|| {
-                        completion
-                            .failure_reason
-                            .clone()
-                            .or_else(|| recorded.map(str::to_string))
-                            .unwrap_or_default()
-                    })
-                }),
-            )
-        })
-        .collect();
-    stages.sort_by_key(|(seq, _, _)| *seq);
-    let Some((index, _)) = stages
+    let Some((index, _)) = final_visits
         .iter()
         .enumerate()
-        .find(|(_, (_, _, failure))| failure.is_some())
+        .find(|(_, visit)| visit.failed)
     else {
         // No failed leg: a recorded message without a failed stage is a
         // superseded attempt's echo — retries are invisible.
         return None;
     };
-    let (_, node, message) = &stages[index];
-    let consumer = stages
+    let node = final_visits[index].node.as_str();
+    let consumer = final_visits
         .get(index + 1)
-        .map_or_else(|| "exit".to_string(), |(_, next, _)| next.clone());
-    let edges = super::edge_conditions::EdgeConditions::parse(
-        projection.spec.graph_source.as_deref().unwrap_or_default(),
-    );
+        .map_or_else(|| "exit".to_string(), |next| next.node.clone());
+    let edges = super::edge_conditions::EdgeConditions::parse(graph_source);
     if edges.is_conditional(node, &consumer) {
         return None;
     }
-    message.clone()
+    final_visits[index]
+        .failure
+        .clone()
+        .or_else(|| recorded.map(str::to_string))
 }
 
 /// The first failed stage's failure reason, in execution order: the quota
@@ -397,27 +448,14 @@ fn catch_all_leg_failure(
 /// failures). A retried-then-succeeded leg's final outcome is success,
 /// so it never appears here — the same rule `catch_all_leg_failure`
 /// applies.
-pub(super) fn first_failed_stage_failure(
-    projection: &fabro_types::RunProjection,
-) -> Option<String> {
-    let mut stages: Vec<(u32, Option<String>)> = projection
-        .iter_stages()
-        .map(|(_stage_id, stage)| {
-            (
-                stage.first_event_seq.get(),
-                stage.completion.as_ref().and_then(|completion| {
-                    completion
-                        .outcome
-                        .is_failure()
-                        .then(|| completion.failure_reason.clone().unwrap_or_default())
-                }),
-            )
-        })
-        .collect();
-    stages.sort_by_key(|(seq, _)| *seq);
-    stages
-        .into_iter()
-        .find_map(|(_, failure)| failure.filter(|message| !message.is_empty()))
+pub(super) fn first_failed_stage_failure(final_visits: &[FinalVisit]) -> Option<String> {
+    final_visits.iter().find_map(|visit| {
+        visit
+            .failed
+            .then(|| visit.failure.clone())
+            .flatten()
+            .filter(|message| !message.is_empty())
+    })
 }
 
 #[cfg(test)]
