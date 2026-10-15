@@ -8,21 +8,22 @@
 #      (or --adopt <run-id> to resume with an existing run)
 #   3. fabro start <id> + fabro attach <id>      -> live output
 #   4. fabro wait <id> --json                    -> status/reason truth
-#   5. resolve the run PR: the wait JSON when it
-#      carries one, else a bounded `gh pr list`
-#      poll (~90s) — the platform may create the
-#      PR seconds AFTER terminal status (race);
-#      orchestration runs (PR-less workflows, by
-#      slug) fast-exit here instead
-#   6. integrate (fetch origin first):
-#        - post the required `lab-check` status LOCALLY on the run branch
-#          head (variant B, fabro-ab2c: no Actions runner involved; the
-#          lab-check.yml workflow is disabled/commented in the tree)
-#        - GitHub auto-merge merges the PR -> run branch contained in
-#          origin/<branch> -> pull --ff-only
-#        - else squash-merge fabro/run/<id> into <branch>, push
-#          (fallback when auto-merge cannot engage; the leftover PR on
-#          GitHub can be closed as already-integrated)
+#      then resolve the run PR: the wait JSON when it carries one,
+#      else `wait-for-late-pr` (bounded gh poll — the platform may
+#      create the PR seconds AFTER terminal status); orchestration
+#      runs (PR-less workflows, by slug) fast-exit here instead
+#   5. integrate (fetch origin first), via the defs below:
+#        - `post-lab-check`: post the required `lab-check` status
+#          LOCALLY on the run branch head (variant B, fabro-ab2c:
+#          no Actions runner involved; the lab-check.yml workflow is
+#          disabled/commented in the tree)
+#        - `wait-auto-merge` + `wait-pending-gate`: GitHub auto-merge
+#          merges the PR -> run branch contained in origin/<branch>
+#          -> pull --ff-only
+#        - else `emergency-squash`: squash-merge fabro/run/<id> into
+#          <branch>, push, sweep the leftover PR (fallback when
+#          auto-merge cannot engage; the leftover PR on GitHub can be
+#          closed as already-integrated)
 #
 # No ask-based improve review anymore (ADR-0015): the revisor workflow
 # owns run revisioning on the merged world — it embeds the improve
@@ -42,6 +43,24 @@
 const SERVER_DEFAULT = 'https://mirtuell.net'
 const GITHUB_REPO = 'denkhaus/fabro'  # lab world repo (variant B status posts)
 
+# ── PR-integration tuning knobs (fabro-164b, ADR-0028) ──────────────
+# One place for every timing the PR-integration half was re-tuned on
+# (five structural touches in 12 days). Retune HERE, never inline in
+# the defs below.
+const PR_POLL_ROUNDS = 60          # late-PR positive lookup: 60 x 5s = 5 min
+                                  # (fabro-767b: PRs observed ~2-3 min after
+                                  # terminal; 90s was too short and sent a
+                                  # healthy integration to emergency squash)
+const PR_POLL_SLEEP = 5sec
+const MERGE_DEADLINE_ROUNDS = 120  # auto-merge wait: 120 x 15s = 30 min
+                                  # (fabro-767b: the dogfood-gate takes
+                                  # ~25 min; a shorter deadline squashes
+                                  # while the gate is still RUNNING)
+const MERGE_POLL_SLEEP = 15sec
+const PENDING_GUARD_ROUNDS = 60    # pre-squash pending-checks guard:
+                                  # 60 x 15s = 15 min extra gate patience
+const GUARD_SLEEP = 15sec
+
 # Terminal failure: loud ALARM block on stderr, exit 1.
 def fail [msg: string]: nothing -> nothing {
     print -e ''
@@ -57,6 +76,170 @@ def ok [result: record, what: string]: nothing -> record {
         fail $"($what) failed: ($detail)"
     }
     $result
+}
+
+# ── PR-integration defs (fabro-164b extraction) ─────────────────────
+
+# gh pr list for the run branch in a given state; [] on any gh/parse
+# failure (fail-open: a broken poll never fabricates a merge).
+def run-prs [run_id: string, state: string]: nothing -> list {
+    let listed = (do {
+        ^gh pr list --repo $GITHUB_REPO --head $"fabro/run/($run_id)" --state $state --json number --limit 1
+    } | complete)
+    if $listed.exit_code != 0 { return [] }
+    try { $listed.stdout | from json } catch { [] }
+}
+
+# GitHub's own PR state is the authoritative merged signal (fabro-e62d:
+# tree equality alone missed a landed squash merge — observed PR #349
+# merged while the poll kept reporting not landed).
+def run-pr-merged [run_id: string]: nothing -> bool {
+    ((run-prs $run_id 'merged') | length) > 0
+}
+
+# Tree-equality merge detection — not commit ancestry: GitHub auto-merge
+# SQUASHES the run branch into the base (run 01M11P68SHFS: merge commit
+# 5f953db8, one parent), so the run-branch tip is never an ancestor of
+# origin/<branch> after integration.
+def trees-equal [run_branch: string, base: string]: nothing -> bool {
+    ((do { git diff --quiet $run_branch $base } | complete).exit_code == 0)
+}
+
+def fast-forward [branch: string]: nothing -> nothing {
+    let _ = (ok (do { git pull --ff-only origin $branch } | complete) 'git pull')
+}
+
+# Bounded positive lookup for a PR the wait JSON did not carry: poll
+# `gh pr list --head fabro/run/<id>` for a short window before
+# concluding anything (fabro-4acd: the PR appeared ~20s after terminal).
+# On a no-hit, still continue — the run-branch check in main decides
+# loudly whether anything can be integrated.
+def wait-for-late-pr [run_id: string]: nothing -> nothing {
+    mut pr_found = false
+    print $"run_workflow: wait JSON lacks pull_request — polling gh for the run PR for ($PR_POLL_ROUNDS * 5) sec"
+    for _ in 1..$PR_POLL_ROUNDS {
+        sleep $PR_POLL_SLEEP
+        if ((run-prs $run_id 'open') | length) > 0 {
+            $pr_found = true
+            break
+        }
+    }
+    if $pr_found {
+        print 'run_workflow: run PR found after terminal (created late) — continuing integration'
+    } else {
+        print 'run_workflow: WARN no run PR seen within the poll window — continuing; the run-branch check below decides'
+    }
+}
+
+# Variant B (fabro-ab2c): post the required `lab-check-local` context
+# locally on the run branch head. The name deliberately differs from the
+# workflow's `lab-check`: GitHub auto-resolves a plain context string to
+# the app that last reported a check run of that name (Actions, app
+# 15368) — pinning it so a commit status can never satisfy it.
+# `lab-check-local` has no app history and stays plain (commit statuses
+# count). GitHub auto-merge (enabled by the platform at PR creation,
+# project.toml auto_merge = true) merges the PR without any Actions
+# runner. Failure is a WARN, not fatal — the squash fallback still
+# integrates the work.
+def post-lab-check [run_sha: string]: nothing -> nothing {
+    let posted = (do { ^gh api $"repos/($GITHUB_REPO)/statuses/($run_sha)" -f state=success -f context=lab-check-local -f description='local lab-check (run terminal-succeeded)' } | complete)
+    if $posted.exit_code != 0 {
+        let detail = ($posted.stderr | str trim | default $posted.stdout | str trim)
+        print $"run_workflow: WARN local lab-check post failed — auto-merge cannot engage, squash fallback will integrate: ($detail)"
+    }
+}
+
+# Auto-merge is the PRIMARY integration path (user directive 2026-09-05:
+# local squash is only an emergency workaround): the Dogfood Gate
+# (path-adaptive CI) usually completes in seconds for markdown-only run
+# PRs and in minutes for code PRs, so wait for the REAL GitHub merge
+# instead of racing it locally. Bounded by MERGE_DEADLINE_ROUNDS.
+def wait-auto-merge [run_id: string, run_branch: string, branch: string]: nothing -> bool {
+    mut auto_merged = false
+    for _ in 1..$MERGE_DEADLINE_ROUNDS {
+        sleep $MERGE_POLL_SLEEP
+        let _ = (do { git fetch origin $branch } | complete)
+        $auto_merged = (trees-equal $run_branch $"origin/($branch)")
+        if not $auto_merged {
+            $auto_merged = (run-pr-merged $run_id)
+        }
+        if $auto_merged { break }
+    }
+    $auto_merged
+}
+
+# fabro-767b pre-squash guard: if an OPEN run PR exists and its checks
+# are still pending, the gate is doing its job — keep waiting (bounded)
+# instead of squashing past a running gate. Returns whether auto-merge
+# landed during the guard.
+def wait-pending-gate [run_id: string]: nothing -> bool {
+    mut guard = 0
+    mut auto_merged = false
+    while $guard < $PENDING_GUARD_ROUNDS {
+        let prs = (run-prs $run_id 'open')
+        if ($prs | length) == 0 { break }
+        let checks = (do {
+            ^gh pr checks --repo $GITHUB_REPO ($prs | first | get number) --json state,bucket
+        } | complete)
+        let pend = (try { $checks.stdout | from json | where bucket == 'pending' | length } catch { 1 })
+        if $pend == 0 { break }
+        print $"run_workflow: run PR exists with pending checks — waiting out the gate \(fabro-767b guard, round ($guard)\)"
+        sleep $GUARD_SLEEP
+        $auto_merged = (run-pr-merged $run_id)
+        if $auto_merged { break }
+        $guard = $guard + 1
+    }
+    $auto_merged
+}
+
+# EMERGENCY fallback (fabro-ab2c, provisional auto-merge): squash-merge
+# the run branch into the world branch and push. Kept because it has
+# fired productively (the PR #357 incident integrated via this path).
+# Also recovers a late auto-merge landing between poll and push, and
+# sweeps the leftover PR + run branch so the push-gate inherits no
+# ghost.
+def emergency-squash [workflow: string, run_id: string, run_branch: string, branch: string]: nothing -> nothing {
+    print $"run_workflow: WARN auto-merge did not land within ($MERGE_DEADLINE_ROUNDS * 15) sec — EMERGENCY squash fallback engages \(dogfood-gate stuck? check the PR checks\)"
+    print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c\)"
+    ok (do { git merge --squash $run_branch } | complete) 'squash merge'
+    let nothing_staged = ((do { git diff --cached --quiet } | complete).exit_code == 0)
+    if $nothing_staged {
+        print 'run_workflow: run branch carries no tree changes — nothing to commit'
+    } else {
+        ok (do { git commit -m $"($workflow): run ($run_id)" } | complete) 'git commit'
+        let pushed = (do { git push origin $branch } | complete)
+        if $pushed.exit_code != 0 {
+            # A late auto-merge can land between the poll above and
+            # this push: origin moved ahead, the push rejects
+            # non-fast-forward. If the remote tree now equals the run
+            # branch's tree, GitHub integrated the same work — the
+            # local squash is redundant. Drop it, sync to origin, and
+            # CONTINUE (integration already happened); only a push
+            # failure without a landed merge stays fatal.
+            let _ = (do { git fetch origin $branch } | complete)
+            if (trees-equal $run_branch $"origin/($branch)") {
+                print 'run_workflow: auto-merge landed during squash fallback — syncing to origin, continuing'
+                ok (do { git reset --hard $"origin/($branch)" } | complete) 'git reset'
+            } else {
+                let detail = ($pushed.stderr | str trim | default $pushed.stdout | str trim)
+                fail $"git push failed: ($detail)"
+            }
+        }
+    }
+
+    # fabro-767b sweep: a PR that appeared late (or never merged) is
+    # redundant once the squash carried the work — close it as
+    # already-integrated and delete the run branch so the push-gate
+    # inherits no ghost (PR #357 incident).
+    let lprs = (run-prs $run_id 'open')
+    if ($lprs | length) > 0 {
+        let lnum = ($lprs | first | get number)
+        print $"run_workflow: closing leftover run PR #($lnum) as already-integrated (fabro-767b sweep)"
+        let _ = (do {
+            ^gh pr close ($lnum) --repo $GITHUB_REPO --comment $"Already integrated via emergency squash into ($branch) — the PR appeared late or its gate never concluded (fabro-767b)."
+        } | complete)
+    }
+    let _ = (do { git push origin --delete $"fabro/run/($run_id)" } | complete)
 }
 
 def main [
@@ -182,35 +365,7 @@ def main [
     }
     let has_pr = (($info | get -o pull_request | default null) != null)
     if not $has_pr {
-        # Bounded positive lookup: poll `gh pr list --head fabro/run/<id>`
-        # for a short window before concluding anything (fabro-4acd: the
-        # PR appeared ~20s after terminal). On a hit, fall through to the
-        # normal integrate path; on no hit, still continue — the run-branch
-        # check below decides loudly whether anything can be integrated.
-        # fabro-767b: observed PR creation up to ~2-3 min AFTER terminal
-        # status (PR #357, 09:03:03Z vs 09:00:59Z) — 90s was too short and
-        # sent a healthy integration into the emergency squash path.
-        let pr_polls = 60
-        mut pr_found = false
-        print $"run_workflow: wait JSON lacks pull_request — polling gh for the run PR for ($pr_polls * 5) sec"
-        for _ in 1..$pr_polls {
-            sleep 5sec
-            let listed = (do {
-                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --json number --limit 1
-            } | complete)
-            if $listed.exit_code == 0 {
-                let prs = (try { $listed.stdout | from json } catch { [] })
-                if ($prs | length) > 0 {
-                    $pr_found = true
-                    break
-                }
-            }
-        }
-        if $pr_found {
-            print 'run_workflow: run PR found after terminal (created late) — continuing integration'
-        } else {
-            print 'run_workflow: WARN no run PR seen within the poll window — continuing; the run-branch check below decides'
-        }
+        wait-for-late-pr $run_id
     }
 
     # ── 5. integrate the run branch ──────────────────────────────────
@@ -223,139 +378,16 @@ def main [
         }
         fail $"run branch ($run_branch) not found — nothing to integrate"
     }
-    # Variant B (fabro-ab2c): post the required `lab-check-local`
-    # context locally on the run branch head. The name deliberately
-    # differs from the workflow's `lab-check`: GitHub auto-resolves a
-    # plain context string to the app that last reported a check run of
-    # that name (Actions, app 15368) — pinning it so a commit status can
-    # never satisfy it. `lab-check-local` has no app history and stays
-    # plain (commit statuses count). GitHub auto-merge (enabled by the
-    # platform at PR creation, project.toml auto_merge = true) merges the
-    # PR without any Actions runner. Failure is a WARN, not fatal — the
-    # squash fallback below still integrates the work.
     let run_sha = ((do { git rev-parse $run_branch } | complete).stdout | str trim)
-    let posted = (do { ^gh api $"repos/($GITHUB_REPO)/statuses/($run_sha)" -f state=success -f context=lab-check-local -f description='local lab-check (run terminal-succeeded)' } | complete)
-    if $posted.exit_code != 0 {
-        let detail = ($posted.stderr | str trim | default $posted.stdout | str trim)
-        print $"run_workflow: WARN local lab-check post failed — auto-merge cannot engage, squash fallback will integrate: ($detail)"
-    }
-
-    # Auto-merge is the PRIMARY integration path (user directive
-    # 2026-09-05: local squash is only an emergency workaround): the
-    # Dogfood Gate (path-adaptive CI) usually completes in seconds for
-    # markdown-only run PRs and in minutes for code PRs, so wait for the
-    # REAL GitHub merge instead of racing it locally.
-    #
-    # Detection is TREE EQUALITY, not commit ancestry: GitHub auto-merge
-    # SQUASHES the run branch into the base (run 01M11P68SHFS: merge
-    # commit 5f953db8, one parent), so the run-branch tip is never an
-    # ancestor of origin/<branch> after integration — an is-ancestor
-    # check can never see the landed merge.
-    mut auto_merged = false
-    # fabro-767b: the PR's required dogfood-gate takes ~25 min — a 600s
-    # merge deadline squashes while the gate is still RUNNING (bypasses
-    # verification). 120 x 15s = 30 min covers it.
-    let merge_deadline = 120
-    for _ in 1..$merge_deadline {
-        sleep 15sec
-        let _ = (do { git fetch origin $branch } | complete)
-        $auto_merged = ((do {
-            git diff --quiet $run_branch $"origin/($branch)"
-        } | complete).exit_code == 0)
-        if not $auto_merged {
-            # fabro-e62d: tree equality alone missed a landed squash merge
-            # (observed: PR #349 merged while the poll kept reporting not
-            # landed). GitHub's own PR state is the authoritative signal.
-            let merged = (do {
-                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state merged --json number --limit 1
-            } | complete)
-            if $merged.exit_code == 0 {
-                let prs = (try { $merged.stdout | from json } catch { [] })
-                $auto_merged = (($prs | length) > 0)
-            }
-        }
-        if $auto_merged { break }
-    }
-    let already_merged = $auto_merged
-    if $already_merged {
+    post-lab-check $run_sha
+    if (wait-auto-merge $run_id $run_branch $branch) {
         print 'run_workflow: auto-merge landed — fast-forward pull'
-        ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
+        fast-forward $branch
+    } else if (wait-pending-gate $run_id) {
+        print 'run_workflow: auto-merge landed during the guard — fast-forward pull'
+        fast-forward $branch
     } else {
-        # fabro-767b pre-squash guard: if an OPEN run PR exists and its
-        # checks are still pending, the gate is doing its job — keep
-        # waiting (bounded) instead of squashing past a running gate.
-        mut guard = 0
-        while $guard < 60 {
-            let open_prs = (do {
-                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state open --json number --limit 1
-            } | complete)
-            let prs = (try { $open_prs.stdout | from json } catch { [] })
-            if ($prs | length) == 0 { break }
-            let checks = (do {
-                ^gh pr checks --repo ($GITHUB_REPO) ($prs | first | get number) --json state,bucket
-            } | complete)
-            let pend = (try { $checks.stdout | from json | where bucket == 'pending' | length } catch { 1 })
-            if $pend == 0 { break }
-            print $"run_workflow: run PR exists with pending checks — waiting out the gate \(fabro-767b guard, round ($guard)\)"
-            sleep 15sec
-            $auto_merged = ((do {
-                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state merged --json number --limit 1
-            } | complete | get stdout | from json | length) > 0)
-            if $auto_merged { break }
-            $guard = $guard + 1
-        }
-        if $auto_merged {
-            print 'run_workflow: auto-merge landed during the guard — fast-forward pull'
-            ok (do { git pull --ff-only origin $branch } | complete) 'git pull'
-        } else {
-        print $"run_workflow: WARN auto-merge did not land within ($merge_deadline * 15) sec — EMERGENCY squash fallback engages \(dogfood-gate stuck? check the PR checks\)"
-        print $"run_workflow: squash-merging ($run_branch) into ($branch) \(provisional auto-merge, fabro-ab2c)"
-        ok (do { git merge --squash $run_branch } | complete) 'squash merge'
-        let nothing_staged = ((do { git diff --cached --quiet } | complete).exit_code == 0)
-        if $nothing_staged {
-            print 'run_workflow: run branch carries no tree changes — nothing to commit'
-        } else {
-            ok (do { git commit -m $"($workflow): run ($run_id)" } | complete) 'git commit'
-            let pushed = (do { git push origin $branch } | complete)
-            if $pushed.exit_code != 0 {
-                # A late auto-merge can land between the poll above and
-                # this push: origin moved ahead, the push rejects
-                # non-fast-forward. If the remote tree now equals the run
-                # branch's tree, GitHub integrated the same work — the
-                # local squash is redundant. Drop it, sync to origin, and
-                # CONTINUE (integration already happened); only a push
-                # failure without a landed merge stays fatal.
-                let _ = (do { git fetch origin $branch } | complete)
-                let landed = ((do {
-                    git diff --quiet $run_branch $"origin/($branch)"
-                } | complete).exit_code == 0)
-                if $landed {
-                    print 'run_workflow: auto-merge landed during squash fallback — syncing to origin, continuing'
-                    ok (do { git reset --hard $"origin/($branch)" } | complete) 'git reset'
-                } else {
-                    let detail = ($pushed.stderr | str trim | default $pushed.stdout | str trim)
-                    fail $"git push failed: ($detail)"
-                }
-            }
-            }
-
-            # fabro-767b sweep: a PR that appeared late (or never merged)
-            # is redundant once the squash carried the work — close it as
-            # already-integrated and delete the run branch so the
-            # push-gate inherits no ghost (PR #357 incident).
-            let leftover = (do {
-                ^gh pr list --repo ($GITHUB_REPO) --head $"fabro/run/($run_id)" --state open --json number --limit 1
-            } | complete)
-            let lprs = (try { $leftover.stdout | from json } catch { [] })
-            if ($lprs | length) > 0 {
-                let lnum = ($lprs | first | get number)
-                print $"run_workflow: closing leftover run PR #($lnum) as already-integrated (fabro-767b sweep)"
-                let _ = (do {
-                    ^gh pr close ($lnum) --repo ($GITHUB_REPO) --comment $"Already integrated via emergency squash into ($branch) — the PR appeared late or its gate never concluded (fabro-767b)."
-                } | complete)
-            }
-            let _ = (do { git push origin --delete $"fabro/run/($run_id)" } | complete)
-        }
+        emergency-squash $workflow $run_id $run_branch $branch
     }
 
     print $"run_workflow: done — run ($run_id) integrated"
