@@ -443,8 +443,11 @@ stores it belongs to; reach them by phase need:
   `Cargo.toml` version + `cargo update --workspace` + `just
   image-release` (tag `<version>-<sha>`); N increments once per built
   release; the base moves only with a deliberate intake decision.
-- Secret-gated steps (tofu/gopass) are probed with a bounded check
-  (`timeout 5 ... gopass show`) BEFORE the step that needs them; the
+- Secret-gated steps (tofu/gopass) are probed with a BLOCKING
+  `gopass show` WITHOUT a timeout wrapper BEFORE the step that needs
+  them (user directive 2026-10-15: a `timeout`-wrapped probe KILLS the
+  user's unlock prompt mid-entry — the mask disappears as soon as they
+  start typing; the probe must wait for the unlock, not race it); the
   store relocks on its own TTL — ask the user to warm it EARLY, not at
   deploy time. Recompute the sandbox-plugin sha per deploy (same pin rev
   usually means the same sha — verify, never assume).
