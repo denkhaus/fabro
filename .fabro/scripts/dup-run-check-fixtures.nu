@@ -366,6 +366,41 @@ def main [] {
         expect 'n: duplicate sha still reported' (($nrep.candidates | first | get sha | default null | str length) >= 7) true
         expect 'n: tracker shows top seed still open' (sd-stat 'fabro-fix-0012').status 'open'
 
+        # (s1)-(s5) fabro-a8d5 stranded-implementation scan: salvage
+        # pointers in candidate descriptions are verified mechanically —
+        # resolved commit present, NOT already in base, source branch
+        # still fetched — and a salvage-source run branch cited WITHOUT
+        # the canonical `salvage: git show <commit> on branch <branch>`
+        # bullet is flagged pointer_missing (complements the planner
+        # salvage-pointer rule; the planner resolves the commit before
+        # shipping the brief).
+        ^git checkout -q -b run-strand
+        ^git commit -q --allow-empty -m 'stranded implementer commit for scan fixtures'
+        let strand_sha = (^git rev-parse HEAD | str trim)
+        ^git push -q origin HEAD:refs/heads/fabro/run/RUN-STRAND
+        ^git checkout -q main
+        let in_base_sha = (^git rev-parse HEAD | str trim)
+        let srow = {|id, desc| {id: $id, title: ("fixture " + $id), status: "open", type: "task", priority: 2, createdAt: "2026-10-16T00:00:00.000Z", updatedAt: "2026-10-16T00:00:00.000Z", description: $desc} | to json --raw}
+        [(do $srow 'fabro-fix-0020' ("Basis: run RUN-STRAND. salvage: git show " + $strand_sha + " on branch fabro/run/RUN-STRAND"))
+         (do $srow 'fabro-fix-0021' "salvage: git show 0123456789abcdef on branch fabro/run/RUN-STRAND")
+         (do $srow 'fabro-fix-0022' ("salvage: git show " + $in_base_sha + " on branch fabro/run/RUN-STRAND"))
+         (do $srow 'fabro-fix-0023' "salvage from stranded branch fabro/run/RUN-STRAND, commit unresolved")
+         (do $srow 'fabro-fix-0024' "no salvage surface at all, just prose")] | save --append .seeds/issues.jsonl
+
+        let s = (preflight $pre 'fabro-fix-0020,fabro-fix-0021,fabro-fix-0022,fabro-fix-0023,fabro-fix-0024' 'RUN-PREFLIGHT')
+        let srep = ($s.context_updates | get 'output.preflight')
+        let srow_of = {|id| $srep.candidates | where {|c| $c.seed == $id} | first}
+        expect 's1: resolved unmerged pointer salvage_ok' (do $srow_of fabro-fix-0020 | get salvage_ok) true
+        expect 's1: resolved unmerged pointer no flags' (do $srow_of fabro-fix-0020 | get salvage_flags | length) 0
+        expect 's2: unresolvable commit flagged' (do $srow_of fabro-fix-0021 | get salvage_flags | first | get problem) 'commit_missing'
+        expect 's2: unresolvable commit salvage_ok false' (do $srow_of fabro-fix-0021 | get salvage_ok) false
+        expect 's3: already-in-base salvage flagged' (do $srow_of fabro-fix-0022 | get salvage_flags | first | get problem) 'already_in_base'
+        expect 's4: pointerless stranded branch flagged' (do $srow_of fabro-fix-0023 | get salvage_flags | first | get problem) 'pointer_missing'
+        expect 's4: pointerless branch named' (do $srow_of fabro-fix-0023 | get salvage_flags | first | get branch) 'fabro/run/RUN-STRAND'
+        expect 's5: salvage-free seed salvage_ok' (do $srow_of fabro-fix-0024 | get salvage_ok) true
+        expect 's5: salvage-free seed no flags' (do $srow_of fabro-fix-0024 | get salvage_flags | length) 0
+        expect 's: legend maps stranded_implementation' ($srep.legend | get -o stranded_implementation | default '' | str contains 'salvage') true
+
         # (k) fabro-9ec3 arm 3: schema ban semantics + graph wiring.
         let wf = ($FIXTURES_DIR | path join '..' 'workflows' 'develop')
         let schema_ok = (do { ^python3 -c ("import json,re;s=json.load(open('" + ($wf | path join 'schemas' 'planner-output.schema.json') + "'));p=re.compile(s['properties']['context_updates']['properties']['current_seed_brief']['pattern']);assert p.search('gate green via the deterministic tester step');assert not p.search('run just qualitygate');assert not p.search('invoke nu scripts/qualitygate.nu');print('ok')") } | complete)
