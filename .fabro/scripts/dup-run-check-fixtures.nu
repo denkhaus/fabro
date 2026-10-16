@@ -85,10 +85,15 @@ def check [script: path, id: string, self: string] {
 
 
 # Run planner-preflight.nu (fabro-a32f; report-only since fabro-83df)
-# with a piped run id against the synthetic base and return the parsed
-# routing JSON object.
+# against the synthetic base and return the parsed routing JSON object.
+# fabro-96c6 contract: the script takes the invoking run id from the
+# FABRO_RUN_ID env (petri has no internal.run_id stdin state) — drive it
+# with with-env, never a stdin pipe. A pipe was silently ignored after
+# the cutover, the self-exclusion in the in-flight arm never fired, and
+# case (j) regressed to naming the invoking run's own branch (the newest
+# unmerged claimant) instead of the live foreign run.
 def preflight [script: path, candidates: string, self: string] {
-    let out = (do { $self | nu $script --base origin/main --candidates $candidates } | complete)
+    let out = (do { with-env {FABRO_RUN_ID: $self} { nu $script --base origin/main --candidates $candidates } } | complete)
     if ($out.exit_code != 0) {
         print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
         exit 1
