@@ -86,6 +86,14 @@
 #   RETIRED with fabro-83df (2026-09-19): the former live-close arm
 #     (fabro-ead4 note+close for every unambiguous duplicate) and the
 #     report-only/live route split — report-only is the only mode now.
+#   arm 4 (fabro-a8d5, complements the planner prompt's salvage-pointer
+#     rule): stranded-implementation scan — a candidate description
+#     citing a stranded-branch SALVAGE source is verified mechanically
+#     per pointer: canonical bullet parsed, commit resolvable, commit
+#     NOT already in base, salvage-source branch still fetchable; a
+#     salvage-source run branch cited WITHOUT the canonical pointer is
+#     flagged pointer_missing. Fail-open advisory: every flag routes
+#     through planner adjudication (see stranded-flags below).
 #   arm 3: the brief gate-command ban lives in the PLANNER OUTPUT
 #     SCHEMA (.fabro/workflows/develop/schemas/planner-output.schema.json,
 #     wired via the planner node's output_schema) — the fabro-017f teeth
@@ -167,11 +175,11 @@ def journal-claims [sha: string, run: string] {
 def in-flight-claims [remote: string, base: string, self_id: string] {
     let fetch = (do { ^git fetch -q $remote '+refs/heads/fabro/run/*:refs/preflight-run/fabro/run/*' } | complete)
     if $fetch.exit_code != 0 {
-        return {claims: [], note: $"in-flight fetch degraded: ($fetch.stderr | str trim | str substring 0..160)"}
+        return {claims: [], note: $"in-flight fetch degraded: ($fetch.stderr | str trim | str substring 0..160)", fetched: false}
     }
     let refs = (do { ^git for-each-ref '--sort=-committerdate' '--format=%(refname) %(objectname) %(committerdate:unix)' 'refs/preflight-run/' } | complete)
     if $refs.exit_code != 0 {
-        return {claims: [], note: "in-flight for-each-ref degraded"}
+        return {claims: [], note: "in-flight for-each-ref degraded", fetched: false}
     }
     let now = (date now | format date "%s" | into int)
     let rows = ($refs.stdout | parse --regex '(?m)^refs/preflight-run/fabro/run/(?P<run>[0-9A-Za-z-]+) (?P<sha>[0-9a-f]{7,40}) (?P<ts>\d+)')
@@ -198,7 +206,79 @@ def in-flight-claims [remote: string, base: string, self_id: string] {
     } else {
         $claims | group-by seed | items {|seed, cs| {seed: $seed, run: ($cs | get run | first)}}
     })
-    {claims: $dedup, note: null}
+    # `fetched` tells the stranded-implementation arm (below) whether
+    # branch-presence checks are knowable at all this run: the
+    # refs/preflight-run/ namespace exists ONLY when this fetch and the
+    # for-each-ref both succeeded. Fail-open consumers default it false.
+    {claims: $dedup, note: null, fetched: true}
+}
+
+# Stranded-implementation scan (fabro-a8d5; standing-policy arm 4).
+# Complements the planner prompt's salvage-pointer rule: a seed whose
+# prior work sits on a stranded run branch must cite the IMPLEMENTER
+# COMMIT via the canonical bullet
+#   `salvage: git show <commit> on branch <branch>`
+# — this arm verifies every such pointer MECHANICALLY at claim time so
+# the planner never re-derives it:
+#   commit_missing   the pointer names a commit that no longer resolves
+#                    (rotted short id, rewritten branch);
+#   already_in_base  the salvage already landed on the merge target —
+#                    the planner's ALREADY LANDED two-branch-rule arm
+#                    owns that seed, not the salvage arm;
+#   branch_missing   the salvage-source run branch is no longer fetched
+#                    (deleted remote branch) — knowable ONLY when the
+#                    in-flight fetch succeeded (refs_fetched), else no
+#                    flag (fail-open);
+#   pointer_missing  a salvage-source run branch is cited on a
+#                    salvage-mentioning line WITHOUT the canonical
+#                    commit bullet — the pointer-format rule is
+#                    violated; the planner resolves the commit BEFORE
+#                    shipping the brief.
+# ADVISORY only (the fabro-83df contract): flags never close, skip, or
+# route — they are planner input. Fail-open: the whole arm is wrapped
+# in try/catch at the call site; git failures degrade to fewer flags,
+# never to a blocked run. Precedence per pointer: commit_missing, then
+# already_in_base, then branch_missing — the first true problem wins,
+# so a row's flags name at most one problem per pointer.
+def salvage-pointers [desc: string]: nothing -> list {
+    if not ($desc | str lowercase | str contains "salvage") { return [] }
+    $desc | parse --regex '(?i)salvage:\s*git show (?P<commit>[0-9a-f]{7,40}) on branch (?P<branch>\S+)'
+}
+
+def stranded-flags [desc: string, base: string, refs_fetched: bool]: nothing -> list {
+    let pointers = (salvage-pointers $desc)
+    mut flags = []
+    for p in $pointers {
+        # Single-quoted: the peel `^{commit}` must reach git verbatim —
+        # nu's $'...' string treats bare braces as interpolation risk.
+        let spec = ($p.commit + '^{commit}')
+        let found = (do { ^git rev-parse --verify --quiet $spec } | complete)
+        if $found.exit_code != 0 {
+            $flags = ($flags | append {kind: "salvage_pointer", commit: $p.commit, branch: $p.branch, problem: "commit_missing"})
+            continue
+        }
+        let in_base = (do { ^git merge-base --is-ancestor $p.commit $base } | complete)
+        if $in_base.exit_code == 0 {
+            $flags = ($flags | append {kind: "salvage_pointer", commit: $p.commit, branch: $p.branch, problem: "already_in_base"})
+            continue
+        }
+        if $refs_fetched and ($p.branch | str starts-with "fabro/run/") {
+            let present = (do { ^git show-ref --verify --quiet ("refs/preflight-run/" + $p.branch) } | complete)
+            if $present.exit_code != 0 {
+                $flags = ($flags | append {kind: "salvage_pointer", commit: $p.commit, branch: $p.branch, problem: "branch_missing"})
+            }
+        }
+    }
+    # Pointer-format violations: a salvage-mentioning line that names a
+    # run branch but carries no canonical commit pointer (the planner
+    # salvage-pointer rule requires the resolved IMPLEMENTER COMMIT
+    # before the brief ships).
+    if ($pointers | is-empty) {
+        for b in ($desc | parse --regex '(?i)salvage[^\n]*?fabro/run/(?P<run>[0-9A-Za-z-]+)') {
+            $flags = ($flags | append {kind: "salvage_pointer", commit: null, branch: ("fabro/run/" + $b.run), problem: "pointer_missing"})
+        }
+    }
+    $flags
 }
 
 # Bounded per-candidate row for the planner-facing report. Anchor fields
@@ -221,11 +301,14 @@ def envelope-risk? [desc: string]: nothing -> bool {
     $tokens | any {|t| $desc | str contains $t}
 }
 
-def row [v: record, desc: string, root: string, claims: list] {
+def row [v: record, desc: string, root: string, claims: list, base: string, refs_fetched: bool] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
     let checked = ((extract-anchors $desc | each {|a| check-anchor $a $root}) | append (check-bare-paths $desc $root))
     let flags = ((drop-proposed $desc $checked) | where {|f| $f.status != "ok"})
+    # Stranded-implementation scan (arm 4): try/catch is the fail-open
+    # hard rule — an arm crash degrades to zero flags, never blocks.
+    let sflags = (try { stranded-flags $desc $base $refs_fetched } catch { [] })
     # in-flight is advisory: never marked for candidates whose
     # implementation already landed (the duplicate close path owns them).
     let hit = (if $v.verdict == "duplicate" { null } else { $claims | where {|c| $c.seed == $v.seed} | first | default null })
@@ -244,6 +327,8 @@ def row [v: record, desc: string, root: string, claims: list] {
      anchor_flags: $flags,
      in_flight: ($hit != null),
      in_flight_run: (if $hit == null { null } else { $hit.run}),
+     salvage_ok: (($sflags | length) == 0),
+     salvage_flags: $sflags,
      envelope_risk: (envelope-risk? $desc)}
 }
 
@@ -329,7 +414,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     # In-flight claims (fabro-9ec3 arm 2): fail-open wrapper — a crash in
     # the arm degrades to zero claims with a note, never blocks the run.
     let remote = ($base | split row '/' | first)
-    let inflight = (try { in-flight-claims $remote $base ($run_id | default null) } catch { {claims: [], note: "in-flight arm degraded (fail-open)"} })
+    let inflight = (try { in-flight-claims $remote $base ($run_id | default null) } catch { {claims: [], note: "in-flight arm degraded (fail-open)", fetched: false} })
 
     # Report-only (fabro-83df, 2026-09-19): no closures, no early exit.
     # The former mechanical superseded-close block (fabro-ead4) is
@@ -351,10 +436,14 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     # still yield 'duplicate' — advisory input, the planner judges
     # acceptance criteria per the two-branch rule.
     let mention_legend = {mention_only_matches: "advisory: landed commits whose only seed-id reference sits in journal-style message bullets — mentions, never landed implementations; they cannot produce a 'duplicate' verdict"}
+    # fabro-a8d5 stranded_implementation legend: maps every salvage
+    # pointer problem to its planner action so the table stays
+    # self-interpreting (the fabro-ead4 legend contract).
+    let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing (pointer cites a commit that no longer resolves), already_in_base (the salvage landed on the merge target; the ALREADY LANDED two-branch-rule arm owns the seed), branch_missing (salvage-source run branch no longer fetched), or pointer_missing (salvage-source run branch cited without the canonical 'salvage: git show <commit> on branch <branch>' bullet — resolve the implementer commit BEFORE shipping the brief)"}
     let report = {mode: $mode,
                   run_id: ($run_id | default null),
-                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default [])}),
-                  legend: ($legend | merge $envelope_legend | merge $mention_legend),
+                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default []) $base ($inflight.fetched? | default false)}),
+                  legend: ($legend | merge $envelope_legend | merge $mention_legend | merge $salvage_legend),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",

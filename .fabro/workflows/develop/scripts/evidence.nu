@@ -26,7 +26,9 @@
 #
 # Structure: private helpers resolve the facts (run base, numstat
 # grouping, in-progress seed), section printers render one evidence
-# section each, and `main` wires them in the critical-first order.
+# section each, and `main` wires them in the critical-first order:
+# integrity header, per-file stat map (completeness checklist,
+# fabro-b798), spec, checks, then the diffs.
 # Output text is contract: the reviewer prompt names these sections —
 # change wording there too.
 
@@ -341,6 +343,24 @@ def integrity-line-counts [
     $"integrity: seed-work=($seed_files | length) files +(total $seed_rows add)/-(total $seed_rows del) | loop-churn=($churn_files | length) files +(total $churn_rows add)/-(total $churn_rows del) | worktree=($wt_label)"
 }
 
+# Per-file plus/minus stat map at the TOP of the capture (fabro-b798):
+# the reviewer's completeness checklist before paging into (or
+# blob-reading) anything below. One line per changed file since the run
+# base, run-scoped like the integrity counts — seed work first, loop
+# churn second, each tagged so the reviewer can cross-check every line
+# against the sections that follow (seed-work diff, loop-work diff,
+# anomaly) and see a hard-cap omission against this map without
+# reassembling the full capture. Pure: rows in, text out.
+def stat-map-section [seed_rows: list, churn_rows: list]: nothing -> string {
+    let head = "\n== stat map: every changed file since run base, +adds/-dels (completeness checklist — every file listed here must appear in a section below; seed = seed work, churn = loop churn; a `hard cap hit` omission below is visible against this map) ==\n"
+    if ($seed_rows | is-empty) and ($churn_rows | is-empty) {
+        return ($head + "(no changed files since run base)\n")
+    }
+    let seed_lines = ($seed_rows | each {|r| $"seed  +($r.add)/-($r.del) ($r.path)" })
+    let churn_lines = ($churn_rows | each {|r| $"churn +($r.add)/-($r.del) ($r.path)" })
+    $head + ($seed_lines | append $churn_lines | str join "\n") + "\n"
+}
+
 def spec-section [wip: any]: nothing -> string {
     if $wip == null { return "" }
     let head = "\n== in-progress seed spec (authoritative — judge against this, not the brief) ==\n"
@@ -583,8 +603,11 @@ def main [--lane: string = "product"]: nothing -> nothing {
         $claim.short
     })
 
-    # Fixed sections first, each under its own cap…
+    # Fixed sections first, each under its own cap. The stat map rides
+    # directly under the integrity header (fabro-b798): a tail-truncated
+    # or blob-demoted capture still opens with the completeness map.
     let integrity = (integrity-section $base.short $seed_desc $diff_desc $seed_rows $churn_rows $wt.label)
+    let stat_map = (stat-map-section $seed_rows $churn_rows)
     let spec = (spec-section $wip)
     # Implementer check transcript (fabro-d89a; planner-recording on
     # verification-only claims fabro-f759): cheap and critical —
@@ -614,6 +637,7 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # engine's to demote (blobref link) and the agent reviewer's to read.
     emit ($no_base_note | str trim -r -c "\n")
     emit $integrity
+    emit $stat_map
     emit $spec
     if ($checks | is-not-empty) { emit $checks }
     emit $files

@@ -1,6 +1,7 @@
 #!/usr/bin/env nu
 # Smoke test for evidence.nu's PURE helpers (fabro-bfe1): sanitize,
-# resolve-blobrefs, diff-sort-key, is-loop-path, total — exercised over
+# resolve-blobrefs, diff-sort-key, is-loop-path, total, stat-map-section
+# — exercised over
 # canned fixtures without git (helpers that shell out — numstat-rows,
 # run-base, worktree-state, claimed-seed — are out of scope here;
 # their logic is covered by the parse check in scripts/qualitygate.nu
@@ -92,6 +93,28 @@ let fixture = [
 if (total $fixture "add") != 13 { fail $"total add (binary as 0): (total $fixture 'add')" }
 if (total $fixture "del") != 8  { fail $"total del: (total $fixture 'del')" }
 if (total [] "add") != 0 { fail "total empty must be 0" }
+
+# stat-map-section (fabro-b798): top-of-capture completeness map —
+# seed rows first tagged `seed`, churn rows tagged `churn`, one
+# +adds/-dels line per file; empty input renders the none note.
+let map_seed = [{add: "10" del: "2" path: "lib/a.rs"}]
+let map_churn = [{add: "1" del: "1" path: "justfile"}]
+let map = (stat-map-section $map_seed $map_churn)
+if not ($map | str contains "stat map: every changed file since run base") {
+    fail "stat-map-section must carry the contract header"
+}
+if not ($map | str contains "seed  +10/-2 lib/a.rs") {
+    fail $"stat-map-section seed line: ($map)"
+}
+if not ($map | str contains "churn +1/-1 justfile") {
+    fail $"stat-map-section churn line: ($map)"
+}
+if not ($map | str starts-with "\n== stat map") {
+    fail "stat-map-section must open with its own section head"
+}
+if not ((stat-map-section [] []) | str contains "(no changed files since run base)") {
+    fail "stat-map-section empty input must render the none note"
+}
 
 # checks-transcript-path: pure builder — run id lands in the file name
 # under the shared transcript dir (check-transcript.nu writes it).

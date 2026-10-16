@@ -218,6 +218,43 @@ if ($dft | str length) > 140 {
     fail "deferred-title unbounded excerpt"
 }
 
+# No-op payloads (fabro-7ece): a marker observation whose stripped text is
+# empty or exactly `none` means "nothing deferred" — the sweep must skip it
+# (log, file nothing), never file a junk residual seed.
+if not (deferred-action-empty "none") { fail "deferred-action-empty dropped literal none" }
+if not (deferred-action-empty "  NONE  ") { fail "deferred-action-empty is case/whitespace sensitive" }
+if not (deferred-action-empty "") { fail "deferred-action-empty dropped empty payload" }
+if not (deferred-action-empty "   ") { fail "deferred-action-empty dropped whitespace-only payload" }
+if (deferred-action-empty "regen the TS client locally") { fail "deferred-action-empty swallowed a real action" }
+
+# Filable set: what the sweep loop actually iterates after the none/empty
+# skip — a journal with ONLY none/empty marker observations yields zero
+# filings; adding one real marker observation yields exactly that action.
+let noneonly = (
+    deferred-from-journal (
+        [
+            '{"node":"implementer","data":{"observations":["deferred-action: none"]}}'
+            '{"node":"implementer","data":{"observations":["Deferred-Action:   "]}}'
+        ] | str join "\n"
+    )
+    | where {|o| not (deferred-action-empty (deferred-text $o))}
+)
+if ($noneonly | is-not-empty) {
+    fail $"none-marker journal still yields filings: ($noneonly | to json -r)"
+}
+let mixed = (
+    deferred-from-journal (
+        [
+            '{"node":"implementer","data":{"observations":["deferred-action: none"]}}'
+            '{"node":"implementer","data":{"observations":["deferred-action: regen the TS client locally"]}}'
+        ] | str join "\n"
+    )
+    | where {|o| not (deferred-action-empty (deferred-text $o))}
+)
+if ($mixed | length) != 1 or ((deferred-text $mixed.0) != "regen the TS client locally") {
+    fail $"mixed journal filable set wrong: ($mixed | to json -r)"
+}
+
 # --- EXEMPTION-arm sweep (fabro-534e) ----------------------------------
 # Marker matching: `exemption:` at the START, case-insensitive,
 # whitespace-tolerant; mid-sentence mentions and plain observations

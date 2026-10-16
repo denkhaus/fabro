@@ -165,6 +165,43 @@ def nul-byte-check [file: string] {
     }
 }
 
+# Deprecated-command check (2026-10-16 incident): nu prints a parser
+# deprecation warning for commands like `str downcase`, and that warning
+# is fatal downstream — its quoted source snippet carries unbalanced
+# braces, which makes the engine's routing-directive JSON scan nest the
+# stage's real routing JSON inside a phantom object, so the stage fails
+# `bad_output` (three Loop runs 01M52G6/01M52HXB/01M52KM9 went
+# `workflow_error` over one `str downcase`). `nu --ide-check` and
+# `nu-check` do not report deprecations, so this is a maintained ban
+# list; every entry names its replacement. Incident-driven like the
+# layers above.
+const DEPRECATED_COMMANDS = [
+    {bad: 'str downcase', good: 'str lowercase'}
+    {bad: 'str upcase', good: 'str uppercase'}
+]
+
+def deprecated-command-check [file: string] {
+    let text = (open --raw $file)
+    mut green = true
+    for entry in $DEPRECATED_COMMANDS {
+        # Match command USE, not the quoted literals of this file's own
+        # ban list: preceded by line start or whitespace, followed by
+        # whitespace, `)` or `,`. Comment lines skipped.
+        let hits = ($text | lines | enumerate | where {|it|
+            (($it.item | str trim | str starts-with '#') == false) and ($it.item | parse --regex ('(?:^|\s)' + $entry.bad + '(?:\s|[),])') | is-not-empty)
+        })
+        if ($hits | is-not-empty) {
+            let bad = $entry.bad
+            let good = $entry.good
+            for h in $hits {
+                print $"deprecated FAILED: ($file):($h.index + 1) — '($bad)' is deprecated, use '($good)'; its parser warning breaks the routing-directive scan"
+            }
+            $green = false
+        }
+    }
+    $green
+}
+
 def main [] {
     let scripts = (script-paths)
     if ($scripts | is-empty) {
@@ -178,6 +215,7 @@ def main [] {
         if not (interpolated-regex-check $s) { $green = false }
         if not (bare-paren-check $s) { $green = false }
         if not (nul-byte-check $s) { $green = false }
+        if not (deprecated-command-check $s) { $green = false }
     }
     if not (registration-check) { $green = false }
     if $green {

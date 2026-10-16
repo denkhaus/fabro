@@ -107,9 +107,16 @@ async fn agent_run_includes_project_skills_from_local_sandbox_working_directory(
     let requests = logs["requests"]
         .as_array()
         .expect("twin-openai request logs should be an array");
+    // fabro-858b: the create path probes the provider window first — a
+    // stream:false 'Say OK' request with empty instructions for the SAME
+    // model. The agent call is the stream:true request, the discriminator
+    // the scripted scenario above already gates on; find it, not the first
+    // request for the model.
     let instructions = requests
         .iter()
-        .find(|request| request["model"] == OPENAI_AGENT_MODEL)
+        .find(|request| {
+            request["model"] == OPENAI_AGENT_MODEL && request["stream"].as_bool() == Some(true)
+        })
         .and_then(|request| request["instructions_text"].as_str())
         .unwrap_or_default();
     assert!(

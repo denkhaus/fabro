@@ -55,10 +55,11 @@ stores it belongs to; reach them by phase need:
   multi-agent use, permanent sha tax; teardown ran on v1000 the same
   evening: `but teardown --checkout-to denkhaus`, `.git/gitbutler` removed,
   `vcs_manager` key dropped from .seeds/config.yaml, the repo http:but pin
-  dropped from .mise.toml). MACHINE 1 still needs the same teardown
-  ceremony when it next works (its checkout may still be a GB workspace:
-  if `git rev-parse --abbrev-ref HEAD` says `gitbutler/workspace`, run the
-  teardown FIRST, then read state). Runs execute on the PRODUCTION server
+  dropped from .mise.toml). Machine 1's teardown ran
+  2026-10-16 (same ceremony); any checkout still showing
+  `gitbutler/workspace` under `git rev-parse --abbrev-ref HEAD` is a
+  machine that has not torn down yet — run the ceremony FIRST, then read
+  state. Runs execute on the PRODUCTION server
   `https://mirtuell.net` — every line query carries
   `--server https://mirtuell.net`. The local server (127.0.0.1:32276) is
   for TESTS only. git worktrees never.
@@ -560,13 +561,14 @@ stores it belongs to; reach them by phase need:
   `origin/main` (frozen ADR-0024 base) with the line as the applied
   virtual branch `denkhaus`; a stale git index under GB made
   `git diff`/`git status` show phantom `MM` entries (proof of real
-  change was `git diff HEAD -- <files>`). MACHINE 1 may still be a GB
-  workspace — run its teardown (see Phase 0) before any write there.
+  change was `git diff HEAD -- <files>`). Machine 1's teardown ran
+  2026-10-16; every machine is plain git now (a checkout still on
+  `gitbutler/workspace` is a teardown gap — see Phase 0).
   Do NOT merge origin/main (upstream intake stays frozen); line updates
   via `git pull --ff-only origin denkhaus`, line pushes via
   `git push origin denkhaus` behind the gate. The stale
-  `origin/gitbutler/workspace` shadow branch (2026-10-03 snapshot) is a
-  fire hazard if left standing — delete it once the user confirms.
+  `origin/gitbutler/workspace` shadow branch (2026-10-03 snapshot) was
+  verified gone from the remote 2026-10-16 — nothing left to clean.
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it waits
   for (PR creation after terminal status; required-check duration on a
