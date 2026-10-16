@@ -41,14 +41,26 @@ When your decision is "Work":
 ## Revisor backfill (best-effort)
 
 Before deciding, one cheap check with `fabro_run_search`: are there
-COMPLETED develop runs with no revisor pass? Signal: a finished develop run
-whose run id has no revisor child run / revisor journal or review artifact
-pointing at it (e.g. develop runs newer than the newest revisor-revised
-run). If yes, journal the unreviewed run ids under `observations` as
-`revisor backlog: <ids>` — the revisor revises the newest revisable run, so
-each subsequent pass burns the backlog down one run at a time; do NOT
-create any run here (this leg never starts runs). Keep it best-effort: if
-the signal is ambiguous, say so in the journal and move on.
+TERMINAL develop runs with no revisor pass? Signal: a develop run in a
+terminal state — completed OR failed — whose run id has no revisor child
+run / revisor journal or review artifact pointing at it. Scope it wide so
+failed children are not invisible (a failed child is exactly the run whose
+forensics die unreviewed when the revisor never fires):
+
+- `fabro_run_search {"workflow": "develop", "status": ["completed", "failed"]}`
+  (status takes a LIST — pass both, never just "completed") and, to bound
+  the window, `created_after` set from the NEWEST revisor run's creation
+  time (`fabro_run_search {"workflow": "revisor", "status": ["completed", "failed"], "first": 1}`),
+  not the pass start — older terminal-but-unrevised runs are still
+  backlog. Do NOT pre-filter by age alone; a terminal run of any age with
+  no revisor artifact naming it is backlog.
+
+If yes, journal the unreviewed run ids under `observations` as
+`revisor backlog: <ids>` — real run ids, never "none visible" — the
+revisor revises the newest revisable run, so each subsequent pass burns
+the backlog down one run at a time; do NOT create any run here (this leg
+never starts runs). Keep it best-effort: if the signal is ambiguous, say
+so in the journal and move on.
 
 Open-overflow counts may be REPORTED the same way — run
 `nu .fabro/workflows/revisor/scripts/overflow-ledger.nu stats` and note
