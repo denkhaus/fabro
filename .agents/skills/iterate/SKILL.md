@@ -575,10 +575,27 @@ stores it belongs to; reach them by phase need:
   PR). A fallback that bypasses a verification path must re-check the
   gated path one last time before engaging, and clean up the ghost it
   creates (open PR, remote branch) so gates downstream inherit nothing.
-- Judgment pre-screens (ADR-0022): advisory, fail-open, via
-  `.fabro/scripts/judgment.nu`; thresholds only after the fabro-d4c6
-  evaluation report exists; logs to
-  `~/.local/state/fabro-judgments/<date>.jsonl`.
+- Judgment pre-screens (ADR-0022, session-side INTEGRATION — user directive
+  2026-10-16: use it everywhere or never get evaluation data): advisory,
+  fail-open, via `.fabro/scripts/judgment.nu` (criteria is an option-id ->
+  description RECORD, never a bare array); every call logs to
+  `~/.local/state/fabro-judgments/<date>.jsonl` (skill/phase/subject
+  provenance) — the log IS the fabro-d4c6 evaluation corpus, so a phase
+  that CAN pre-screen and does not is a finding. Application points:
+  (a) EVERY grill-with-docs fires a pre-screen BEFORE the user grill —
+  choice questions per fork (options carry one-line descriptions) plus
+  noul for risk-appetite dimensions; present distributions WITH the
+  alternatives; noul answers stay user-owned; record the run in the
+  seed/decision (framing-bias caveat named); (b) cycle review: verdict
+  pre-screen per evaluated run (approved/changes_requested/
+  verification_blocked) and per-file residue adjudication, compared
+  against the reviewer's own verdict — mismatches are findings;
+  (c) line-watch journal routing: painpoint severity as noul
+  (seed-worthy or not) before dispatching; (d) salvage verdicts:
+  noteworthy-or-not choice against the sweep's call; (e) PR triage when
+  a merger lane exists (parked in fabro-c14e's demand). Thresholds still
+  only after the d4c6 report; until then the answers advise, the
+  documented user decision decides.
 - Security-hole closures are DIRECT agent work, never line work: the
   fixer must not stand in the trust circle being closed. Full mechanical
   gate applies.
