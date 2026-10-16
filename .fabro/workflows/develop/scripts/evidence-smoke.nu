@@ -5,7 +5,10 @@
 # canned fixtures without git (helpers that shell out — numstat-rows,
 # run-base, worktree-state, claimed-seed — are out of scope here;
 # their logic is covered by the parse check in scripts/qualitygate.nu
-# and manual invocation). The `source` const resolves against THIS
+# and manual invocation; ONE exception, fabro-41fa: diff-walk/
+# capped-diff-walk are each pinned once against an invalid base ref —
+# a single read-only bad-object git diff — to prove a failed diff
+# surfaces as a capture ERROR, not an omitted file). The `source` const resolves against THIS
 # file's directory, so the script runs from any cwd (closeout-smoke
 # pattern):
 #   nu .fabro/workflows/develop/scripts/evidence-smoke.nu
@@ -320,7 +323,56 @@ if (cap-changed-lines $cap_fixture 0).cut != 4 {
     fail "cap-changed-lines cap 0 must count every changed line as cut"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin verified"
+# walk-failure-note + first-stderr-line (fabro-41fa): a non-zero git diff
+# exit on a LISTED file must surface as a capture ERROR naming the file
+# and exit code — never as an omitted/UNSEEN file. Pure note-building
+# pinned here; the walk-level contract (failed NOT in omitted) is pinned
+# end-to-end against an invalid base ref below.
+if (walk-failure-note []) != null {
+    fail "walk-failure-note with no failures must return null"
+}
+let wfn_rec = {path: "a/b.toml", exit: 128, err: "fatal: bad object"}
+let wfn = (walk-failure-note [$wfn_rec])
+if ($wfn | is-empty) or ($wfn | str contains "UNSEEN") {
+    fail $"walk-failure-note must render an ERROR note without UNSEEN phrasing: ($wfn)"
+}
+if not ($wfn | str contains "a/b.toml (code 128)") {
+    fail $"walk-failure-note must name the file and exit code: ($wfn)"
+}
+if not ($wfn | str contains "capture ERROR") {
+    fail $"walk-failure-note must carry the capture-ERROR phrasing: ($wfn)"
+}
+if not ($wfn | str contains "NOT reviewed") {
+    fail $"walk-failure-note must say the failed files are not reviewed: ($wfn)"
+}
+if (first-stderr-line "fatal: bad object\nwarning: x\n") != "fatal: bad object" {
+    fail "first-stderr-line must return the first non-empty stderr line"
+}
+if (first-stderr-line "\n\n") != "" {
+    fail "first-stderr-line on blank stderr must be empty"
+}
+# End-to-end walk pin: an invalid base ref makes git diff exit 128 for
+# every listed file — the failed files must land in `failed` (with a
+# body ERROR note) and NOT in `omitted`.
+let bad_walk = (diff-walk "41fa-no-such-ref" ["justfile"])
+if ($bad_walk.failed | length) != 1 {
+    fail $"diff-walk on failed git diff must record the failure: ($bad_walk.failed)"
+}
+if ($bad_walk.omitted | length) != 0 {
+    fail $"diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_walk.omitted)"
+}
+if not ($bad_walk.body | str contains "capture ERROR, file NOT reviewed") {
+    fail $"diff-walk body must carry the per-file capture-ERROR note: ($bad_walk.body)"
+}
+let bad_capped = (capped-diff-walk "41fa-no-such-ref" [{path: "justfile", add: 1, del: 1}])
+if ($bad_capped.failed | length) != 1 {
+    fail $"capped-diff-walk on failed git diff must record the failure: ($bad_capped.failed)"
+}
+if ($bad_capped.omitted | length) != 0 {
+    fail $"capped-diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_capped.omitted)"
+}
+
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
