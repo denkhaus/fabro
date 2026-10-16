@@ -233,8 +233,23 @@ async fn the_hello_bundle_runs_on_petri() {
     let workspace = tempfile::tempdir().expect("workspace tempdir");
     let twin = twin_openai().await;
     let namespace = format!("{}::{}", module_path!(), line!());
+    // fabro-858b: the create path probes the provider window before the
+    // agent call — a basic 'Say OK' request (stream:false, no instructions)
+    // for the same model. Script both, stream-gated: the probe scenario
+    // answers the probe, and the one-shot haiku answer stays for the real
+    // stream:true agent call. Before, the probe consumed the agent's
+    // scenario and the agent got the twin's default response.
     TwinScenarios::new(&namespace)
-        .scenario(TwinScenario::responses(OPENAI_MODEL).text("A haiku, added."))
+        .scenario(
+            TwinScenario::responses(OPENAI_MODEL)
+                .stream(false)
+                .text("OK"),
+        )
+        .scenario(
+            TwinScenario::responses(OPENAI_MODEL)
+                .stream(true)
+                .text("A haiku, added."),
+        )
         .load(twin)
         .await;
     let settings = test_settings();
@@ -286,6 +301,23 @@ async fn the_hello_bundle_runs_on_petri() {
             .as_str()
             .is_some_and(|response| response.contains("A haiku, added.")),
         "the agent's answer is projected as the stage's response: {greet}"
+    );
+    // fabro-858b regression pin: the provider-window probe and the scripted
+    // agent answer coexist — the probe (stream:false 'Say OK') must have hit
+    // the twin WITHOUT consuming the agent's one-shot scenario.
+    let logs = twin.request_logs(&namespace).await;
+    let probe_seen = logs["requests"].as_array().is_some_and(|requests| {
+        requests.iter().any(|request| {
+            request["model"] == OPENAI_MODEL
+                && request["stream"].as_bool() == Some(false)
+                && request["input_text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("Say OK"))
+        })
+    });
+    assert!(
+        probe_seen,
+        "the provider-window probe should be in the twin logs: {logs}"
     );
     assert!(run["usage"]["tokens"]["input"].as_u64().is_some(), "{run}");
     let logs = twin.request_logs(&namespace).await;
