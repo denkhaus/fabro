@@ -17,7 +17,7 @@ fabro_tools = false
 [[run.hooks]]
 name = "stage-journal"
 event = "stage_complete"
-script = "nu .fabro/workflows/merge-upstream/scripts/stage-journal.nu"
+script = "nu .fabro/scripts/stage-journal.nu"
 blocking = false
 timeout = "10s"
 sandbox = true
