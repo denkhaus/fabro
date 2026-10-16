@@ -1,2 +1,3 @@
 {"$schema":"fabro-journal-v1","run_id":"01M52ZBM8Z14KVTGD1BDHEQ73B","node":"start","visit":1,"status":"succeeded","ts":"2026-10-16T18:25:30Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M52ZBM8Z14KVTGD1BDHEQ73B","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-16T18:25:31Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M52ZBM8Z14KVTGD1BDHEQ73B","node":"select","visit":1,"status":"succeeded","ts":"2026-10-16T18:25:48Z","data":{"painpoints":[],"observations":["1 run listed (develop `01M4KZ2BCS4C17PTYRRPANBHJ6`), already revised per `.fabro/revisions/01M4KZ2BCS4C17PTYRRPANBHJ6.md`; merge-upstream and conductor returned 0 runs; backlog empty this pass"]}}
