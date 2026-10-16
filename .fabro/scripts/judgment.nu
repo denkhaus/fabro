@@ -19,6 +19,9 @@
 # Request shape ({state, questions}; the model is added here — callers
 # never hardcode vendor versions):
 #   {"state": ..., "questions": {"<id>": {"type":"noul|choice|score", ...}}}
+# criteria is an option-id -> description RECORD (never a bare array;
+# the endpoint rejects arrays, and the model answers the option ids):
+#   {"type":"choice","instructions":"...","criteria":{"opt_a":"<what choosing a means>","opt_b":"..."}}
 #
 # Output (stdout, one JSON record): answers + meta
 #   {answers, model, latency_ms, cost_usd, status, degraded, error?}
