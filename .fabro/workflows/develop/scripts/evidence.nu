@@ -42,6 +42,12 @@ const HARD_CAP = 128000
 # Doc-ish extensions sort LAST in the diff walk: review hinges on source.
 const DOC_EXTENSIONS = ["md" "markdown" "txt" "rst" "adoc" "ad"]
 
+# Loop-churn/anomaly files render numstat plus at most this many CHANGED
+# diff lines each (fabro-020b): full churn diffs once pushed captures past
+# the reviewer's inline ceiling (.seeds hunks embed multi-KB seed bodies),
+# forcing a per-cycle blob-paging detour. Seed-work diffs stay complete.
+const CHURN_DIFF_LINE_CAP = 30
+
 # ---------------------------------------------------------------------------
 # helpers — resolve facts
 # ---------------------------------------------------------------------------
@@ -394,10 +400,11 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
 # pathological-input safety only; on cap the walk stops and the
 # disclosure names the omitted files — with docs sorted last, a cap hit
 # eats documentation before source.
-# Shared per-seed diff walk behind both diff sections (seed work and, for
-# churn-only seeds, loop work — fabro-4b57): diff each file against the
-# claim base, sanitize the body, silently skip files with no hunks, stop at
-# the HARD_CAP and report what was cut.
+# Shared per-seed diff walk behind the seed-work diff section (full
+# fidelity — seed work is never capped): diff each file against the
+# claim base, sanitize the body, silently skip files with no hunks, stop
+# at the HARD_CAP and report what was cut. The churn sections use
+# capped-diff-walk (fabro-020b) instead.
 def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list> {
     mut used = 0
     mut parts = []
@@ -420,6 +427,75 @@ def diff-walk [base: string, files: list]: nothing -> record<body: string, omitt
     {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included })}
 }
 
+# A CHANGED line of a unified diff: starts with + or - but is not a
+# ---/+++ file header. Pure predicate shared by cap-changed-lines.
+def is-changed-line [line: string]: nothing -> bool {
+    (($line | str starts-with "+") and (not ($line | str starts-with "+++"))) or (($line | str starts-with "-") and (not ($line | str starts-with "---")))
+}
+
+# Cap a single-file unified diff to its first `cap` CHANGED lines
+# (fabro-020b): file headers, hunk headers, and context lines inside the
+# kept region pass through unchanged; at the first changed line past the
+# cap the walk stops and a disclosure line names how many changed lines
+# were cut (the reviewer adjudicates from the file list + numstat and
+# reads the rest with tools). Pure: text in, record out.
+def cap-changed-lines [text: string, cap: int]: nothing -> record<body: string, cut: int> {
+    mut kept = []
+    mut changed = 0
+    mut cut = 0
+    mut done = false
+    for line in ($text | lines) {
+        if $done {
+            if (is-changed-line $line) { $cut = ($cut + 1) }
+            continue
+        }
+        if (is-changed-line $line) {
+            if $changed >= $cap {
+                $done = true
+                $cut = 1
+                continue
+            }
+            $changed = ($changed + 1)
+        }
+        $kept = ($kept | append $line)
+    }
+    if $cut > 0 {
+        $kept = ($kept | append $"... truncated: ($cut) further changed lines not shown — churn diffs cap at the first ($cap) changed lines; use tools for the full hunk")
+    }
+    {body: ($kept | str join "\n"), cut: $cut}
+}
+
+# Capped churn walk (fabro-020b): like diff-walk but each file renders as
+# its numstat line plus the first CHURN_DIFF_LINE_CAP changed lines of its
+# diff — loop-churn files (.seeds hunks embed multi-KB seed bodies) stay
+# reviewable without blowing the capture past the reviewer's inline
+# ceiling. Same HARD_CAP pathological-input safety and omitted-file
+# disclosure as diff-walk; rows (not paths) in, so the numstat line rides
+# with the diff.
+def capped-diff-walk [base: string, rows: list]: nothing -> record<body: string, omitted: list> {
+    mut used = 0
+    mut parts = []
+    mut included = []
+    for r in $rows {
+        let res = (do { git diff -U3 $base -- $r.path } | complete)
+        if $res.exit_code != 0 {
+            continue
+        }
+        $included = ($included | append $r.path)
+        let text = (sanitize ($res.stdout | str trim -r -c "\n"))
+        if ($text | is-empty) {
+            continue
+        }
+        let capped = (cap-changed-lines $text $CHURN_DIFF_LINE_CAP)
+        let block = $"($r.path) +($r.add)/-($r.del)\n($capped.body)"
+        let cost = ($block | str length)
+        if ($used + $cost) > $HARD_CAP { break }
+        $used = ($used + $cost)
+        $parts = ($parts | append $"($block)\n")
+    }
+    {body: ($parts | str join), omitted: ($rows | get -o path | default [] | where {|f| $f not-in $included })}
+}
+
 def diff-section [base: string, seed_rows: list]: nothing -> string {
     let head = "\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\n"
     let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
@@ -436,21 +512,25 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
 
 # Churn-only dev-loop seeds (seed_rows empty, churn_rows not) used to
 # capture as seed-work=0 files +0/-0 with no diff at all, forcing reviewers
-# into a manual git detour (fabro-4b57). Same walk, same cap, same
-# disclosure as the seed-work section — only the file set and the header
-# differ. Emission is gated in `main`: NOT emitted when seed_rows is
-# non-empty (loop churn stays counts-only) or when both lists are empty.
+# into a manual git detour (fabro-4b57). Since fabro-020b the render is
+# CAPPED: one numstat line plus the first CHURN_DIFF_LINE_CAP changed
+# lines per file — full churn diffs pushed captures past the reviewer's
+# inline ceiling every cycle, so the file list carries the adjudication
+# contract and tools carry the rest. Same HARD_CAP pathological-input
+# safety and disclosure as the seed-work section — only the file set, the
+# per-file cap, and the header differ. Emission is gated in `main`: NOT
+# emitted when seed_rows is non-empty (loop churn stays counts-only) or
+# when both lists are empty.
 def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
-    let head = "\n== loop work: complete diff (churn-only seed — loop files diffed with git diff -U3 against the per-seed claim base named in the header; this diff IS the seed's work, source before docs) ==\n"
-    let churn_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
-    let walk = (diff-walk $base $churn_files)
+    let head = "\n== loop work: changed files, numstat + first 30 changed lines each (churn-only seed — capped diff against the per-seed claim base named in the header; the FILE LIST is the review scope, source before docs) ==\n"
+    let walk = (capped-diff-walk $base $churn_rows)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
         return ($head + "(no loop-work hunks against the claim base)\n")
     }
     if ($walk.omitted | is-empty) {
         $head + $walk.body
     } else {
-        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
@@ -467,18 +547,22 @@ def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
 # spec does NOT name — the header's claim is now literally true.
 # Detection-only by design: spec-named path promotion
 # (fabro-93a7) and worktree-diff quarantine (fabro-9d2f) are separate
-# open seeds and stay out.
+# open seeds and stay out. Since fabro-020b the render is CAPPED: one
+# numstat line plus the first CHURN_DIFF_LINE_CAP changed lines per file
+# — full loop-churn diffs (.seeds hunks embed multi-KB seed bodies) once
+# pushed the capture past the reviewer's inline ceiling, so the
+# adjudicate-every-file contract is carried by the FILE LIST plus the
+# truncation disclosure; the reviewer reads the rest with tools.
 def anomaly-section [base: string, churn_rows: list]: nothing -> string {
-    let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work, excluding spec-named files — reviewer must adjudicate: residue vs adjacent repair vs scope creep) ==\n"
-    let churn_files = ($churn_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
-    let walk = (diff-walk $base $churn_files)
+    let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work, excluding spec-named files — each file numstat + first 30 changed lines only; reviewer must adjudicate EVERY listed file: residue vs adjacent repair vs scope creep) ==\n"
+    let walk = (capped-diff-walk $base $churn_rows)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
         return ($head + "(no anomaly hunks against the claim base — loop files changed before the claim only)\n")
     }
     if ($walk.omitted | is-empty) {
         $head + $walk.body
     } else {
-        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 

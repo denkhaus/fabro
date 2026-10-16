@@ -3,3 +3,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5332MTX1GDRHNS0D9QW2WHK","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-16T19:30:40Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5332MTX1GDRHNS0D9QW2WHK","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-16T19:30:44Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5332MTX1GDRHNS0D9QW2WHK","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-16T19:31:40Z","data":{"painpoints":[],"observations":["fabro-8932, fabro-a111, fabro-4cc3 are in-flight on run 01M531BQ0P3H99XHD5PTMNGXBQ — skipped, not parked; fabro-020b was next clean claimable with loop-asset primary surface","envelope_risk flag on fabro-020b is the expected class here: primary surface is evidence.nu itself (loop asset)"]}}
+{"$schema":"fabro-journal-v1","run_id":"01M5332MTX1GDRHNS0D9QW2WHK","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-10-16T19:31:41Z","data":{}}
