@@ -330,6 +330,16 @@ def deferred-title [action: string, seed_id: string]: nothing -> string {
     $"Deferred follow-up from ($seed_id): ($excerpt)"
 }
 
+# Pure: is a stripped action text a no-op payload — empty or exactly
+# `none` (case-insensitive)? A `deferred-action: none` observation means
+# "nothing deferred" and must never file a seed (fabro-7ece: the sweep
+# filed marker observations verbatim, so a none marker became a junk
+# open seed).
+def deferred-action-empty [text: string]: nothing -> bool {
+    let t = ($text | str trim | str lowercase)
+    ($t == "") or ($t == "none")
+}
+
 # Advisory sweep: file each deferred human follow-up as an open seed
 # (type task, assignee fabro so the develop line can pick it up, labels
 # `residual` for machine-filed provenance — same pool semantics as
@@ -338,6 +348,10 @@ def deferred-title [action: string, seed_id: string]: nothing -> string {
 def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string, residual_assignee: string]: nothing -> nothing {
     for action in (journal-deferred $journal_path) {
         let text = (deferred-text $action)
+        if (deferred-action-empty $text) {
+            print $"closeout: skipped empty/none deferred-action marker observation \(from ($seed_id)\)"
+            continue
+        }
         let desc = $"Deferred human follow-up the implementer disclosed while implementing ($seed_id)\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), implementer journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
         let res = (do { seeds create --title (deferred-title $text $seed_id) --description $desc --type task --assignee $residual_assignee --labels (residual-seed-labels | str join ",") } | complete)
         if $res.exit_code != 0 {

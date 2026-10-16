@@ -241,7 +241,7 @@ def in-flight-claims [remote: string, base: string, self_id: string] {
 # already_in_base, then branch_missing — the first true problem wins,
 # so a row's flags name at most one problem per pointer.
 def salvage-pointers [desc: string]: nothing -> list {
-    if not ($desc | str downcase | str contains "salvage") { return [] }
+    if not ($desc | str lowercase | str contains "salvage") { return [] }
     $desc | parse --regex '(?i)salvage:\s*git show (?P<commit>[0-9a-f]{7,40}) on branch (?P<branch>\S+)'
 }
 

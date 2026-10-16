@@ -161,7 +161,10 @@ lines because answering was optional. Always emit BOTH keys:
   the seed; an action disclosed only in `implementation_summary` dies
   with the seed (the observed failure mode this channel exists for).
   Marker at the START of the observation — mid-sentence mentions never match.
-  No deferred actions -> no marker observations.
+  No deferred actions -> omit the marker entirely: never emit the marker
+  with a bare `none` (or empty) payload — a marker observation with no
+  real action text is skipped by the sweep, not filed, but it is channel
+  noise.
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 
