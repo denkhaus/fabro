@@ -59,29 +59,7 @@ default:
 # flock on an open fd for the WHOLE pipeline) makes the second run abort
 # immediately with the holder's pid instead of corrupting the mirror.
 up:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mkdir -p tmp
-    exec 9>tmp/just-up.lock
-    if ! flock -n 9; then
-        holder=$(cat tmp/just-up.lock.pid 2>/dev/null || echo "unknown pid")
-        echo "" >&2
-        echo "╔══ ALARM: another 'just up' is already running ($holder) ══╗" >&2
-        echo "║ A second pipeline would race bun build + the SPA dist mirror ║" >&2
-        echo "║ and can ship an instance with a dead UI (2026-08-25 incident).║" >&2
-        echo "║ Wait for the running one, or kill $holder first.             ║" >&2
-        echo "╚══════════════════════════════════════════════════════════════╝" >&2
-        exit 1
-    fi
-    echo $$ > tmp/just-up.lock.pid
-    just clean
-    just build-image
-    just install-cli
-    just run-images
-    just compose-up
-    just wait-healthy
-    just smoke
-    just clean
+    nu scripts/up.nu
 
 # Host-side dev-artifact prune (target/ stale GC + tmp/docker-context).
 # NEVER touches docker volumes/images/builder cache (30-min toolchain +
@@ -171,15 +149,7 @@ compose-up:
 # container exits and its restart policy reboots it configured, then
 # `just smoke` goes green.
 install-url:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    url="$(docker compose logs --no-color fabro 2>/dev/null | grep -oE 'https?://[^ ]+/install[?]token=[A-Za-z0-9_-]+' | tail -1 || true)"
-    if [ -z "$url" ]; then
-        echo "No install URL found in container logs — the server may already be" >&2
-        echo "configured, or it is not running. Check: docker compose ps; just logs" >&2
-        exit 1
-    fi
-    echo "$url"
+    nu scripts/install-url.nu
 
 # Stop the compose stack
 compose-down:
