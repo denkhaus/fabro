@@ -294,7 +294,33 @@ if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
     fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin verified"
+# cap-changed-lines (fabro-020b): a diff within the cap passes through
+# unchanged (cut 0); past the cap, exactly the first `cap` changed lines
+# are kept, the tail is dropped, and the disclosure counts the cut;
+# ---/+++ file headers and @@ hunk headers never count as changed lines.
+let cap_fixture = "diff --git a/x b/x\nindex 1..2 100644\n--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@\n ctx\n-old1\n+new1\n@@ -5,2 +5,2 @@\n ctx2\n-old2\n+new2"
+let cap_under = (cap-changed-lines $cap_fixture 4)
+if $cap_under.cut != 0 { fail $"cap-changed-lines within cap must cut 0: ($cap_under.cut)" }
+if $cap_under.body != $cap_fixture { fail "cap-changed-lines within cap must pass through unchanged" }
+let cap_over = (cap-changed-lines $cap_fixture 3)
+if $cap_over.cut != 1 { fail $"cap-changed-lines past cap must count the cut: ($cap_over.cut)" }
+if not ($cap_over.body | str contains "truncated: 1 further changed lines not shown") {
+    fail $"cap-changed-lines must disclose the cut count: ($cap_over.body)"
+}
+if ($cap_over.body | str contains "+new2") {
+    fail "cap-changed-lines must drop the changed lines past the cap"
+}
+if not ($cap_over.body | str contains "+new1") {
+    fail "cap-changed-lines must keep the changed lines within the cap"
+}
+if not ($cap_over.body | str contains "@@ -5,2 +5,2 @@") {
+    fail "cap-changed-lines must keep hunk headers inside the kept region"
+}
+if (cap-changed-lines $cap_fixture 0).cut != 4 {
+    fail "cap-changed-lines cap 0 must count every changed line as cut"
+}
+
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
