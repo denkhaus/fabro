@@ -387,6 +387,31 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
     }
 }
 
+# First line of a git command's stderr, sanitized, for error disclosure
+# (fabro-41fa). Empty string when stderr is empty — the note stays, the
+# hint just goes quiet.
+def first-stderr-line [stderr: string]: nothing -> string {
+    let line = ($stderr | lines | where {|l| ($l | str trim) != "" } | get -o 0 | default "")
+    sanitize $line
+}
+
+# Record of one LISTED file whose `git diff` exited non-zero (fabro-41fa):
+# path, exit code, sanitized first stderr line. Pure data; the body note
+# and the section disclosure are rendered from it.
+def failed-diff-record [path: string, res: record]: nothing -> record<path: string, exit: int, err: string> {
+    {path: $path, exit: $res.exit_code, err: (first-stderr-line $res.stderr)}
+}
+
+# Shared section-level disclosure for failed diffs (fabro-41fa): names
+# every file whose diff errored so a capture failure is an ERROR, never
+# an UNSEEN/omitted file. Pure: failed records in, note string or null
+# (nothing failed) out — pinned in evidence-smoke.
+def walk-failure-note [failed: list]: nothing -> any {
+    if ($failed | is-empty) { return null }
+    let names = ($failed | each {|f| $"($f.path) \(code ($f.exit)\)" } | str join ", ")
+    "\n(git diff FAILED for " + ($failed | length | into string) + " listed file(s) — " + $names + ": capture ERROR, these files are NOT reviewed and NOT merely omitted)"
+}
+
 # `complete` keeps stdout as one raw string: the list-of-lines split +
 # str join round-trip once injected a stray newline mid-line (observed
 # once, never reproduced) — raw capture rules that class out.
@@ -405,16 +430,30 @@ def seed-work-files-section [seed_rows: list]: nothing -> string {
 # claim base, sanitize the body, silently skip files with no hunks, stop
 # at the HARD_CAP and report what was cut. The churn sections use
 # capped-diff-walk (fabro-020b) instead.
-def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list> {
+# A non-zero `git diff` exit on a LISTED file is a capture ERROR, never
+# an omission (fabro-41fa): the walk names the file in the body with its
+# exit code and first stderr line, counts that note toward the cap, and
+# keeps the file OUT of `omitted` — a failed diff must surface as an
+# error the reviewer can see, not as an UNSEEN file indistinguishable
+# from a cap hit. Same contract in capped-diff-walk below; the shared
+# section disclosure is walk-failure-note.
+def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list, failed: list> {
     mut used = 0
     mut parts = []
     mut included = []
+    mut failed = []
     for f in $files {
         let res = (do { git diff -U3 $base -- $f } | complete)
+        $included = ($included | append $f)
         if $res.exit_code != 0 {
+            $failed = ($failed | append (failed-diff-record $f $res))
+            let note = $"($f): git diff exited ($res.exit_code) — capture ERROR, file NOT reviewed\ndevice output: (first-stderr-line $res.stderr)"
+            let cost = ($note | str length)
+            if ($used + $cost) > $HARD_CAP { break }
+            $used = ($used + $cost)
+            $parts = ($parts | append $"($note)\n")
             continue
         }
-        $included = ($included | append $f)
         let text = (sanitize ($res.stdout | str trim -r -c "\n"))
         if ($text | is-empty) {
             continue
@@ -424,7 +463,7 @@ def diff-walk [base: string, files: list]: nothing -> record<body: string, omitt
         $used = ($used + $cost)
         $parts = ($parts | append $"($text)\n")
     }
-    {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included })}
+    {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included }), failed: $failed}
 }
 
 # A CHANGED line of a unified diff: starts with + or - but is not a
@@ -471,17 +510,26 @@ def cap-changed-lines [text: string, cap: int]: nothing -> record<body: string, 
 # reviewable without blowing the capture past the reviewer's inline
 # ceiling. Same HARD_CAP pathological-input safety and omitted-file
 # disclosure as diff-walk; rows (not paths) in, so the numstat line rides
-# with the diff.
-def capped-diff-walk [base: string, rows: list]: nothing -> record<body: string, omitted: list> {
+# with the diff. Same failed-diff contract as diff-walk (fabro-41fa): a
+# non-zero `git diff` exit on a listed file is a capture ERROR named in
+# the body and disclosed by walk-failure-note, never an omission.
+def capped-diff-walk [base: string, rows: list]: nothing -> record<body: string, omitted: list, failed: list> {
     mut used = 0
     mut parts = []
     mut included = []
+    mut failed = []
     for r in $rows {
         let res = (do { git diff -U3 $base -- $r.path } | complete)
+        $included = ($included | append $r.path)
         if $res.exit_code != 0 {
+            $failed = ($failed | append (failed-diff-record $r.path $res))
+            let note = $"($r.path) +($r.add)/-($r.del): git diff exited ($res.exit_code) — capture ERROR, file NOT reviewed\ndevice output: (first-stderr-line $res.stderr)"
+            let cost = ($note | str length)
+            if ($used + $cost) > $HARD_CAP { break }
+            $used = ($used + $cost)
+            $parts = ($parts | append $"($note)\n")
             continue
         }
-        $included = ($included | append $r.path)
         let text = (sanitize ($res.stdout | str trim -r -c "\n"))
         if ($text | is-empty) {
             continue
@@ -493,7 +541,7 @@ def capped-diff-walk [base: string, rows: list]: nothing -> record<body: string,
         $used = ($used + $cost)
         $parts = ($parts | append $"($block)\n")
     }
-    {body: ($parts | str join), omitted: ($rows | get -o path | default [] | where {|f| $f not-in $included })}
+    {body: ($parts | str join), omitted: ($rows | get -o path | default [] | where {|f| $f not-in $included }), failed: $failed}
 }
 
 def diff-section [base: string, seed_rows: list]: nothing -> string {
@@ -503,10 +551,11 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
         return ($head + "(no seed-work files to diff)\n")
     }
     let walk = (diff-walk $base $seed_files)
+    let failure = (walk-failure-note $walk.failed)
     if ($walk.omitted | is-empty) {
-        $head + $walk.body
+        $head + $walk.body + ($failure | default "")
     } else {
-        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + ($failure | default "") + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
@@ -524,13 +573,14 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
 def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
     let head = "\n== loop work: changed files, numstat + first 30 changed lines each (churn-only seed — capped diff against the per-seed claim base named in the header; the FILE LIST is the review scope, source before docs) ==\n"
     let walk = (capped-diff-walk $base $churn_rows)
+    let failure = (walk-failure-note $walk.failed)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
-        return ($head + "(no loop-work hunks against the claim base)\n")
+        return ($head + ($failure | default "") + "(no loop-work hunks against the claim base)\n")
     }
     if ($walk.omitted | is-empty) {
-        $head + $walk.body
+        $head + $walk.body + ($failure | default "")
     } else {
-        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + ($failure | default "") + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
@@ -556,13 +606,14 @@ def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
 def anomaly-section [base: string, churn_rows: list]: nothing -> string {
     let head = "\n== anomaly: changed files NOT named by the seed spec (loop paths changed alongside seed work, excluding spec-named files — each file numstat + first 30 changed lines only; reviewer must adjudicate EVERY listed file: residue vs adjacent repair vs scope creep) ==\n"
     let walk = (capped-diff-walk $base $churn_rows)
+    let failure = (walk-failure-note $walk.failed)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
-        return ($head + "(no anomaly hunks against the claim base — loop files changed before the claim only)\n")
+        return ($head + ($failure | default "") + "(no anomaly hunks against the claim base — loop files changed before the claim only)\n")
     }
     if ($walk.omitted | is-empty) {
-        $head + $walk.body
+        $head + $walk.body + ($failure | default "")
     } else {
-        $head + $walk.body + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + ($failure | default "") + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($churn_rows | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 
