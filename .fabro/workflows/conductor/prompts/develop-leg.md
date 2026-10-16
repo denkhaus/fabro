@@ -17,7 +17,7 @@ Registration is TWO steps (the #832 run-intent contract — runs come from immut
 a. Workflow version: read `develop_workflow_version_id` from context — the survey stage pre-registered it. If present, use it directly and do NOT re-register: identical files would return the same id, and the ~118 KB transcription through tool arguments is exactly the cost this avoids. If ABSENT (continuity break — survey failed or skipped registration), register yourself with ONE small call — `fabro_workflow_version_create {"entrypoint": "develop/workflow.toml", "files_from": ".fabro/workflows/develop"}` (the tool reads the closure from the sandbox; never transcribe file contents). Content-addressed: identical files return the same id. If the packager names a missing dependency, add exactly that file and retry once. Record `workflow_version_id` (64 hex).
 b. Create the child: `fabro_run_create {"runs": [{"workflow_version_id": "<id from a>", "environment_id": "toolchain", "target": {"kind": "git", "repo": "denkhaus/fabro", "branch": "denkhaus"}, "start": true, "args": {"auto_approve": true}}]}` — the `runs` array wrapper is REQUIRED; `parent_id` stays unset (native worker inheritance supplies it), but `target` is ALWAYS EXPLICIT `denkhaus`: omitted targets inherit the parent's RUN BRANCH (pass 01M2E2805XB4, 2026-09-13: children chained onto `fabro/run/…`, where branch protection, the Dogfood Gate, and auto-merge do not exist — the pass work stranded off `denkhaus`); `auto_approve` lives under `args` (NO goal: the planner picks the most relevant open seed; goalless = autonomous queue burn-down). Record `child_run_id`.
 2. Wait terminal: ONE call `fabro_run_wait {"run_id": "<child_run_id>", "until": "terminal", "timeout_ms": 3600000}` — it blocks until terminal or the 60 min deadline. `reached=timeout` (child still running): call again — the ONLY legal continuation after any timeout is another `fabro_run_wait` on the SAME child run id (big seeds legitimately run 90+ min; a recreate after one timeout once produced a duplicate child and a failed pass — the engine now rejects duplicate children with `duplicate child rejected`, and seeing that error means: re-wait the named child). Never shell-sleep poll loops.
-3. Child FAILED: route "Develop child failed" + journal the reason (retriable causes simply end this pass; the next fire retries the seed).
+3. Child FAILED: route "Develop child failed — revise anyway" with `context_updates.child_run_id` set to the child run id (the schema REJECTS the routing without it) + journal the reason. A failed child STILL runs the revise leg — its painpoints, tool walls, and failure forensics must not die unreviewed (an unreviewed FAILED run is worse than a parked PR — same principle as the gate-stuck park below). Retriable causes are no exception: the revisor files what hurt, the next fire retries the seed.
 4. Child SUCCEEDED with goal "Tracker empty"-like completion and no PR: route "Tracker empty" (journal it — the queue is done; the human seeds new demand).
 5. Child SUCCEEDED: wait for PR auto-merge: `fabro_run_wait {"run_id": "<child_run_id>", "until": "merged", "timeout_ms": 1200000}`.
    - `reached=merged` -> route "Develop integrated" with `context_updates.child_run_id` set to the child run id. This is a MECHANICAL contract, not prose: the node's output schema (`.fabro/workflows/conductor/schemas/develop-output.schema.json`) REJECTS any "Develop integrated" routing whose `context_updates.child_run_id` is missing or empty — validation burns an output retry and never passes silently. The revisor leg needs the id for pass continuity.
@@ -25,8 +25,8 @@ b. Create the child: `fabro_run_create {"runs": [{"workflow_version_id": "<id fr
    - `reached=blocked` -> the gate is YOUNG-blocked, not stuck: a healthy-but-slow gate (checks still running, PR open) reports blocked within seconds. Bounded re-wait: re-call `fabro_run_wait {"until": "merged", "timeout_ms": 1200000}` up to 2 MORE times (3 waits total, ~60 min ceiling). After EACH blocked return, prefer continuing the chain over concluding anything.
      - `reached=merged` at any point -> "Develop integrated".
      - Still `blocked` after the 3rd wait -> the gate is now PERSISTENTLY stuck (failed required checks or dirty/blocked base). NEVER wait a 4th time. Journal it naming "gate stuck" (NOT "child failed" — the child itself succeeded) with the wait count, then route "Gate stuck — revise anyway" with `context_updates.child_run_id` set to the child run id — a MECHANICAL contract, not prose: the node's output schema (`.fabro/workflows/conductor/schemas/develop-output.schema.json`) REJECTS a "Gate stuck — revise anyway" routing whose `context_updates.child_run_id` is missing or empty, so the revise leg can never lose pass continuity again (the historical failure — dropped id, unreviewed child — is recorded in the tracker). The soft-park keeps the merge parked and the next fire re-enters via survey — an unreviewed develop run is worse than a parked PR.
-   - `reached=closed_unmerged` -> journal it and route "Develop child failed".
-   - Failure routing keys on CHILD status, NEVER on PR state: only a terminal-FAILED child or `closed_unmerged` routes "Develop child failed". A succeeded child with any gate state never routes the failed exit.
+   - `reached=closed_unmerged` -> journal it and route "Develop child failed — revise anyway" with `context_updates.child_run_id` set.
+   - Failure routing keys on CHILD status, NEVER on PR state: only a terminal-FAILED child or `closed_unmerged` routes "Develop child failed — revise anyway". A succeeded child with any gate state never routes the failed arm.
 
 ## Workflow addressing (#832 run-intent contract)
 
@@ -41,7 +41,7 @@ SOURCE for registration reads only; runs reference immutable versions.
 Create AT MOST ONE develop child per pass. If the create call returns an
 error, or the created child sits pending (e.g. approval_required), NEVER
 create a second child — poll the EXISTING one (fabro_run_get by the id
-you recorded) or route "Develop child failed". A start/approval failure
+you recorded) or route "Develop child failed — revise anyway". A start/approval failure
 is a state to observe, not a signal to recreate (first production pass:
 the agent recreated a child after an approval_required start error and
 produced two parallel develops — a serialization violation cleaned up
@@ -63,7 +63,7 @@ nobody re-reads your prose, only the JSON survives.
 
 ## Outcome contract
 
-- `succeeded` + "Develop integrated" | "Gate stuck — revise anyway" | "Tracker empty" | "Develop child failed".
+- `succeeded` + "Develop integrated" | "Gate stuck — revise anyway" | "Tracker empty" | "Develop child failed — revise anyway".
 - `failed`: create/poll tooling failed.
 
 Hygiene: backtick every path.

@@ -66,7 +66,8 @@ digraph Conductor {
         // friends) through the UseSkill tool.
         // fabro-3196: file schema (fabro-017f teeth pattern) — keeps
         // the routing contract AND rejects a revise-handoff routing
-        // ('Develop integrated' / 'Gate stuck — revise anyway')
+        // ('Develop integrated' / 'Gate stuck — revise anyway' /
+        // 'Develop child failed — revise anyway')
         // without a non-empty context_updates.child_run_id (run
         // 01M2X6AT3V4CPSJC08SMCVB172 dropped it; the revise leg then
         // failed pass continuity and the child went unreviewed).
@@ -115,7 +116,14 @@ digraph Conductor {
     // parked PR; the next fire re-enters via survey.
     develop -> revise [label="Gate stuck — revise anyway", condition="preferred_label=\"Gate stuck — revise anyway\""]
     develop -> exit   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    develop -> exit   [x.kind="soft", label="Develop child failed", condition="preferred_label=\"Develop child failed\""]
+    // Failed-child revise (fabro-deb5): a FAILED develop child routes into
+    // the revise leg too — its painpoints, tool walls, and failure forensics
+    // must not die unreviewed (same principle as the gate-stuck park above:
+    // an unreviewed FAILED run is worse than a parked PR). The revise leg's
+    // newest-revisable-run targeting picks the failed run via child_run_id.
+    // Soft-park semantics stay: if the revisor child then fails too, the
+    // pass still exits soft via "Revisor child failed".
+    develop -> revise [label="Develop child failed — revise anyway", condition="preferred_label=\"Develop child failed — revise anyway\""]
     revise -> exit [label="Cycle complete"]
     revise -> exit [x.kind="soft", label="Revisor child failed", condition="preferred_label=\"Revisor child failed\""]
     // Unconditional safety nets (validator rule all_conditional_edges):

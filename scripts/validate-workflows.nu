@@ -93,7 +93,8 @@ def main [target: string = ""] {
 # develop node routes into the revise leg via a file schema
 # (`.fabro/workflows/conductor/schemas/develop-output.schema.json`,
 # the fabro-017f teeth pattern) whose if/then REJECTS a
-# 'Develop integrated' or 'Gate stuck — revise anyway' routing unless
+# 'Develop integrated', 'Gate stuck — revise anyway', or
+# 'Develop child failed — revise anyway' routing unless
 # context_updates.child_run_id is a non-empty string. Basis: run
 # 01M2X6AT3V4CPSJC08SMCVB172 dropped the id, the revise leg failed
 # pass continuity, and run 01M2X6EC95G76YFNF1YTCJZG7P went unreviewed.
@@ -114,7 +115,7 @@ def conductor_develop_schema_probe [] {
     # Routing contract: the enum covers exactly the develop node's four
     # LLM-routable outgoing labels (the 'Unrouted develop outcome' soft
     # exit is engine-side and deliberately excluded).
-    let expected_labels = ["Develop integrated", "Gate stuck — revise anyway", "Tracker empty", "Develop child failed"]
+    let expected_labels = ["Develop integrated", "Gate stuck — revise anyway", "Tracker empty", "Develop child failed — revise anyway"]
     let labels = ($schema | get -o properties | get -o preferred_next_label | get -o enum | default [])
     if ($labels != $expected_labels) {
         print -e $"validate-workflows: conductor develop schema enum drifted: ($labels | to json -r)"
@@ -122,8 +123,8 @@ def conductor_develop_schema_probe [] {
     }
 
     # Teeth: the allOf if/then arm must require a non-empty
-    # context_updates.child_run_id on the two revise-handoff labels.
-    let handoff = ["Develop integrated", "Gate stuck — revise anyway"]
+    # context_updates.child_run_id on the three revise-handoff labels.
+    let handoff = ["Develop integrated", "Gate stuck — revise anyway", "Develop child failed — revise anyway"]
     let arm = ($schema | get -o allOf | default [] | where {|a|
         let if_labels = ($a | get -o if | get -o properties | get -o preferred_next_label | get -o enum | default [])
         ($if_labels | any {|l| $l in $handoff })
@@ -160,6 +161,8 @@ def conductor_develop_schema_probe [] {
         {name: "merged-path WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated", context_updates: {child_run_id: "01M2X6EC95G76YFNF1YTCJZG7P"}}, want: false}
         {name: "merged-path WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated"}, want: true}
         {name: "empty child_run_id rejected (minLength)", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — revise anyway", context_updates: {child_run_id: ""}}, want: true}
+        {name: "failed-child revise WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Develop child failed — revise anyway"}, want: true}
+        {name: "failed-child revise WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Develop child failed — revise anyway", context_updates: {child_run_id: "01M2E7VZYX8V", journal: {}}}, want: false}
         {name: "tracker-empty needs NO child_run_id", payload: {outcome: "succeeded", preferred_next_label: "Tracker empty"}, want: false}
     ]
     for $case in $cases {
