@@ -76,7 +76,13 @@ stores it belongs to; reach them by phase need:
   disjoint surface (code side vs loop assets), claim in the tracker (a
   sibling's message queue can be full — `agent_message` then refuses), and
   never commit the sibling's files. Foreign uncommitted files in `git
-  status` are the sibling's work, not an interrupted cycle of this session.
+  status` are the sibling's work, not an interrupted cycle of this session. NEVER `git stash` in
+  the shared checkout (2026-10-17 incident): the stash stack is GLOBAL
+  across concurrent sessions — a `-u` stash grabs every session's WIP and
+  a pop restores someone else's, swapping the dirty-set in one second and
+  misattributing ownership. Tree-state probes run via read-only checks or
+  a temporary branch; suspending or restoring foreign WIP is NEVER this
+  session's operation.
 - Open-PR sweep BEFORE anything else (user directive 2026-10-02, PR #359
   lesson): `gh pr list --repo denkhaus/fabro --state open` plus
   `gh pr checks <n>` for each. EVERY gh call carries

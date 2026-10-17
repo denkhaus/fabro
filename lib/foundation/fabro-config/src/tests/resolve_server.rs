@@ -48,6 +48,20 @@ fn resolve_errors(error: fabro_config::Error) -> Vec<fabro_config::ResolveError>
     }
 }
 
+/// User settings override the 14-day retention default (fabro-b1a4).
+#[test]
+fn resolves_retention_override_from_user_layer() {
+    let layer = parse(
+        r"
+_version = 1
+
+[server.retention]
+max_run_age_days = 7
+",
+    );
+    assert_eq!(resolve_server(&layer).retention.max_run_age_days, 7);
+}
+
 fn render_resolve_error_lines(error: fabro_config::Error) -> String {
     resolve_errors(error)
         .into_iter()
@@ -67,6 +81,7 @@ fn resolves_server_defaults_from_empty_settings() {
     assert!(settings.web.enabled);
     assert_eq!(settings.web.url, "http://localhost:3000");
     assert_eq!(settings.scheduler.max_concurrent_runs, 5);
+    assert_eq!(settings.retention.max_run_age_days, 14);
     assert_eq!(settings.logging.destination, LogDestination::File);
 
     match settings.listen {

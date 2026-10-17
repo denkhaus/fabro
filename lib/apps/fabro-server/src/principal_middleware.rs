@@ -574,7 +574,7 @@ mod tests {
     use crate::auth::{self, AuthErrorCode};
     use crate::worker_token::{
         WORKER_RUN_TOOLS_SCOPE, WORKER_TOKEN_ISSUER, WORKER_TOKEN_SCOPE, WorkerScopeSet,
-        WorkerTokenClaims, issue_worker_token, worker_token_header,
+        WorkerTokenClaims, worker_token_header,
     };
 
     const TEST_JWT_ISSUER: &str = "https://fabro.example";
@@ -710,7 +710,12 @@ mod tests {
     fn routes_worker_kid_to_worker_verifier() {
         let state = crate::test_support::test_app_state();
         let run_id = RunId::new();
-        let token = issue_worker_token(state.worker_token_keys(), &run_id).unwrap();
+        let token = crate::worker_token::issue_worker_token_with_scopes(
+            state.worker_token_keys(),
+            &run_id,
+            crate::worker_token::WorkerScopeSet::run_worker(),
+        )
+        .unwrap();
         let request = request_with_bearer(Some(&token), auth_mode_for_state(state.as_ref()));
 
         let context = classify_request(&request, state.as_ref());

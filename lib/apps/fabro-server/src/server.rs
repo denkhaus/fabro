@@ -173,6 +173,9 @@ mod fork_inspection_guard_tests;
 mod fork_line_recovery;
 #[cfg(test)]
 mod fork_publish_gate_tests;
+pub(crate) mod fork_run_retention;
+#[cfg(test)]
+mod fork_run_retention_tests;
 pub(crate) mod fork_seeds_git_source;
 #[cfg(test)]
 mod fork_seeds_read_api_tests;
@@ -197,6 +200,7 @@ mod session_runtime;
 pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
+pub(crate) use fork_run_retention::spawn_run_retention_supervisor;
 pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
@@ -1295,6 +1299,17 @@ impl AppState {
     pub fn test_issue_worker_token(&self, run_id: &RunId) -> String {
         issue_worker_token_with_scopes(&self.worker_tokens, run_id, WorkerScopeSet::run_worker())
             .expect("a test worker token signs")
+    }
+
+    /// A worker token for `run_id` with the `agent:run_tools` capability, as
+    /// the ask session's backend carries (fabro-d6de: the tracker read).
+    pub fn test_issue_worker_token_with_run_tools(&self, run_id: &RunId) -> String {
+        issue_worker_token_with_scopes(
+            &self.worker_tokens,
+            run_id,
+            WorkerScopeSet::run_worker_with_agent_run_tools(),
+        )
+        .expect("a test worker token signs")
     }
 }
 

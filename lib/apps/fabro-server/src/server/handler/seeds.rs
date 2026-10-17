@@ -16,7 +16,8 @@ use fabro_api::types as api;
 use seeds::{SeedRecord, SeedType as RecordSeedType, Status as RecordStatus, Store};
 
 use super::super::seeds_source::{SeedsSnapshot, SeedsSourceError};
-use super::super::{ApiError, AppState, RequiredUser};
+use super::super::{ApiError, AppState};
+use crate::principal_middleware::RequiredRunToolActor;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -47,7 +48,7 @@ fn default_seed_page_limit() -> u32 {
 }
 
 async fn list_seeds(
-    _auth: RequiredUser,
+    _auth: RequiredRunToolActor,
     State(state): State<Arc<AppState>>,
     ExtraQuery(params): ExtraQuery<SeedListParams>,
 ) -> Response {
@@ -113,7 +114,7 @@ fn matches_params(record: &SeedRecord, params: &SeedListParams) -> bool {
     true
 }
 
-async fn seed_graph(_auth: RequiredUser, State(state): State<Arc<AppState>>) -> Response {
+async fn seed_graph(_auth: RequiredRunToolActor, State(state): State<Arc<AppState>>) -> Response {
     let snapshot = match source_snapshot(state.as_ref()).await {
         Ok(snapshot) => snapshot,
         Err(response) => return response,
@@ -156,7 +157,7 @@ async fn seed_graph(_auth: RequiredUser, State(state): State<Arc<AppState>>) -> 
 }
 
 async fn get_seed(
-    _auth: RequiredUser,
+    _auth: RequiredRunToolActor,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Response {

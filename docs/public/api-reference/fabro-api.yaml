@@ -6185,6 +6185,10 @@ paths:
         fetch). Filters compose with AND semantics. The default limit is
         deliberately generous so tracker-wide views (the seed browser)
         do not silently hide seeds behind a small page.
+      
+        Requires an authenticated user or a worker token with the
+        `agent:run_tools` capability (the Ask-Fabro analyst's tracker view,
+        fabro-d6de).
       parameters:
         - $ref: "#/components/parameters/SeedListLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -6222,6 +6226,13 @@ paths:
         from a dependent seed to the seed that blocks it (`blockedBy`).
         Edges referencing unknown seed ids are dropped; the node set covers
         every seed in the store.
+      
+        Requires an authenticated user or a worker token with the
+        `agent:run_tools` capability (the Ask-Fabro analyst's tracker view,
+        fabro-d6de).
+        Requires an authenticated user or a worker token with the
+        `agent:run_tools` capability (the Ask-Fabro analyst's tracker view,
+        fabro-d6de).
       responses:
         "200":
           description: Seed dependency graph

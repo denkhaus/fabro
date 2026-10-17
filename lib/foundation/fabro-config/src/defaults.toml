@@ -39,6 +39,13 @@ url = "http://localhost:3000"
 [server.scheduler]
 max_concurrent_runs = 5
 
+# Periodic pruning of terminal run history (fabro-b1a4): the
+# run-retention supervisor deletes terminal runs older than this age
+# every 24h; sandbox containers follow through Petri's lease ledger.
+# 0 disables the pass.
+[server.retention]
+max_run_age_days = 14
+
 [server.artifacts]
 provider = "local"
 prefix = ""

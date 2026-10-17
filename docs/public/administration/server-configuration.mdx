@@ -17,7 +17,7 @@ Fabro only reads `settings.toml`. Older `server.toml`, `user.toml`, and `cli.tom
 
 | Scope | Examples |
 |---|---|
-| Server-owned (runtime-only from local `settings.toml`) | `[server.listen]`, `[server.api]`, `[server.web]`, `[server.auth]`, `[server.sandbox]`, `[server.storage]`, `[server.artifacts]`, `[server.scheduler]`, `[server.logging]`, `[server.integrations]` |
+| Server-owned (runtime-only from local `settings.toml`) | `[server.listen]`, `[server.api]`, `[server.web]`, `[server.auth]`, `[server.sandbox]`, `[server.storage]`, `[server.artifacts]`, `[server.scheduler]`, `[server.retention]`, `[server.logging]`, `[server.integrations]` |
 | Shared run defaults (layered through `.fabro/project.toml`/`workflow.toml`) | `[run.model]`, `[run.prepare]`, `[run.environment]`, `[environments.<slug>]`, `[run.checkpoint]`, `[run.inputs]`, `[run.pull_request]`, `[run.git]`, `[run.hooks]`, `[run.agent]` |
 
 The CLI-only `[cli.*]` sections (including `[cli.target]`) belong in the client machine's `settings.toml`. They tell CLI commands how to reach a server. The server process does not read `[cli.*]` for its own binding or routing.
@@ -75,6 +75,9 @@ region = "us-east-1"
 
 [server.scheduler]
 max_concurrent_runs = 8
+
+[server.retention]
+max_run_age_days = 14
 
 [server.logging]
 level = "info"
@@ -282,6 +285,16 @@ Run creation uses the registered workflow version's `workflow.toml` above the se
 Server-owned values like `[server.storage]`, `[server.api]`, `[server.web]`, and `[server.scheduler]` come from the server machine's `settings.toml` or `fabro server start` flags. Environments and MCP server references resolve against the server's catalogs.
 
 Merge rules follow the normative matrix: TOML `[run.inputs]` tables replace wholesale, explicit intent inputs merge per key at highest precedence, environment `env` and `labels` merge by key, `[run.prepare.steps]` replaces whole-list, and `[[run.hooks]]` merge by optional `id`. Most other fields use "higher-precedence wins" field-wise merging.
+
+### `[server.retention]` section
+
+Periodic pruning of terminal run history. After a short startup grace and then every 24 hours, the run-retention supervisor deletes terminal runs older than `max_run_age_days` — the same plan the manual `fabro system prune --older-than …` builds, so both paths share one age semantic. Deleting a run also reclaims its sandbox through Petri's lease ledger (the exited run containers on the host). Active runs are never candidates.
+
+| Key | Description | Default |
+|---|---|---|
+| `max_run_age_days` | Age in days after which a terminal run is pruned by the supervisor; `0` disables the pass entirely | `14` |
+
+Each enabled pass logs its plan (run count and bytes) at `info` before deleting. A failing pass logs a warning and retries at the next tick — retention failures never disturb the server.
 
 ### `[server.logging]` section
 

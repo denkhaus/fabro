@@ -17,8 +17,8 @@ use tokio::time::timeout;
 use super::super::{
     AggregateUsage, AggregateUsageTotals, ApiError, AppState, DfParams, FABRO_VERSION,
     GithubIntegrationStrategy, IntegrationConnectionState, IntegrationProvider, IntegrationStatus,
-    IntoResponse, Json, Path, PruneRunsRequest, PruneRunsResponse, Query, RequiredUser, Response,
-    Router, RunStatus, State, StatusCode, SystemInfoResponse, SystemIntegrationStatus,
+    IntoResponse, Json, Path, PrunePlan, PruneRunsRequest, PruneRunsResponse, Query, RequiredUser,
+    Response, Router, RunStatus, State, StatusCode, SystemInfoResponse, SystemIntegrationStatus,
     SystemIntegrationsResponse, SystemRepairRunIssue, SystemRepairRunsResponse, SystemRunCounts,
     UsageByModel, build_disk_usage_response, build_prune_plan, counts_toward_scheduler_capacity,
     delete_run_internal, diagnostics, get, post, resource_sampler, spawn_blocking,
@@ -351,30 +351,11 @@ async fn prune_runs(
     State(state): State<Arc<AppState>>,
     Json(body): Json<PruneRunsRequest>,
 ) -> Response {
-    let storage_dir = state.server_storage_dir();
-    let summaries = match state.stores.run_summaries.list_all(Utc::now()).await {
-        Ok(summaries) => summaries,
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    };
-
     let dry_run = body.dry_run;
-    let body_for_plan = body.clone();
-    let prune_plan =
-        match spawn_blocking(move || build_prune_plan(&body_for_plan, &summaries, &storage_dir))
-            .await
-        {
-            Ok(Ok(plan)) => plan,
-            Ok(Err(err)) => {
-                return ApiError::new(StatusCode::BAD_REQUEST, err.to_string()).into_response();
-            }
-            Err(err) => {
-                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                    .into_response();
-            }
-        };
+    let prune_plan = match plan_prune(&state, &body).await {
+        Ok(plan) => plan,
+        Err(error) => return error.into_response(),
+    };
 
     if dry_run {
         return (
@@ -391,11 +372,10 @@ async fn prune_runs(
             .into_response();
     }
 
-    for run_id in &prune_plan.run_ids {
-        if let Err(error) = delete_run_internal(state.as_ref(), *run_id, true).await {
-            return error.into_response();
-        }
-    }
+    let deleted_count = match execute_prune(&state, &prune_plan).await {
+        Ok(deleted_count) => deleted_count,
+        Err(error) => return error.into_response(),
+    };
 
     (
         StatusCode::OK,
@@ -404,11 +384,47 @@ async fn prune_runs(
             runs:             None,
             total_count:      Some(to_i64(prune_plan.run_ids.len())),
             total_size_bytes: Some(to_i64(prune_plan.total_size_bytes)),
-            deleted_count:    Some(to_i64(prune_plan.run_ids.len())),
+            deleted_count:    Some(to_i64(deleted_count)),
             freed_bytes:      Some(to_i64(prune_plan.total_size_bytes)),
         }),
     )
         .into_response()
+}
+
+/// Plan one prune pass against the live run summaries.
+///
+/// Shared by the HTTP handler above and the fork's run-retention
+/// supervisor (fabro-b1a4) so the age semantics of the manual CLI and the
+/// scheduled pass cannot drift: both go through `build_prune_plan` and
+/// both callers keep their own error mapping at the edge (this returns
+/// the typed `ApiError`, the supervisor renders it for the fail-open log).
+pub(crate) async fn plan_prune(
+    state: &AppState,
+    request: &PruneRunsRequest,
+) -> Result<PrunePlan, ApiError> {
+    let storage_dir = state.server_storage_dir();
+    let summaries = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    let request = request.clone();
+    spawn_blocking(move || build_prune_plan(&request, &summaries, &storage_dir))
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?
+        .map_err(|err| ApiError::new(StatusCode::BAD_REQUEST, err.to_string()))
+}
+
+/// Execute a prune plan through the shared delete path: store row, run
+/// dir, and Petri's lease-ledger sandbox prune (fabro-b1a4 shares this
+/// with the retention supervisor; `force` matches the handler's contract
+/// for terminal runs).
+pub(crate) async fn execute_prune(state: &AppState, plan: &PrunePlan) -> Result<usize, ApiError> {
+    for run_id in &plan.run_ids {
+        delete_run_internal(state, *run_id, true).await?;
+    }
+    Ok(plan.run_ids.len())
 }
 
 #[derive(serde::Deserialize)]

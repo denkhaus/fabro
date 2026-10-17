@@ -183,7 +183,7 @@ fn test_app_with_scheduler(state: Arc<AppState>) -> Router {
     crate::test_support::build_test_router(state)
 }
 
-fn test_app_state_with_isolated_storage() -> Arc<AppState> {
+pub(super) fn test_app_state_with_isolated_storage() -> Arc<AppState> {
     let storage_dir = std::env::temp_dir().join(format!("fabro-server-test-{}", Ulid::new()));
     std::fs::create_dir_all(&storage_dir).expect("test storage dir should be creatable");
     let source = format!(
@@ -667,7 +667,12 @@ fn issue_test_user_jwt() -> String {
 fn issue_test_worker_token(run_id: &RunId) -> String {
     let keys = WorkerTokenKeys::from_master_secret(TEST_SESSION_SECRET.as_bytes())
         .expect("worker keys should derive");
-    crate::worker_token::issue_worker_token(&keys, run_id).expect("worker token should issue")
+    crate::worker_token::issue_worker_token_with_scopes(
+        &keys,
+        run_id,
+        crate::worker_token::WorkerScopeSet::run_worker(),
+    )
+    .expect("worker token should issue")
 }
 
 fn issue_test_run_tools_worker_token(run_id: &RunId) -> String {

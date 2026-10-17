@@ -100,13 +100,6 @@ pub(crate) struct DecodedWorkerToken {
     pub(crate) scopes: WorkerScopeSet,
 }
 
-pub(crate) fn issue_worker_token(
-    keys: &WorkerTokenKeys,
-    run_id: &RunId,
-) -> Result<String, ApiError> {
-    issue_worker_token_with_scopes(keys, run_id, WorkerScopeSet::run_worker())
-}
-
 pub(crate) fn issue_worker_token_with_scopes(
     keys: &WorkerTokenKeys,
     run_id: &RunId,
@@ -194,7 +187,7 @@ mod tests {
     use super::{
         WORKER_RUN_TOOLS_SCOPE, WORKER_TOKEN_ISSUER, WORKER_TOKEN_KID, WORKER_TOKEN_SCOPE,
         WorkerScopeSet, WorkerTokenClaims, WorkerTokenKeys, decode_worker_token,
-        issue_worker_token, issue_worker_token_with_scopes, worker_token_header,
+        issue_worker_token_with_scopes, worker_token_header,
     };
     use crate::auth::{self, JwtError};
 
@@ -270,7 +263,8 @@ mod tests {
         let run_id = run_id();
         let keys = keys(TEST_SECRET);
 
-        let token = issue_worker_token(&keys, &run_id).expect("worker token should issue");
+        let token = issue_worker_token_with_scopes(&keys, &run_id, WorkerScopeSet::run_worker())
+            .expect("worker token should issue");
         let decoded = decode::<WorkerTokenClaims>(&token, &keys.decoding, &keys.validation)
             .expect("worker token should decode");
 
@@ -293,7 +287,8 @@ mod tests {
         let first = keys(TEST_SECRET);
         let second = keys(TEST_SECRET);
 
-        let token = issue_worker_token(&first, &run_id).expect("worker token should issue");
+        let token = issue_worker_token_with_scopes(&first, &run_id, WorkerScopeSet::run_worker())
+            .expect("worker token should issue");
         let decoded = decode::<WorkerTokenClaims>(&token, &second.decoding, &second.validation)
             .expect("worker token should decode after re-derivation");
 
@@ -306,7 +301,8 @@ mod tests {
         let first = keys(TEST_SECRET);
         let second = keys(OTHER_SECRET);
 
-        let token = issue_worker_token(&first, &run_id).expect("worker token should issue");
+        let token = issue_worker_token_with_scopes(&first, &run_id, WorkerScopeSet::run_worker())
+            .expect("worker token should issue");
         let err = decode::<WorkerTokenClaims>(&token, &second.decoding, &second.validation)
             .expect_err("rotated secret should reject the token");
         assert!(matches!(
@@ -328,7 +324,8 @@ mod tests {
     fn decode_worker_token_returns_run_id() {
         let run_id = run_id();
         let keys = keys(TEST_SECRET);
-        let token = issue_worker_token(&keys, &run_id).expect("worker token should issue");
+        let token = issue_worker_token_with_scopes(&keys, &run_id, WorkerScopeSet::run_worker())
+            .expect("worker token should issue");
         let decoded = decode_worker_token(&token, &keys).unwrap();
 
         assert_eq!(decoded.run_id, run_id);
@@ -407,7 +404,8 @@ mod tests {
         let run_id = run_id();
         let signer = keys(OTHER_SECRET);
         let verifier = keys(TEST_SECRET);
-        let token = issue_worker_token(&signer, &run_id).expect("worker token should issue");
+        let token = issue_worker_token_with_scopes(&signer, &run_id, WorkerScopeSet::run_worker())
+            .expect("worker token should issue");
 
         assert_eq!(
             decode_worker_token(&token, &verifier).expect_err("bad signature should reject"),

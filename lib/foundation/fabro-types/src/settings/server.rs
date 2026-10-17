@@ -30,6 +30,8 @@ pub struct ServerNamespace {
     pub storage:      ServerStorageSettings,
     pub artifacts:    ServerArtifactsSettings,
     pub scheduler:    ServerSchedulerSettings,
+    /// Periodic run-history retention (fabro-b1a4, fork).
+    pub retention:    ServerRetentionSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
     pub seeds:        ServerSeedsSettings,
@@ -51,6 +53,7 @@ impl ServerNamespace {
             storage:      ServerStorageSettings::default(),
             artifacts:    ServerArtifactsSettings::default(),
             scheduler:    ServerSchedulerSettings::default(),
+            retention:    ServerRetentionSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
             seeds:        ServerSeedsSettings::default(),
@@ -244,6 +247,18 @@ impl Default for ObjectStoreSettings {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSchedulerSettings {
     pub max_concurrent_runs: usize,
+}
+
+/// `[server.retention]` — periodic pruning of terminal run history
+/// (fabro-b1a4, fork).
+///
+/// `max_run_age_days` is the age after which a terminal run is pruned by
+/// the run-retention supervisor; `0` disables the pass entirely. The
+/// resolver fills the value from `defaults.toml` (14), user settings
+/// override it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerRetentionSettings {
+    pub max_run_age_days: u64,
 }
 
 #[derive(
