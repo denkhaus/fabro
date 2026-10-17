@@ -227,8 +227,10 @@ cycle *args:
 
 # Validate workflow graphs without the ~7 min Rust test-harness cold
 # build: builds just the fabro CLI (fabro-cli subset) and runs the full
-# create check (petri admission + the fork's lint rules) on every
-# .fabro/workflows/*/workflow.fabro graph. @-file refs are resolved by
+# create check (petri admission) on every
+# .fabro/workflows/*/workflow.fabro graph, plus stage-journal coverage
+# and the conductor schema probe (lints live in battery-runner,
+# fabro-0d77). @-file refs are resolved by
 # the frontend itself. Optional target: workflow name, workflow dir,
 # workflow.toml path, or graph path.
 #

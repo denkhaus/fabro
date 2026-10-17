@@ -6,10 +6,12 @@
 #
 # Battery (each check green = exit 0; first red stops, qualitygate
 # style: literal external commands in `do { ^cmd } | complete`):
-#   1. `just validate-workflows` — petri admission + the fork's lint
-#      rules on EVERY workflow graph (a loop run that breaks any graph's
-#      parseability or envelope lints REDs here; prebuilt fabro CLI
-#      inside run sandboxes, no cargo build).
+#   1. `just validate-workflows` — petri admission + stage-journal
+#      coverage + the conductor schema probe on EVERY workflow graph
+#      (a loop run that breaks any graph's parseability or envelope
+#      lints REDs here; prebuilt fabro CLI inside run sandboxes, no
+#      cargo build). Lints do NOT run here (fabro-0d77) — tier 2 owns
+#      them once per pass.
 #   2. `nu .fabro/scripts/battery-runner.nu all` — ONE battery-runner
 #      surface (fabro-eae5), shared with the product gate
 #      (scripts/qualitygate.nu check-loop-assets calls the same
@@ -80,7 +82,7 @@ def check [name: string, res: record]: nothing -> bool {
 def main []: nothing -> nothing {
     let base = (run-base)
 
-    if not (check 'validate-workflows (every graph: petri admission + fork lint rules)' (do { ^just validate-workflows } | complete)) { exit 1 }
+    if not (check 'validate-workflows (every graph: petri admission + stage-journal coverage)' (do { ^just validate-workflows } | complete)) { exit 1 }
     if not (check 'battery-runner (lint-nu + prompt-lint + every registered loop-asset battery, shared with the product gate)' (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)) { exit 1 }
     if not (check 'run-scope (loop lane: diff touches only loop assets)' (do { ^nu scripts/qualitygate.nu check-run-scope loop } | complete)) { exit 1 }
     if not (check 'mode-preservation (no exec-bit drop through the run diff)' (do { ^nu scripts/qualitygate.nu check-mode-preservation } | complete)) { exit 1 }
