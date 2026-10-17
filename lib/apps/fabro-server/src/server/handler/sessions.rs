@@ -51,7 +51,7 @@ use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path
 use crate::error::ApiError;
 use crate::principal_middleware::{RequiredRunToolActor, RequiredUser};
 use crate::sandbox_access;
-use crate::worker_token::issue_worker_token;
+use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
 
 const SESSION_SSE_BUFFER_CAPACITY: usize = 1024;
 
@@ -786,8 +786,17 @@ async fn build_agent(
     // to its owning run. The session reaches the local HTTP API via a same-run
     // worker token; the scoped backend rejects accidental cross-run tool calls
     // and the server's auth middleware remains a backstop for direct HTTP.
-    let worker_token = issue_worker_token(state.worker_token_keys(), &run_id)
-        .map_err(|_| AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token")))?;
+    // The ask session's tracker search (fabro-d6de) reads /api/v1/seeds,
+    // which requires the agent:run_tools capability on worker tokens. The
+    // session stays read-only: the permission middleware denies every tool
+    // outside the allowed list, so the broader transport scope cannot be
+    // reached through the analyst.
+    let worker_token = issue_worker_token_with_scopes(
+        state.worker_token_keys(),
+        &run_id,
+        WorkerScopeSet::run_worker_with_agent_run_tools(),
+    )
+    .map_err(|_| AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token")))?;
     let target = state
         .self_server_target()
         .map_err(AskFabroBuildError::Agent)?;

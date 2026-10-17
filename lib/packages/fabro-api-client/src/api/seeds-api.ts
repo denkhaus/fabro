@@ -79,7 +79,7 @@ export const SeedsApiAxiosParamCreator = function (configuration?: Configuration
             };
         },
         /**
-         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.
+         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de). Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary Seed Dependency Graph
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -115,7 +115,7 @@ export const SeedsApiAxiosParamCreator = function (configuration?: Configuration
             };
         },
         /**
-         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.
+         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary List Seeds
          * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
          * @param {number} [pageOffset] Number of items to skip before returning results.
@@ -203,7 +203,7 @@ export const SeedsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.
+         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de). Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary Seed Dependency Graph
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -215,7 +215,7 @@ export const SeedsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.
+         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary List Seeds
          * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
          * @param {number} [pageOffset] Number of items to skip before returning results.
@@ -252,7 +252,7 @@ export const SeedsApiFactory = function (configuration?: Configuration, basePath
             return localVarFp.getSeed(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.
+         * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de). Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary Seed Dependency Graph
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -261,7 +261,7 @@ export const SeedsApiFactory = function (configuration?: Configuration, basePath
             return localVarFp.getSeedGraph(options).then((request) => request(axios, basePath));
         },
         /**
-         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.
+         * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
          * @summary List Seeds
          * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
          * @param {number} [pageOffset] Number of items to skip before returning results.
@@ -294,7 +294,7 @@ export class SeedsApi extends BaseAPI {
     }
 
     /**
-     * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.
+     * Read-only dependency graph over the tracker\'s seeds. An edge points from a dependent seed to the seed that blocks it (`blockedBy`). Edges referencing unknown seed ids are dropped; the node set covers every seed in the store.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de). Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
      * @summary Seed Dependency Graph
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -304,7 +304,7 @@ export class SeedsApi extends BaseAPI {
     }
 
     /**
-     * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.
+     * Read-only list of tracker seeds served from the configured seeds source (the line repository\'s `.seeds` directory, kept fresh via fetch). Filters compose with AND semantics. The default limit is deliberately generous so tracker-wide views (the seed browser) do not silently hide seeds behind a small page.  Requires an authenticated user or a worker token with the `agent:run_tools` capability (the Ask-Fabro analyst\'s tracker view, fabro-d6de).
      * @summary List Seeds
      * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
      * @param {number} [pageOffset] Number of items to skip before returning results.

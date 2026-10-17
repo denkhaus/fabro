@@ -1296,6 +1296,17 @@ impl AppState {
         issue_worker_token_with_scopes(&self.worker_tokens, run_id, WorkerScopeSet::run_worker())
             .expect("a test worker token signs")
     }
+
+    /// A worker token for `run_id` with the `agent:run_tools` capability, as
+    /// the ask session's backend carries (fabro-d6de: the tracker read).
+    pub fn test_issue_worker_token_with_run_tools(&self, run_id: &RunId) -> String {
+        issue_worker_token_with_scopes(
+            &self.worker_tokens,
+            run_id,
+            WorkerScopeSet::run_worker_with_agent_run_tools(),
+        )
+        .expect("a test worker token signs")
+    }
 }
 
 impl AppState {
