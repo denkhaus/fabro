@@ -179,6 +179,11 @@ def main []: nothing -> nothing {
     # required-key addition on the develop side
     ($d | update required {|r| $r.required | append 'x-parity-teeth'} | to json) | save -f $dpath
     $green = ($green and (expect-red 'required-key drift (develop side)' $dpath $lpath))
+    # restore the clean develop fixture before the later teeth (fabro-2366):
+    # the required-key tooth used to leave 'x-parity-teeth' in $dpath, so
+    # every later tooth RED'd on the leftover drift too instead of isolating
+    # its own divergence class.
+    $d | to json | save -f $dpath
     # a develop ban alternative missing from loop's set
     ($l | update properties.context_updates.properties.current_seed_brief.pattern {(| '^(?:(?!just qualitygate|nu\s+\.fabro/workflows/loop/scripts/loop-gate\.nu)[\s\S])*$' )} | to json) | save -f $lpath
     $green = ($green and (expect-red 'develop ban alternative missing from loop' $dpath $lpath))
