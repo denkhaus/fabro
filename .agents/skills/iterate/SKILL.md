@@ -79,7 +79,12 @@ stores it belongs to; reach them by phase need:
   status` are the sibling's work, not an interrupted cycle of this session.
 - Open-PR sweep BEFORE anything else (user directive 2026-10-02, PR #359
   lesson): `gh pr list --repo denkhaus/fabro --state open` plus
-  `gh pr checks <n>` for each. A run PR (`fabro/run/*` branches) with a RED
+  `gh pr checks <n>` for each. EVERY gh call carries
+  `--repo denkhaus/fabro` explicitly — gh's DEFAULT repo in this
+  checkout resolves to fabro-sh/fabro (verified 2026-10-17: `gh repo
+  view` shows it), a different repo with colliding PR numbers; a bare
+  `gh pr merge 427` there hit an unrelated 2026-05 merge (no damage,
+  but the checks/greens I read first were the WRONG PR's). A run PR (`fabro/run/*` branches) with a RED
   dogfood-gate blocks auto-merge, fakes in-flight state, and wedges the
   push gate — diagnose and repair it BEFORE selecting/dispatching a seed:
   snapshot drift -> accept the snapshot ON THE RUN BRANCH and push (auto-
