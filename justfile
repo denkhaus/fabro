@@ -243,6 +243,18 @@ validate-workflows target="":
 lint-nu:
     nu scripts/lint-nu.nu
 
+# Session sprint-ledger rotation (iterate-skill bookkeeping, SESSION-OWNED):
+# iterate-state.json keeps the newest 10 notes, older ones move to
+# iterate-state-archive.jsonl (one {"note": …} record per line, append-only,
+# oldest first). Run after a sprint close when notes > 10 — the state file
+# must stay readable whole (the 50 KB read-tool limit). Lanes and
+# qualitygate batteries never invoke this.
+rotate-notes:
+    nu scripts/rotate-sprint-notes.nu
+
+rotate-notes-dry:
+    nu scripts/rotate-sprint-notes.nu --dry-run
+
 # Provider-window gate twin smoke (fabro-2919): the three gate behaviors —
 # a scripted 429 holds the tick and refuses manual fires, a reopened window
 # fires on the next recheck tick — proven against the real twin-openai

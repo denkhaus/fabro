@@ -513,6 +513,16 @@ stores it belongs to; reach them by phase need:
   develop runs) NEVER count — the line is not inside a sprint. Historical
   note: the bootstrap-era count of 3 includes develop-lane closures under
   the superseded lane-blind rule; kept as history, not recounted.
+  Notes rotation (brightctl port, retro 2026-10-17): after appending the
+  sprint note, run `just rotate-notes` when notes > 10 — the state file
+  keeps the newest 10 notes, older ones move as one-`{"note": …}`-record-
+  per line JSONL into `iterate-state-archive.jsonl` (history stays
+  git-diffable). Deterministic and idempotent; `just rotate-notes-dry`
+  previews. 90 notes cost every session start the 50 KB read-tool limit
+  (134 KB file). The script (scripts/rotate-sprint-notes.nu) is
+  SESSION-OWNED: never registered in qualitygate batteries, never called
+  by lanes, absent from the reflection query — it changes the file, not
+  the loop.
 5b. Heartbeat cadence tracks reality: 20m while anything autonomous runs
   (pass, build, deploy chain); 60m when everything is user-gated. Refresh
   the instruction at every phase change — a heartbeat still carrying a
