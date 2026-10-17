@@ -34,7 +34,14 @@
 #      change that ships without its accepted snapshot costs a full
 #      dogfood-gate cycle to catch; the drift REDs here instead, with
 #      the acceptance instruction.
-#   6. Rust fmt tier, ONLY when the diff touches .rs files — a pure
+#   6. `nu scripts/qualitygate.nu check-seed-spec-paths` (fabro-8a60):
+#      every path the run's claimed seed spec NAMES under the loop-asset
+#      roots must appear in the run diff — an empty-edit or wrong-file
+#      pass REDs here in seconds instead of consuming a review cycle.
+#      Seed resolution: the tracker's single in_progress loop-assigned
+#      seed; ambiguity or tooling failure fails OPEN (qualitygate
+#      convention).
+#   7. Rust fmt tier, ONLY when the diff touches .rs files — a pure
 #      safety net: loop seeds should never touch Rust (the run-scope
 #      check already refuses lib/**; scripts/** is nu-only today). If a
 #      .rs file ever appears in scope, format discipline still applies.
@@ -87,6 +94,7 @@ def main []: nothing -> nothing {
     if not (check 'run-scope (loop lane: diff touches only loop assets)' (do { ^nu scripts/qualitygate.nu check-run-scope loop } | complete)) { exit 1 }
     if not (check 'mode-preservation (no exec-bit drop through the run diff)' (do { ^nu scripts/qualitygate.nu check-mode-preservation } | complete)) { exit 1 }
     if not (check 'dot-snapshot (fabro-dot checked-in-workflows when the diff touches a workflow graph)' (do { ^nu scripts/qualitygate.nu check-dot-snapshot } | complete)) { exit 1 }
+    if not (check 'seed-spec-paths (seed-spec-named loop-asset paths appear in the run diff)' (do { ^nu scripts/qualitygate.nu check-seed-spec-paths } | complete)) { exit 1 }
 
     # Rust fmt tier — only when the diff actually touches .rs files.
     let rs = (do { ^git diff --name-only $base } | complete | get stdout | lines | compact | where {|p| $p | str ends-with '.rs'})
