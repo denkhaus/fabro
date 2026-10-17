@@ -144,6 +144,14 @@ const BATTERIES = [
     # twins, daytona-sdk-rust) must equal the recorded list — a dep bump
     # cannot ride in silently; it is a deliberate edit plus a reason.
     '.fabro/scripts/dep-pins-fixtures.nu'
+    # planner-output schema parity battery (fabro-899b, arch-gate sprint 42
+    # candidate 2): develop and loop carry the last measured live copy pair
+    # of the fabro-8922 family (0.913-similar); a schema edit on one side
+    # silently stops matching the other. The battery asserts loop == develop
+    # modulo the explicit LANE_AXIS allow-list (title, description, the
+    # loop-gate ban superset) and REDs on any other divergence — cross-root
+    # file sharing is NOT the fix (fabro-aeb7).
+    '.fabro/scripts/schema-parity-fixtures.nu'
 ]
 
 def run-list [kind: string, paths: list<string>]: nothing -> bool {
