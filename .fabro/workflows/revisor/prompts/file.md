@@ -79,7 +79,12 @@ survey may only REPORT counts via `stats` and never files.
    ONE open overflow per theme; link lines are never filing input.
 4. Journal every new overflow in the canonical machine-visible shape:
    `- overflow: <title> — <concrete change>; effect: <expected effect>`
-   (legacy prose shapes are not machine-visible and will be lost).
+   (legacy prose shapes are not machine-visible and will be lost). The
+   matching FINDINGS-SECTION header carries the number INSIDE the bold
+   segment: `**3. <title>** — overflow` verifies;
+   `3. **<title>** — overflow` (number outside the bold) does NOT —
+   verify counts only the inside-bold form, so a shape miss reads as a
+   missing bullet even though the bullet exists.
 
 Backlog-starvation measurement for this mechanism is tracked as a seed
 (re-measure revisor creates:closes periodically).
