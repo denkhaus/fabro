@@ -152,6 +152,14 @@ const BATTERIES = [
     # loop-gate ban superset) and REDs on any other divergence — cross-root
     # file sharing is NOT the fix (fabro-aeb7).
     '.fabro/scripts/schema-parity-fixtures.nu'
+    # seed-spec path fixtures (fabro-8a60): the pure core of the
+    # qualitygate seed-spec tier — spec-named loop-asset path
+    # extraction (globs/prefixes/URLs excluded), the missing-path RED
+    # set, in-progress seed resolution — plus end-to-end RED/GREEN/
+    # fail-open arms of the subcommand over a scratch git fixture and
+    # a PATH-planted canned seeds CLI. The empty-edit pass must RED in
+    # seconds, not a review cycle.
+    '.fabro/scripts/seed-spec-paths-fixtures.nu'
 ]
 
 def run-list [kind: string, paths: list<string>]: nothing -> bool {

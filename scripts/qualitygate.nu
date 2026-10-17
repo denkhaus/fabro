@@ -303,6 +303,111 @@ def check-run-scope [lane: string]: nothing -> nothing {
     print "run-scope green"
 }
 
+# ── Seed-spec path tier (fabro-8a60) ───────────────────────────────────
+# The loop-asset tier's diff-side twin of claim-check's citation gate:
+# every path the run's claimed seed spec NAMES under the loop-asset
+# roots must appear in the run diff — an empty-edit or wrong-file pass
+# REDs at the tester in seconds instead of consuming a full review
+# cycle. Extraction is deliberately conservative (no false REDs):
+#   - only slash-tokens count: a bare `justfile` in prose is a word,
+#     not a path citation;
+#   - URL payloads are stripped first (same rule as claim-check) so a
+#     `https://host/x` token cannot parse as a path;
+#   - glob tokens (`.fabro/**`) and bare directory prefixes
+#     (`scripts/`) are dropped — the diff lists files, a glob or
+#     directory prefix can never match one;
+#   - the loop-asset? allow-list decides "under the loop-asset roots"
+#     — the SAME predicate run-scope uses, one list, no drift.
+export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
+    if ($desc | is-empty) { return [] }
+    let clean = ($desc | str replace --all --regex '\S+://\S+' ' ')
+    $clean
+    | parse --regex '(?<![A-Za-z0-9._/-])(?<p>[A-Za-z0-9._/-]+/[A-Za-z0-9._/-]+)'
+    | get -o p
+    | default []
+    | each {|p| $p | str trim -r -c '.'}
+    | uniq
+    | where {|p|
+        ((not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
+    }
+}
+
+# Pure: the named paths the diff is missing (the RED set). Empty diff +
+# named paths -> every path missing -> RED; that is the tier's point.
+export def spec-paths-missing [named: list<string>, diff: list<string>]: nothing -> list<string> {
+    $named | where {|p| $p not-in $diff}
+}
+
+# Pure: the in_progress ids among a `seeds list --assignee loop`
+# issues payload — the claimable resolution core (exported for the
+# fixture battery).
+export def in-progress-loop-seeds [issues: list<any>]: nothing -> list<string> {
+    $issues
+    | where {|i| (($i | get -o status | default '') == 'in_progress') and (($i | get -o assignee | default '') == 'loop')}
+    | get -o id
+    | default []
+}
+
+# Deterministic seed-spec path verdict: resolve the run's claimed seed
+# (explicit --seed wins — the manual probe arm; otherwise the tracker's
+# in_progress loop-assigned set, where exactly one id means THE seed and
+# zero/many is ambiguity the gate cannot attribute), extract the
+# spec-named loop-asset paths, and RED on any named path the run diff
+# does not touch. Fail-open on the tier's own tooling errors (seeds CLI
+# failure, JSON surprise, unresolvable seed) — a broken probe must not
+# RED a sound diff (lane convention).
+def "main check-seed-spec-paths" [--seed: string = ""]: nothing -> nothing {
+    let base = (run-base)
+    if not $base.grounded {
+        print "seed-spec-paths base ungrounded: interactive or pre-checkpoint, diffing working tree"
+    }
+    let diff = (run-diff-paths $base)
+    let seed = (if ($seed | is-not-empty) {
+        $seed
+    } else {
+        let list = (do { ^seeds list --format json --assignee loop --limit 200 } | complete)
+        if $list.exit_code != 0 {
+            print "seed-spec-paths: seeds list failed — skipping (fail-open)"
+            ""
+        } else {
+            let issues = (try { $list.stdout | from json | get -o issues } catch { [] })
+            let claimed = (in-progress-loop-seeds $issues)
+            if ($claimed | is-empty) {
+                print "seed-spec-paths: no in_progress loop-assigned seed — skipping (fail-open)"
+                ""
+            } else if (($claimed | length) == 1) {
+                $claimed | first
+            } else {
+                print $"seed-spec-paths: ($claimed | length) in_progress loop-assigned seeds \(($claimed | str join ', ')\) — cannot attribute this run's seed, skipping (fail-open)"
+                ""
+            }
+        }
+    })
+    if ($seed | is-empty) { return }
+    let show = (do { ^seeds show $seed --format json } | complete)
+    if $show.exit_code != 0 {
+        print $"seed-spec-paths: seeds show ($seed) failed — skipping \(fail-open\)"
+        return
+    }
+    let desc = (try { $show.stdout | from json | get -o issue.description | default '' } catch { '' })
+    let named = (spec-named-loop-paths $desc)
+    if ($named | is-empty) {
+        print $"== seed-spec-paths [($seed)] — spec names no loop-asset paths, tier idle =="
+        return
+    }
+    let missing = (spec-paths-missing $named $diff)
+    print $"== seed-spec-paths [($seed)] — ($named | length) loop-asset path\(s\) named, ($missing | length) missing =="
+    for n in $named {
+        let where = (if ($n in $diff) { 'in diff' } else { 'NOT in diff' })
+        print $"seed-spec-paths: named ($n) — ($where)"
+    }
+    if ($missing | is-not-empty) {
+        print "seed-spec-paths RED: the seed spec names loop-asset paths the run diff does not touch — an empty-edit or wrong-file pass"
+        exit 1
+    }
+    print "seed-spec-paths green"
+}
+
 # Pure: the paths whose exec bit is DROPPED among `git diff --summary`
 # lines — exactly the ' mode change 100755 => 100644 <path>' shape git
 # emits. The reverse (100644 => 100755, gaining +x) never matches:

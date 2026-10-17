@@ -41,7 +41,10 @@ never silently work around it.
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every
   workflow graph (petri admission), lint every nu script, prompt-lint
-  literal hygiene, run-scope (diff touches only loop assets), and — only
+  literal hygiene, run-scope (diff touches only loop assets),
+  seed-spec-paths (every loop-asset path the claimed seed's spec NAMES
+  must appear in the run diff — an empty-edit or wrong-file pass REDs),
+  and — only
   when the diff changes a workflow graph — the fabro-dot
   checked-in-workflows snapshot test (accept drift with
   `cargo insta accept` before publish). NEVER the product compile tier
