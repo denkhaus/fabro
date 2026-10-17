@@ -141,6 +141,16 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::search_runs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroSeedsSearchParams>(name, args)?;
+            let result = fabro_tool::seeds_search(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedSeedsSearchParams::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::seeds_search_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_GET_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunGetParams>(name, args)?;
             let result = fabro_tool::run_get(
@@ -332,6 +342,62 @@ mod tests {
                 ValidatedWorkflowVersion::new(version)?,
             )]))
         }
+    }
+
+    /// The tracker search through the real client backend (fabro-d6de): the
+    /// API page maps to rows, the keyword narrowing filters them, and the
+    /// result names the hit — the dedupe the tool exists for.
+    #[tokio::test]
+    async fn seeds_search_maps_the_api_page_and_narrows_by_terms() {
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/seeds")
+                    .query_param("status", "open");
+                then.status(200).json_body(json!({
+                    "data": [
+                        {
+                            "id": "fabro-0001",
+                            "title": "Lint duplication in the gate",
+                            "status": "open",
+                            "type": "task",
+                            "assignee": "loop",
+                            "labels": ["loop-assets"],
+                            "blockedBy": []
+                        },
+                        {
+                            "id": "fabro-0002",
+                            "title": "Planner schema parity",
+                            "status": "open",
+                            "type": "task",
+                            "assignee": null,
+                            "labels": [],
+                            "blockedBy": []
+                        }
+                    ],
+                    "meta": { "has_more": false, "total": 2 }
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
+            json!({"query": "lint duplication", "status": "open", "limit": 10}),
+            &services,
+        )
+        .await
+        .unwrap();
+        let (summary, body) = output.split_once('\n').unwrap();
+        assert_eq!(summary, "matched 1 tracker seed(s), returning 1");
+        let body: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(body["rows"][0]["id"], "fabro-0001");
+        assert_eq!(body["rows"][0]["assignee"], "loop");
+        assert_eq!(body["truncated"], false);
     }
 
     #[tokio::test]

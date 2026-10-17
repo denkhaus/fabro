@@ -153,6 +153,19 @@ pub trait FabroToolBackend: Send + Sync {
         Err(pair_tool_unavailable_error())
     }
 
+    /// The tracker rows the server-side filters select (fabro_seeds_search,
+    /// fabro-d6de): status, assignee (`none` = unassigned), and label; the
+    /// keyword narrowing and limit live in the tool. Only backends bound to
+    /// the tracker serve it; the default refuses with a teaching error.
+    async fn list_seed_rows(
+        &self,
+        _status: Option<&str>,
+        _assignee: Option<&str>,
+        _label: Option<&str>,
+    ) -> anyhow::Result<Vec<crate::SeedsRow>> {
+        Err(ToolError::message(format!("{FABRO_SEEDS_SEARCH_TOOL_NAME} is not available")).into())
+    }
+
     /// Open an Ask-Fabro session on the target run and return its id.
     async fn create_ask_session(&self, _run_id: &RunId, _title: &str) -> anyhow::Result<String> {
         Err(ask_tool_unavailable_error())
@@ -249,9 +262,14 @@ pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
+pub const FABRO_SEEDS_SEARCH_TOOL_NAME: &str = "fabro_seeds_search";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
+        tool_definition::<crate::FabroSeedsSearchParams>(
+            FABRO_SEEDS_SEARCH_TOOL_NAME,
+            "Search the project's seeds tracker read-only: list and filter the tracker's seeds by keyword terms (AND over id, title, labels), status, assignee, and label. Use it to check for existing seeds before recommending a new filing.",
+        ),
         tool_definition::<crate::FabroWorkflowVersionCreateParams>(
             FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
             "Register supplied workflow file contents and all local dependencies as a reusable immutable workflow version ID. Obtain files with shell/read tools first; this does not create or start a run.",
@@ -431,6 +449,7 @@ mod tests {
     #[test]
     fn shared_tool_definitions_include_run_management_catalog() {
         assert_eq!(shared_tool_names(), vec![
+            FABRO_SEEDS_SEARCH_TOOL_NAME,
             FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
             FABRO_RUN_CREATE_TOOL_NAME,
             FABRO_RUN_SEARCH_TOOL_NAME,

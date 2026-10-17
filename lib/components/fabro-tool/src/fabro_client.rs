@@ -299,6 +299,54 @@ impl FabroToolBackend for ClientBackend {
         Ok(bytes.map(|bytes| bytes.to_vec()))
     }
 
+    async fn list_seed_rows(
+        &self,
+        status: Option<&str>,
+        assignee: Option<&str>,
+        label: Option<&str>,
+    ) -> anyhow::Result<Vec<crate::SeedsRow>> {
+        // Read-only and tracker-wide: the run scope guards run data, and the
+        // tracker is not run data (fabro-d6de).
+        use std::num::NonZeroU64;
+
+        use crate::seeds::SEEDS_PAGE_LIMIT;
+
+        let page_limit =
+            NonZeroU64::new(SEEDS_PAGE_LIMIT).expect("the seeds page limit is non-zero");
+        let api_client = self.client.api_client();
+        let mut request = api_client.list_seeds().page_limit(page_limit);
+        if let Some(status) = status {
+            request = request.status(
+                types::SeedStatus::try_from(status)
+                    .map_err(|error| anyhow::anyhow!("unknown seed status `{status}`: {error}"))?,
+            );
+        }
+        if let Some(assignee) = assignee {
+            request = request.assignee(assignee);
+        }
+        if let Some(label) = label {
+            request = request.label(label);
+        }
+        let page = request
+            .send()
+            .await
+            .map_err(|err| anyhow::anyhow!("seeds listing failed: {err}"))?
+            .into_inner();
+        let rows = page
+            .data
+            .into_iter()
+            .map(|seed| crate::SeedsRow {
+                id:        seed.id,
+                title:     seed.title,
+                status:    seed.status.map(|status| status.to_string()),
+                seed_type: seed.type_.map(|kind| kind.to_string()),
+                assignee:  seed.assignee,
+                labels:    seed.labels,
+            })
+            .collect();
+        Ok(rows)
+    }
+
     async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String> {
         self.ensure_run_scope(run_id)?;
         let session = self

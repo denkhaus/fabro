@@ -100,6 +100,60 @@ impl FabroToolBackend for PinBackend {
     ) -> anyhow::Result<()> {
         pin_unimplemented!()
     }
+
+    async fn list_seed_rows(
+        &self,
+        status: Option<&str>,
+        _assignee: Option<&str>,
+        _label: Option<&str>,
+    ) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
+        // Two rows the narrowing must tell apart; the status filter is the
+        // server's, so the stub honors it directly.
+        let all = vec![
+            fabro_tool::SeedsRow {
+                id:        "fabro-0001".into(),
+                title:     "Lint duplication in the gate".into(),
+                status:    Some("open".into()),
+                seed_type: Some("task".into()),
+                assignee:  Some("loop".into()),
+                labels:    vec!["loop-assets".into()],
+            },
+            fabro_tool::SeedsRow {
+                id:        "fabro-0002".into(),
+                title:     "Planner schema parity".into(),
+                status:    Some("closed".into()),
+                seed_type: Some("task".into()),
+                assignee:  None,
+                labels:    vec![],
+            },
+        ];
+        Ok(all
+            .into_iter()
+            .filter(|row| status.is_none_or(|want| row.status.as_deref() == Some(want)))
+            .collect())
+    }
+}
+
+/// The Ask-Fabro analyst's tracker search (fabro-d6de) resolves through
+/// the same named registry — losing it would silently strip the analyst's
+/// only live-tracker view, the fabro-43cf silent-loss class.
+#[test]
+fn named_registry_resolves_the_seeds_search_tool() {
+    let services = FabroRunToolServices {
+        backend:        Arc::new(PinBackend),
+        current_run_id: RunId::new(),
+    };
+    let tools =
+        register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME]);
+    assert_eq!(
+        tools.len(),
+        1,
+        "fabro_seeds_search must resolve through the named run-tools registry (fabro-d6de)"
+    );
+    assert_eq!(
+        tools[0].definition().name,
+        fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME
+    );
 }
 
 #[test]

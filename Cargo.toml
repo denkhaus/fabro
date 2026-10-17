@@ -102,7 +102,7 @@ sandbox-driver-testing = { git = "https://github.com/lithoscomputer/sandbox-driv
 # cross-repo sync points. v0.2.0 carries the lifted command-layer library
 # API (seeds-0dfd, their PR #47; the fabro-088b binding's sync point —
 # ee1bb59 ancestor, acceptance documented in the tag message).
-seeds = { git = "https://github.com/denkhaus/seeds", tag = "v0.2.0" }# pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
+seeds = { git = "https://github.com/denkhaus/seeds", tag = "v0.9.1" }# pebble: the coding agent loop fabro runs its agent stages, Ask Fabro
 # sessions, hook evaluators, and `fabro exec` on. The `Environment` over a
 # sandbox-driver handle is pebble's `sandbox_driver` module (the
 # `sandbox-driver` feature).

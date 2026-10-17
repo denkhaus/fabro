@@ -42,19 +42,21 @@ pub(crate) fn dispatch(ns: SeedsNamespace, _base_ctx: &CommandContext) {
         SeedsCommand::Update(args) => {
             let ctx = SeedsContext::from_cwd();
             commands::update(&ctx, &UpdateInput {
-                id:               args.id,
-                status:           args.status,
-                title:            args.title,
-                assignee:         args.assignee,
-                description:      args.description,
-                kind:             args.kind,
-                priority:         args.priority,
-                add_label:        args.add_label,
-                remove_label:     args.remove_label,
-                set_labels:       args.set_labels,
-                extensions:       args.extensions,
-                clear_extensions: args.clear_extensions,
-                json:             args.json,
+                id:                     args.id,
+                status:                 args.status,
+                title:                  args.title,
+                assignee:               args.assignee,
+                description:            args.description,
+                append_description:     None,
+                replace_in_description: None,
+                kind:                   args.kind,
+                priority:               args.priority,
+                add_label:              args.add_label,
+                remove_label:           args.remove_label,
+                set_labels:             args.set_labels,
+                extensions:             args.extensions,
+                clear_extensions:       args.clear_extensions,
+                json:                   args.json,
             })
         }
         SeedsCommand::Close(args) => {
@@ -66,10 +68,13 @@ pub(crate) fn dispatch(ns: SeedsNamespace, _base_ctx: &CommandContext) {
             })
         }
         SeedsCommand::Dep(ns) => dep(ns.command),
-        SeedsCommand::Prime(args) => commands::prime(&PrimeInput {
-            compact: args.compact,
-            json:    args.json,
-        }),
+        SeedsCommand::Prime(args) => {
+            let ctx = SeedsContext::from_cwd();
+            commands::prime(&ctx, &PrimeInput {
+                compact: args.compact,
+                json:    args.json,
+            })
+        }
     };
     emit(&outcome);
 }
