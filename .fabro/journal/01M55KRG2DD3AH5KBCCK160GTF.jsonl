@@ -1,1 +1,2 @@
 {"$schema":"fabro-journal-v1","run_id":"01M55KRG2DD3AH5KBCCK160GTF","node":"start","visit":1,"status":"succeeded","ts":"2026-10-17T19:00:38Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M55KRG2DD3AH5KBCCK160GTF","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-17T19:00:39Z","data":{}}
