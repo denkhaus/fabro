@@ -18,6 +18,13 @@
 # `target` (optional): a workflow name (`.fabro/workflows/<name>`), a
 # workflow directory, a `workflow.toml` path, or a graph file path.
 # Default: every `.fabro/workflows/*/workflow.toml` graph.
+#
+# Scope (fabro-0d77): graph admission + stage-journal coverage + the
+# conductor schema probe ONLY. The nushell and prompt-lint tiers that
+# used to run here were removed — they duplicated battery-runner's lint
+# scope on every loop-gate pass. `nu .fabro/scripts/battery-runner.nu
+# lint` is the single lint entry (fabro-eae5); `just lint-nu` stays the
+# manual nushell-only alias.
 
 def main [target: string = ""] {
     let graphs = (graph_paths $target)
@@ -65,25 +72,6 @@ def main [target: string = ""] {
     }
     # Stage-journal inspects coverage (fabro-e907) — always over ALL graphs.
     stage_journal_coverage_check
-    # Loop assets are code, not just graph references: the nushell tier
-    # (parse + interpolated-regex scan) runs with graph validation so a
-    # broken script never ships past the host check (scripts/verify.nu
-    # class, run 01M2GVW7GGGB).
-    let lint = (do { ^nu scripts/lint-nu.nu } | complete)
-    print $lint.stdout
-    if ($lint.exit_code != 0) {
-        print -e $lint.stderr
-        exit $lint.exit_code
-    }
-    # Loop-asset literals rot silently (unresolvable seed ids, drifted
-    # justfile anchors): the prompt tier lints them with the same rule
-    # (run 2026-09-16 architecture pass; fabro-41de generalized).
-    let plint = (do { ^nu .fabro/scripts/prompt-lint.nu } | complete)
-    print $plint.stdout
-    if ($plint.exit_code != 0) {
-        print -e $plint.stderr
-        exit $plint.exit_code
-    }
     # Conductor develop-output schema probe (fabro-3196) — deterministic
     # pin of the pass-continuity teeth.
     conductor_develop_schema_probe

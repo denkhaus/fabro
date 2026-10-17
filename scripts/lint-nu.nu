@@ -14,7 +14,9 @@
 #
 # Scope: repo scripts/ plus every workflow's loop assets. The qualitygate
 # (fabro-bfe1) previously walked ONLY develop scripts — this is the
-# full-repo replacement, also wired into `just validate-workflows`.
+# full-repo replacement, wired into `.fabro/scripts/battery-runner.nu
+# lint` (the single lint entry, fabro-0d77); `just lint-nu` is the
+# manual alias.
 
 def script-paths [] {
     (glob scripts/*.nu)
