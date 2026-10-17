@@ -14,6 +14,7 @@
 #   nu .fabro/workflows/develop/scripts/claim-check-smoke.nu
 
 const CLAIM_CHECK = "claim-check.nu"
+const CLAIM_SMOKE_SCRIPT = "claim-check.nu"  # dry-run target; nu resolves consts against this file's dir at use time
 source $CLAIM_CHECK
 
 def fail [what: string]: nothing -> nothing {
@@ -41,6 +42,7 @@ def show-with [desc: string]: nothing -> record {
 # Top-level statements, no def main: the sourced claim-check.nu already
 # defines main (duplicate_command_def otherwise; closeout-smoke pattern).
 let home_dir = $env.PWD
+let script_dir = ($env.CURRENT_FILE | path dirname)
 let scratch = (mktemp -d -t claim-check-smoke.XXXXXX)
 
 try {
@@ -104,6 +106,47 @@ try {
 
         # non-blocking: URL :port shapes are never path:line citations.
         expect-ok '15: URL port is not an anchor' (claim-body-verdict (show-with "the server at https://host.io:443/x answers") $scratch)
+
+        # ── line-tip guard, pure core (fabro-006d) ─────────────────────
+        # pass arm: base == tip — nothing landed since the pin.
+        let same = (line-tip-verdict "abc" "abc" "ignored log text" "fabro-828c" "body")
+        if $same.outcome != "succeeded" or not $same.skipped { fail $"16: base==tip must skip green, got ($same | to json --raw)" }
+        print "PASS (16: base==tip skips green)"
+
+        # pass arm: base behind, but neither the seed id nor a cited path
+        # is in the range — the claim stays legal.
+        let clean_range = (line-tip-verdict "abc" "def" "unrelated work\nlib/other.rs\n" "fabro-828c" "touches scripts/verify.nu")
+        if $clean_range.outcome != "succeeded" or $clean_range.skipped { fail $"17: unrelated range must pass scanned, got ($clean_range | to json --raw)" }
+        if ($clean_range.evidence | is-not-empty) { fail "17: no evidence expected" }
+        print "PASS (17: unrelated landed work passes)"
+
+        # bounce arm: a landed commit body names the claimed seed id.
+        let seed_hit = (line-tip-verdict "abc" "def" "tracker: close fabro-828c via PR #405\n.seeds/issues.jsonl\n" "fabro-828c" "body")
+        if $seed_hit.outcome != "failed" { fail $"18: landed seed id must bounce, got ($seed_hit | to json --raw)" }
+        if ($seed_hit.evidence | where {|e| $e.seed_in? != null } | is-empty) { fail "18: seed_in evidence missing" }
+        print "PASS (18: landed seed id bounces)"
+
+        # bounce arm: a landed commit touched a rooted path the seed body
+        # cites — the work surface already moved.
+        let path_hit = (line-tip-verdict "abc" "def" "other work\nscripts/verify.nu\n" "fabro-828c" "change scripts/verify.nu per .fabro/scripts/verify.nu")
+        if $path_hit.outcome != "failed" { fail $"19: landed cited path must bounce, got ($path_hit | to json --raw)" }
+        if ($path_hit.evidence | where {|e| $e.path_in? != null } | is-empty) { fail "19: path_in evidence missing" }
+        print "PASS (19: landed cited path bounces)"
+
+        # fail-open arm: no range to scan.
+        let no_range = (line-tip-verdict "abc" "def" "" "fabro-828c" "body")
+        if $no_range.outcome != "succeeded" or not $no_range.skipped { fail $"20: empty range must skip green, got ($no_range | to json --raw)" }
+        print "PASS (20: empty range fails open)"
+
+        # end-to-end negative dry-run of the edited script (fabro-006d
+        # demand): a non-git scratch dir makes the fetch fail-open, the
+        # seeds CLI finds no tracker and the body gate degrades — the
+        # claim-check still exits 0 and never blocks on tooling.
+        let script = ($script_dir | path join "claim-check.nu")
+        let raw = (do { echo "fabro-x1" | ^nu $script } | complete)
+        if $raw.exit_code != 0 { fail $"21: fail-open dry-run must exit 0, got ($raw | to json --raw)" }
+        if not ($raw.stderr | str contains "fail-open") { fail $"21: expected a fail-open note, got ($raw.stderr | str substring 0..200)" }
+        print "PASS (21: script dry-run fails open end-to-end)"
 
         print "claim-check-smoke: all cases pass"
 } finally {
