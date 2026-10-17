@@ -173,6 +173,9 @@ mod fork_inspection_guard_tests;
 mod fork_line_recovery;
 #[cfg(test)]
 mod fork_publish_gate_tests;
+pub(crate) mod fork_run_retention;
+#[cfg(test)]
+mod fork_run_retention_tests;
 pub(crate) mod fork_seeds_git_source;
 #[cfg(test)]
 mod fork_seeds_read_api_tests;
@@ -197,6 +200,7 @@ mod session_runtime;
 pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
+pub(crate) use fork_run_retention::spawn_run_retention_supervisor;
 pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]

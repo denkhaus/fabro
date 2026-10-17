@@ -7,9 +7,10 @@ use fabro_types::settings::server::{
     ObjectStoreProvider, ObjectStoreSettings, SandboxPluginSettings, SeedsMirrorSettings,
     ServerApiSettings, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod,
     ServerAuthSettings, ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings,
-    ServerNamespace, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
-    ServerSandboxSettings, ServerSchedulerSettings, ServerSeedsSettings, ServerStorageSettings,
-    ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
+    ServerNamespace, ServerRetentionSettings, ServerSandboxProviderSettings,
+    ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
+    ServerSeedsSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
+    WebhookStrategy,
 };
 use fabro_util::Home;
 
@@ -50,6 +51,13 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .as_ref()
                 .and_then(|scheduler| scheduler.max_concurrent_runs)
                 .expect("defaults.toml should provide server.scheduler.max_concurrent_runs"),
+        },
+        retention: ServerRetentionSettings {
+            max_run_age_days: layer
+                .retention
+                .as_ref()
+                .and_then(|retention| retention.max_run_age_days)
+                .expect("defaults.toml should provide server.retention.max_run_age_days"),
         },
         logging: ServerLoggingSettings {
             level:       layer

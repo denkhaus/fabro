@@ -33,6 +33,8 @@ pub struct ServerLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduler:    Option<ServerSchedulerLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention:    Option<ServerRetentionLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logging:      Option<ServerLoggingLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integrations: Option<ServerIntegrationsLayer>,
@@ -195,6 +197,15 @@ pub struct ObjectStoreS3Layer {
 pub struct ServerSchedulerLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_concurrent_runs: Option<usize>,
+}
+
+/// `[server.retention]` — periodic pruning of terminal run history
+/// (fabro-b1a4, fork).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct ServerRetentionLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_run_age_days: Option<u64>,
 }
 
 /// `[server.logging]` — process-owned logging configuration for the server.
