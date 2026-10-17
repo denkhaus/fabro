@@ -37,6 +37,7 @@ use crate::fork_hook_warning::{HookWarningSink, HookWarningWatchdog};
 use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
+use crate::secrets::HookSecretProvider;
 use crate::tool_policy::ToolPolicyHooks;
 use crate::{fork_preamble_policy, host_tools};
 
@@ -91,6 +92,14 @@ pub struct RuntimeSpec {
     /// [`crate::fork_git_identity`]). `None` injects none (admission
     /// checks, and a run executed without Fabro's hooks).
     pub git_identity:     Option<GitIdentity>,
+    /// The run's secret provider for `[[run.hooks]]` `secrets` declarations:
+    /// the local hook service resolves each declared name against this and
+    /// hands the value to exactly that hook's own process environment — the
+    /// worker environment stays scrubbed and no file holds the value. The
+    /// same [`crate::secrets::VaultSecrets`] the run's interpolation reads,
+    /// so one vault serves both. `None` installs no provider: a hook that
+    /// declares a secret then fails loudly as unable to run (fabro-225f).
+    pub hook_secrets:     Option<Arc<dyn HookSecretProvider>>,
     /// Where the non-blocking hook watchdog's warnings go (fabro-6922):
     /// the run's platform records and the run id the notices carry. The
     /// runtime wraps its hook service with the watchdog when the sink is
@@ -169,6 +178,9 @@ impl RuntimeSpec {
             local.set_run(RunInfo {
                 run_id: run_id.clone(),
             });
+        }
+        if let Some(secrets) = &self.hook_secrets {
+            local.set_secrets(Arc::clone(secrets));
         }
         let policy = Arc::new(ToolPolicyHooks::new(
             local.clone(),

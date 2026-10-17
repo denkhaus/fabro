@@ -51,7 +51,7 @@ use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::{self, RuntimeSpec};
-use fabro_petri::secrets::VaultSecrets;
+use fabro_petri::secrets::{HookSecretProvider, VaultSecrets};
 use fabro_petri::{SqliteRunStore, admission, projection, run_graph};
 use fabro_static::EnvVars;
 use fabro_store::platform_records::{RunLifecycleKind, RunLifecycleRecord};
@@ -86,6 +86,7 @@ pub(crate) fn runtime_spec(
     eligible: &[ProviderId],
     dry_run: bool,
     sandbox: SandboxProviderConfig,
+    hook_secrets: Option<Arc<VaultSecrets>>,
 ) -> RuntimeSpec {
     let settings_toml = settings_layer_toml(state);
     let mcp_catalog_toml = mcp_catalog_toml(&state.mcp_server_store().catalog_settings());
@@ -123,6 +124,9 @@ pub(crate) fn runtime_spec(
         // The watchdog sink binds at execution time in the worker; this
         // spec only assembles the launch (fabro-6922).
         hook_warnings: None,
+        // The run's vault snapshot serves the hooks' declared secrets the
+        // same values `{{ secrets.* }}` interpolation reads (fabro-225f).
+        hook_secrets: hook_secrets.map(|secrets| secrets as Arc<dyn HookSecretProvider>),
     }
 }
 
@@ -473,11 +477,15 @@ pub(crate) async fn admit(
         settings,
         prepared.vars(),
         launch,
+        // Admission has no vault snapshot to serve a hook's declared
+        // secrets: the check path installs no provider, so a declaration
+        // never resolves (and never needs to) before a run exists.
         runtime_spec(
             state,
             eligible,
             dry_run,
             state.sandbox_provider_config(None),
+            None,
         ),
         false,
     )
@@ -634,6 +642,23 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
             return;
         }
     };
+    // Hook-declared files stage host-side on this path too (fabro-225f):
+    // the same bytes the worker subprocess stages, so the in-process path
+    // exercises the same staging and a test can assert it. The engine runs
+    // in this process, so no FABRO_HOOK_ASSETS variable is set — the
+    // subprocess path owns that delivery.
+    if let Err(err) = super::stage_hook_assets(&state, &run_state, run_id, &run_dir).await {
+        finish(
+            &state,
+            run_id,
+            RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            },
+            Some(format!("Staging hook assets failed: {err}")),
+        );
+        return;
+    }
+
     let started = Instant::now();
     for record in [
         run_records::transition(RunLifecycleKind::Starting, RunStatus::Starting),
@@ -690,6 +715,9 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         &eligible,
         dry_run,
         state.sandbox_provider_config(vault.get(EnvVars::DAYTONA_API_KEY).map(str::to_owned)),
+        // The same vault snapshot the engine's `{{ secrets.* }}` reads
+        // serves a hook's declared `secrets` (fabro-225f).
+        Some(Arc::new(VaultSecrets::from_vault(&vault))),
     );
     let request = RunRequest {
         run_id: run_id.to_string(),

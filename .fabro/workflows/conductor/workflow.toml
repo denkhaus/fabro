@@ -38,6 +38,10 @@ name = "judgment-shadow"
 event = "stage_complete"
 sandbox = false
 files = ["../../scripts/judgment-shadow.nu"]
+# The OpenRouter credential reaches exactly this hook's process: the
+# engine resolves the name against the run's vault provider and injects it
+# into the hook env (fabro-225f) — the worker env stays scrubbed.
+secrets = ["OPENROUTER_API_KEY"]
 script = 'nu "${FABRO_HOOK_ASSETS:-.}/.fabro/scripts/judgment-shadow.nu"'
 blocking = false
 timeout = "15s"

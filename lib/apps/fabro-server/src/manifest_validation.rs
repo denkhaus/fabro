@@ -69,6 +69,7 @@ fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
         // identity into any sandbox process (fabro-19f9).
         git_identity:     None,
         // No execution means no run stream to warn on (fabro-6922).
+        hook_secrets:     None,
         hook_warnings:    None,
     }
 }

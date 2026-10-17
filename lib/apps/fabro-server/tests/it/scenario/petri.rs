@@ -1765,3 +1765,71 @@ async fn a_run_goal_file_layer_is_the_goal_the_stages_execute_with() {
     .await;
     assert_run_goal(&app, &namespace, &run_id, GOAL).await;
 }
+
+/// A host command hook's declared secrets and files reach execution through
+/// the server (fabro-225f): the vault value arrives in exactly the hook's
+/// own process environment, the declared files stage under the run's
+/// directory, and a declared secret nothing provides fails the hook loudly
+/// while the run stays green (the hook is non-blocking).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_host_hook_receives_its_declared_secret_and_stages_its_files() {
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let settings = settings_from_toml("_version = 1\n\n[run.environment]\nid = \"local\"\n");
+    // An explicit vault path pins the derived test storage root (the
+    // builder redirects storage beside the vault file), so the test can
+    // name the scratch tree the run lands in.
+    let vault_path = workspace.path().join("secrets.json");
+    let state = fabro_server::test_support::TestAppStateBuilder::new()
+        .runtime_settings(settings.server_settings, settings.manifest_run_defaults)
+        .max_concurrent_runs(5)
+        .in_process_execution()
+        .vault_path(vault_path.clone())
+        .vault_entries([("HOOK_PROBE_TOKEN", "probe-token-225f")])
+        .build();
+    let app = test_app_with_scheduler(Arc::clone(&state));
+
+    let probe_out = workspace.path().join("probe-token.txt");
+    let hook_settings = format!(
+        "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n\n[[run.hooks]]\nname = \"probe\"\nevent = \"stage_complete\"\nsandbox = false\nfiles = [\"probe-helper.txt\"]\nsecrets = [\"HOOK_PROBE_TOKEN\"]\nblocking = false\nscript = \"printf %s \\\"$HOOK_PROBE_TOKEN\\\" > {out}\"\n\n[[run.hooks]]\nname = \"absent\"\nevent = \"stage_complete\"\nsandbox = false\nsecrets = [\"ABSENT_TOKEN\"]\nblocking = false\nscript = \"true\"\n",
+        out = probe_out.display()
+    );
+    let version_id = register_version(&app, &[
+        ("workflow.fabro", COMMAND_DOT),
+        ("workflow.toml", &hook_settings),
+        ("probe-helper.txt", "helper bytes\n"),
+    ])
+    .await;
+    let run_id =
+        create_and_start_run_from_intent(&app, intent(&version_id, workspace.path())).await;
+
+    let status = wait_for_run_status(&app, &run_id, &["succeeded", "failed"]).await;
+    let run = run_json(&app, &run_id).await;
+    assert_eq!(status, "succeeded", "run: {run}");
+
+    // The declared secret reached exactly the hook's process environment.
+    assert_eq!(
+        std::fs::read_to_string(&probe_out).expect("the probe hook ran"),
+        "probe-token-225f"
+    );
+
+    // The declared file staged host-side under the run's directory, with
+    // the version's bytes (the worker path exports it as
+    // FABRO_HOOK_ASSETS; the in-process path shares the staging).
+    let storage = vault_path.with_file_name("storage");
+    let scratch = fabro_workflow::run_lookup::scratch_base(&storage);
+    let mut staged = None;
+    for entry in std::fs::read_dir(&scratch).expect("scratch dir") {
+        let entry = entry.expect("scratch entry");
+        if entry.file_name().to_string_lossy().contains(&run_id) {
+            let dir = entry.path().join("hook-assets").join("probe-helper.txt");
+            if dir.exists() {
+                staged = Some(dir);
+            }
+        }
+    }
+    let staged = staged.expect("hook-assets staged under the run dir");
+    assert_eq!(
+        std::fs::read_to_string(&staged).expect("staged bytes"),
+        "helper bytes\n"
+    );
+}

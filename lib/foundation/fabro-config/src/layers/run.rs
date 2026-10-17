@@ -782,6 +782,15 @@ pub struct HookEntry {
     /// time, like every static reference.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files:           Vec<InterpString>,
+    /// Secret names whose values the host injects into this hook's own
+    /// process environment at execution, resolved against the run's secret
+    /// provider (the vault). Valid only on a command hook that runs on the
+    /// host (`sandbox = false`): the sandbox never sees a host credential,
+    /// and no other transport runs a command to receive one (fabro-225f).
+    /// A name is a plain vault key — an interpolation token fails to
+    /// resolve and the hook reports it loudly at execution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secrets:         Vec<String>,
     // Exactly one of the following groups is expected:
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script:          Option<InterpString>,

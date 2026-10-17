@@ -253,6 +253,9 @@ pub(crate) async fn check_prepared_manifest(
         ready_providers,
         dry_run,
         state.sandbox_provider_config(None),
+        // Admission installs no hook-secrets provider (fabro-225f): a
+        // declaration resolves only once a run holds a vault snapshot.
+        None,
     );
     let readiness = Readiness::Server {
         catalog: state.catalog(),
@@ -1559,6 +1562,8 @@ mod tests {
             ready_providers,
             false,
             state.sandbox_provider_config(None),
+            // Admission installs no hook-secrets provider (fabro-225f).
+            None,
         );
         validate_prepared_manifest(
             prepared,
