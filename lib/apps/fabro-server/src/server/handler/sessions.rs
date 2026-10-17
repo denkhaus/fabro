@@ -60,6 +60,9 @@ const ASK_FABRO_SYSTEM_PROMPT: &str = include_str!("prompts/ask_fabro.md.j2");
 const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
     fabro_tool::FABRO_RUN_GET_TOOL_NAME,
+    // The live tracker for dedupe (fabro-d6de): recommendations that
+    // duplicate an open seed are the analyst's loudest failure class.
+    fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
 ];
 
 type SessionSseSender = mpsc::Sender<Result<Event, Infallible>>;
@@ -1723,6 +1726,9 @@ enabled = true
             "glob",
             fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
             fabro_tool::FABRO_RUN_GET_TOOL_NAME,
+            // The analyst's live-tracker view (fabro-d6de): without it the
+            // policy would silently strip the seeds tool from ask sessions.
+            fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
         ] {
             assert!(ask_fabro_allows_tool(tool_name), "{tool_name}");
         }
