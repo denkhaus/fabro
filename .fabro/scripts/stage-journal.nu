@@ -1,9 +1,12 @@
 #!/usr/bin/env nu
 # Stage journal hook (ADR-0009 candidate, seed fabro-176b final design).
 #
-# SHARED by all four loop workflows (conductor, develop, loop, revisor): each
+# SHARED by every loop workflow that wires a stage journal (currently
+# architect, conductor, develop, loop, merge-upstream, revisor): each
 # workflow.toml references this ONE copy from its [[run.hooks]] block —
 # never duplicate this file per workflow; a fix lands here exactly once.
+# When a new workflow adopts this hook, update the list above in the same
+# change (rg -l 'stage-journal' .fabro/workflows --glob 'workflow.toml').
 #
 # Fires on stage_complete (non-blocking, sandbox). Appends ONE JSON line
 # per stage execution to the run's journal stream:
