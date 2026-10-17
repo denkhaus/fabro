@@ -81,7 +81,7 @@ use fabro_petri::petri::OwnerId;
 use fabro_petri::platform_records::{HttpPlatformRecords, PlatformRecords};
 use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::runtime::{self, RuntimeSpec};
-use fabro_petri::secrets::VaultSecrets;
+use fabro_petri::secrets::{HookSecretProvider, VaultSecrets};
 use fabro_petri::{HttpRunStore, admission};
 use fabro_static::EnvVars;
 use fabro_store::RunProjection;
@@ -636,6 +636,12 @@ async fn runtime_spec(
         DaytonaCredentials::from_api_key(key.to_owned(), crate::process_env_var)
             .with_http_client(fabro_http::http_client().ok())
     });
+    // The worker's vault snapshot serves a hook's declared `secrets` the
+    // same values the run's `{{ secrets.* }}` interpolation reads: the
+    // values reach exactly the declaring hook's process, never the worker
+    // environment (fabro-225f).
+    let hook_secrets: Option<Arc<dyn HookSecretProvider>> =
+        Some(Arc::new(VaultSecrets::from_vault(&*vault.read().await)));
     Ok(RuntimeSpec {
         sandbox: SandboxProviderConfig::from_lookup(daytona, crate::process_env_var),
         settings_toml: None,
@@ -654,5 +660,6 @@ async fn runtime_spec(
         // `engine::run` installs the watchdog sink (with the run's platform
         // records) once the hooks spec is in hand (fabro-6922).
         hook_warnings: None,
+        hook_secrets,
     })
 }

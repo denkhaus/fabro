@@ -4247,6 +4247,33 @@ fn answer_from_request(
     }
 }
 
+/// Stage the run's hook-declared files host-side (fabro-225f): both
+/// execution paths — the worker subprocess and the in-process test
+/// override — stage the same bytes under `<run_dir>/hook-assets/`, so a
+/// `sandbox = false` hook executes them by path instead of embedding
+/// their bytes in the hook command. The worker exports the directory as
+/// `FABRO_HOOK_ASSETS`; a version absent from the store stages nothing
+/// (the run fails on its own version-loading path).
+async fn stage_hook_assets(
+    state: &AppState,
+    run_state: &fabro_store::RunProjection,
+    run_id: RunId,
+    run_dir: &std::path::Path,
+) -> anyhow::Result<Option<PathBuf>> {
+    match run_state.spec.workflow_version_id {
+        Some(version_id) => {
+            fork_hook_assets::stage(
+                &fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs()),
+                run_id,
+                version_id,
+                run_dir,
+            )
+            .await
+        }
+        None => Ok(None),
+    }
+}
+
 /// Execute a single run: transitions runnable → starting → running →
 /// completed/failed/cancelled.
 async fn execute_run(state: Arc<AppState>, run_id: RunId) {
@@ -4339,31 +4366,19 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     // Hook-declared files stage host-side before the worker launches, so a
     // `sandbox = false` hook executes them from FABRO_HOOK_ASSETS instead
     // of embedding their bytes in the hook command.
-    let hook_assets = match run_state.spec.workflow_version_id {
-        Some(version_id) => {
-            match fork_hook_assets::stage(
-                &fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs()),
+    let hook_assets = match stage_hook_assets(&state, &run_state, run_id, &run_dir).await {
+        Ok(dir) => dir,
+        Err(err) => {
+            fail_run_before_execution(
+                &state,
                 run_id,
-                version_id,
-                &run_dir,
+                FailureReason::WorkflowError,
+                format!("Staging hook assets failed: {err}"),
             )
-            .await
-            {
-                Ok(dir) => dir,
-                Err(err) => {
-                    fail_run_before_execution(
-                        &state,
-                        run_id,
-                        FailureReason::WorkflowError,
-                        format!("Staging hook assets failed: {err}"),
-                    )
-                    .await;
-                    tracing::error!(run_id = %run_id, error = ?err, "Staging hook assets failed");
-                    return;
-                }
-            }
+            .await;
+            tracing::error!(run_id = %run_id, error = %err, "Staging hook assets failed");
+            return;
         }
-        None => None,
     };
     let state_for_build = Arc::clone(&state);
     let run_dir_for_build = run_dir.clone();

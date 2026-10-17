@@ -9,6 +9,14 @@
 # locked engine package missing from PINS REDs, and a PINS entry that the
 # lock no longer carries REDs.
 #
+# Bump 2026-10-17 (petri 323b8aaaef56 -> 78c524bda565): per-hook declared
+# secrets (fabro-225f) — a [[run.hooks]] host command hook declares
+# `secrets = [...]`, the engine resolves the names against the run's
+# SecretProvider and injects them into exactly that hook's process env
+# (provider-agnostic; no env allowlisting, no credential file). Includes a
+# tip-hygiene commit (pebble.rs fmt + clippy) that brought `mise run lint`
+# back to green on the fork tip. Patching our forks is expected; the rev
+# move is recorded here per ADR-0027 decision 2/3.
 # Bump 2026-10-12 (petri 8fcb47197ac1 -> 323b8aaaef56): Fabro stream volume —
 # the pebble delta mirror coalesces (fabro-9dff: 43,915 token-delta events /
 # 46.8 MB in one battery run starved the store read pool). Only petri moved;
@@ -36,21 +44,21 @@ const PINS = {
     "pebble-agent": ["208f391c2b38"]
     "pebble-cli-core": ["208f391c2b38"]
     "pebble-coding-agent": ["208f391c2b38"]
-    "petri-attractor-steps": ["323b8aaaef56"]
-    "petri-driver": ["323b8aaaef56"]
-    "petri-engine": ["323b8aaaef56"]
-    "petri-execution": ["323b8aaaef56"]
-    "petri-executor": ["323b8aaaef56"]
-    "petri-executor-sandbox": ["323b8aaaef56"]
-    "petri-frontend": ["323b8aaaef56"]
-    "petri-frontend-attractor": ["323b8aaaef56"]
-    "petri-frontend-fabro": ["323b8aaaef56"]
-    "petri-frontend-native": ["323b8aaaef56"]
-    "petri-ir": ["323b8aaaef56"]
-    "petri-runtime": ["323b8aaaef56"]
-    "petri-steps": ["323b8aaaef56"]
-    "petri-store": ["323b8aaaef56"]
-    "petri-testkit": ["323b8aaaef56"]
+    "petri-attractor-steps": ["78c524bda565"]
+    "petri-driver": ["78c524bda565"]
+    "petri-engine": ["78c524bda565"]
+    "petri-execution": ["78c524bda565"]
+    "petri-executor": ["78c524bda565"]
+    "petri-executor-sandbox": ["78c524bda565"]
+    "petri-frontend": ["78c524bda565"]
+    "petri-frontend-attractor": ["78c524bda565"]
+    "petri-frontend-fabro": ["78c524bda565"]
+    "petri-frontend-native": ["78c524bda565"]
+    "petri-ir": ["78c524bda565"]
+    "petri-runtime": ["78c524bda565"]
+    "petri-steps": ["78c524bda565"]
+    "petri-store": ["78c524bda565"]
+    "petri-testkit": ["78c524bda565"]
     "sandbox-driver": ["90b0d8257671"]
     "sandbox-driver-daytona": ["236196ed134d"]
     "sandbox-driver-daytona-config": ["90b0d8257671"]

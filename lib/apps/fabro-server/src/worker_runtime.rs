@@ -118,6 +118,11 @@ impl LocalWorkerRuntime {
         if let Some(hook_assets) = spec.hook_assets.as_deref() {
             cmd.env(EnvVars::FABRO_HOOK_ASSETS, hook_assets);
         }
+        // The worker's storage anchor for host-side artifacts (the
+        // judgment stream): the worker knows its storage dir as an
+        // argument, and a hook script must not guess it (fabro-225f — the
+        // missing anchor is why the shadow never wrote a line).
+        cmd.env(EnvVars::FABRO_STORAGE_DIR, &spec.storage_dir);
 
         #[cfg(unix)]
         fabro_proc::pre_exec_setpgid(cmd.as_std_mut());

@@ -22,6 +22,9 @@ use std::sync::Arc;
 
 use fabro_types::SecretType;
 use fabro_vault::Vault;
+/// Re-exported for RuntimeSpec's `hook_secrets`: the embedding host names
+/// the provider through Fabro's crate, not Petri's internals.
+pub use petri_runtime::executor::SecretProvider as HookSecretProvider;
 use petri_runtime::executor::{MapSecrets, Masker, Secret, SecretError, SecretProvider};
 
 /// The vault's token entries, as Petri's secret provider for one run.

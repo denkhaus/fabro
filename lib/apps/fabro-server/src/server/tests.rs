@@ -2314,6 +2314,14 @@ fn worker_command_exports_hook_assets_dir_when_staged() {
         command_env_value(&cmd, EnvVars::FABRO_HOOK_ASSETS),
         EnvOverride::Set("/run/hook-assets".to_string())
     );
+    // The storage anchor a host-side hook artifact writes to (the judgment
+    // stream): the worker knows its storage dir as an argument, and the
+    // hook must not guess (fabro-225f — the missing anchor is why the
+    // shadow never wrote a line anywhere).
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::FABRO_STORAGE_DIR),
+        EnvOverride::Set(spec.storage_dir.display().to_string())
+    );
 }
 
 #[cfg(unix)]
