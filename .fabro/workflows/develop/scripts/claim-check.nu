@@ -30,6 +30,16 @@
 #    they rot cited evidence, not the work routing. Fail-open on
 #    every internal error (seeds CLI failure, JSON surprise): the
 #    gate degrades to arm 1 only and never blocks a claim on tooling.
+#
+# 3. Claim-time line-tip guard (fabro-006d): the run pins its checkout
+#    at create time; an auto-merge landing seconds later leaves this
+#    stage scanning a base where ALREADY-LANDED work is invisible — the
+#    TOCTOU that re-implemented fabro-828c as conflicting PR #412. The
+#    guard fetches the line, and when the base is behind it scans
+#    base..line for (a) the claimed seed id in commit bodies and (b)
+#    the seed body's rooted repo paths in the touched files. A hit
+#    bounces the planner to re-verify instead of implementing. Fail-open
+#    on every git error (offline sandbox, missing ref): the arm skips.
 
 # Shared anchor/path verification (fabro-7daf anchors, fabro-9ec3 bare
 # paths): extraction + existence/range checking, root/workflow-relative/
@@ -105,6 +115,67 @@ export def claim-body-verdict [show: record, root: string] {
     }
 }
 
+# Pure decision core of arm 3: the run base sha, the line tip, the
+# `git log --format=%B --name-only base..tip` text, the claimed seed id,
+# and the seed body -> the line-tip verdict. Exported for the smoke
+# battery; the git plumbing lives in `main` and fails open.
+#
+#   outcome  succeeded | failed
+#   skipped  base == tip (nothing landed since the pin) or the arm was
+#            not given a range to scan (fail-open)
+#   evidence what matched: {seed_in: <line>} when a commit body names
+#            the seed id, {path_in: <path>} for each rooted body path a
+#            landed commit touched
+export def line-tip-verdict [
+    base: string, tip: string, range_log: string, seed_id: string, body: string
+] {
+    if ($base | is-empty) or ($tip | is-empty) or ($base == $tip) {
+        return {outcome: "succeeded", skipped: true, note: null, evidence: []}
+    }
+    if ($range_log | is-empty) {
+        return {outcome: "succeeded", skipped: true, note: "no range to scan — arm skipped (fail-open)", evidence: []}
+    }
+    let clean = ($body | str replace --all --regex '\S+://\S+' ' ')
+    let cited = (extract-bare-paths $clean | where {|p| rooted? $p})
+    mut evidence = []
+    for line in ($range_log | lines) {
+        if ($line | str contains $seed_id) {
+            $evidence = ($evidence | append {seed_in: $line})
+        }
+        if ($line | str trim) in $cited {
+            $evidence = ($evidence | append {path_in: ($line | str trim)})
+        }
+    }
+    if ($evidence | is-not-empty) {
+        {outcome: "failed", skipped: false, note: null, evidence: $evidence}
+    } else {
+        {outcome: "succeeded", skipped: false, note: null, evidence: []}
+    }
+}
+
+const LINE_REF = "origin/denkhaus"
+
+# The git plumbing of arm 3 (fail-open on every error): fetch the line,
+# resolve base and tip, scan the range, and hand the pure core its inputs.
+def line-tip-guard [seed_id: string, body: string] {
+    let fetched = (do { ^git fetch origin denkhaus } | complete)
+    if $fetched.exit_code != 0 {
+        return {outcome: "succeeded", skipped: true, note: "git fetch failed — line-tip arm skipped (fail-open)"}
+    }
+    let base = (do { ^git rev-parse HEAD } | complete)
+    let tip = (do { ^git rev-parse $LINE_REF } | complete)
+    if ($base.exit_code != 0) or ($tip.exit_code != 0) {
+        return {outcome: "succeeded", skipped: true, note: "rev-parse failed — line-tip arm skipped (fail-open)"}
+    }
+    let base_sha = ($base.stdout | str trim)
+    let tip_sha = ($tip.stdout | str trim)
+    let range = (do { ^git log --format=%B --name-only $"($base_sha)..($tip_sha)" } | complete)
+    if $range.exit_code != 0 {
+        return {outcome: "succeeded", skipped: true, note: "git log range failed — line-tip arm skipped (fail-open)"}
+    }
+    line-tip-verdict $base_sha $tip_sha $range.stdout $seed_id $body
+}
+
 def main []: nothing -> nothing {
     # Non-tty stdin: nu's `input` only works on a tty; the engine pipes the
     # context value, so read it through an external `cat` (closeout idiom).
@@ -119,6 +190,20 @@ def main []: nothing -> nothing {
         exit 1
     }
     let show = (do { ^seeds show $seed_id --format json } | complete)
+    let guard_body = (
+        try { $show.stdout | from json | get -o issue | default {} | get -o description | default '' } catch { '' }
+    )
+    let tip = (line-tip-guard $seed_id $guard_body)
+    if $tip.outcome == "failed" {
+        print -e $"claim-check: base stale — work landed on the line since this run's pin. Re-verify the claim before implementing \($seed_id\):"
+        for e in $tip.evidence {
+            print -e $"  ($e | to json --raw)"
+        }
+        print -e "claim-check: route Seed claimed again after re-verifying against the current line tip."
+        exit 1
+    } else if ($tip | get -o skipped | default false) and ($tip | get -o note | default null) != null {
+        print -e $"claim-check: ($tip.note)"
+    }
     let v = (claim-body-verdict $show ".")
     if $v.degraded {
         print -e $"claim-check: ($v.note)"

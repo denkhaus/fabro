@@ -9,6 +9,13 @@
 # locked engine package missing from PINS REDs, and a PINS entry that the
 # lock no longer carries REDs.
 #
+# Bump 2026-10-17b (petri 78c524bda565 -> 13e4e6627693): retryability by
+# failure kind (fabro-95d4, user decision) — retry_requested only for
+# rate_limit/network/timeout (same context re-sendable); 5xx keeps
+# llm:server (the request was processed and failed — not repeatable with
+# the same context), quota keeps its class. The 8fcb471 drift test is
+# green as originally written. Patching our forks is expected; the rev
+# move is recorded here per ADR-0027 decision 2/3.
 # Bump 2026-10-17 (petri 323b8aaaef56 -> 78c524bda565): per-hook declared
 # secrets (fabro-225f) — a [[run.hooks]] host command hook declares
 # `secrets = [...]`, the engine resolves the names against the run's
@@ -44,21 +51,21 @@ const PINS = {
     "pebble-agent": ["208f391c2b38"]
     "pebble-cli-core": ["208f391c2b38"]
     "pebble-coding-agent": ["208f391c2b38"]
-    "petri-attractor-steps": ["78c524bda565"]
-    "petri-driver": ["78c524bda565"]
-    "petri-engine": ["78c524bda565"]
-    "petri-execution": ["78c524bda565"]
-    "petri-executor": ["78c524bda565"]
-    "petri-executor-sandbox": ["78c524bda565"]
-    "petri-frontend": ["78c524bda565"]
-    "petri-frontend-attractor": ["78c524bda565"]
-    "petri-frontend-fabro": ["78c524bda565"]
-    "petri-frontend-native": ["78c524bda565"]
-    "petri-ir": ["78c524bda565"]
-    "petri-runtime": ["78c524bda565"]
-    "petri-steps": ["78c524bda565"]
-    "petri-store": ["78c524bda565"]
-    "petri-testkit": ["78c524bda565"]
+    "petri-attractor-steps": ["13e4e6627693"]
+    "petri-driver": ["13e4e6627693"]
+    "petri-engine": ["13e4e6627693"]
+    "petri-execution": ["13e4e6627693"]
+    "petri-executor": ["13e4e6627693"]
+    "petri-executor-sandbox": ["13e4e6627693"]
+    "petri-frontend": ["13e4e6627693"]
+    "petri-frontend-attractor": ["13e4e6627693"]
+    "petri-frontend-fabro": ["13e4e6627693"]
+    "petri-frontend-native": ["13e4e6627693"]
+    "petri-ir": ["13e4e6627693"]
+    "petri-runtime": ["13e4e6627693"]
+    "petri-steps": ["13e4e6627693"]
+    "petri-store": ["13e4e6627693"]
+    "petri-testkit": ["13e4e6627693"]
     "sandbox-driver": ["90b0d8257671"]
     "sandbox-driver-daytona": ["236196ed134d"]
     "sandbox-driver-daytona-config": ["90b0d8257671"]
