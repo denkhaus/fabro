@@ -12,6 +12,8 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`) — read it there FIRST; it is authoritative for what to build. If the brief is thin, fetch the full seed: `seeds show <current_seed_id>`.
 
+Review feedback: when the Reviewer's minor verdict re-enters this node directly (its own edge — no Planner re-plan), the bullet arrives in the context as its own `review_feedback` key — fixing exactly that bullet IS this pass's job. On Planner re-entries the feedback is folded into the brief instead, so act on whichever carrier the context shows.
+
 Tracker mechanics (seeds is installed and authoritative):
 - The seed is ALREADY `in_progress` — the Planner claimed it. Do NOT claim, close, or re-status seeds; that is the Planner's role.
 - `seeds ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `seeds show <id>`, never `seeds ready`, to look up your seed.

@@ -47,7 +47,7 @@ expression: report
   file:prompt:prompts/product.md@product
 .fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
   goal-inline
-.fabro/workflows/develop/workflow.fabro: Develop nodes=13 edges=28
+.fabro/workflows/develop/workflow.fabro: Develop nodes=13 edges=29
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner

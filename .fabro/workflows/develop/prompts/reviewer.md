@@ -54,6 +54,7 @@ relay); nobody re-reads your prose, only the JSON survives.
 ## Decision
 
 - Approved: every seed requirement is met in the diff and nothing harmful rode along. Route Approved. The deterministic Closeout step will close the seed; the planner picks the next one.
+- Changes requested (minor): the feedback is EXACTLY ONE mechanical edit, fully specified — one file or a named handful of production lines, no design or policy tradeoff, so the second visit is mechanically diffable with no re-plan. Route Changes requested (minor). The Implementer re-enters directly with your bullet; the Planner's re-plan is skipped. Any second change, any design or policy tradeoff, anything needing the brief re-read, or any doubt that the bullet alone suffices → the general arm below.
 - Changes requested: the CODE deviates — name the concrete deviations from the seed or hygiene problems. Route Changes requested. The Planner will re-plan the same seed with your feedback.
 - Verification blocked: the EVIDENCE is missing or unreadable (a blob ref you could not read even with tools, a capture cut mid-diff, counts that contradict what is visible) and you cannot verify the code either way. This is about delivery, not the code. Route Verification blocked naming exactly what is missing. It re-runs ONLY the evidence capture — no implementer or gate cycle. Use it AT MOST ONCE per seed: if the re-captured evidence is still insufficient, decide anyway — route Changes requested naming what stayed missing, or Approved if the code you verified with tools satisfies the spec. Never use Verification blocked for code problems you CAN see.
 
@@ -71,6 +72,17 @@ Approved:
   "preferred_next_label": "Approved",
   "context_updates": {
     "review_verdict": "approved",
+    "journal": {"painpoints": [], "observations": ["none"]}
+  }
+}
+
+Changes requested (minor — exactly one mechanical edit; re-enters the Implementer directly, no Planner re-plan):
+{
+  "outcome": "succeeded",
+  "preferred_next_label": "Changes requested (minor)",
+  "context_updates": {
+    "review_verdict": "changes_requested",
+    "review_feedback": "<the single mechanical edit, phrased as an instruction for the Implementer>",
     "journal": {"painpoints": [], "observations": ["none"]}
   }
 }
