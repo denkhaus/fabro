@@ -21,6 +21,7 @@ in the journal, never silently work around it.
 - Repo wiring — visible, but never modify without the seed saying so
   explicitly: `AGENTS.md`, `CLAUDE.md`, `docs/`, `Cargo.toml`, and the
   workspace manifests.
+- Graph source: the workflow directory's `workflow.fabro` (DOT); `workflow.toml` wires runtime settings only — never probe it for edges.
 - Merge-target branch — the branch this seed loop's run PRs integrate
   into: `origin/denkhaus`. `origin/main` is only the upstream fabro-sh
   mirror and never carries the loop's seed merges; branch-sensitive
