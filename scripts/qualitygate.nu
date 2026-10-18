@@ -12,6 +12,12 @@
 # engine checkpoint commit (subject 'fabro(<run-id>): ...') is the run base —
 # works in the shallow sandbox clone without origin refs.
 
+# Shared creation-intent window (fabro-48f3): anchor_check.nu is the ONE
+# seam — claim-check and planner-preflight source the same file, so both
+# gates judge the same spec body the same way (no local regex copy).
+# `source` resolves against this file's directory.
+source ../.fabro/workflows/develop/scripts/anchor_check.nu
+
 # Flaky-test policy: nextest retries each failing test once. The known
 # fabro-80b3 class (for_each_accepts_an_array_at_the_item_limit times out
 # under full-suite load) gets its second chance; deterministic failures
@@ -316,6 +322,15 @@ def check-run-scope [lane: string]: nothing -> nothing {
 #   - glob tokens (`.fabro/**`) and bare directory prefixes
 #     (`scripts/`) are dropped — the diff lists files, a glob or
 #     directory prefix can never match one;
+#   - a bare DIRECTORY token (`.fabro/workflows`, no trailing slash)
+#     drops too, resolved against the worktree: the prefix rule only
+#     caught the `scripts/` spelling, and a file-only
+#     `git diff --name-only` can never contain a directory — keeping
+#     it was a PERMANENT false RED (fabro-48f3: the d83a pre-claim
+#     body rewrite, run 01M5844);
+#   - creation-named paths drop (fabro-48f3): a path the body names
+#     inside an add/create-naming window is a proposed target, not an
+#     edit-this-file mandate — the claim gate's shared seam;
 #   - the loop-asset? allow-list decides "under the loop-asset roots"
 #     — the SAME predicate run-scope uses, one list, no drift.
 export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
@@ -330,6 +345,8 @@ export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
     | where {|p|
         ((not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
     }
+    | where {|p| ($p | path type) != 'dir'}
+    | where {|p| not (creation-named? $clean $p)}
 }
 
 # Pure: the named paths the diff is missing (the RED set). Empty diff +
@@ -378,7 +395,7 @@ def "main check-seed-spec-paths" [--seed: string = ""]: nothing -> nothing {
             } else if (($claimed | length) == 1) {
                 $claimed | first
             } else {
-                print $"seed-spec-paths: ($claimed | length) in_progress loop-assigned seeds \(($claimed | str join ', ')\) — cannot attribute this run's seed, skipping (fail-open)"
+                print $"seed-spec-paths: ($claimed | length) in_progress loop-assigned seeds \(($claimed | str join ', ')\) — cannot attribute this run's seed, skipping \(fail-open\)"
                 ""
             }
         }

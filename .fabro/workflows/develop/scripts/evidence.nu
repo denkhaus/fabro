@@ -412,6 +412,18 @@ def walk-failure-note [failed: list]: nothing -> any {
     "\n(git diff FAILED for " + ($failed | length | into string) + " listed file(s) — " + $names + ": capture ERROR, these files are NOT reviewed and NOT merely omitted)"
 }
 
+# Section-level disclosure for listed files with zero per-seed hunks
+# (fabro-e042): the file list sits under a "complete diff below"
+# header, so a listed file with NO body must say why — adjudicate from
+# the stat map and the tracker record — and never read as a cap hit
+# (run 01M5844: the reviewer burned adjudication effort proving the
+# silent skip was intentional). Pure: empty list in, "" out — pinned
+# in evidence-smoke.
+def zero-hunk-note [empty: list]: nothing -> string {
+    if ($empty | is-empty) { return "" }
+    "\n(zero per-seed hunks against the claim base: " + ($empty | str join ', ') + " — listed above with no diff body by design; adjudicate the delta from the stat map and the tracker record)\n"
+}
+
 # `complete` keeps stdout as one raw string: the list-of-lines split +
 # str join round-trip once injected a stray newline mid-line (observed
 # once, never reproduced) — raw capture rules that class out.
@@ -419,15 +431,17 @@ def walk-failure-note [failed: list]: nothing -> any {
 # source files first and docs last (diff-sort-key). The base is the
 # PER-SEED claim commit (seed-claim-base), not the run base — a capture
 # must show only the current seed's hunks, not every closed seed's.
-# Files whose per-seed diff is empty are skipped silently: the run-scoped
-# file list legitimately names seed-1 leftovers with zero per-seed hunks,
-# and emitting them here would only add blank-line noise. HARD_CAP is a
+# Files whose per-seed diff is empty render no body; the section names
+# them in its zero-hunk note (fabro-e042) instead of a blank line — a
+# listed file under a "complete diff below" header must say why it has
+# no body, never read as a cap hit. HARD_CAP is a
 # pathological-input safety only; on cap the walk stops and the
 # disclosure names the omitted files — with docs sorted last, a cap hit
 # eats documentation before source.
 # Shared per-seed diff walk behind the seed-work diff section (full
 # fidelity — seed work is never capped): diff each file against the
-# claim base, sanitize the body, silently skip files with no hunks, stop
+# claim base, sanitize the body, skip files with no hunks (named in the
+# zero-hunk note, fabro-e042), stop
 # at the HARD_CAP and report what was cut. The churn sections use
 # capped-diff-walk (fabro-020b) instead.
 # A non-zero `git diff` exit on a LISTED file is a capture ERROR, never
@@ -437,11 +451,12 @@ def walk-failure-note [failed: list]: nothing -> any {
 # error the reviewer can see, not as an UNSEEN file indistinguishable
 # from a cap hit. Same contract in capped-diff-walk below; the shared
 # section disclosure is walk-failure-note.
-def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list, failed: list> {
+def diff-walk [base: string, files: list]: nothing -> record<body: string, omitted: list, failed: list, empty: list> {
     mut used = 0
     mut parts = []
     mut included = []
     mut failed = []
+    mut empty = []
     for f in $files {
         let res = (do { git diff -U3 $base -- $f } | complete)
         $included = ($included | append $f)
@@ -456,6 +471,7 @@ def diff-walk [base: string, files: list]: nothing -> record<body: string, omitt
         }
         let text = (sanitize ($res.stdout | str trim -r -c "\n"))
         if ($text | is-empty) {
+            $empty = ($empty | append $f)
             continue
         }
         let cost = ($text | str length)
@@ -463,7 +479,7 @@ def diff-walk [base: string, files: list]: nothing -> record<body: string, omitt
         $used = ($used + $cost)
         $parts = ($parts | append $"($text)\n")
     }
-    {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included }), failed: $failed}
+    {body: ($parts | str join), omitted: ($files | where {|f| $f not-in $included }), failed: $failed, empty: $empty}
 }
 
 # A CHANGED line of a unified diff: starts with + or - but is not a
@@ -552,10 +568,11 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
     }
     let walk = (diff-walk $base $seed_files)
     let failure = (walk-failure-note $walk.failed)
+    let zero = (zero-hunk-note $walk.empty)
     if ($walk.omitted | is-empty) {
-        $head + $walk.body + ($failure | default "")
+        $head + $walk.body + $zero + ($failure | default "")
     } else {
-        $head + $walk.body + ($failure | default "") + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
+        $head + $walk.body + $zero + ($failure | default "") + "\n(hard cap hit: " + ($walk.omitted | length | into string) + " of " + ($seed_files | length | into string) + " files omitted — treat them as UNSEEN and reject on exact grounds if they matter)\n"
     }
 }
 

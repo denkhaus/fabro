@@ -37,7 +37,7 @@ never silently work around it.
 | `seeds show <id> --format json` | One seed in full (the supported path). |
 | `seeds update <id> --status in_progress --assignee loop` | Claim (the exact claim form). Takes NO `--format` flag. |
 | `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction BEFORE the claim — `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line. Takes NO `--format` flag. |
-| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception: the planner's superseded-close `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold. Every other close form is forbidden to every role. |
+| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds; the ONLY sanctioned non-Closeout close is the planner's superseded-close arms, stale-basis and fix-landed (planner.md step 3 carries both exact reason forms: `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold, `seeds close <id> --reason "superseded: basis stale (<what changed>)"` when the basis no longer resolves). Every other close form is forbidden to every role. |
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every
   workflow graph (petri admission), lint every nu script, prompt-lint

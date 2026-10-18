@@ -364,6 +364,23 @@ if ($bad_walk.omitted | length) != 0 {
 if not ($bad_walk.body | str contains "capture ERROR, file NOT reviewed") {
     fail $"diff-walk body must carry the per-file capture-ERROR note: ($bad_walk.body)"
 }
+# fabro-e042: the walk returns the zero-hunk list, and failed diffs
+# count as failed — never as empty-hunk files.
+if (($bad_walk | get -o empty | default null) == null) {
+    fail "diff-walk must return the empty (zero-hunk) list"
+}
+if ($bad_walk.empty | length) != 0 {
+    fail $"diff-walk failed-diff file must NOT be reported zero-hunk: ($bad_walk.empty)"
+}
+# fabro-e042: the section's disclosure note names zero-hunk files so a
+# listed file with no body never reads as a cap hit.
+if (zero-hunk-note []) != "" {
+    fail "zero-hunk-note with no files must render nothing"
+}
+let zh = (zero-hunk-note [".seeds/issues.jsonl"])
+if not (($zh | str contains "zero per-seed hunks") and ($zh | str contains ".seeds/issues.jsonl")) {
+    fail $"zero-hunk-note must name the file: ($zh)"
+}
 let bad_capped = (capped-diff-walk "41fa-no-such-ref" [{path: "justfile", add: 1, del: 1}])
 if ($bad_capped.failed | length) != 1 {
     fail $"capped-diff-walk on failed git diff must record the failure: ($bad_capped.failed)"
@@ -372,7 +389,7 @@ if ($bad_capped.omitted | length) != 0 {
     fail $"capped-diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_capped.omitted)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

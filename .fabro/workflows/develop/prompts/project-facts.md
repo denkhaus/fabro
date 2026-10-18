@@ -42,7 +42,7 @@ in the journal, never silently work around it.
 | `seeds show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). JSON with no `description` key IS the empty body; do not re-probe the seed in other formats to confirm it. |
 | `seeds update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (a `unknown option '--format'` failure is on record). |
 | `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction when the basis RESOLVES but the seed's named path/target/details are wrong (see STALE-BASIS CHECK, step 3) — run it BEFORE the claim. `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts. Like the claim form above, takes NO `--format` flag. |
-| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds — with exactly ONE exception: the planner's superseded-close `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold (reason string mandatory). Every other close form remains forbidden to every role. |
+| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds; the ONLY sanctioned non-Closeout close is the planner's superseded-close arms, stale-basis and fix-landed (planner step 3 carries both exact reason forms, reason string mandatory). Every other close form remains forbidden to every role. |
 
 
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project

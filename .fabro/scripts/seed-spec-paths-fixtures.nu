@@ -43,6 +43,22 @@ expect-extraction "In `scripts/qualitygate.nu`, extend the loop-asset tier. Also
 expect-extraction "Sweep `.fabro/**` and `scripts/` plus .seeds/issues.jsonl" [
     ".seeds/issues.jsonl"
 ]
+# fabro-48f3: a bare DIRECTORY token drops even without a trailing
+# slash — the prefix rule only caught the `scripts/` spelling, and a
+# directory can never appear in a file-only `git diff --name-only`,
+# so keeping it was a permanent false RED (the d83a pre-claim body
+# rewrite, run 01M5844). Resolved against this worktree; the battery
+# runs from the checkout root.
+expect-extraction "Update .fabro/workflows and scripts/qualitygate.nu for the tier." [
+    "scripts/qualitygate.nu"
+]
+# fabro-48f3: creation-named paths drop — the claim gate's shared
+# creation-intent window (anchor_check.nu) judges the same spec body,
+# so `Add scripts/new-probe.nu` is a proposed target, not an edit
+# mandate, while `extend scripts/qualitygate.nu` stays enforced.
+expect-extraction "Add scripts/new-probe.nu and extend scripts/qualitygate.nu." [
+    "scripts/qualitygate.nu"
+]
 # Out-of-lane slash-tokens stay out: lib/, docs/, apps/ paths are not
 # loop-asset surfaces (and the one lib/ snapshot exception IS in).
 expect-extraction "Fix `lib/apps/fabro-cli/src/main.rs`, docs/public/x.md, apps/web/y.ts, but lib/components/fabro-dot/src/snapshots/checked_in_workflows.snap is derived" [

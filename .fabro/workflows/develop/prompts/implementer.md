@@ -76,7 +76,12 @@ probe pattern for anything nested: write the probe as a nu script under
 `mktemp` OUTSIDE the worktree (`mktemp -d` dir, probe asserts and exits with
 the real code), then wrap the one-word call `nu /tmp/<probe-dir>/probe.nu`
 through the wrapper — one quoting layer, exact round-trip. A flat command
-with no nested quoting goes through the wrapper directly as always.
+with no nested quoting goes through the wrapper directly as always. One
+nu-probe trap on top: inside interpolated strings ($"...") a
+literal '(' opens a subexpression — a probe message like
+`1 line (no available-binaries content)` runs the command `no` and fails at
+runtime even though `nu --ide-check` passes; keep literal parens out of
+$"..." strings or build the message with string concatenation.
 
 This report lives ONLY inside the JSON `implementation_summary` field —
 never duplicate it in the pre-JSON markdown text of your response. The

@@ -26,6 +26,13 @@
 #   nu .fabro/workflows/develop/scripts/check-transcript.nu --by planner -- '<check command>'
 #   nu .fabro/workflows/develop/scripts/check-transcript.nu --path
 #
+# PROBE TRAP (fabro-7762): inside nu interpolated strings ($"...") a
+# literal '(' opens a subexpression — a probe message like
+# `1 line (no available-binaries content)` runs the command `no` and
+# dies at runtime with "Command 'no' not found" while `nu --ide-check`
+# still passes (valid syntax, runtime failure). Keep literal parens out
+# of $"..." strings or build such messages with string concatenation.
+#
 # The wrapper streams the command's stdout/stderr to YOU unchanged and
 # appends the record to the transcript; it exits with the COMMAND's own
 # exit code, so failure semantics are identical to running the check
