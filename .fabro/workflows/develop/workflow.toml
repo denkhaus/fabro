@@ -3,6 +3,17 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
+# Run-level run-tools switch (ADR-0030, user grill approval 2026-10-18):
+# node-level x.fabro_tools grants are INERT without this — the engine
+# resolves agent.fabro_tools with unwrap_or(false) and only then mints
+# the agent:run_tools worker scope (the revisor has carried it since
+# fabro-7461; the loop planner's own journals observed the inert grants
+# live, the fabro-d62c finding). Enabled here for the planner's
+# fabro_run_search (in-flight checks) and fabro_run_set_title
+# (agent-refined run titles); node pins stay the least-privilege grant.
+[run.agent]
+fabro_tools = true
+
 # Stage journal (seed fabro-176b): one durable JSON per stage execution,
 # engine provenance, checkpointed with the run. Non-blocking; failures
 # must never affect the run (side-effect only).

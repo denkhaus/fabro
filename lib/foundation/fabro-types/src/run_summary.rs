@@ -46,6 +46,11 @@ pub struct Run {
     pub parent_id:           Option<RunId>,
     #[serde(default)]
     pub children_count:      u64,
+    /// The seed this run works on, lifted from the claiming planner's
+    /// `current_seed_id` context update (fabro-9711/3a5e). Absent until
+    /// declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_seed_id:     Option<String>,
     pub title:               String,
     pub goal:                String,
     pub workflow:            WorkflowRef,

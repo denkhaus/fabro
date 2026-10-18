@@ -138,9 +138,15 @@ stores it belongs to; reach them by phase need:
   900e -> 47b5 -> e47c -> e804 -> ba96), blockers (`!`), and the user's
   focus.
 - EVERY decision point is grilled BEFORE implementation (user directive
-  2026-10-12, Grundsatz-review): grill-with-docs FIRST (grilling +
-  domain-modeling; evidence = CONTEXT.md, ADRs, seeds, code, guide) for
-  EVERY design/mechanism/standing-rule choice — not only pivotal ones.
+  2026-10-12, Grundsatz-review; procedure directive 2026-10-18: run the
+  ACTUAL grill-with-docs skill, never an ad-hoc single-shot presentation):
+  grill-with-docs FIRST (grilling + domain-modeling; evidence = CONTEXT.md,
+  ADRs, seeds, code, guide) for EVERY design/mechanism/standing-rule
+  choice — not only pivotal ones. The grilling format is binding: rounds
+  over the design tree, the whole frontier per round, numbered questions
+  each with a recommended answer, wait for answers, recompute the
+  frontier; domain-modeling sharpens terms against GLOSSARY and writes
+  ADR/glossary entries as decisions crystallize.
   No tacit decisions: an ungrilled fork that ships is a finding. The
   grill names the alternatives and picks the optimal path WITH the user;
   the chosen path and its rejected alternatives land in the seed/ADR.
@@ -534,9 +540,13 @@ stores it belongs to; reach them by phase need:
   SESSION-OWNED: never registered in qualitygate batteries, never called
   by lanes, absent from the reflection query — it changes the file, not
   the loop.
-5b. Heartbeat cadence tracks reality: 20m while anything autonomous runs
-  (pass, build, deploy chain); 60m when everything is user-gated. Refresh
-  the instruction at every phase change — a heartbeat still carrying a
+5b. Heartbeat cadence tracks reality (user directive 2026-10-18: OFF
+  while idle): 20m while anything autonomous runs (pass, build, deploy
+  chain); PAUSED (not 60m) when everything is user-gated or nothing runs.
+  Do NOT recreate the line-watch heartbeat at cycle start as ceremony —
+  create/resume it only when autonomous work is actually in flight; the
+  user's pause is authoritative and never overridden. Refresh the
+  instruction at every phase change — a heartbeat still carrying a
   completed critical path is noise that erodes trust.
 6. Line-watch heartbeat (label `line-watch`, interval 10m, follow-up
    delivery): pull, evaluate journals/reviews (premise-checked against

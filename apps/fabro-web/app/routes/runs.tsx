@@ -40,6 +40,7 @@ import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events"
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
 import { approveRun, archiveRuns, canArchive, isQuotaPark, mapError, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
+import { formatAbsoluteTs } from "../lib/format";
 import { useToast } from "../components/toast";
 import type {
   BoardColumn,
@@ -303,6 +304,12 @@ export const handle = {
   fullHeight: true,
 };
 
+/// The tile's run id short form: the first ten characters of the ULID
+/// with an ellipsis, with the full id on hover.
+function shortRunId(id: string): string {
+  return id.length <= 10 ? id : `${id.slice(0, 10)}…`;
+}
+
 function PrCard({
   pr,
   iconColor,
@@ -345,6 +352,18 @@ function PrCard({
         <p className="text-sm leading-snug text-fg-2">{pr.title}</p>
       </Link>
 
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-fg-muted">
+        {pr.claimedSeedId != null && (
+          <span className="rounded-full border border-line px-1.5 py-0.5 uppercase tracking-wide">
+            {pr.claimedSeedId}
+          </span>
+        )}
+        <span title={pr.id}>{shortRunId(pr.id)}</span>
+        {pr.createdAt != null && (
+          <span title={formatAbsoluteTs(pr.createdAt)}>{formatAbsoluteTs(pr.createdAt).split(",")[0]}</span>
+        )}
+      </div>
+
       {pr.checks != null && <ChecksStatus checks={pr.checks} />}
 
       {pr.question != null && (
@@ -371,6 +390,8 @@ function PrCard({
 // All inline footer metadata on PrCard belongs in this one row. Adding a new
 // piece as a sibling `<div>` below the card body recreates a recurring bug
 // where stats stack onto separate lines instead of sitting next to size/actions.
+// Exception: the tile identifiers row (seed chip, run id, date — fabro-3a5e)
+// sits above as its own line; it is identity, not a stat, and always renders.
 function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
   const navigate = useNavigate();
   const hasActions = actions != null && actions.length > 0;

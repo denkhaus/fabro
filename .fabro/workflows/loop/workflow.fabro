@@ -86,7 +86,9 @@ digraph Loop {
         x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
         x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml",
         x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
-        x.fabro_tools="fabro_run_search"
+        // fabro_run_set_title (fabro-9711/ADR-0030): refine this run's
+        // title to the claimed seed right after claiming.
+        x.fabro_tools="fabro_run_search,fabro_run_set_title"
     ]
 
     // Claim-contract gate (fabro-c42f stopgap): the shared develop script

@@ -75,6 +75,14 @@ export function RunTableRow({
           >
             <InlineMarkdown content={run.title} className="truncate" />
           </Link>
+          {run.claimedSeedId != null && (
+            <span
+              className="relative z-10 rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted"
+              title="The seed this run works on"
+            >
+              {run.claimedSeedId}
+            </span>
+          )}
           {lifecycleLabel != null && (
             <span className="relative z-10 rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
               {lifecycleLabel}

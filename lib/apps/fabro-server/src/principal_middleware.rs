@@ -250,6 +250,31 @@ impl FromRequestParts<Arc<AppState>> for RequireRunScoped {
     }
 }
 
+/// The run-title update actor (fabro-9711/ADR-0030): a user, or the run's
+/// own worker — the agent tool session retitling its run through
+/// `fabro_run_set_title`.
+pub(crate) struct RequiredRunTitleActor(pub(crate) Principal);
+
+impl FromRequestParts<Arc<AppState>> for RequiredRunTitleActor {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let Path(id): Path<String> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let run_id = parse_run_id_path(&id)?;
+        let slot = auth_slot_from_parts(parts);
+        let Some(principal) = slot.snapshot().principal else {
+            return Err(ApiError::unauthorized().into_response());
+        };
+        require_worker_or_user_for_run(&slot, &run_id).map_err(IntoResponse::into_response)?;
+        Ok(Self(principal))
+    }
+}
+
 impl FromRequestParts<Arc<AppState>> for RequireWorkerRunScoped {
     type Rejection = Response;
 

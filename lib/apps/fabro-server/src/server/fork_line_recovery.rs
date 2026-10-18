@@ -1019,6 +1019,7 @@ mod tests {
             id:                  fabro_types::RunId::new(),
             parent_id:           None,
             children_count:      0,
+            claimed_seed_id:     None,
             title:               "pass".to_string(),
             goal:                "run the line".to_string(),
             workflow:            fabro_types::WorkflowRef {

@@ -145,9 +145,10 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    CheckpointRecord, ForkOrigin, PendingInterviewRecord, RunArtifact, RunProjection,
-    StageContextWindow, StageContextWindowUnavailableReason, StageInferenceProjection,
-    StageModelUsage, StageProjection, StageToolBatchProjection, first_event_seq,
+    CURRENT_SEED_ID_CONTEXT_KEY, CheckpointRecord, ForkOrigin, PendingInterviewRecord, RunArtifact,
+    RunProjection, StageContextWindow, StageContextWindowUnavailableReason,
+    StageInferenceProjection, StageModelUsage, StageProjection, StageToolBatchProjection,
+    first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,

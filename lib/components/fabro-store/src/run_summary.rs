@@ -53,6 +53,7 @@ pub fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
         parent_id: state.parent_id,
         children_count: 0,
         title: state.title().into_owned(),
+        claimed_seed_id: state.claimed_seed_id.clone(),
         goal,
         workflow: WorkflowRef {
             slug:       state.spec.workflow_slug.clone(),

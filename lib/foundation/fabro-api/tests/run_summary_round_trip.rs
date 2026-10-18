@@ -70,6 +70,7 @@ fn run_summary_json_matches_openapi_shape() {
         id:                  run_id,
         parent_id:           None,
         children_count:      2,
+        claimed_seed_id:     Some("fabro-9711".to_string()),
         title:               "API title".to_string(),
         goal:                String::new(),
         workflow:            WorkflowRef {
@@ -160,6 +161,7 @@ fn run_summary_json_matches_openapi_shape() {
         json!({
             "id": run_id.to_string(),
             "children_count": 2,
+            "claimed_seed_id": "fabro-9711",
             "title": "API title",
             "goal": "",
             "workflow": {

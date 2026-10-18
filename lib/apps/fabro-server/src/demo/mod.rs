@@ -1179,6 +1179,7 @@ mod runs {
             id: run_id,
             parent_id: None,
             children_count: 0,
+            claimed_seed_id: None,
             title: fabro_types::infer_run_title(goal),
             goal: goal.into(),
             workflow: WorkflowRef {

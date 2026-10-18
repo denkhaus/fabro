@@ -78,6 +78,10 @@ export interface Run {
      * Number of runs currently linked to this run as their orchestration parent.
      */
     'children_count': number;
+    /**
+     * The seed this run works on, lifted from the claiming planner\'s `current_seed_id` context update. Absent until a stage declares it.
+     */
+    'claimed_seed_id'?: string | null;
     'title': string;
     'goal': string;
     'workflow': WorkflowRef;

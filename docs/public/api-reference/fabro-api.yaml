@@ -13596,6 +13596,9 @@ components:
           format: uint64
           minimum: 0
           description: Number of runs currently linked to this run as their orchestration parent.
+        claimed_seed_id:
+          type: ["string", "null"]
+          description: The seed this run works on, lifted from the claiming planner's `current_seed_id` context update. Absent until a stage declares it.
         title:
           type: string
         goal:

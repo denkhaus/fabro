@@ -209,6 +209,26 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::run_events_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunSetTitleParams>(name, args)?;
+            // The planner's documented call carries no run argument, and
+            // the stage-session backend is not run-scoped: resolve the
+            // session's own run HERE so every backend sees an explicit
+            // target (fabro-9711 spec review MUST-FIX 1).
+            let params = fabro_tool::FabroRunSetTitleParams {
+                run:   params
+                    .run
+                    .or_else(|| Some(services.current_run_id.to_string())),
+                title: params.title,
+            };
+            let result = fabro_tool::set_run_title(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunSetTitle::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::set_run_title_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_PAIR_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunPairParams>(name, args)?;
             let result = fabro_tool::pair_run(
@@ -342,6 +362,226 @@ mod tests {
                 ValidatedWorkflowVersion::new(version)?,
             )]))
         }
+    }
+
+    /// `fabro_run_set_title` (fabro-9711/ADR-0030): the dispatcher routes
+    /// the call to the backend with the session's own run when no
+    /// selector is given, the title arrives normalized, and the result
+    /// names run and title — the planner's seed-refinement contract.
+    #[tokio::test]
+    async fn run_set_title_dispatches_to_the_backend_with_the_own_run() {
+        use std::sync::Mutex;
+
+        struct TitleBackend {
+            current: RunId,
+            seen:    Mutex<Vec<(Option<RunId>, String)>>,
+        }
+
+        #[async_trait]
+        impl fabro_tool::FabroToolBackend for TitleBackend {
+            async fn create_run_from_intent(
+                &self,
+                _intent: fabro_types::RunIntent,
+            ) -> anyhow::Result<RunId> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn resolve_run(&self, _selector: &str) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("no selector resolves in this pin")
+            }
+            async fn set_run_title(
+                &self,
+                run: Option<&str>,
+                title: &str,
+            ) -> anyhow::Result<fabro_types::Run> {
+                // The dispatcher injects the session's own run when the
+                // call carries none; anything else is out of contract.
+                let target = match run {
+                    Some(selector) => selector
+                        .parse()
+                        .expect("the injected selector is this session's run id"),
+                    None => self.current,
+                };
+                self.seen
+                    .lock()
+                    .expect("pin state lock")
+                    .push((Some(target), title.to_string()));
+                let mut run = ask_target_run(target);
+                run.title = title.to_string();
+                Ok(run)
+            }
+            async fn retrieve_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn start_run(
+                &self,
+                _run_id: &RunId,
+                _resume: bool,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn approve_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn deny_run(
+                &self,
+                _run_id: &RunId,
+                _reason: Option<String>,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn cancel_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn interrupt_run(&self, _run_id: &RunId) -> anyhow::Result<()> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn steer_run(
+                &self,
+                _run_id: &RunId,
+                _text: String,
+                _interrupt: bool,
+            ) -> anyhow::Result<()> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn archive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn unarchive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn list_store_runs(&self) -> anyhow::Result<Vec<fabro_types::Run>> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn list_store_runs_by_parent(
+                &self,
+                _parent_id: RunId,
+            ) -> anyhow::Result<Vec<fabro_types::Run>> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn link_run_parent(
+                &self,
+                _child_id: &RunId,
+                _parent_id: &RunId,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn unlink_run_parent(
+                &self,
+                _child_id: &RunId,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn get_run_state(
+                &self,
+                _run_id: &RunId,
+            ) -> anyhow::Result<fabro_types::RunProjection> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn list_run_stream(
+                &self,
+                _run_id: &RunId,
+                _after: u64,
+                _limit: Option<usize>,
+            ) -> anyhow::Result<Vec<fabro_types::RunStreamItem>> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn list_run_questions(
+                &self,
+                _run_id: &RunId,
+            ) -> anyhow::Result<Vec<fabro_api::types::ApiQuestion>> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+            async fn submit_run_answer(
+                &self,
+                _run_id: &RunId,
+                _question_id: &str,
+                _body: fabro_api::types::SubmitAnswerRequest,
+            ) -> anyhow::Result<()> {
+                unimplemented!("the pin only exercises the title arm")
+            }
+        }
+
+        let current: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let backend = Arc::new(TitleBackend {
+            current,
+            seen: Mutex::new(Vec::new()),
+        });
+        let services = FabroRunToolServices {
+            backend:        backend.clone(),
+            current_run_id: current,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME,
+            json!({"title": "  seed fabro-9711: meaningful run titles for claimed seeds  "}),
+            &services,
+        )
+        .await
+        .expect("the tool dispatches");
+        let calls = backend.seen.lock().expect("pin state lock").clone();
+        assert_eq!(
+            calls,
+            vec![(
+                Some(current),
+                "seed fabro-9711: meaningful run titles for claimed seeds".to_string()
+            )],
+            "no selector targets the session's own run; the title arrives trimmed"
+        );
+        assert!(
+            output.contains(&current.to_string()),
+            "the result names the run: {output}"
+        );
+        assert!(
+            output.contains("seed fabro-9711: meaningful run titles"),
+            "the result names the new title: {output}"
+        );
+    }
+
+    /// The stage-session path over the REAL client backend (fabro-9711 spec
+    /// review MUST-FIX 1 pin): the backend carries no run scope, the call
+    /// carries no run argument — the dispatcher must inject the session's
+    /// own run so the request reaches PATCH /runs/{current} with the
+    /// normalized title.
+    #[tokio::test]
+    async fn run_set_title_reaches_the_own_run_over_the_real_backend() {
+        let server = httpmock::MockServer::start_async().await;
+        let current: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let mut target = ask_target_run(current);
+        target.title = "seed fabro-9711: meaningful run titles".to_string();
+        let updated = serde_json::to_value(&target).expect("the fixture serializes");
+        let patch = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::PATCH)
+                    .path(format!("/api/v1/runs/{current}"))
+                    .json_body(json!({"title": "seed fabro-9711: meaningful run titles"}));
+                then.status(200).json_body(updated.clone());
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs/resolve")
+                    .query_param("selector", current.to_string());
+                then.status(200).json_body(updated.clone());
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: current,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME,
+            json!({"title": "  seed fabro-9711: meaningful run titles  "}),
+            &services,
+        )
+        .await
+        .expect("the tool dispatches over the real backend");
+        patch.assert_async().await;
+        get.assert_calls_async(1).await;
+        assert!(
+            output.contains("seed fabro-9711: meaningful run titles"),
+            "the result names the new title: {output}"
+        );
     }
 
     /// The tracker search through the real client backend (fabro-d6de): the
@@ -542,6 +782,7 @@ mod tests {
             id:                  run_id,
             parent_id:           None,
             children_count:      0,
+            claimed_seed_id:     None,
             title:               "Reviewed run".to_string(),
             goal:                "Reviewed run".to_string(),
             workflow:            fabro_types::WorkflowRef {

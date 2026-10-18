@@ -1660,6 +1660,30 @@ impl Client {
         convert_type(response.into_inner())
     }
 
+    /// Set a run's title (fabro-9711/ADR-0030): the agent-refined half of
+    /// the update-run endpoint. The server normalizes exactly like the
+    /// user-facing patch.
+    pub async fn update_run_title(&self, run_id: &RunId, title: &str) -> Result<Run> {
+        // The generated newtype enforces the API's 100-char cap; the tool
+        // path already rejects over-cap titles via
+        // normalize_explicit_run_title, so this only guards non-tool
+        // callers.
+        let title = title
+            .parse::<types::UpdateRunRequestTitle>()
+            .context("run title exceeds the 100-character cap")?;
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .update_run()
+                    .id(run_id.to_string())
+                    .body(types::UpdateRunRequest { title })
+                    .send()
+                    .await
+            })
+            .await?;
+        convert_type(response.into_inner())
+    }
+
     /// The run's checkpoint timeline, and where it was forked from.
     pub async fn run_timeline(&self, run_id: &RunId) -> Result<types::RunTimelineResponse> {
         let response = self

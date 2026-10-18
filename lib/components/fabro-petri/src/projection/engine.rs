@@ -68,6 +68,19 @@ impl RunView {
                     .subject
                     .as_ref()
                     .map(|subject| subject.node.name.to_string());
+                // The claiming planner's seed (fabro-9711/3a5e): a
+                // `current_seed_id` context update lifts to the run
+                // summary. Last write wins, matching the run context's
+                // merge order, so a re-claim mid-run retargets the run.
+                if let Some(seed) = outcome
+                    .context_updates
+                    .get(fabro_types::CURRENT_SEED_ID_CONTEXT_KEY)
+                    .and_then(Value::as_str)
+                {
+                    if let Some(projection) = self.projection.as_mut() {
+                        projection.claimed_seed_id = Some(seed.to_string());
+                    }
+                }
                 if let Some(stage) = self.stage_of(execution, event.subject.as_ref()) {
                     // The step's output: a string, or a command's `stdout`,
                     // either of which is a `blob://` reference when the

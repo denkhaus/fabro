@@ -121,6 +121,25 @@ impl FabroToolBackend for ClientBackend {
         self.client.retrieve_run(run_id).await
     }
 
+    async fn set_run_title(&self, run: Option<&str>, title: &str) -> anyhow::Result<Run> {
+        // `None` is the session's own run: the scope IS the target, so a
+        // scoped session can always retitle itself and never needs a
+        // selector. An explicit selector resolves first and the scope
+        // guard then refuses a foreign run.
+        let run_id = match run {
+            Some(selector) => self.resolve_run(selector).await?.id,
+            None => match self.run_scope {
+                Some(run) => run,
+                None => anyhow::bail!(
+                    "run is required when this surface has no own run; pass the run id or \
+                     workflow name"
+                ),
+            },
+        };
+        self.ensure_run_scope(&run_id)?;
+        self.client.update_run_title(&run_id, title).await
+    }
+
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {
         self.ensure_run_scope(run_id)?;
         self.client.start_run(run_id, resume).await

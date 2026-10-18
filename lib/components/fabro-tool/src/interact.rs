@@ -679,6 +679,7 @@ mod tests {
             id:                  run_id,
             parent_id:           None,
             children_count:      0,
+            claimed_seed_id:     None,
             title:               "Test run".to_string(),
             goal:                "Test run".to_string(),
             workflow:            WorkflowRef {

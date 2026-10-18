@@ -72,6 +72,13 @@ pub trait FabroToolBackend: Send + Sync {
 
     async fn resolve_run(&self, selector: &str) -> anyhow::Result<Run>;
     async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<Run>;
+    /// Set a run's title (`fabro_run_set_title`, fabro-9711/ADR-0030).
+    /// `run` selects the run (a prefix or workflow name); `None` means
+    /// the session's own run. A scoped backend refuses a run outside its
+    /// scope.
+    async fn set_run_title(&self, _run: Option<&str>, _title: &str) -> anyhow::Result<Run> {
+        Err(run_title_tool_unavailable_error())
+    }
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run>;
     async fn approve_run(&self, run_id: &RunId) -> anyhow::Result<Run>;
     async fn deny_run(&self, run_id: &RunId, reason: Option<String>) -> anyhow::Result<Run>;
@@ -208,6 +215,13 @@ pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
+pub(crate) fn run_title_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!(
+        "{FABRO_RUN_SET_TITLE_TOOL_NAME} is not available on this surface"
+    ))
+    .into()
+}
+
 pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
     ToolError::message(
         "reading workflow files from the run sandbox (files_from) is not available on this \
@@ -259,6 +273,7 @@ pub const FABRO_RUN_GET_TOOL_NAME: &str = "fabro_run_get";
 pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
+pub const FABRO_RUN_SET_TITLE_TOOL_NAME: &str = "fabro_run_set_title";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
@@ -301,6 +316,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunEventsParams>(
             FABRO_RUN_EVENTS_TOOL_NAME,
             "List, inspect, or search stored events for a Fabro workflow run.",
+        ),
+        tool_definition::<crate::FabroRunSetTitleParams>(
+            FABRO_RUN_SET_TITLE_TOOL_NAME,
+            "Set this run's title to what the run actually works on: after claiming a seed, refine the title to a few sentences specific to that seed (what it demands), never a generic workflow label. Default run: this run. Titles over 100 characters are rejected.",
         ),
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,
@@ -458,6 +477,7 @@ mod tests {
             FABRO_RUN_GATHER_TOOL_NAME,
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
+            FABRO_RUN_SET_TITLE_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,
             FABRO_ASK_TOOL_NAME,
@@ -558,6 +578,7 @@ mod tests {
         let run = Run {
             id:                  run_id("01KRBZW5C00000000000000001"),
             parent_id:           Some(parent_id),
+            claimed_seed_id:     None,
             children_count:      3,
             title:               "test".to_string(),
             goal:                "test".to_string(),
@@ -685,6 +706,7 @@ mod tests {
             id:                  run_id("01KRBZW5C00000000000000009"),
             parent_id:           None,
             children_count:      0,
+            claimed_seed_id:     None,
             title:               "test".to_string(),
             goal:                "test".to_string(),
             workflow:            WorkflowRef {

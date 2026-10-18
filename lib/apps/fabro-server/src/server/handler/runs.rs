@@ -54,7 +54,7 @@ use super::super::{
 use crate::error::ApiError;
 use crate::principal_middleware::{
     RequireCommandLog, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped,
-    RequireWorkerRunScoped, RequiredRunManagementActor, RequiredUser,
+    RequireWorkerRunScoped, RequiredRunManagementActor, RequiredRunTitleActor, RequiredUser,
 };
 use crate::run_compiler::{self, RawRunCompilerInput};
 use crate::run_files::{
@@ -444,7 +444,7 @@ async fn delete_run(
 }
 
 async fn update_run(
-    subject: RequiredUser,
+    subject: RequiredRunTitleActor,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     body: Bytes,
@@ -477,7 +477,6 @@ async fn update_run(
             .into_response();
     }
 
-    let _ = subject;
     if let Err(err) = run_records::append(
         &state,
         id,
@@ -487,6 +486,7 @@ async fn update_run(
     {
         return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response();
     }
+    tracing::debug!(run_id = %id, actor = ?subject.0, "run title updated");
 
     match state.stores.run_summaries.get(&id, Utc::now()).await {
         Ok(Some(summary)) => (

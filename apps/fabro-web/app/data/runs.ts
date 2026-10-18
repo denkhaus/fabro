@@ -23,6 +23,9 @@ export interface CheckRun {
 export interface RunItem {
   id: string;
   repo: string;
+  /** The seed this run works on (the claiming planner's context lift);
+   * absent until a run claims. */
+  claimedSeedId?: string | null;
   title: string;
   workflow: string;
   column?: BoardColumn;
@@ -101,6 +104,7 @@ export function mapRunListItem(item: Run): RunItem {
   return {
     id: item.id,
     repo: displayRepoName(item.repository?.name ?? "unknown"),
+    claimedSeedId: item.claimed_seed_id ?? undefined,
     title: displayRunTitle(item.title),
     workflow: item.workflow.name ?? item.workflow.graph_name ?? item.workflow.slug ?? "unknown",
     column: columnForRun(item) ?? undefined,

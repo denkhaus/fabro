@@ -34,6 +34,7 @@ fn run_body() -> Run {
         id:                  RunId::new(),
         parent_id:           None,
         children_count:      0,
+        claimed_seed_id:     None,
         title:               "child".to_string(),
         goal:                "child".to_string(),
         workflow:            fabro_types::WorkflowRef {

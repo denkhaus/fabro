@@ -1,6 +1,8 @@
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use fabro_llm::lithos_catalog::CatalogProvider;
+use fabro_server::server::{AppState, RouterOptions, build_router_with_options};
+use fabro_server::test_support::test_auth_mode;
 use fabro_types::SandboxProviderKind;
 use tower::ServiceExt;
 
@@ -81,6 +83,78 @@ fn daytona_disabled_app() -> (axum::Router, tempfile::TempDir) {
         fabro_server::test_support::build_test_router(state),
         temp_dir,
     )
+}
+
+fn authless_app(state: std::sync::Arc<AppState>) -> axum::Router {
+    build_router_with_options(state, &test_auth_mode(), RouterOptions::default())
+}
+
+/// The run-title update's actor matrix (fabro-9711/ADR-0030): the run's
+/// own worker — the `fabro_run_set_title` tool session — passes the auth
+/// boundary (a 404 for an unknown run proves it: auth first, lookup
+/// second), a foreign worker is 403, an anonymous caller is 401.
+#[tokio::test]
+async fn run_title_updates_accept_the_own_worker_only() {
+    let state = fabro_server::test_support::TestAppStateBuilder::new().build();
+    let app = authless_app(state.clone());
+    let target: fabro_types::RunId = "01KRBZW4DW0000000000000001".parse().unwrap();
+    let other = fabro_types::RunId::new();
+
+    let own = state.test_issue_worker_token(&target);
+    let ok = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(api(&format!("/runs/{target}")))
+                .header("authorization", format!("Bearer {own}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"title": "seed fabro-9711: meaningful run titles"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    response_status(
+        ok,
+        StatusCode::NOT_FOUND,
+        "the own worker passes the auth boundary; the unknown run 404s after it",
+    )
+    .await;
+
+    let foreign = state.test_issue_worker_token(&other);
+    let refused = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(api(&format!("/runs/{target}")))
+                .header("authorization", format!("Bearer {foreign}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"title": "seed fabro-9711: meaningful run titles"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    response_status(refused, StatusCode::FORBIDDEN, "a foreign worker is 403").await;
+
+    let anon = app
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(api(&format!("/runs/{target}")))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"title": "seed fabro-9711: meaningful run titles"}"#,
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    response_status(anon, StatusCode::UNAUTHORIZED, "an anonymous caller is 401").await;
 }
 
 #[tokio::test]

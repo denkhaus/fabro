@@ -69,6 +69,20 @@ function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
   };
 }
 
+describe("claimed seed lift (fabro-9711/3a5e)", () => {
+  test("mapRunListItem carries claimed_seed_id when a run claimed", () => {
+    const run = boardRun("claimed-run", "running");
+    run.claimed_seed_id = "fabro-9711";
+    const item = mapRunListItem(run);
+    expect(item.claimedSeedId).toBe("fabro-9711");
+  });
+
+  test("a run that never claimed maps no seed id", () => {
+    const item = mapRunListItem(boardRun("unclaimed-run", "running"));
+    expect(item.claimedSeedId).toBeUndefined();
+  });
+});
+
 describe("runs route board mapping", () => {
   test("a quota-blocked run carries its block reason into the board item (fabro-2c4a)", () => {
     const quota = boardRun("quota-parked-run", "blocked");

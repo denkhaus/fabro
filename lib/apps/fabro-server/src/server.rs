@@ -919,6 +919,7 @@ impl SlackService {
                 run_id: &run_id_text,
                 run_url,
                 workflow_label: &workflow_label,
+                run_title: &slack_lifecycle_run_title(&projection),
                 result: details.result.as_deref(),
                 duration_ms: details.duration_ms,
                 pull_request: pull_request_blocks,
@@ -1078,6 +1079,13 @@ fn petri_parsed(item: &RunStreamItem) -> Option<&serde_json::Value> {
         return None;
     }
     item.item.get("derived")?.get("parsed")
+}
+
+/// The run's own title for the lifecycle notification's bold line
+/// (ADR-0030): agent-refined for claimed seeds, the inferred goal title
+/// otherwise — never blank.
+fn slack_lifecycle_run_title(projection: &std::sync::Arc<fabro_types::RunProjection>) -> String {
+    projection.title().into_owned()
 }
 
 fn slack_lifecycle_workflow_label(

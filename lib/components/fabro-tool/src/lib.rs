@@ -18,6 +18,7 @@ mod get;
 mod interact;
 mod manifest;
 mod pair;
+mod run_title;
 mod search;
 mod seeds;
 mod wait;
@@ -34,7 +35,7 @@ pub use common::{
     FABRO_ASK_TOOL_NAME, FABRO_BLOB_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME,
     FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME,
     FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
-    FABRO_RUN_WAIT_TOOL_NAME, FABRO_SEEDS_SEARCH_TOOL_NAME,
+    FABRO_RUN_SET_TITLE_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME, FABRO_SEEDS_SEARCH_TOOL_NAME,
     FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSummaryResult, ToolDefinition,
     ToolError, ToolResult, tool_definitions,
 };
@@ -58,6 +59,10 @@ pub use manifest::json_to_toml_value;
 pub use pair::{
     FabroRunPairParams, PairRunResult, RunPairAction, ValidatedPairAction, ValidatedPairRun,
     pair_run, pair_run_text,
+};
+pub use run_title::{
+    FabroRunSetTitleParams, RunSetTitleResult, ValidatedRunSetTitle, set_run_title,
+    set_run_title_text,
 };
 pub use search::{
     FabroRunSearchParams, SearchRunSummaryResult, SearchRunsResult, ValidatedSearchRuns,

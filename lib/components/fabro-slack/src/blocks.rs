@@ -377,6 +377,9 @@ pub struct RunLifecycleBlocks<'a> {
     pub run_id:         &'a str,
     pub run_url:        Option<&'a str>,
     pub workflow_label: &'a str,
+    /// The run's own title (agent-refined for claimed seeds, ADR-0030),
+    /// with its inferred fallback — never blank.
+    pub run_title:      &'a str,
     pub result:         Option<&'a str>,
     pub duration_ms:    Option<u64>,
     pub pull_request:   Option<RunLifecyclePullRequest<'a>>,
@@ -408,7 +411,7 @@ pub fn run_lifecycle_blocks(
                 "emoji": true
             }
         }),
-        text_block(&format!("*{}*", lifecycle_field(details.workflow_label))),
+        text_block(&format!("*{}*", lifecycle_field(details.run_title))),
     ];
 
     let mut fields = vec![
@@ -1037,6 +1040,7 @@ mod tests {
             run_id:         "01HSTART",
             run_url:        Some("https://fabro.example/runs/01HSTART"),
             workflow_label: "deploy",
+            run_title:      "Ship the deploy seed",
             result:         None,
             duration_ms:    None,
             pull_request:   None,
@@ -1045,7 +1049,7 @@ mod tests {
         assert_eq!(blocks[0]["type"], "header");
         assert_eq!(blocks[0]["text"]["text"], "Fabro run started");
         assert_eq!(blocks[1]["type"], "section");
-        assert_eq!(blocks[1]["text"]["text"], "*deploy*");
+        assert_eq!(blocks[1]["text"]["text"], "*Ship the deploy seed*");
         assert_eq!(blocks[2]["type"], "section");
         let text = lifecycle_text(&blocks);
         assert!(text.contains("*Workflow*\n`deploy`"));
@@ -1060,6 +1064,7 @@ mod tests {
             run_id:         "01HDONE",
             run_url:        None,
             workflow_label: "release",
+            run_title:      "seed fabro-9711: meaningful run titles",
             result:         Some("completed"),
             duration_ms:    Some(65_432),
             pull_request:   Some(RunLifecyclePullRequest {
@@ -1071,7 +1076,10 @@ mod tests {
 
         assert_eq!(blocks[0]["type"], "header");
         assert_eq!(blocks[0]["text"]["text"], "Fabro run completed");
-        assert_eq!(blocks[1]["text"]["text"], "*release*");
+        assert_eq!(
+            blocks[1]["text"]["text"],
+            "*seed fabro-9711: meaningful run titles*"
+        );
         let text = lifecycle_text(&blocks);
         assert!(text.contains("*Result*\ncompleted"));
         assert!(text.contains("*Duration*\n1m 5s"));
@@ -1086,6 +1094,7 @@ mod tests {
             run_id:         "01HFAIL",
             run_url:        None,
             workflow_label: "deploy",
+            run_title:      "seed fabro-9711: meaningful run titles",
             result:         Some("workflow_error — command <failed> & exited"),
             duration_ms:    Some(1_234),
             pull_request:   None,
@@ -1105,6 +1114,7 @@ mod tests {
             run_id:         "01H<&>",
             run_url:        None,
             workflow_label: &format!("deploy <!here> {}", "x".repeat(4_000)),
+            run_title:      &format!("title <!here> {}", "x".repeat(4_000)),
             result:         Some("partial_success <needs-review> & done"),
             duration_ms:    None,
             pull_request:   None,
@@ -1133,6 +1143,7 @@ mod tests {
             run_id:         "01HDONE",
             run_url:        None,
             workflow_label: "release",
+            run_title:      "seed fabro-9711: meaningful run titles",
             result:         Some("completed"),
             duration_ms:    Some(1000),
             pull_request:   Some(RunLifecyclePullRequest {

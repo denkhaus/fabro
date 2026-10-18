@@ -20,6 +20,12 @@ use crate::{
     timing,
 };
 
+/// The context-update key a claiming planner declares its seed under
+/// (fabro-9711/3a5e): the projection lifts `current_seed_id` into
+/// [`RunProjection::claimed_seed_id`]. One shared constant so the fold
+/// and every test name the same fact.
+pub const CURRENT_SEED_ID_CONTEXT_KEY: &str = "current_seed_id";
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RunProjection {
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -47,6 +53,12 @@ pub struct RunProjection {
     pub superseded_by:         Option<RunId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retried_from:          Option<RunId>,
+    /// The seed this run works on, as the claiming planner declared it in
+    /// its `current_seed_id` context update (fabro-9711/3a5e). Absent
+    /// until a stage declares the key; last declaration wins, mirroring
+    /// the run context's merge order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_seed_id:       Option<String>,
     /// Where the run's records came from when it is a fork: the source run
     /// and the position its records were kept up to, as Petri's own run
     /// declaration names them.
@@ -741,6 +753,7 @@ impl RunProjection {
             pull_request_creation: None,
             superseded_by: None,
             retried_from: None,
+            claimed_seed_id: None,
             forked_from: None,
             git_identity: None,
             pending_interviews: BTreeMap::new(),

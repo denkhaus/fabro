@@ -442,6 +442,7 @@ mod tests {
             id:                  id.parse().expect("test run id should parse"),
             parent_id:           None,
             children_count:      0,
+            claimed_seed_id:     None,
             title:               "test".to_string(),
             goal:                "test".to_string(),
             workflow:            WorkflowRef {

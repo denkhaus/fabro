@@ -67,7 +67,7 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
         x.fs_write="",
-        x.fabro_tools="fabro_run_search",
+        x.fabro_tools="fabro_run_search,fabro_run_set_title",
         // Read window (e47c pattern): selection re-derives from the run
         // list every pass — stale target keys from the previous cycle
         // must not render. journal is the ONLY input: the prior selector's
