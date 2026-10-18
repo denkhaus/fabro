@@ -54,11 +54,10 @@ digraph Loop {
 
     // Planner preflight: the develop script with --assignee loop — same
     // already-landed report, same anchor/in-flight arms, loop candidates.
-    // envelope_risk INVERTS meaning across lanes: the product planner
-    // skips flagged seeds (ce525b8a7); the loop planner takes exactly
-    // that surface class — a @loop seed whose primary surface is
-    // repo-visible is misrouted and the loop planner prompt owns that
-    // arm.
+    // envelope_risk is LANE-SCOPED (fabro-bd55): product lanes flag
+    // loop-asset/external surfaces (ce525b8a7 skips them); THIS lane
+    // flags PRODUCT surfaces — the misroute detector the planner
+    // prompt's surface router adjudicates.
     preflight [
         label="Planner preflight: already-landed check (loop queue)",
         shape=parallelogram,

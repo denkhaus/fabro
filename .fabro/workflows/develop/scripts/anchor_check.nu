@@ -246,3 +246,51 @@ export def drop-proposed [desc: string, flags: list]: nothing -> list {
     }
 }
 
+# ── Basis-commit advisory (fabro-d95c) ─────────────────────────────────
+# The Basis line's `commit <sha>` citation. Squash-merged run branches
+# strand their basis commits, so the sha can go permanently unresolvable
+# while every path anchor passes — the preflight surfaces that as an
+# ADVISORY flag, never a stale-basis verdict (the legend says so; the
+# planner adjudicates the basis via its files/worktree, never by probing
+# for the sha). First sha in the body wins; URLs stripped first so a
+# hex-looking URL segment cannot parse as a commit.
+export def extract-basis-commit [desc: string]: nothing -> any {
+    if ($desc | is-empty) { return null }
+    let clean = ($desc | str replace --all --regex '\S+://\S+' ' ')
+    let hits = ($clean | parse --regex '(?i)\bcommit\s+(?<sha>[0-9a-f]{7,40})\b' | get -o sha | default [])
+    if ($hits | is-empty) { null } else { $hits | first }
+}
+
+# Resolve a commit sha against `root`'s object DB. Returns true/false
+# for present/absent objects, null when `root` is not a git worktree or
+# git itself is unavailable — both are TOOLING states, so they fail open
+# (exit 128 alone cannot distinguish "no such object" from "no such
+# repo"; the rev-parse probe can) — pinned in
+# planner-preflight-anchor-fixtures (non-git root arm).
+export def basis-commit-resolves [sha: string, root: string]: nothing -> any {
+    let probe = (try { do { git -C $root rev-parse --is-inside-work-tree } | complete } catch { null })
+    if $probe == null { return null }
+    if $probe.exit_code != 0 { return null }
+    let res = (try { do { git -C $root cat-file -e $"($sha)^{commit}" } | complete } catch { null })
+    if $res == null { null } else { $res.exit_code == 0 }
+}
+
+# ── Lane-scoped surface risk (fabro-bd55) ──────────────────────────────
+# What `envelope_risk` MEANS depends on the lane, and computing it with
+# develop semantics in the loop lane shipped backwards verdicts (run
+# 01M58AHT reviewer false-positive on fabro-b659): the flag marks what
+# the LANE'S implementer fs envelope cannot write.
+#   - product lane (develop/any non-loop): loop-asset or external-tool
+#     surfaces in the body (the historic tokens — unlandable there).
+#   - loop lane: PRODUCT surfaces (the misroute detector — a @loop seed
+#     whose primary surface is repo-visible belongs to @fabro).
+# Advisory in both directions: a body may cite the foreign surface as
+# BASIS while the primary fix surface is in-lane — the legend and the
+# surface-router prompts own that adjudication.
+export def lane-surface-risk? [desc: string, lane: string]: nothing -> bool {
+    let product_tokens = ["lib/" "apps/" "docs/" "lib/packages/" "public/"]
+    let loop_tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "ml record" "mulch"]
+    let tokens = (if $lane == "loop" { $product_tokens } else { $loop_tokens })
+    $tokens | any {|t| $desc | str contains $t}
+}
+

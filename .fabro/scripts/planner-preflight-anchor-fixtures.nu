@@ -130,6 +130,38 @@ def main [] {
         let far = ("create " + (1..20 | each {"filler "} | str join "") + "then cite gone/x.rs as evidence")
         expect '13: distant verb does not window' (creation-named? $far 'gone/x.rs') false
         expect '13: distant verb keeps the flag' (drop-proposed $far (check-bare-paths $far $scratch) | get path) ['gone/x.rs']
+
+        # (14) Basis-commit advisory (fabro-d95c): extraction takes the
+        # first `commit <hex 7..40>` after URL stripping; a URL never
+        # parses as a sha; prose without a commit yields null.
+        expect '14: basis commit extracted' (extract-basis-commit "Basis: run 01MX, workflow version 99e5, commit add88af03e7532624d73a287ff9d0225a77343a8.") 'add88af03e7532624d73a287ff9d0225a77343a8'
+        expect '14: short sha extracted' (extract-basis-commit "re-landed as commit abc1234 last week") 'abc1234'
+        expect '14: hex token without commit keyword is no basis' (extract-basis-commit "tree sha deadbeefdeadbeef lying around") null
+        expect '14: url never parses as sha' (extract-basis-commit "commit https://host/deadbeefdeadbeef") null
+        expect '14: no commit line' (extract-basis-commit "Basis: run 01MX only") null
+
+        # (15) resolution: present object true, absent object false,
+        # non-git root fail-open null (the fail-open rule: an internal
+        # error never flags the seed).
+        let head_sha = (do { git -C $home_dir rev-parse HEAD } | complete)
+        if $head_sha.exit_code != 0 {
+            print -e '15: fixture must run from a git checkout (rev-parse HEAD)'
+            exit 1
+        }
+        expect '15: present commit resolves' (basis-commit-resolves ($head_sha.stdout | str trim) $home_dir) true
+        expect '15: absent commit does not resolve' (basis-commit-resolves '0123456789abcdef0123456789abcdef01234567' $home_dir) false
+        expect '15: non-git root fails open' (basis-commit-resolves '0123456789abcdef0123456789abcdef01234567' $scratch) null
+
+        # (16) lane-scoped surface risk (fabro-bd55): the loop lane flags
+        # PRODUCT surfaces (misroute detector); the product lane keeps the
+        # historic loop-asset/external tokens; the same body flips per lane.
+        let loop_body = 'edit .fabro/workflows/develop/prompts/implementer.md and lib/components/fabro-llm/src/client.rs'
+        expect '16: loop lane flags product surface' (lane-surface-risk? $loop_body 'loop') true
+        expect '16: product lane flags the loop-asset half of a mixed body' (lane-surface-risk? $loop_body 'fabro') true
+        expect '16: product lane ignores a product-only body' (lane-surface-risk? 'edit lib/components/fabro-llm/src/client.rs and docs/public/x.mdx' 'fabro') false
+        expect '16: loop lane silent on loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu and justfile' 'loop') false
+        expect '16: product lane still flags loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu' 'fabro') true
+        expect '16: empty body flags nothing' (lane-surface-risk? '' 'loop') false
     } finally {
         cd $home_dir
         rm -rf $scratch

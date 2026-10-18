@@ -10,7 +10,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Input
 
-The Planner put the claimed seed in the context (`current_seed_id`, `current_seed_title`, `current_seed_brief`) — read it there FIRST; it is authoritative for what to build. If the brief is thin, fetch the full seed: `seeds show <current_seed_id>`.
+The claimed seed reaches you in the BRIEF's first bullets (seed id + title, written by the planner) and in the `claim_check` stage output — read it there FIRST; it is authoritative for what to build. The `current_seed_id`/`current_seed_title`/`current_seed_brief` context keys never render into `## Context` (the engine hides `current*` keys, and that section is the intersection of the node's two allow-lists) — do not wait on them. If the brief is thin, fetch the full seed: `seeds show <seed-id>`.
 
 Review feedback: when the Reviewer's minor verdict re-enters this node directly (its own edge — no Planner re-plan), the bullet arrives in the context as its own `review_feedback` key — fixing exactly that bullet IS this pass's job. On Planner re-entries the feedback is folded into the brief instead, so act on whichever carrier the context shows.
 
@@ -19,7 +19,7 @@ Tracker mechanics (seeds is installed and authoritative):
 - `seeds ready` lists only OPEN unblocked seeds — it will NOT show your seed. Use `seeds show <id>`, never `seeds ready`, to look up your seed.
 - Never parse `.seeds/issues.jsonl` by hand (python/jq/cat): `seeds show <id> --format json` is the supported path; raw-file parsing wastes calls and drifts from the tool's data model.
 - If the brief carries review feedback, fixing those deviations IS this pass's job.
-- Gate-red bounce: when the `## Context` section carries `output.gate_known_bug_hits` (open known-bug seeds deterministically matched against the gate failure tail), read those hits BEFORE re-deriving root cause from the gate logs — the tail already matched them.
+- Gate-red bounce: when the `## Context` section carries `output.gatebounce` (the gatebounce stage's payload: open known-bug seeds deterministically matched against the gate failure tail), read those hits BEFORE re-deriving root cause from the gate logs — the tail already matched them.
 
 ## Rust work — read the vendored style guide FIRST (hard gate)
 

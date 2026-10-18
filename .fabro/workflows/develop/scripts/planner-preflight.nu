@@ -286,26 +286,25 @@ def stranded-flags [desc: string, base: string, refs_fetched: bool]: nothing -> 
 # the description is missing/rotted/mismatched; anchor_flags carries the
 # per-anchor detail. The verdict itself is unchanged — anchor rot routes
 # through planner adjudication, never through this script's close path.
-# Envelope-risk (fabro-c4be class, systemic fix 2026-09-30): the
-# implementer's fs envelope hides loop assets (.fabro/workflows|scripts|
-# skills, .agents, root scripts/, justfile) and external tools (mulch/ml)
-# from run sandboxes — a seed whose DEMAND names such a surface cannot be
-# landed by the develop line and dies at its first out-of-scope write
-# (kills on record: 3351 x2, f22b, 1f52). ADVISORY flag: a body mention
-# is not proof (the path may be cited as BASIS while the fix surface is
-# repo-visible) — the planner verifies the primary surface before
-# claiming; envelope_risk seeds with a repo-visible primary surface stay
-# claimable.
-def envelope-risk? [desc: string]: nothing -> bool {
-    let tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "ml record" "mulch"]
-    $tokens | any {|t| $desc | str contains $t}
-}
+# Envelope-risk moved to the shared seam (fabro-bd55): WHICH surface is
+# at risk is lane-relative — anchor_check.nu `lane-surface-risk?` holds
+# both token sets (product lane: loop-asset/external surfaces the
+# develop envelope hides, the fabro-c4be class kills 3351 x2, f22b,
+# 1f52; loop lane: PRODUCT surfaces — the misroute detector, born from
+# the fabro-b659 false positive in run 01M58AHT). Fixtures pin both.
+# ADVISORY in both directions: a body mention is not proof (the foreign
+# path may be cited as BASIS while the primary fix surface is in-lane) —
+# the planner verifies the primary surface before claiming.
 
-def row [v: record, desc: string, root: string, claims: list, base: string, refs_fetched: bool] {
+def row [v: record, desc: string, root: string, claims: list, base: string, refs_fetched: bool, lane: string] {
     let m = ($v.implementation_matches? | default [] | first | default {})
     let ce = ($v.closing_evidence? | default {})
     let checked = ((extract-anchors $desc | each {|a| check-anchor $a $root}) | append (check-bare-paths $desc $root))
     let flags = ((drop-proposed $desc $checked) | where {|f| $f.status != "ok"})
+    # fabro-d95c: the Basis-line commit sha and its resolvability in this
+    # object DB (null = no sha in body, or tooling fail-open). Advisory —
+    # the legend spells the adjudication: never a stale-basis verdict.
+    let bc = (extract-basis-commit $desc)
     # Stranded-implementation scan (arm 4): try/catch is the fail-open
     # hard rule — an arm crash degrades to zero flags, never blocks.
     let sflags = (try { stranded-flags $desc $base $refs_fetched } catch { [] })
@@ -325,11 +324,13 @@ def row [v: record, desc: string, root: string, claims: list, base: string, refs
      mention_only_matches: ($v.mention_only_matches? | default 0),
      anchors_ok: (($flags | length) == 0),
      anchor_flags: $flags,
+     basis_commit: $bc,
+     basis_commit_resolves: (if $bc == null { null } else { basis-commit-resolves $bc $root }),
      in_flight: ($hit != null),
      in_flight_run: (if $hit == null { null } else { $hit.run}),
      salvage_ok: (($sflags | length) == 0),
      salvage_flags: $sflags,
-     envelope_risk: (envelope-risk? $desc)}
+     envelope_risk: (lane-surface-risk? $desc $lane)}
 }
 
 # Resolve dup-run-check relative to THIS script (.fabro/scripts/ is
@@ -341,11 +342,12 @@ const SCRIPT_DIR = (path self | path dirname)
 
 # Lane parameter (fabro-70b5): the preflight serves BOTH lanes — develop
 # (default, assignee fabro) and the loop meta lane (--assignee loop,
-# candidates from the loop queue). The envelope_risk flag inverts its
-# meaning across lanes: the PRODUCT planner skips flagged seeds (loop
-# assets are unlandable there); the LOOP planner takes exactly the
-# flagged surface class (a @loop seed whose primary surface is
-# repo-visible is MISROUTED — the loop planner prompt owns that arm).
+# candidates from the loop queue). The envelope_risk flag is LANE-SCOPED
+# (fabro-bd55): the shared seam computes it against the lane's own fs
+# envelope — product lanes flag loop-asset/external surfaces (skip unless
+# the primary surface is repo-visible); the loop lane flags PRODUCT
+# surfaces (the misroute detector the loop planner's surface router
+# adjudicates).
 def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5, --assignee: string = "fabro"]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
@@ -426,7 +428,18 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     let legend = {duplicate: "advisory: implementation possibly already in merge-target base (or tracker-closed without resolvable evidence) — planner judges acceptance criteria and closes per the two-branch rule",
                   clean: "no landed implementation found",
                   degraded: "check failed (fetch/tracker error)"}
-    let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before claiming; loop-asset-only or external-tool seeds are DIRECT WORK (skip, journal the classification)"}
+    # fabro-bd55: the envelope legend is LANE-SCOPED like the flag —
+    # loop readers get the misroute-detector semantics, product lanes the
+    # historic hidden-surface advisory.
+    let envelope_legend = (if $assignee == "loop" {
+        {envelope_risk: "advisory (loop lane): the body names a PRODUCT surface (lib/ apps/ docs/ public/) outside the loop implementer's fs envelope — verify the PRIMARY fix surface: product primary = MISROUTED to @fabro (skip, journal per the surface router); loop-asset primary = claimable (the product path is a BASIS citation)"}
+    } else {
+        {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before claiming; loop-asset-only or external-tool seeds are DIRECT WORK (skip, journal the classification)"}
+    })
+    # fabro-d95c: the Basis-commit legend keeps the table
+    # self-interpreting (fabro-ead4 legend contract): an unreachable sha
+    # is NORMAL for squash-stranded basis commits, never a stale verdict.
+    let basis_legend = {basis_commit: "advisory: the body's Basis-line commit sha. basis_commit_resolves=false means the commit is unreachable in this object DB (squash-merged run branches strand their basis commits) — NOT a stale-basis verdict: adjudicate the basis via its files/worktree, never probe for the sha; null = no sha in body or tooling fail-open"}
     # fabro-4401: a `duplicate` is ALWAYS advisory-only — never a mechanical
     # close. Matches whose only seed-id reference sits in journal-style
     # bullet lines of a landed commit's message are mention-only and are
@@ -442,8 +455,8 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing (pointer cites a commit that no longer resolves), already_in_base (the salvage landed on the merge target; the ALREADY LANDED two-branch-rule arm owns the seed), branch_missing (salvage-source run branch no longer fetched), or pointer_missing (salvage-source run branch cited without the canonical 'salvage: git show <commit> on branch <branch>' bullet — resolve the implementer commit BEFORE shipping the brief)"}
     let report = {mode: $mode,
                   run_id: ($run_id | default null),
-                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default []) $base ($inflight.fetched? | default false)}),
-                  legend: ($legend | merge $envelope_legend | merge $mention_legend | merge $salvage_legend),
+                  candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default []) $base ($inflight.fetched? | default false) $assignee}),
+                  legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $mention_legend | merge $salvage_legend),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",
