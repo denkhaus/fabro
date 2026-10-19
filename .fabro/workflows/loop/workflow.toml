@@ -91,8 +91,8 @@ push = true
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
-merge_strategy = "squash"
+# ADR-0031 (fabro-c14e): no auto_merge lever — the run-PR merger lands
+# green PRs inside policy windows (:10-:25/:40-:55, base-first, squash).
 model = "zai:glm-4.7"
 
 # Terminal-failure visibility on the same Slack route.

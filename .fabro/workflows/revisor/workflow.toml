@@ -88,8 +88,8 @@ push = true
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
-merge_strategy = "squash"
+# ADR-0031 (fabro-c14e): no auto_merge lever — the run-PR merger lands
+# green PRs inside policy windows (:10-:25/:40-:55, base-first, squash).
 # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
 # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
 # a valid value: the enum is low|medium|high|xhigh|max).
@@ -97,7 +97,7 @@ model = "zai:glm-4.7"
 
 # NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):
 # the lab-era write token is vestigial - the ENGINE performs all forge
-# operations (branch push, PR create, auto-merge, waits) with its own
+# operations (branch push, PR create, merger-window waits) with its own
 # credentials; agent shells get NO GITHUB_TOKEN (empty permissions =
 # no_token path in initialize.rs). Forge reads go through engine-mediated
 # tools (fabro_runs_list), never raw clients.

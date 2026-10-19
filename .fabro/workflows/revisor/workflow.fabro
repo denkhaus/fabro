@@ -16,7 +16,7 @@ digraph Revisor {
     // Exit kinds (fabro-b907, ADR-0010): soft -> next pass re-enters.
     // ADR-0015 v2 removed the approval gate: natural completion = the
     // pass budget is exhausted after filing, merged by the host-side
-    // integrate step (run_workflow.nu PR + auto-merge) — identical to
+    // integrate step (run_workflow.nu PR; the ADR-0031 merger lands it) — identical to
     // develop's merge path, no human in the loop.
     exit  [shape=Msquare, label="Exit"]
 
@@ -177,7 +177,7 @@ digraph Revisor {
     // reset-per-target seed_cycles). Edges are mutually exclusive (matched
     // condition edges can be picked nondeterministically when several
     // match): failed -> soft exit; budget exhausted -> natural exit
-    // (merges via the normal PR + auto-merge path, identical to develop);
+    // (lands via the ADR-0031 run-PR merger, identical to develop);
     // budget remaining -> next pass. Raising the budget is currently the
     // N in "nodes.select.generation >= N" / "< N"; an engine graph
     // attribute can replace them later.

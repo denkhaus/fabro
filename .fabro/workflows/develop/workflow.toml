@@ -100,18 +100,14 @@ push = true
 # non-empty diff opens a PR against the base branch. Without this,
 # scheduled runs would re-implement the same seed every run (observed:
 # three parallel -pretty implementations on orphaned run branches).
-# auto_merge = true (REVERTED fabro-6a5a, user decision 2026-09-09
-# "automerge muss bleiben"): the 6a5a premise was STALE — the
-# enableAutoMerge call works on this repo (setting allow_auto_merge=true;
-# PRs #102 and #107 itself carried active auto-merge enabled by the
-# engine and GitHub merged them). The failure evidence cited by fabro-6a5a
-# came from 2026-09-02 (run 01M0WWKAQCWZC0Q0JK019H0ZC7, pre-setting era).
-# The other half of fabro-6a5a (resolve_pr_model fix + tests) stays.
+# History: auto_merge was reinstated 2026-09-09 (fabro-6a5a premise was
+# stale) and retired again 2026-10-19 by ADR-0031 (fabro-c14e) — the
+# deterministic run-PR merger owns landing; the key is parsed but inert.
 [run.pull_request]
 enabled = true
 draft = false
-auto_merge = true
-merge_strategy = "squash"
+# ADR-0031 (fabro-c14e): no auto_merge lever — the run-PR merger lands
+# green PRs inside policy windows (:10-:25/:40-:55, base-first, squash).
 # glm-4.7: non-reasoning (catalog features.reasoning = false) — cheap,
 # clean JSON for PR titling; no reasoning_effort needed (and "off" is not
 # a valid value: the enum is low|medium|high|xhigh|max).
@@ -126,7 +122,7 @@ model = "zai:glm-4.7"
 
 # NO [run.integrations.github.permissions] (ADR-0019, user directive 2026-09-08):
 # the legacy write token is vestigial - the ENGINE performs all forge
-# operations (branch push, PR create, auto-merge, waits) with its own
+# operations (branch push, PR create, merger-window waits) with its own
 # credentials; agent shells get NO GITHUB_TOKEN (empty permissions =
 # no_token path in initialize.rs). Forge reads go through engine-mediated
 # tools (fabro_runs_list), never raw clients.
