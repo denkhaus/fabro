@@ -347,12 +347,17 @@ impl RunSummaryStore {
 
     /// The newest non-terminal run of an automation (including children of
     /// its runs), for overlap-policy skip logging (fabro-09ea, fork).
+    ///
+    /// `removing` never counts (fabro-d616): a run being deleted never
+    /// comes back, and a removal wedged mid-cleanup must not starve the
+    /// lane's scheduled fires — the 2026-10-19 incident kept the loop
+    /// automation skipped for 10+ hours on a ghost row.
     pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
         let stored: Option<String> = sqlx::query_scalar(
             r"
 SELECT id
 FROM runs
-WHERE status NOT IN ('succeeded', 'failed', 'dead')
+WHERE status NOT IN ('succeeded', 'failed', 'dead', 'removing')
   AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
   AND (
     automation_id = ?
@@ -851,6 +856,50 @@ mod tests {
             },
             RunStatusKind::Dead => RunStatus::Dead,
         }
+    }
+
+    /// fabro-d616: `removing` never counts as an overlap reason — a run
+    /// being deleted never comes back, and a removal wedged mid-cleanup
+    /// must not starve the automation's scheduled fires (incident
+    /// 2026-10-19: the loop lane skipped silently for 10+ hours on a
+    /// removing ghost).
+    #[tokio::test]
+    async fn a_removing_run_never_blocks_the_overlap_check() {
+        let (_dir, store) = store().await;
+        let automation = AutomationRef {
+            id:              "loop-fabro".to_string(),
+            name:            Some("loop@fabro".to_string()),
+            workflow_source: None,
+            trigger_id:      None,
+        };
+        let ghost = {
+            let mut p = projection(run_id(1, 1), "removing ghost", dt("2026-10-19T08:30:00Z"));
+            p.status = RunStatus::Removing;
+            p.spec.automation = Some(automation.clone());
+            p
+        };
+        write(&store, &ghost).await;
+        assert!(
+            store
+                .active_run_for_automation("loop-fabro")
+                .await
+                .unwrap()
+                .is_none(),
+            "a removing run must not read as active for the overlap skip"
+        );
+
+        let live = {
+            let mut p = projection(run_id(2, 2), "running pass", dt("2026-10-19T09:00:00Z"));
+            p.status = RunStatus::Running;
+            p.spec.automation = Some(automation);
+            p
+        };
+        write(&store, &live).await;
+        assert_eq!(
+            store.active_run_for_automation("loop-fabro").await.unwrap(),
+            Some(live.spec.run_id),
+            "a running run still reads as active"
+        );
     }
 
     #[tokio::test]
