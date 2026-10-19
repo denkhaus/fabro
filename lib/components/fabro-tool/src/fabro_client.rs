@@ -15,6 +15,7 @@ pub struct ClientBackend {
     client:                    Arc<::fabro_client::Client>,
     run_scope:                 Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
+    run_seeds:                 Option<Arc<dyn crate::RunSeedsSource>>,
 }
 
 impl ClientBackend {
@@ -24,7 +25,18 @@ impl ClientBackend {
             client,
             run_scope: None,
             workflow_version_packager: None,
+            run_seeds: None,
         }
+    }
+
+    /// Bind the tracker reads to the run context's own workspace
+    /// (fabro-d6de rework): `fabro_seeds_search` serves from this source —
+    /// the current tracker of the repo the session works on — instead of a
+    /// server-side seeds listing.
+    #[must_use]
+    pub fn with_run_seeds(mut self, source: Arc<dyn crate::RunSeedsSource>) -> Self {
+        self.run_seeds = Some(source);
+        self
     }
 
     #[must_use]
@@ -324,45 +336,18 @@ impl FabroToolBackend for ClientBackend {
         assignee: Option<&str>,
         label: Option<&str>,
     ) -> anyhow::Result<Vec<crate::SeedsRow>> {
-        // Read-only and tracker-wide: the run scope guards run data, and the
-        // tracker is not run data (fabro-d6de).
-        use std::num::NonZeroU64;
-
-        use crate::seeds::SEEDS_PAGE_LIMIT;
-
-        let page_limit =
-            NonZeroU64::new(SEEDS_PAGE_LIMIT).expect("the seeds page limit is non-zero");
-        let api_client = self.client.api_client();
-        let mut request = api_client.list_seeds().page_limit(page_limit);
-        if let Some(status) = status {
-            request = request.status(
-                types::SeedStatus::try_from(status)
-                    .map_err(|error| anyhow::anyhow!("unknown seed status `{status}`: {error}"))?,
-            );
-        }
-        if let Some(assignee) = assignee {
-            request = request.assignee(assignee);
-        }
-        if let Some(label) = label {
-            request = request.label(label);
-        }
-        let page = request
-            .send()
-            .await
-            .map_err(|err| anyhow::anyhow!("seeds listing failed: {err}"))?
-            .into_inner();
-        let rows = page
-            .data
-            .into_iter()
-            .map(|seed| crate::SeedsRow {
-                id:        seed.id,
-                title:     seed.title,
-                status:    seed.status.map(|status| status.to_string()),
-                seed_type: seed.type_.map(|kind| kind.to_string()),
-                assignee:  seed.assignee,
-                labels:    seed.labels,
-            })
-            .collect();
+        // The run context's own tracker (fabro-d6de rework, user decision
+        // 2026-10-19): rows come from the bound RunSeedsSource and the
+        // tracker-level filters apply locally. No server-side listing —
+        // the tracker always follows the repo the session works on.
+        let Some(source) = self.run_seeds.as_ref() else {
+            return Err(anyhow::anyhow!(
+                "fabro_seeds_search is not available: this session is not bound to a run \
+                 workspace tracker"
+            ));
+        };
+        let rows = source.rows().await?;
+        let rows = crate::seeds::apply_tracker_filters(rows, status, assignee, label);
         Ok(rows)
     }
 

@@ -88,7 +88,7 @@ impl TryFrom<FabroSeedsSearchParams> for ValidatedSeedsSearchParams {
 }
 
 /// One tracker row as the tool reports it — the API summary's stable core.
-#[derive(Debug, Serialize, JsonSchema)]
+#[derive(Clone, Debug, Serialize, JsonSchema)]
 pub struct SeedsRow {
     pub id:        String,
     pub title:     String,
@@ -138,6 +138,37 @@ pub fn filter_seed_rows(
         rows: hit,
         truncated,
     }
+}
+
+/// Apply the tracker-level filters (status, assignee with `none` =
+/// unassigned, label) over raw run-context rows — the same semantics the
+/// removed server-side listing served (fabro-d6de rework).
+pub fn apply_tracker_filters(
+    rows: Vec<SeedsRow>,
+    status: Option<&str>,
+    assignee: Option<&str>,
+    label: Option<&str>,
+) -> Vec<SeedsRow> {
+    rows.into_iter()
+        .filter(|row| {
+            let status_ok = status
+                .map(|wanted| row.status.as_deref().is_some_and(|have| have.eq_ignore_ascii_case(wanted)))
+                .unwrap_or(true);
+            let assignee_ok = assignee
+                .map(|wanted| {
+                    if wanted.eq_ignore_ascii_case("none") {
+                        row.assignee.as_deref().is_none_or(str::is_empty)
+                    } else {
+                        row.assignee.as_deref().is_some_and(|have| have == wanted)
+                    }
+                })
+                .unwrap_or(true);
+            let label_ok = label
+                .map(|wanted| row.labels.iter().any(|have| have == wanted))
+                .unwrap_or(true);
+            status_ok && assignee_ok && label_ok
+        })
+        .collect()
 }
 
 pub async fn seeds_search(

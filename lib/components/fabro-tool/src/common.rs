@@ -45,6 +45,18 @@ impl std::error::Error for ToolError {}
 
 pub type ToolResult<T> = Result<T, ToolError>;
 
+/// The tracker of the run context a tool serves (fabro-d6de rework, user
+/// decision 2026-10-19): the current `.seeds/issues.jsonl` of the run's
+/// own sandbox workspace — the same checkout the agent reads files from.
+/// Never a server-side mirror of a fixed repository: seeds always come
+/// from the repo the session works on.
+#[async_trait]
+pub trait RunSeedsSource: Send + Sync {
+    /// Every tracker row of the run workspace's tracker, unfiltered; an
+    /// empty result is a valid trackerless workspace (foreign repo).
+    async fn rows(&self) -> anyhow::Result<Vec<crate::SeedsRow>>;
+}
+
 #[async_trait]
 pub trait FabroToolBackend: Send + Sync {
     async fn create_workflow_version(
@@ -160,10 +172,12 @@ pub trait FabroToolBackend: Send + Sync {
         Err(pair_tool_unavailable_error())
     }
 
-    /// The tracker rows the server-side filters select (fabro_seeds_search,
-    /// fabro-d6de): status, assignee (`none` = unassigned), and label; the
-    /// keyword narrowing and limit live in the tool. Only backends bound to
-    /// the tracker serve it; the default refuses with a teaching error.
+    /// The tracker rows the status/assignee/label filters select
+    /// (fabro_seeds_search, fabro-d6de): served from the run context's own
+    /// tracker (`RunSeedsSource`) — never a server-side mirror (user
+    /// decision 2026-10-19). The keyword narrowing and limit live in the
+    /// tool. Only backends bound to a run tracker serve it; the default
+    /// refuses with a teaching error.
     async fn list_seed_rows(
         &self,
         _status: Option<&str>,

@@ -36,8 +36,8 @@ pub use common::{
     FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME,
     FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
     FABRO_RUN_SET_TITLE_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME, FABRO_SEEDS_SEARCH_TOOL_NAME,
-    FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSummaryResult, ToolDefinition,
-    ToolError, ToolResult, tool_definitions,
+    FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSeedsSource, RunSummaryResult,
+    ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunsResult, CreatedRunResult, FabroRunCreateParams,
@@ -70,7 +70,7 @@ pub use search::{
 };
 pub use seeds::{
     FabroSeedsSearchParams, SeedsRow, SeedsSearchResult, ValidatedSeedsSearchParams,
-    filter_seed_rows, seeds_search, seeds_search_text,
+    apply_tracker_filters, filter_seed_rows, seeds_search, seeds_search_text,
 };
 pub use wait::{
     FabroRunWaitParams, RunWaitOutcome, RunWaitReached, RunWaitUntil, ValidatedRunWait, run_wait,
