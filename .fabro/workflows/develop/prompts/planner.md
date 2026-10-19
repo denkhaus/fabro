@@ -8,6 +8,8 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 {% include "project-facts.md" %}
 
+{% include "tracker-commands-planner.md" %}
+
 ## First: handle the last review verdict (changes only)
 
 RUN TITLE (ADR-0030): immediately after routing Seed claimed, call the `fabro_run_set_title` tool (no run argument — it titles THIS run) with a title that says what this run works on: `<the seed's demand in your own few words>` — NO `seed <id>:` prefix: the kanban tile already shows the seed, so spend the characters on the demand itself; still specific to the claimed seed, never the workflow's generic goal. This is the one title write of the run.
@@ -24,7 +26,7 @@ The counters are engine state, not context: `nodes.<id>.generation` counts every
 
 ## seeds command reference (exact — never invent flags)
 
-The full command table lives in PROJECT_FACTS (tracker) — rendered above by the include, so it is part of this prompt. The exact command forms, including the assignee filter, are this repo's values; when porting the workflow, edit PROJECT_FACTS and keep the command table there.
+The full command table lives in the PROJECT_FACTS tracker include (`tracker-commands-planner.md`) — rendered above by the role include, so it is part of this prompt. The exact command forms, including the assignee filter, are this repo's values; when porting the workflow, edit that include and keep the command table there.
 
 ## Plan the next seed
 
