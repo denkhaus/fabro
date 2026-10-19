@@ -60,12 +60,9 @@ timeout = "15s"
 # fail-closed teaching guard is the graph's FIRST node instead:
 # env_guard runs toolchain-guard.sh (POSIX sh) before any nu stage.
 
-# MiMo v2.6 Flash via OpenRouter: vendor-namespaced id that is NOT in the
-# built-in catalog — it rides openrouter's allow_passthrough, so the provider
-# pin is required to keep priority-based selection from routing elsewhere.
 [run.model]
-provider = "openrouter"
-name = "xiaomi/mimo-v2.6-flash"
+provider = "zai"
+name = "glm-5.3"
 
 # Canonical run target for MANUAL starts (fabro-70b5 part H: first runs
 # manual): this host's origin is an SSH host alias whose normalized URL is
@@ -91,14 +88,12 @@ push = true
 
 # Run -> PR -> denkhaus, auto-merge: same rationale as develop (a loop
 # run's asset diff must publish or the next run re-implements it).
-# PR-body model = run model (qualified provider:selector route form,
-# fabro-6558): same openrouter passthrough pin as [run.model].
 [run.pull_request]
 enabled = true
 draft = false
 auto_merge = true
 merge_strategy = "squash"
-model = "openrouter:xiaomi/mimo-v2.6-flash"
+model = "zai:glm-4.7"
 
 # Terminal-failure visibility on the same Slack route.
 [run.notifications.terminal]
