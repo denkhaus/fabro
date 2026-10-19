@@ -21,6 +21,7 @@ use std::time::Duration;
 
 use fabro_store::platform_records::{PlatformRecord, PullRequestLinkedRecord};
 use fabro_types::RunId;
+use fabro_types::settings::run::MergeStrategy;
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{Instrument as _, info, info_span, warn};
@@ -78,6 +79,16 @@ pub(super) async fn process_stale_pull_requests(
     state: &AppState,
     counters: &mut StalePrState,
 ) -> anyhow::Result<()> {
+    process_stale_pull_requests_at(state, counters, chrono::Utc::now()).await
+}
+
+/// The pass with an injected clock (ADR-0031 merger windows are
+/// time-gated; the wire tests fix the minute deterministically).
+pub(super) async fn process_stale_pull_requests_at(
+    state: &AppState,
+    counters: &mut StalePrState,
+    now: chrono::DateTime<chrono::Utc>,
+) -> anyhow::Result<()> {
     let candidates = state
         .stores
         .run_summaries
@@ -95,6 +106,12 @@ pub(super) async fn process_stale_pull_requests(
     };
     let github = server_github_context(state, &creds)
         .map_err(|err| anyhow::anyhow!("GitHub integration unavailable: {}", err.detail()))?;
+
+    // ADR-0031 (fabro-c14e): landing candidates of this pass — clean PRs
+    // merge base-first inside the policy windows; dirty PRs feed the
+    // exact duplicate-close predicate against what this pass landed.
+    let mut clean_candidates: MergeCandidates = Vec::new();
+    let mut dirty_candidates: MergeCandidates = Vec::new();
 
     for run_id in candidates {
         // Parked PRs (fabro-895d) stay open untouched: no updates, no close.
@@ -167,6 +184,20 @@ pub(super) async fn process_stale_pull_requests(
             }
         }
 
+        // ADR-0031 (fabro-c14e) merger arm: a mergeable-clean run PR is a
+        // LANDING candidate — collected here, merged in the ordered,
+        // window-gated phase after the scan. Auto-merge is off
+        // platform-wide; this pass is the only landing path.
+        if detail
+            .mergeable_state
+            .as_deref()
+            .is_some_and(|state| state.eq_ignore_ascii_case("clean"))
+        {
+            counters.update_failures.remove(&run_id);
+            clean_candidates.push((record.number, record.clone(), run_id));
+            continue;
+        }
+
         // Poll set: mergeable=false AND dirty. `blocked` means required
         // checks, not a moved base — updating would not clear it (Q2).
         let dirty = detail.mergeable == Some(false)
@@ -178,6 +209,7 @@ pub(super) async fn process_stale_pull_requests(
             counters.update_failures.remove(&run_id);
             continue;
         }
+        dirty_candidates.push((record.number, record.clone(), run_id));
 
         let failed = counters.update_failures.get(&run_id).copied().unwrap_or(0);
         if failed >= MAX_UPDATE_BRANCH_ATTEMPTS {
@@ -241,6 +273,17 @@ pub(super) async fn process_stale_pull_requests(
             }
         }
     }
+    // ADR-0031 (fabro-c14e): the merger phase — window-gated, base-first
+    // (oldest PR number first), then the exact duplicate-close predicate.
+    merge_phase(
+        state,
+        &github,
+        &mut clean_candidates,
+        &dirty_candidates,
+        now,
+    )
+    .await;
+
     Ok(())
 }
 
@@ -388,6 +431,154 @@ fn park_stale_pull_request(
         "Parking stale run pull request — it stays open; resolve manually"
     );
     counters.parked.insert(*run_id, reason.to_string());
+}
+
+/// ADR-0031 (fabro-c14e): merge windows — the ONLY minutes the merger
+/// lands PRs in. Ticks fire :00/:30 and claims land ~:00-:04, so line
+/// movement stays outside claim windows (the fabro-006d race).
+const MERGE_WINDOW_MINUTES: [(u64, u64); 2] = [(10, 25), (40, 55)];
+
+/// One landing candidate: PR number (ordering key), its platform link,
+/// and the owning run (the unlink record on close).
+type MergeCandidates = Vec<(u64, fabro_types::PullRequestLink, RunId)>;
+
+pub(super) fn inside_merge_window(now: chrono::DateTime<chrono::Utc>) -> bool {
+    let minute = u64::from(now.format("%M").to_string().parse::<u64>().unwrap_or(99));
+    MERGE_WINDOW_MINUTES
+        .iter()
+        .any(|(start, end)| minute >= *start && minute <= *end)
+}
+
+/// The merger phase: window-gated, base-first landing plus the exact
+/// duplicate-close predicate. Fail-closed — any error warns and leaves
+/// the PR for the next pass; nothing else lands run PRs.
+async fn merge_phase(
+    state: &AppState,
+    github: &fabro_github::GitHubContext<'_>,
+    clean_candidates: &mut MergeCandidates,
+    dirty_candidates: &MergeCandidates,
+    now: chrono::DateTime<chrono::Utc>,
+) {
+    if clean_candidates.is_empty() {
+        return;
+    }
+    if !inside_merge_window(now) {
+        info!(
+            waiting = clean_candidates.len(),
+            "Run-PR merger: outside merge window, clean PRs wait"
+        );
+        return;
+    }
+    clean_candidates.sort_by_key(|(number, _, _)| *number);
+
+    // (repo, number) -> landed file set + merge sha, for the duplicate
+    // predicate. Only PRs merged by THIS pass participate.
+    let mut landed: Vec<(String, String, u64, Vec<String>)> = Vec::new();
+    for (number, record, _run_id) in clean_candidates.drain(..) {
+        let merge = time::timeout(
+            PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+            fabro_github::merge_pull_request(
+                github,
+                &record.owner,
+                &record.repo,
+                record.number,
+                MergeStrategy::Squash,
+            ),
+        )
+        .await;
+        match merge {
+            Ok(Ok(())) => {
+                info!(
+                    owner = %record.owner,
+                    repo = %record.repo,
+                    pr_number = record.number,
+                    "Run-PR merger: merged clean run pull request (base-first, window-gated)"
+                );
+                let files = time::timeout(
+                    PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+                    fabro_github::list_pull_request_file_statuses(
+                        github,
+                        &record.owner,
+                        &record.repo,
+                        record.number,
+                    ),
+                )
+                .await;
+                if let Ok(Ok(statuses)) = files {
+                    let set = statuses.into_iter().map(|file| file.filename).collect();
+                    landed.push((
+                        record.owner.clone(),
+                        record.repo.clone(),
+                        record.number,
+                        set,
+                    ));
+                }
+            }
+            Ok(Err(error)) => {
+                // Fail-closed: a PR that cannot merge right now (e.g. the
+                // base moved under it since the scan fetch) waits for the
+                // next pass — the merger never falls back to anything.
+                warn!(
+                    pr_number = record.number,
+                    %error,
+                    "Run-PR merger: merge declined; pull request waits for the next pass"
+                );
+            }
+            Err(_) => {
+                warn!(pr_number = record.number, "Run-PR merger: merge timed out");
+            }
+        }
+    }
+    if landed.is_empty() {
+        return;
+    }
+
+    // Exact duplicate-close predicate: a DIRTY run PR whose changed-file
+    // set is identical to a PR this pass just merged closes now, citing
+    // the landed number — the fast path over the strikes retirement for
+    // the same-files twin class.
+    for (number, record, run_id) in dirty_candidates {
+        let files = match time::timeout(
+            PULL_REQUEST_GITHUB_CALL_TIMEOUT,
+            fabro_github::list_pull_request_file_statuses(
+                github,
+                &record.owner,
+                &record.repo,
+                record.number,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(statuses)) => statuses
+                .into_iter()
+                .map(|file| file.filename)
+                .collect::<Vec<_>>(),
+            _ => continue,
+        };
+        let twin = landed.iter().find(|(owner, repo, _, set)| {
+            *owner == record.owner && *repo == record.repo && *set == files
+        });
+        let Some((_, _, landed_number, _)) = twin else {
+            continue;
+        };
+        let _ = number;
+        // The shared close path (GitHub close + unlink record) keeps the
+        // projection consistent; the landed PR number cites the original.
+        if let Err(error) = close_stale_pull_request(state, github, run_id, record).await {
+            warn!(
+                pr_number = record.number,
+                %error,
+                "Run-PR merger: failed to close duplicate run pull request"
+            );
+            continue;
+        }
+        info!(
+            pr_number = record.number,
+            landed_pr = landed_number,
+            "Run-PR merger: closed CONFLICTING duplicate run pull request (identical file \
+             set; ADR-0031 exact predicate)"
+        );
+    }
 }
 
 async fn close_stale_pull_request(

@@ -716,3 +716,229 @@ async fn staleness_supervisor_parks_over_age_bookkeeping_only_pr() {
         "the parked PR stays linked to the run"
     );
 }
+
+// ---------------------------------------------------------------------------
+// ADR-0031 (fabro-c14e): the run-PR merger arm — window-gated, base-first
+// landing plus the exact duplicate-close predicate.
+// ---------------------------------------------------------------------------
+
+use super::fork_staleness_supervisor::inside_merge_window;
+
+fn at_minute(minute: u32) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::parse_from_rfc3339(&format!("2026-10-19T15:{minute:02}:00Z"))
+        .expect("fixed time")
+        .with_timezone(&chrono::Utc)
+}
+
+#[test]
+fn merge_windows_cover_the_claim_gaps_only() {
+    for minute in [10u32, 15, 25, 40, 55] {
+        assert!(
+            inside_merge_window(at_minute(minute)),
+            "minute {minute} in window"
+        );
+    }
+    for minute in [0u32, 4, 5, 9, 26, 30, 39, 56, 59] {
+        assert!(
+            !inside_merge_window(at_minute(minute)),
+            "minute {minute} outside window"
+        );
+    }
+}
+
+fn dirty_run_pull_request_mock_for<'a>(
+    github: &'a MockServer,
+    number: u64,
+    created_at: &str,
+) -> httpmock::Mock<'a> {
+    github.mock(move |when, then| {
+        when.method("GET")
+            .path(format!("/repos/acme/widgets/pulls/{number}"))
+            .header("authorization", "Bearer ghu_test");
+        then.status(200).json_body(json!({
+            "number": number,
+            "title": "Dirty run PR",
+            "body": "",
+            "state": "open",
+            "draft": false,
+            "merged": false,
+            "mergeable": false,
+            "mergeable_state": "dirty",
+            "additions": 1,
+            "deletions": 0,
+            "changed_files": 1,
+            "html_url": format!("https://github.com/acme/widgets/pull/{number}"),
+            "user": { "login": "octocat" },
+            "head": { "ref": format!("fabro/run/{number}") },
+            "base": { "ref": "main" },
+            "created_at": created_at,
+            "updated_at": created_at
+        }));
+    })
+}
+
+fn close_branch_mock_for(github: &MockServer, number: u64) -> httpmock::Mock<'_> {
+    github.mock(move |when, then| {
+        when.method("PATCH")
+            .path(format!("/repos/acme/widgets/pulls/{number}"))
+            .header("authorization", "Bearer ghu_test")
+            .json_body(json!({ "state": "closed" }));
+        then.status(200)
+            .json_body(json!({ "number": number, "state": "closed" }));
+    })
+}
+
+fn clean_pr_mock<'a>(github: &'a MockServer, number: u64, created_at: &str) -> httpmock::Mock<'a> {
+    github.mock(move |when, then| {
+        when.method("GET")
+            .path(format!("/repos/acme/widgets/pulls/{number}"))
+            .header("authorization", "Bearer ghu_test");
+        then.status(200).json_body(json!({
+            "number": number,
+            "title": "Clean run PR",
+            "body": "",
+            "state": "open",
+            "draft": false,
+            "merged": false,
+            "mergeable": true,
+            "mergeable_state": "clean",
+            "additions": 1,
+            "deletions": 0,
+            "changed_files": 1,
+            "html_url": format!("https://github.com/acme/widgets/pull/{number}"),
+            "user": { "login": "octocat" },
+            "head": { "ref": format!("fabro/run/{number}") },
+            "base": { "ref": "main" },
+            "created_at": created_at,
+            "updated_at": created_at
+        }));
+    })
+}
+
+fn merge_mock(github: &MockServer, number: u64, status: u16) -> httpmock::Mock<'_> {
+    github.mock(move |when, then| {
+        when.method("PUT")
+            .path(format!("/repos/acme/widgets/pulls/{number}/merge"))
+            .header("authorization", "Bearer ghu_test");
+        then.status(status).json_body(json!({
+            "sha": "abc123",
+            "merged": status == 200,
+            "message": "Pull Request successfully merged"
+        }));
+    })
+}
+
+fn merger_pr_files_mock<'a>(
+    github: &'a MockServer,
+    number: u64,
+    filenames: &[&str],
+) -> httpmock::Mock<'a> {
+    let files: Vec<_> = filenames
+        .iter()
+        .map(|name| json!({ "filename": name, "status": "modified", "additions": 1, "deletions": 0 }))
+        .collect();
+    github.mock(move |when, then| {
+        when.method("GET")
+            .path(format!("/repos/acme/widgets/pulls/{number}/files"))
+            .header("authorization", "Bearer ghu_test");
+        then.status(200).json_body(json!(files));
+    })
+}
+
+fn pull_request_link(number: u64) -> fabro_types::PullRequestLink {
+    fabro_types::PullRequestLink {
+        owner: "acme".into(),
+        repo: "widgets".into(),
+        number,
+    }
+}
+
+#[tokio::test]
+async fn merger_merges_clean_pr_inside_window_and_closes_exact_duplicate() {
+    let github = MockServer::start();
+    let (state, _run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+
+    let mut counters = StalePrState::default();
+    let older = RunId::new();
+    let younger = RunId::new();
+    // Both runs link open PRs; both PRs are recent (no age cap).
+    let now = Utc::now().to_rfc3339();
+    create_run_with_linked_pull_request_record(&state, older, pull_request_link(41)).await;
+    create_run_with_linked_pull_request_record(&state, younger, pull_request_link(42)).await;
+
+    let _clean_41 = clean_pr_mock(&github, 41, &now);
+    // PR 42 is DIRTY: its update-branch conflicts are not needed here —
+    // the duplicate arm must close it before any update call.
+    let _dirty_42 = dirty_run_pull_request_mock_for(&github, 42, &now);
+    let merge_41 = merge_mock(&github, 41, 200);
+    let files_41 = merger_pr_files_mock(&github, 41, &[".seeds/issues.jsonl"]);
+    let files_42 = merger_pr_files_mock(&github, 42, &[".seeds/issues.jsonl"]);
+    let close_42 = close_branch_mock_for(&github, 42);
+
+    // Inside the window (minute 12): the clean PR merges, and the dirty
+    // PR with the IDENTICAL file set closes as the exact duplicate.
+    fork_staleness_supervisor::process_stale_pull_requests_at(&state, &mut counters, at_minute(12))
+        .await
+        .expect("merger pass");
+
+    assert_eq!(merge_41.calls(), 1, "the clean PR merged inside the window");
+    assert_eq!(
+        close_42.calls(),
+        1,
+        "the identical-file dirty PR closed as duplicate"
+    );
+    assert_eq!(files_41.calls(), 1);
+    assert_eq!(files_42.calls(), 1);
+    let _ = files_41;
+}
+
+#[tokio::test]
+async fn merger_holds_clean_pr_outside_window() {
+    let github = MockServer::start();
+    let (state, _run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+
+    let mut counters = StalePrState::default();
+    let run = RunId::new();
+    let now = Utc::now().to_rfc3339();
+    create_run_with_linked_pull_request_record(&state, run, pull_request_link(41)).await;
+
+    let _clean = clean_pr_mock(&github, 41, &now);
+    let merge = merge_mock(&github, 41, 200);
+
+    // Outside the window (minute 5): nothing lands; the PR waits.
+    fork_staleness_supervisor::process_stale_pull_requests_at(&state, &mut counters, at_minute(5))
+        .await
+        .expect("merger pass outside window");
+
+    assert_eq!(merge.calls(), 0, "no merge outside the policy window");
+}
+
+#[tokio::test]
+async fn merger_keeps_dirty_pr_with_different_files_on_the_strikes_path() {
+    let github = MockServer::start();
+    let (state, _run_id) = pr_test_app(Some("ghu_test"), Some(github.base_url()));
+
+    let mut counters = StalePrState::default();
+    let older = RunId::new();
+    let younger = RunId::new();
+    let now = Utc::now().to_rfc3339();
+    create_run_with_linked_pull_request_record(&state, older, pull_request_link(41)).await;
+    create_run_with_linked_pull_request_record(&state, younger, pull_request_link(42)).await;
+
+    let _clean_41 = clean_pr_mock(&github, 41, &now);
+    let _dirty_42 = dirty_run_pull_request_mock_for(&github, 42, &now);
+    let _merge_41 = merge_mock(&github, 41, 200);
+    let _files_41 = merger_pr_files_mock(&github, 41, &[".seeds/issues.jsonl"]);
+    let _files_42 = merger_pr_files_mock(&github, 42, &[".seeds/issues.jsonl", "extra.md"]);
+    let close_42 = close_branch_mock_for(&github, 42);
+
+    fork_staleness_supervisor::process_stale_pull_requests_at(&state, &mut counters, at_minute(12))
+        .await
+        .expect("merger pass");
+
+    assert_eq!(
+        close_42.calls(),
+        0,
+        "a dirty PR with a DIFFERENT file set never hits the duplicate arm"
+    );
+}

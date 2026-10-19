@@ -696,15 +696,16 @@ async fn enable_auto_merge_if_requested(
     let Some(options) = options else {
         return;
     };
-    match github_app::enable_auto_merge(github, owner, repo, node_id, options.merge_strategy).await
-    {
-        Ok(()) => info!(pr_number = number, "Auto-merge enabled"),
-        Err(err) => warn!(
-            pr_number = number,
-            error = %err,
-            "Failed to enable auto-merge (repo may not have auto-merge enabled in settings)"
-        ),
-    }
+    // ADR-0031 (fabro-c14e): run PRs never auto-merge. The deterministic
+    // merger (staleness supervisor merge arm) owns landing inside the
+    // policy windows; the config key stays parsed for compatibility and
+    // is documented deprecated.
+    let _ = (github, owner, repo, node_id);
+    warn!(
+        pr_number = number,
+        strategy = ?options.merge_strategy,
+        "auto_merge is deprecated (ADR-0031): the run-PR merger owns landing; auto-merge NOT enabled"
+    );
 }
 
 /// How many times to read the remote branch head before giving up.

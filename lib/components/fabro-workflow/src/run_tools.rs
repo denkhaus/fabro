@@ -584,50 +584,47 @@ mod tests {
         );
     }
 
-    /// The tracker search through the real client backend (fabro-d6de): the
-    /// API page maps to rows, the keyword narrowing filters them, and the
-    /// result names the hit — the dedupe the tool exists for.
+    /// The tracker search through the run-context source (fabro-d6de
+    /// rework, ADR-0031 era): the source's rows narrow by keyword terms
+    /// and the tracker-level filters apply — the dedupe the tool exists
+    /// for. The HTTP listing is gone; the source is the run workspace.
     #[tokio::test]
     async fn seeds_search_maps_the_api_page_and_narrows_by_terms() {
+        struct FixedSeeds;
+        #[async_trait::async_trait]
+        impl fabro_tool::RunSeedsSource for FixedSeeds {
+            async fn rows(&self) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
+                Ok(vec![
+                    fabro_tool::SeedsRow {
+                        id:        "fabro-0001".into(),
+                        title:     "Lint duplication in the gate".into(),
+                        status:    Some("open".into()),
+                        seed_type: Some("task".into()),
+                        assignee:  Some("loop".into()),
+                        labels:    vec!["loop-assets".into()],
+                    },
+                    fabro_tool::SeedsRow {
+                        id:        "fabro-0002".into(),
+                        title:     "Planner schema parity".into(),
+                        status:    Some("in_progress".into()),
+                        seed_type: None,
+                        assignee:  None,
+                        labels:    Vec::new(),
+                    },
+                ])
+            }
+        }
         let server = httpmock::MockServer::start_async().await;
-        server
-            .mock_async(|when, then| {
-                when.method(httpmock::Method::GET)
-                    .path("/api/v1/seeds")
-                    .query_param("status", "open");
-                then.status(200).json_body(json!({
-                    "data": [
-                        {
-                            "id": "fabro-0001",
-                            "title": "Lint duplication in the gate",
-                            "status": "open",
-                            "type": "task",
-                            "assignee": "loop",
-                            "labels": ["loop-assets"],
-                            "blockedBy": []
-                        },
-                        {
-                            "id": "fabro-0002",
-                            "title": "Planner schema parity",
-                            "status": "open",
-                            "type": "task",
-                            "assignee": null,
-                            "labels": [],
-                            "blockedBy": []
-                        }
-                    ],
-                    "meta": { "has_more": false, "total": 2 }
-                }));
-            })
-            .await;
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
-            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            backend:        Arc::new(
+                ClientBackend::new(Arc::new(client)).with_run_seeds(Arc::new(FixedSeeds)),
+            ),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
-            json!({"query": "lint duplication", "status": "open", "limit": 10}),
+            json!({"query": "lint duplication", "limit": 10}),
             &services,
         )
         .await
