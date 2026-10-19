@@ -751,7 +751,6 @@ where
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override: None,
         #[cfg(any(test, feature = "test-support"))]
-        seeds_source_override: None,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     })?;

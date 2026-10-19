@@ -782,10 +782,11 @@ async fn build_agent(
     // reads files from — never a server-side mirror. A workspace without a
     // tracker (foreign repo) serves an empty row set.
     let seeds_workspace_dir = sandbox_instance.runtime.working_directory.clone();
-    let seeds_source: Arc<dyn fabro_tool::RunSeedsSource> = Arc::new(RunSandboxSeedsSource {
-        sandbox: Arc::clone(&handle),
-        tracker_path: format!("{seeds_workspace_dir}/.seeds/issues.jsonl"),
-    });
+    let seeds_source: Arc<dyn fabro_tool::RunSeedsSource> =
+        Arc::new(crate::sandbox_access::RunSandboxSeedsSource {
+            sandbox:      Arc::clone(&handle),
+            tracker_path: format!("{seeds_workspace_dir}/.seeds/issues.jsonl"),
+        });
     let environment: Arc<dyn Environment> = Arc::new(
         SandboxEnvironment::attach(handle, &sandbox_instance.runtime.working_directory)
             .await
@@ -1023,74 +1024,6 @@ fn enabled_provider_id(catalog: &Catalog, selector: &str) -> Option<ProviderId> 
 
 fn session_selection_error(error: &ModelSelectionError) -> ApiError {
     ApiError::bad_request(error.to_string())
-}
-
-/// The run-context tracker source for the Ask Fabro analyst (fabro-d6de
-/// rework): reads `.seeds/issues.jsonl` from the attached run sandbox's
-/// filesystem facet and maps the compact JSON-per-line rows to tool rows.
-/// A missing tracker file is an empty tracker (foreign repo), not an
-/// error; a read or parse failure propagates as a tool error.
-struct RunSandboxSeedsSource {
-    sandbox:     Arc<dyn sandbox_driver::Sandbox>,
-    tracker_path: String,
-}
-
-impl RunSandboxSeedsSource {
-    /// Map the tracker's compact JSON-per-line format (ADR-0023) to tool
-    /// rows. Lines without an `id` are skipped, never fatal — the format
-    /// tolerates additive fields; a non-JSON line IS an error (a corrupt
-    /// tracker must surface, not silently shrink the search space).
-    fn parse_tracker_rows(text: &str) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
-        let mut rows = Vec::new();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let record: serde_json::Value = serde_json::from_str(line)
-                .map_err(|err| anyhow::anyhow!("tracker line is not valid JSON: {err}"))?;
-            let Some(id) = record.get("id").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            rows.push(fabro_tool::SeedsRow {
-                id: id.to_string(),
-                title: record
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                status: record.get("status").and_then(|v| v.as_str()).map(str::to_string),
-                seed_type: record.get("type").and_then(|v| v.as_str()).map(str::to_string),
-                assignee: record
-                    .get("assignee")
-                    .filter(|v| !v.is_null())
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                labels: record
-                    .get("labels")
-                    .and_then(|v| v.as_array())
-                    .map(|items| {
-                        items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect()
-                    })
-                    .unwrap_or_default(),
-            });
-        }
-        Ok(rows)
-    }
-}
-
-#[async_trait::async_trait]
-impl fabro_tool::RunSeedsSource for RunSandboxSeedsSource {
-    async fn rows(&self) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
-        let bytes = match self.sandbox.fs().read(&self.tracker_path).await {
-            Ok(bytes) => bytes,
-            // A workspace without a tracker file is an empty tracker
-            // (foreign repo), never an error.
-            Err(_) => return Ok(Vec::new()),
-        };
-        let text = String::from_utf8(bytes)?;
-        Self::parse_tracker_rows(&text)
-    }
 }
 
 /// Ask Fabro reads. Every write, shell, web, and run-control tool is hidden
@@ -2460,7 +2393,7 @@ mod resume_tests {
         assert!(first_at < second_at, "got {}", turns[1]);
     }
 
-    use super::RunSandboxSeedsSource;
+    use crate::sandbox_access::RunSandboxSeedsSource;
 
     /// fabro-d6de rework: the run-context tracker parser maps the compact
     /// JSON-per-line format to tool rows, skips id-less lines, rejects
@@ -2481,10 +2414,16 @@ mod resume_tests {
         assert_eq!(rows[0].seed_type.as_deref(), Some("bug"));
         assert_eq!(rows[0].labels, vec!["engine"]);
         assert_eq!(rows[1].assignee.as_deref(), Some("loop"));
-        assert!(rows[2].assignee.is_none(), "explicit null assignee maps to unassigned");
+        assert!(
+            rows[2].assignee.is_none(),
+            "explicit null assignee maps to unassigned"
+        );
 
         let corrupt = RunSandboxSeedsSource::parse_tracker_rows("{ not json");
-        assert!(corrupt.is_err(), "a corrupt tracker line surfaces, never shrinks the search silently");
+        assert!(
+            corrupt.is_err(),
+            "a corrupt tracker line surfaces, never shrinks the search silently"
+        );
     }
 
     /// fabro-d6de rework: the tracker-level filters keep the removed
@@ -2512,8 +2451,7 @@ mod resume_tests {
         let open = fabro_tool::apply_tracker_filters(rows.clone(), Some("open"), None, None);
         assert_eq!(open.len(), 1);
         assert_eq!(open[0].id, "a");
-        let unassigned =
-            fabro_tool::apply_tracker_filters(rows.clone(), None, Some("none"), None);
+        let unassigned = fabro_tool::apply_tracker_filters(rows.clone(), None, Some("none"), None);
         assert_eq!(unassigned.len(), 1);
         assert_eq!(unassigned[0].id, "a");
         let assigned = fabro_tool::apply_tracker_filters(rows.clone(), None, Some("loop"), None);

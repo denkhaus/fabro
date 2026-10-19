@@ -152,7 +152,11 @@ pub fn apply_tracker_filters(
     rows.into_iter()
         .filter(|row| {
             let status_ok = status
-                .map(|wanted| row.status.as_deref().is_some_and(|have| have.eq_ignore_ascii_case(wanted)))
+                .map(|wanted| {
+                    row.status
+                        .as_deref()
+                        .is_some_and(|have| have.eq_ignore_ascii_case(wanted))
+                })
                 .unwrap_or(true);
             let assignee_ok = assignee
                 .map(|wanted| {

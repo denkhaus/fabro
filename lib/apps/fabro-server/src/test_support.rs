@@ -40,7 +40,6 @@ use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
 use crate::sandbox_access::SandboxInventory;
 use crate::server::automation_breaker::AutomationBreakerNotifier;
-use crate::server::seeds_source::SeedsSource;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, ResolvedAppStateSettings, RouterOptions,
     build_app_state,
@@ -104,7 +103,6 @@ pub struct TestAppStateBuilder {
     env_lookup:                   EnvLookup,
     llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
-    seeds_source:                 Option<Arc<dyn SeedsSource>>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
     github_api_base_url:          Option<String>,
     #[cfg(test)]
@@ -129,7 +127,6 @@ impl Default for TestAppStateBuilder {
             env_lookup:                   default_env_lookup(),
             llm_overlay:                  LlmLayer::default(),
             automation_materializer:      None,
-            seeds_source:                 None,
             automation_breaker_notifier:  None,
             github_api_base_url:          None,
             #[cfg(test)]
@@ -193,10 +190,6 @@ impl TestAppStateBuilder {
 
     /// Serve the seeds read API from `source` instead of the disabled
     /// default (fabro-3488 fork tests).
-    pub fn seeds_source(mut self, source: Arc<dyn SeedsSource>) -> Self {
-        self.seeds_source = Some(source);
-        self
-    }
 
     pub fn automation_materializer(mut self, materializer: TestAutomationRunMaterializer) -> Self {
         self.automation_materializer = Some(materializer);
@@ -348,7 +341,6 @@ impl TestAppStateBuilder {
             #[cfg(test)]
             worker_runtime: self.worker_runtime,
             automation_materializer_override,
-            seeds_source_override: self.seeds_source,
             automation_breaker_notifier_override: self.automation_breaker_notifier,
         })
     }

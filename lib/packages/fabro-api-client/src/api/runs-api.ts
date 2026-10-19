@@ -54,6 +54,8 @@ import type { MergeRunPullRequestResponse } from '../models';
 // @ts-ignore
 import type { PaginatedRunList } from '../models';
 // @ts-ignore
+import type { PaginatedSeedList } from '../models';
+// @ts-ignore
 import type { PreflightResponse } from '../models';
 // @ts-ignore
 import type { PullRequestCreation } from '../models';
@@ -79,6 +81,10 @@ import type { RunSandboxFileMap } from '../models';
 import type { RunTimelineResponse } from '../models';
 // @ts-ignore
 import type { RunWaitResult } from '../models';
+// @ts-ignore
+import type { SeedStatus } from '../models';
+// @ts-ignore
+import type { SeedType } from '../models';
 // @ts-ignore
 import type { StartRunRequest } from '../models';
 // @ts-ignore
@@ -841,6 +847,76 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
 
             if (directory !== undefined) {
                 localVarQueryParameter['directory'] = directory;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Read-only list of the tracker seeds of the run\'s repository, read live from the run\'s own sandbox workspace (never a server-side mirror of a fixed repository). A workspace without a tracker serves an empty list. Filters compose with AND semantics. The dependency graph left with the mirror: summaries carry no blockers.  Requires an authenticated user or the run\'s own worker token.
+         * @summary List a Run\'s Seeds
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {SeedStatus} [status] Filter by seed status.
+         * @param {SeedType} [type] Filter by seed type.
+         * @param {string} [assignee] Exact assignee match; the literal &#x60;none&#x60; matches unassigned seeds.
+         * @param {string} [label] Exact label match (a seed must carry the label).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSeeds: async (id: string, pageLimit?: number, pageOffset?: number, status?: SeedStatus, type?: SeedType, assignee?: string, label?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listRunSeeds', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/seeds`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
+
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
+            }
+
+            if (type !== undefined) {
+                localVarQueryParameter['type'] = type;
+            }
+
+            if (assignee !== undefined) {
+                localVarQueryParameter['assignee'] = assignee;
+            }
+
+            if (label !== undefined) {
+                localVarQueryParameter['label'] = label;
             }
 
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -1948,6 +2024,25 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Read-only list of the tracker seeds of the run\'s repository, read live from the run\'s own sandbox workspace (never a server-side mirror of a fixed repository). A workspace without a tracker serves an empty list. Filters compose with AND semantics. The dependency graph left with the mirror: summaries carry no blockers.  Requires an authenticated user or the run\'s own worker token.
+         * @summary List a Run\'s Seeds
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {SeedStatus} [status] Filter by seed status.
+         * @param {SeedType} [type] Filter by seed type.
+         * @param {string} [assignee] Exact assignee match; the literal &#x60;none&#x60; matches unassigned seeds.
+         * @param {string} [label] Exact label match (a seed must carry the label).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunSeeds(id: string, pageLimit?: number, pageOffset?: number, status?: SeedStatus, type?: SeedType, assignee?: string, label?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedSeedList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunSeeds(id, pageLimit, pageOffset, status, type, assignee, label, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.listRunSeeds']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
@@ -2407,6 +2502,22 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.listRunSandboxFiles(id, directory, options).then((request) => request(axios, basePath));
         },
         /**
+         * Read-only list of the tracker seeds of the run\'s repository, read live from the run\'s own sandbox workspace (never a server-side mirror of a fixed repository). A workspace without a tracker serves an empty list. Filters compose with AND semantics. The dependency graph left with the mirror: summaries carry no blockers.  Requires an authenticated user or the run\'s own worker token.
+         * @summary List a Run\'s Seeds
+         * @param {string} id Unique run identifier (ULID).
+         * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
+         * @param {number} [pageOffset] Number of items to skip before returning results.
+         * @param {SeedStatus} [status] Filter by seed status.
+         * @param {SeedType} [type] Filter by seed type.
+         * @param {string} [assignee] Exact assignee match; the literal &#x60;none&#x60; matches unassigned seeds.
+         * @param {string} [label] Exact label match (a seed must carry the label).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunSeeds(id: string, pageLimit?: number, pageOffset?: number, status?: SeedStatus, type?: SeedType, assignee?: string, label?: string, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedSeedList> {
+            return localVarFp.listRunSeeds(id, pageLimit, pageOffset, status, type, assignee, label, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
@@ -2822,6 +2933,23 @@ export class RunsApi extends BaseAPI {
      */
     public listRunSandboxFiles(id: string, directory: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).listRunSandboxFiles(id, directory, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Read-only list of the tracker seeds of the run\'s repository, read live from the run\'s own sandbox workspace (never a server-side mirror of a fixed repository). A workspace without a tracker serves an empty list. Filters compose with AND semantics. The dependency graph left with the mirror: summaries carry no blockers.  Requires an authenticated user or the run\'s own worker token.
+     * @summary List a Run\'s Seeds
+     * @param {string} id Unique run identifier (ULID).
+     * @param {number} [pageLimit] Maximum number of seeds to return per page. Defaults to a generous page so tracker-wide views do not silently hide seeds.
+     * @param {number} [pageOffset] Number of items to skip before returning results.
+     * @param {SeedStatus} [status] Filter by seed status.
+     * @param {SeedType} [type] Filter by seed type.
+     * @param {string} [assignee] Exact assignee match; the literal &#x60;none&#x60; matches unassigned seeds.
+     * @param {string} [label] Exact label match (a seed must carry the label).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunSeeds(id: string, pageLimit?: number, pageOffset?: number, status?: SeedStatus, type?: SeedType, assignee?: string, label?: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRunSeeds(id, pageLimit, pageOffset, status, type, assignee, label, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

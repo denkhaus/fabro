@@ -1,11 +1,13 @@
-//! The read-only seeds endpoints (fabro-3488, ADR-0023 step 5): list,
-//! detail, and dependency graph over the tracker's seeds, served from the
-//! configured [`SeedsSource`]. No write endpoints in v1 — the tracker's
-//! writes stay with the CLI surfaces.
+//! The run-scoped seeds read endpoint (fabro-3488 → rework 2026-10-19,
+//! user decision): the tracker of the SELECTED run's repository, read
+//! live from the run's own sandbox workspace — never a server-side
+//! mirror of a fixed repository. List-only v1 (the graph and detail
+//! endpoints left with the mirror); the tracker's writes stay with the
+//! CLI surfaces.
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -13,17 +15,16 @@ use axum::{Json, Router};
 use axum_extra::extract::Query as ExtraQuery;
 use chrono::{DateTime, Utc};
 use fabro_api::types as api;
-use seeds::{SeedRecord, SeedType as RecordSeedType, Status as RecordStatus, Store};
+use serde_json::Value;
 
-use super::super::seeds_source::{SeedsSnapshot, SeedsSourceError};
 use super::super::{ApiError, AppState};
-use crate::principal_middleware::RequiredRunToolActor;
+use crate::principal_middleware::RequireRunScoped;
+use crate::sandbox_access::{
+    InspectionSandbox, RunSandboxSeedsSource, attach_running_run_sandbox, run_sandbox_gate,
+};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/seeds", get(list_seeds))
-        .route("/seeds/graph", get(seed_graph))
-        .route("/seeds/{id}", get(get_seed))
+    Router::new().route("/runs/{id}/seeds", get(list_run_seeds))
 }
 
 /// List filters; every filter composes with AND semantics.
@@ -34,9 +35,9 @@ struct SeedListParams {
     #[serde(rename = "page[offset]", default)]
     offset:   u32,
     #[serde(default)]
-    status:   Option<api::SeedStatus>,
+    status:   Option<String>,
     #[serde(default)]
-    r#type:   Option<api::SeedType>,
+    r#type:   Option<String>,
     #[serde(default)]
     assignee: Option<String>,
     #[serde(default)]
@@ -47,18 +48,71 @@ fn default_seed_page_limit() -> u32 {
     500
 }
 
-async fn list_seeds(
-    _auth: RequiredRunToolActor,
+/// The tracker of one run's repository, as its sandbox workspace holds it
+/// right now. The read attaches the run's sandbox for the request's
+/// duration (a terminal run's sandbox stops again when the guard drops).
+async fn list_run_seeds(
+    RequireRunScoped(run_id): RequireRunScoped,
     State(state): State<Arc<AppState>>,
     ExtraQuery(params): ExtraQuery<SeedListParams>,
 ) -> Response {
-    let snapshot = match source_snapshot(state.as_ref()).await {
-        Ok(snapshot) => snapshot,
-        Err(response) => return response,
+    let projection = match state.load_run_projection(&run_id).await {
+        Ok(projection) => projection,
+        Err(err) => return err.into_response(),
     };
-    let matched: Vec<&SeedRecord> = snapshot
-        .store
-        .issues
+    let Some(sandbox_record) = projection.sandbox.as_ref() else {
+        return ApiError::new(
+            StatusCode::NOT_FOUND,
+            "run has no sandbox; the run-scoped seeds read needs the run's workspace",
+        )
+        .into_response();
+    };
+    let Some(instance) = sandbox_record.instance() else {
+        return ApiError::new(
+            StatusCode::NOT_FOUND,
+            "run sandbox was not created; the run-scoped seeds read needs the run's workspace",
+        )
+        .into_response();
+    };
+    let Ok(access) = state.provider_access().await else {
+        return ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "sandbox providers are not configured",
+        )
+        .into_response();
+    };
+    let handle = match attach_running_run_sandbox(&access, &instance, run_id).await {
+        Ok(handle) => handle,
+        Err(err) => {
+            return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.to_string()).into_response();
+        }
+    };
+    // A terminal run's sandbox runs only for this request; a live run owns
+    // its liveness (same guard policy as the Ask Fabro attach).
+    let _guard = if projection.is_terminal() {
+        InspectionSandbox::terminal(Arc::clone(&handle), Some(run_sandbox_gate(&run_id)))
+    } else {
+        InspectionSandbox::live(Arc::clone(&handle))
+    };
+    let source = RunSandboxSeedsSource {
+        sandbox:      handle,
+        tracker_path: format!("{}/.seeds/issues.jsonl", instance.runtime.working_directory),
+    };
+    let text = match source.tracker_text().await {
+        Ok(text) => text,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let records = match parse_records(&text) {
+        Ok(records) => records,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let matched: Vec<&Value> = records
         .iter()
         .filter(|record| matches_params(record, &params))
         .collect();
@@ -85,178 +139,115 @@ async fn list_seeds(
         .into_response()
 }
 
-fn matches_params(record: &SeedRecord, params: &SeedListParams) -> bool {
+/// Parse the tracker's compact JSON-per-line format. Lines without an
+/// `id` are skipped; a non-JSON line is an error (a corrupt tracker must
+/// surface, never silently shrink the response).
+fn parse_records(text: &str) -> Result<Vec<Value>, String> {
+    let mut records = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let record: Value = serde_json::from_str(line)
+            .map_err(|err| format!("tracker line is not valid JSON: {err}"))?;
+        if record.get("id").and_then(Value::as_str).is_some() {
+            records.push(record);
+        }
+    }
+    Ok(records)
+}
+
+fn matches_params(record: &Value, params: &SeedListParams) -> bool {
     if let Some(want) = &params.status {
-        if record.status().map(record_status_to_api).as_ref() != Some(want) {
+        if record.get("status").and_then(Value::as_str) != Some(want.as_str()) {
             return false;
         }
     }
     if let Some(want) = &params.r#type {
-        if record.seed_type().map(record_type_to_api).as_ref() != Some(want) {
+        if record.get("type").and_then(Value::as_str) != Some(want.as_str()) {
             return false;
         }
     }
     if let Some(want) = &params.assignee {
+        let assignee = record.get("assignee").and_then(Value::as_str);
         let matches = if want == "none" {
-            record.assignee().is_none()
+            assignee.is_none()
         } else {
-            record.assignee() == Some(want.as_str())
+            assignee == Some(want.as_str())
         };
         if !matches {
             return false;
         }
     }
     if let Some(want) = &params.label {
-        if !record.labels().contains(&want.as_str()) {
+        let has_label = record
+            .get("labels")
+            .and_then(Value::as_array)
+            .is_some_and(|labels| labels.iter().any(|l| l.as_str() == Some(want.as_str())));
+        if !has_label {
             return false;
         }
     }
     true
 }
 
-async fn seed_graph(_auth: RequiredRunToolActor, State(state): State<Arc<AppState>>) -> Response {
-    let snapshot = match source_snapshot(state.as_ref()).await {
-        Ok(snapshot) => snapshot,
-        Err(response) => return response,
-    };
-    let known: std::collections::HashSet<&str> = snapshot
-        .store
-        .issues
-        .iter()
-        .map(|record| record.id().as_str())
-        .collect();
-    let nodes: Vec<api::SeedGraphNode> = snapshot
-        .store
-        .issues
-        .iter()
-        .map(|record| api::SeedGraphNode {
-            id:     record.id().to_string(),
-            title:  record.title().to_string(),
-            status: record.status().map(record_status_to_api),
-            type_:  record.seed_type().map(record_type_to_api),
-        })
-        .collect();
-    let known = &known;
-    let edges: Vec<api::SeedGraphEdge> = snapshot
-        .store
-        .issues
-        .iter()
-        .flat_map(|record| {
-            let from = record.id().to_string();
-            record
-                .blocked_by()
-                .into_iter()
-                .filter(move |to| known.contains(to))
-                .map(move |to| api::SeedGraphEdge {
-                    from: from.clone(),
-                    to:   to.to_string(),
-                })
-        })
-        .collect();
-    (StatusCode::OK, Json(api::SeedGraph { nodes, edges })).into_response()
-}
-
-async fn get_seed(
-    _auth: RequiredRunToolActor,
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> Response {
-    let snapshot = match source_snapshot(state.as_ref()).await {
-        Ok(snapshot) => snapshot,
-        Err(response) => return response,
-    };
-    match snapshot.store.issue(&id) {
-        Some(record) => {
-            let blocks = reverse_blocks(&snapshot.store, record.id().as_str());
-            (StatusCode::OK, Json(seed_detail(record, blocks))).into_response()
-        }
-        None => ApiError::not_found(format!("Seed {id} not found.")).into_response(),
-    }
-}
-
-/// Fetch a snapshot or render the documented `503`.
-async fn source_snapshot(state: &AppState) -> Result<SeedsSnapshot, Response> {
-    state.seeds_source.snapshot().await.map_err(|err| {
-        let detail = err.to_string();
-        let code = match &err {
-            SeedsSourceError::Unconfigured => "seeds_source_unconfigured",
-            SeedsSourceError::Unavailable(_) => "seeds_source_unavailable",
-        };
-        ApiError::with_code(StatusCode::SERVICE_UNAVAILABLE, detail, code).into_response()
-    })
-}
-
-fn seed_summary(record: &SeedRecord) -> api::SeedSummary {
+fn seed_summary(record: &Value) -> api::SeedSummary {
     api::SeedSummary {
-        id:         record.id().to_string(),
-        title:      record.title().to_string(),
-        status:     record.status().map(record_status_to_api),
-        type_:      record.seed_type().map(record_type_to_api),
-        priority:   record.priority().map(|priority| i64::from(priority.get())),
-        assignee:   record.assignee().map(str::to_string),
-        labels:     record.labels().into_iter().map(str::to_string).collect(),
-        blocked_by: record
-            .blocked_by()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        created_at: record.created_at().and_then(rfc3339),
-        updated_at: record.updated_at().and_then(rfc3339),
+        id:         record
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        title:      record
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        status:     record
+            .get("status")
+            .and_then(Value::as_str)
+            .and_then(|status| serde_json::from_value(Value::String(status.to_string())).ok()),
+        type_:      record
+            .get("type")
+            .and_then(Value::as_str)
+            .and_then(|kind| serde_json::from_value(Value::String(kind.to_string())).ok()),
+        priority:   record.get("priority").and_then(Value::as_i64).or_else(|| {
+            record
+                .get("priority")
+                .and_then(Value::as_str)
+                .and_then(|p| p.parse().ok())
+        }),
+        assignee:   record
+            .get("assignee")
+            .filter(|value| !value.is_null())
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        labels:     record
+            .get("labels")
+            .and_then(Value::as_array)
+            .map(|labels| {
+                labels
+                    .iter()
+                    .filter_map(|label| label.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // The dependency graph left with the mirror: v1 reports no
+        // blockers (issues.jsonl carries none; blocks live in .seeds
+        // graph files the run-scoped read does not parse).
+        blocked_by: Vec::new(),
+        created_at: record
+            .get("createdAt")
+            .and_then(Value::as_str)
+            .and_then(rfc3339),
+        updated_at: record
+            .get("updatedAt")
+            .and_then(Value::as_str)
+            .and_then(rfc3339),
     }
 }
 
-/// The seeds format keeps no maintained reverse index: `blocks` is
-/// derived here, over the whole store, from every record's `blockedBy`.
-fn reverse_blocks(store: &Store, id: &str) -> Vec<String> {
-    store
-        .issues
-        .iter()
-        .filter(|other| other.blocked_by().contains(&id))
-        .map(|other| other.id().to_string())
-        .collect()
-}
-
-fn seed_detail(record: &SeedRecord, blocks: Vec<String>) -> api::SeedDetail {
-    api::SeedDetail {
-        id: record.id().to_string(),
-        title: record.title().to_string(),
-        description: record.description().map(str::to_string),
-        status: record.status().map(record_status_to_api),
-        type_: record.seed_type().map(record_type_to_api),
-        priority: record.priority().map(|priority| i64::from(priority.get())),
-        assignee: record.assignee().map(str::to_string),
-        labels: record.labels().into_iter().map(str::to_string).collect(),
-        blocked_by: record
-            .blocked_by()
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
-        blocks,
-        created_at: record.created_at().and_then(rfc3339),
-        updated_at: record.updated_at().and_then(rfc3339),
-        fields: record.fields().clone(),
-    }
-}
-
-fn record_status_to_api(status: RecordStatus) -> api::SeedStatus {
-    match status {
-        RecordStatus::Open => api::SeedStatus::Open,
-        RecordStatus::InProgress => api::SeedStatus::InProgress,
-        RecordStatus::Closed => api::SeedStatus::Closed,
-    }
-}
-
-fn record_type_to_api(seed_type: RecordSeedType) -> api::SeedType {
-    match seed_type {
-        RecordSeedType::Task => api::SeedType::Task,
-        RecordSeedType::Bug => api::SeedType::Bug,
-        RecordSeedType::Feature => api::SeedType::Feature,
-        RecordSeedType::Epic => api::SeedType::Epic,
-    }
-}
-
-/// Parse a record timestamp; a malformed value degrades to absence rather
-/// than failing the whole read.
 fn rfc3339(value: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .ok()

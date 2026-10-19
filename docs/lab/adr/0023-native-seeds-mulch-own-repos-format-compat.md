@@ -88,3 +88,25 @@ and `close` — additive fields survive mixed operation with the old CLI.
 - Cross-repo work splits trackers: seeds-repo product seeds live in the
   seeds repo's own tracker (created during bootstrap); only fabro-side
   integration seeds live here.
+
+## Amendment (2026-10-19): step 5 superseded — run-scoped reads, no mirror
+
+The server-side seeds read surface is reworked by user decision: seeds
+always come from the repo a session works on, never from a server-side
+mirror of a fixed repository.
+
+- `fabro_seeds_search` (fabro-d6de rework) reads `.seeds/issues.jsonl`
+  live from the run's own sandbox workspace (the same checkout the agent
+  reads files from); foreign repos without a tracker serve an empty set.
+- The HTTP read API is run-scoped: `GET /runs/{id}/seeds` serves the
+  selected run's tracker from its sandbox (attach-inspect-read, terminal
+  sandboxes stop again). The tracker-wide `/seeds`, `/seeds/graph`, and
+  `/seeds/{id}` endpoints and the entire `[server.seeds.mirror]`
+  machinery (`seeds_source`, the git mirror, its settings layer) are
+  REMOVED. The future `fabro seeds` CLI subcommands (step 5's vision)
+  read repo-locally — a CLI has a checkout, not a mirror.
+- Rationale: a contextless endpoint had to invent a server data source;
+  every real reader (analyst, future CLI) has repo context. A mirror
+  serves a fixed branch of a fixed repo — wrong for foreign repos, stale
+  by a refresh window, and needs credentials the server otherwise does
+  not hold.

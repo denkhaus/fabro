@@ -35,11 +35,10 @@ pub use run::{
 };
 pub use server::{
     GithubIntegrationLayer, IntegrationWebhooksLayer, ObjectStoreLocalLayer, ObjectStoreS3Layer,
-    SeedsMirrorLayer, ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer, ServerAuthLayer,
+    ServerApiLayer, ServerArtifactsLayer, ServerAuthGithubLayer, ServerAuthLayer,
     ServerIntegrationsLayer, ServerLayer, ServerListenLayer, ServerLoggingLayer,
     ServerSandboxLayer, ServerSandboxProviderLayer, ServerSandboxProvidersLayer,
-    ServerSchedulerLayer, ServerSeedsLayer, ServerStorageLayer, ServerWebLayer,
-    SlackIntegrationLayer,
+    ServerSchedulerLayer, ServerStorageLayer, ServerWebLayer, SlackIntegrationLayer,
 };
 pub use settings::SettingsLayer;
 pub use workflow::WorkflowLayer;

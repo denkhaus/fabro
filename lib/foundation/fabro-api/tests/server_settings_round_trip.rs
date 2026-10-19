@@ -2,18 +2,17 @@ use std::any::{TypeId, type_name};
 
 use fabro_api::types::{
     LogDestination as ApiLogDestination, ObjectStoreSettings as ApiObjectStoreSettings,
-    SeedsMirrorSettings as ApiSeedsMirrorSettings, ServerNamespace as ApiServerNamespace,
+    ServerNamespace as ApiServerNamespace,
     ServerSandboxProviderSettings as ApiServerSandboxProviderSettings,
     ServerSandboxProvidersSettings as ApiServerSandboxProvidersSettings,
-    ServerSandboxSettings as ApiServerSandboxSettings,
-    ServerSeedsSettings as ApiServerSeedsSettings, ServerSettings as ApiServerSettings,
+    ServerSandboxSettings as ApiServerSandboxSettings, ServerSettings as ApiServerSettings,
 };
 use fabro_config::ServerSettingsBuilder;
 use fabro_types::ServerSettings;
 use fabro_types::settings::ServerNamespace;
 use fabro_types::settings::server::{
-    LogDestination, ObjectStoreSettings, SeedsMirrorSettings, ServerSandboxProviderSettings,
-    ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSeedsSettings,
+    LogDestination, ObjectStoreSettings, ServerSandboxProviderSettings,
+    ServerSandboxProvidersSettings, ServerSandboxSettings,
 };
 
 #[test]
@@ -23,8 +22,6 @@ fn server_settings_family_reuses_domain_types() {
     assert_same_type::<ApiObjectStoreSettings, ObjectStoreSettings>();
     assert_same_type::<ApiLogDestination, LogDestination>();
     assert_same_type::<ApiServerSandboxSettings, ServerSandboxSettings>();
-    assert_same_type::<ApiServerSeedsSettings, ServerSeedsSettings>();
-    assert_same_type::<ApiSeedsMirrorSettings, SeedsMirrorSettings>();
     assert_same_type::<ApiServerSandboxProvidersSettings, ServerSandboxProvidersSettings>();
     assert_same_type::<ApiServerSandboxProviderSettings, ServerSandboxProviderSettings>();
 }
@@ -71,9 +68,6 @@ slug = "fabro-dev"
 [server.integrations.github.webhooks]
 strategy = "tailscale_funnel"
 
-[server.seeds.mirror]
-origin = "https://github.com/denkhaus/fabro.git"
-branch = "denkhaus"
 "#,
     )
     .expect("settings should resolve");
@@ -107,14 +101,9 @@ branch = "denkhaus"
     );
     assert!(json.get("features").is_none());
 
-    assert_eq!(
-        json["server"]["seeds"]["mirror"]["origin"],
-        "https://github.com/denkhaus/fabro.git"
-    );
-    assert_eq!(json["server"]["seeds"]["mirror"]["branch"], "denkhaus");
     assert!(
-        json["server"]["seeds"]["mirror"].get("cache_dir").is_none(),
-        "an unset mirror cache_dir should stay absent from the wire shape"
+        json["server"].get("seeds").is_none(),
+        "server settings should not expose the removed seeds mirror settings"
     );
 
     let round_trip: ApiServerSettings =

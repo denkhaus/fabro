@@ -16,7 +16,6 @@ api/run-outputs-api.ts
 api/runs-api.ts
 api/sandboxes-api.ts
 api/secrets-api.ts
-api/seeds-api.ts
 api/sessions-api.ts
 api/settings-api.ts
 api/system-api.ts
@@ -491,10 +490,6 @@ models/saved-query.ts
 models/secret-list-response.ts
 models/secret-metadata.ts
 models/secret-type.ts
-models/seed-detail.ts
-models/seed-graph-edge.ts
-models/seed-graph-node.ts
-models/seed-graph.ts
 models/seed-status.ts
 models/seed-summary.ts
 models/seed-type.ts
