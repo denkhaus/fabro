@@ -3,8 +3,10 @@
 This block is the ONE place the develop workflow carries facts about THIS
 repository (ADR-0013; the prompts that include this block stay
 project-agnostic). Porting the workflow
-to another project means editing this file (plus the workflow graph and
-settings), not the prompts. A stale value here is loop friction: report it
+to another project means editing this file, the per-role tracker-command
+includes beside it (`tracker-commands-planner.md`,
+`tracker-commands-implementer.md`), plus the workflow graph and
+settings, not the prompts. A stale value here is loop friction: report it
 in the journal, never silently work around it.
 
 - Primary code areas — where seed work normally lands: the Rust workspace
@@ -32,18 +34,10 @@ in the journal, never silently work around it.
   assignee is the ownership switch (see `docs/agents/issue-tracker.md`).
   Seed ids carry the prefix `fabro-` followed by four hex characters. The supported
   read path is `seeds show <id> --format json`; never parse the raw tracker
-  file (`.seeds/issues.jsonl`) by hand. Exact command reference (never
-  invent flags):
-
-| Command | Purpose |
-|---|---|
-| `seeds ready --assignee fabro --limit 200` | Unblocked open seeds ASSIGNED TO fabro — start here, and the ONLY candidate source: the develop line works exclusively on seeds the user assigned to fabro (assignee is the ownership switch, see `docs/agents/issue-tracker.md`). If it answers the question, do NOT also run `seeds list`. ALWAYS pass `--limit 200`: the default limit 50 silently truncates lower-priority seeds out of the listing. |
-| `seeds list --format json --assignee fabro --limit 200` | Full tracker picture, still filtered to fabro-assigned seeds only (only when `seeds ready` was not enough). Same limit rule as `seeds ready`. NEVER list without the `--assignee fabro` filter: unassigned or user-owned seeds are not the line's business. |
-| `seeds show <id> --format json` | One seed in full (the supported path — never parse `.seeds/issues.jsonl` by hand). JSON with no `description` key IS the empty body; do not re-probe the seed in other formats to confirm it. |
-| `seeds update <id> --status in_progress --assignee fabro` | Claim (the exact claim form). Takes NO `--format` flag (a `unknown option '--format'` failure is on record). |
-| `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction when the basis RESOLVES but the seed's named path/target/details are wrong (see STALE-BASIS CHECK, step 3) — run it BEFORE the claim. `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line, appending/amending only the corrected facts. Like the claim form above, takes NO `--format` flag. |
-| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds; the ONLY sanctioned non-Closeout close is the planner's superseded-close arms, stale-basis and fix-landed (planner step 3 carries both exact reason forms, reason string mandatory). Every other close form remains forbidden to every role. |
-
+  file (`.seeds/issues.jsonl`) by hand. The per-role command-reference
+  tables live in the tracker-command includes named in the porting note
+  above — each role's include carries exactly the command rows that role
+  may use; this shared block carries none.
 
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
   justfile. The workflow stays agnostic about what the gate checks.

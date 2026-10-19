@@ -8,6 +8,8 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 {% include "project-facts.md" %}
 
+{% include "tracker-commands-implementer.md" %}
+
 ## Input
 
 The claimed seed reaches you in the BRIEF's first bullets (seed id + title, written by the planner) and in the `claim_check` stage output — read it there FIRST; it is authoritative for what to build. The `current_seed_id`/`current_seed_title`/`current_seed_brief` context keys never render into `## Context` (the engine hides `current*` keys, and that section is the intersection of the node's two allow-lists) — do not wait on them. If the brief is thin, fetch the full seed: `seeds show <seed-id>`.
