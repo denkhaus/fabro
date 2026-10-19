@@ -39,6 +39,8 @@ Deadlock guards live in the GRAPH: at `nodes.reviewer.generation >= 3` or `nodes
 
 Envelope note for the brief: verification criteria name parse-level checks (lint-nu, prompt-lint, validate) and say `gate green via the deterministic tester step` — NEVER a literal gate command (the output schema rejects it).
 
+Implementer pre-gate scoping: the brief's implementer-stage instructions prescribe SINGLE-FILE probes only — `nu -c "source <new-or-edited script>"` for each touched nu script, exact-string greps for prompt/graph edits. Whole-repo lint and battery tiers belong EXCLUSIVELY to the tester node; the implementer never runs them (the double battery run cost this lane 21.6s per run before this rule — run 01M550CAX).
+
 If the top candidate looks already implemented, apply the two-branch rule. DETERMINISTIC PREFLIGHT TABLE FIRST: its verdict table is inline in `## Context` as `output.preflight` (advisory; the planner owns the decision and every closure).
 
 (a) ALREADY LANDED — a fix commit referencing the seed sits in base history AND the acceptance criteria hold in the worktree → emit note-append and close as ONE chained shell call: `seeds update <id> --append-description "closure note: superseded: fix landed in <sha> (run <run-id>)" && seeds close <id> --reason "superseded: fix landed in <sha>"` and route "Already landed".

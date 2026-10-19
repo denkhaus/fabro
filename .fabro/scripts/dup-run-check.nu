@@ -170,9 +170,19 @@ def closing-seeds-commit [base, id] {
     for row in (parse-log $r.stdout) {
         let p = (do { ^git show $row.sha -- .seeds } | complete)
         if $p.exit_code == 0 {
-            let added = ($p.stdout | lines | where {|l|
-                ($l | str starts-with "+") and ($l | str contains $id) and ($l | str contains '"status":"closed"')})
-            if (not ($added | is-empty)) {
+            # fabro-96c8: anchor the match on the added line's OWN record
+            # identity — a close line that merely CITES the searched id in
+            # its title/body (fabro-899b via fabro-2366's close line) must
+            # not resolve as this seed's closure. Unparseable added lines
+            # (diff headers, merge markers) fail open to no-match.
+            let closed = ($p.stdout
+                | lines
+                | where {|l| ($l | str starts-with '+') }
+                | each {|l| try { $l | str substring 1.. | str trim | from json } catch { null } }
+                | where {|rec| $rec != null }
+                | where {|rec| ($rec | describe | str starts-with 'record') }
+                | where {|rec| ($rec.id? == $id) and ($rec.status? == 'closed') })
+            if (not ($closed | is-empty)) {
                 return $row
             }
         }

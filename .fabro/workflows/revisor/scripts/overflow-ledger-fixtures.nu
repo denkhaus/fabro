@@ -204,6 +204,22 @@ def main [] {
     let drift_res = (do { nu $LEDGER verify --file $drift } | complete)
     expect '(h) ghost bullet reds' $drift_res.exit_code 1
 
+    # (i) end-of-line header form (fabro-5354): the file prompt's canonical
+    # example '**3. <title>** — overflow' (no trailing parenthetical) must
+    # count as an overflow finding.
+    let eol = ($scratch | path join 'eol.md')
+    [
+        '# Revision — run 01MTEST'
+        ''
+        '## Findings'
+        ''
+        '**3. Canonical prompt example** — overflow'
+        ''
+        '- overflow: Canonical prompt example — fix it; effect: good'
+    ] | str join "\n" | save -f $eol
+    let eol_res = (do { nu $LEDGER verify --file $eol } | complete)
+    expect '(i) end-of-line header counts' $eol_res.exit_code 0
+
     rm -rf $scratch
     print 'overflow-ledger fixtures green'
 }

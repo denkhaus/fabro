@@ -117,7 +117,7 @@ def "main verify" [--file: path] {
     }
     let text = (open --raw $file)
     let lines = ($text | lines)
-    let claimed = ($lines | where {|l| ($l | parse --regex '^\*\*[0-9]+[a-z]?\.\s.*\*\*\s*—\s*overflow(\s|\()' | is-not-empty)} | length)
+    let claimed = ($lines | where {|l| ($l | parse --regex '^\*\*[0-9]+[a-z]?\.\s.*\*\*\s*—\s*overflow(\s|\(|$)' | is-not-empty)} | length)
     let bullets = ($lines | where {|l| ($l | parse --regex '^\s*[-*]\s*overflow:\s*\S' | is-not-empty)} | length)
     if $claimed != $bullets {
         print -e $"overflow-ledger verify: FAIL — ($file): ($claimed) overflow findings but ($bullets) canonical dash-overflow bullets. Prose-only overflow is not machine-visible: every overflow finding needs its canonical bullet before commit."

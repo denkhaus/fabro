@@ -412,6 +412,36 @@ def main [] {
         expect 'k: schema ban pattern semantics' ($schema_ok.stdout | str trim) 'ok'
         let graph = (open --raw ($wf | path join 'workflow.fabro'))
         expect 'k: planner node wired to schema' ($graph | str contains 'output_schema="@schemas/planner-output.schema.json"') true
+
+        # (q) fabro-96c8: closing-seeds-commit anchors the id match on the
+        # added line's own record. Both seeds are tracker-closed (the arm
+        # only fires then — the real incident: fabro-899b). Commit A closes
+        # fabro-fix-0031 with the self trailer; the NEWER commit B closes
+        # fabro-fix-0030 with a foreign trailer and a body CITING
+        # fabro-fix-0031 (real shape: 5369edb53 closed fabro-2366 whose
+        # title contained fabro-899b). The substring match returned B for
+        # 0031 (foreign -> duplicate); the anchored match must return A.
+        ^git checkout -q main
+        # deterministic line append: save --append with a bare string glues
+        # onto the last line when it lacks a trailing newline — normalize
+        # before writing so the tracker stays seeds-CLI-parseable.
+        def append-row [row: string] {
+            let cur = (open --raw .seeds/issues.jsonl)
+            let nl = (if ($cur | str ends-with "\n") { '' } else { "\n" })
+            ($cur + $nl + $row + "\n") | save -f .seeds/issues.jsonl
+        }
+        append-row ({id: "fabro-fix-0031", title: "dup-run-check fixture", status: "closed", type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: "fixture body"} | to json --raw)
+        ^git add .seeds
+        ^git commit -q -m 'tracker: close fabro-fix-0031' -m 'Fabro-Run: RUN-SELF'
+        append-row ({id: "fabro-fix-0030", title: "dup-run-check fixture", status: "closed", type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: "fixture body — superseded by fabro-fix-0031"} | to json --raw)
+        ^git add .seeds
+        ^git commit -q -m 'tracker: close fabro-fix-0030 (superseded by fabro-fix-0031)' -m 'Fabro-Run: RUN-OTHER'
+        ^git push -q origin main
+
+        let q1 = (check $script 'fabro-fix-0031' 'RUN-SELF')
+        expect 'q: cited id resolves its own closure (self, clean)' $q1.verdict 'clean'
+        let q2 = (check $script 'fabro-fix-0030' 'RUN-SELF')
+        expect 'q: citing id closure stays foreign duplicate' $q2.verdict 'duplicate'
     } finally {
         cd $home_dir
         rm -rf $scratch

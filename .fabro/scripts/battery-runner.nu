@@ -20,6 +20,20 @@
 #
 # Exit 0 = green; first red stops and exits 1 (qualitygate style).
 # Paths are repo-root-relative: both callers run from the repo root.
+#
+# Battery-authoring notes (fabro-b124, from the fabro-7762 residual arm):
+# nu interpolation footguns keep costing debug cycles when writing or
+# extending battery scripts (5 cycles on schema-parity-fixtures.nu, run
+# 01M550CAX):
+#   - a literal '(' inside $"..." opens a SUBEXPRESSION — prose parens
+#     must be escaped or built with string concatenation instead
+#   - '\)' next to variables mis-lexes; avoid escapes in interpolations
+#   - 'join |' mis-parses inside closures on this nu version — use
+#     'str join'
+#   - parenthesized '++' chains around pipelines fail to parse — build
+#     intermediates in lets
+# lint-nu's bare-paren-check gates every repo script; when it reds, the
+# fix is rewriting the interpolation, not silencing the lint.
 
 # Registered smokes: pure-logic regression scripts (no live server, no
 # cargo). Discovery is explicit and minimal — name each battery; do NOT
