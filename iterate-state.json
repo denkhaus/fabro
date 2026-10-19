@@ -1,7 +1,7 @@
 {
   "sprints_completed": 48,
   "sprints_reflected": 48,
-  "last_arch_review_at_sprint": 45,
+  "last_arch_review_at_sprint": 48,
   "last_reflection": "2026-10-19",
   "notes": [
     "Sprint 42 (2026-10-16, incident repair, direct session work): fabro-7a6b — nu deprecation (str downcase) broke the preflight routing-directive parse via unmatched-brace warning noise; 3 loop runs misclassified failed/workflow_error, breaker parked the lane. Fix + lint-nu deprecation ban + salvage of all 3 runs (fabro-7ece, fabro-b798 closed with landed work) in commit 6d208ee36; live proof run 01M52WJ3 green + published; loop re-armed. Lesson: gate-green != stage-output-clean — the deprecation class is invisible to nu --ide-check/nu-check; the ban list in lint-nu is the net. Structural fork: fabro-a07d (petri scanner), fabro-e1ee (preflight soft-exit, needs-user). Loop-lane closures (7ece/b798) counted 0 per the counting rule.",
