@@ -48,9 +48,12 @@ const PINS = {
     "daytona-sdk": ["0e69058c888a"]
     "daytona-toolbox-client": ["0e69058c888a"]
     "lithos-llm": ["fd42e6b2805b"]
-    "pebble-agent": ["208f391c2b38"]
-    "pebble-cli-core": ["208f391c2b38"]
-    "pebble-coding-agent": ["208f391c2b38"]
+    # 2026-10-19 deliberate bump 208f391 -> 5897c06 (fabro-9c79 + fabro-bb27:
+    # consecutive tool-error budget + openai-wire [TOOL ERROR] wrap; mimo
+    # incident 01M59MG9XS2A). Patch of our own fork per ADR-0027.
+    "pebble-agent": ["5897c0635698"]
+    "pebble-cli-core": ["5897c0635698"]
+    "pebble-coding-agent": ["5897c0635698"]
     "petri-attractor-steps": ["13e4e6627693"]
     "petri-driver": ["13e4e6627693"]
     "petri-engine": ["13e4e6627693"]

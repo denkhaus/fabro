@@ -147,7 +147,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -158,7 +158,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3790,7 +3790,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -5113,7 +5113,7 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 [[package]]
 name = "pebble-agent"
 version = "0.1.0"
-source = "git+https://github.com/denkhaus/pebble?branch=fabro#208f391c2b38f8b9c9eb02424d6f3e50f533b1c8"
+source = "git+https://github.com/denkhaus/pebble?branch=fabro#5897c0635698e95e2b2bfb69ff4f2b47202efe77"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5130,7 +5130,7 @@ dependencies = [
 [[package]]
 name = "pebble-cli-core"
 version = "0.1.0"
-source = "git+https://github.com/denkhaus/pebble?branch=fabro#208f391c2b38f8b9c9eb02424d6f3e50f533b1c8"
+source = "git+https://github.com/denkhaus/pebble?branch=fabro#5897c0635698e95e2b2bfb69ff4f2b47202efe77"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5159,7 +5159,7 @@ dependencies = [
 [[package]]
 name = "pebble-coding-agent"
 version = "0.1.0"
-source = "git+https://github.com/denkhaus/pebble?branch=fabro#208f391c2b38f8b9c9eb02424d6f3e50f533b1c8"
+source = "git+https://github.com/denkhaus/pebble?branch=fabro#5897c0635698e95e2b2bfb69ff4f2b47202efe77"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -5786,7 +5786,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
