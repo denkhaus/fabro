@@ -70,6 +70,14 @@ expect-extraction "Fix `lib/apps/fabro-cli/src/main.rs`, docs/public/x.md, apps/
 expect-extraction "See https://host.io/scripts/x.nu and the justfile, then edit `.fabro/scripts/stage-journal.nu:12`." [
     ".fabro/scripts/stage-journal.nu"
 ]
+# fabro-6b0f: journal citations in a spec body are PROVENANCE (the
+# Origin/Basis lines point at the reviewer run that filed a residual),
+# never edit mandates — the journal is append-only stage records no
+# pass edits, so enforcing the citation was a permanent false RED on
+# every residual seed.
+expect-extraction "Residual from run X. Origin: closed seed fabro-abcd, reviewer journal .fabro/journal/01M59JSC3MKGRCH5PMR53XHADZ.jsonl. Basis: run 01M59JSC3MKGRCH5PMR53XHADZ. Also fix .fabro/scripts/prompt-lint.nu." [
+    ".fabro/scripts/prompt-lint.nu"
+]
 # An empty/absent description names nothing.
 expect-extraction "" []
 

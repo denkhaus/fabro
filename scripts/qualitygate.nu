@@ -332,7 +332,12 @@ def check-run-scope [lane: string]: nothing -> nothing {
 #     inside an add/create-naming window is a proposed target, not an
 #     edit-this-file mandate — the claim gate's shared seam;
 #   - the loop-asset? allow-list decides "under the loop-asset roots"
-#     — the SAME predicate run-scope uses, one list, no drift.
+#     — the SAME predicate run-scope uses, one list, no drift;
+#   - `.fabro/journal/` paths drop: a journal citation in a spec body
+#     is PROVENANCE (the Origin/Basis lines point at the reviewer run
+#     that filed the residual), never an edit mandate — the journal is
+#     append-only stage records no pass edits, so keeping the citation
+#     was a permanent false RED on every residual seed (fabro-6b0f).
 export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
     if ($desc | is-empty) { return [] }
     let clean = ($desc | str replace --all --regex '\S+://\S+' ' ')
@@ -343,7 +348,7 @@ export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
     | each {|p| $p | str trim -r -c '.'}
     | uniq
     | where {|p|
-        ((not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
+        ((not ($p | str starts-with '.fabro/journal/')) and (not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
     }
     | where {|p| ($p | path type) != 'dir'}
     | where {|p| not (creation-named? $clean $p)}
