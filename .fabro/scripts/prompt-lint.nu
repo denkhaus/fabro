@@ -20,6 +20,10 @@
 #      (mx-e606d5; run 01M2N36HV2). Errors; single quotes pass.
 #   7. seed-id literals in ANY workflow's prompt .md files — the strict
 #      id-free prompt set: prompts carry rules, never seed ids. Errors.
+#   8. every prompt .md file ends with a trailing newline — a missing
+#      final newline is POSIX-noncompliance rot that diff tools and
+#      editors surface as noise (reviewer residual of the tracker-commands
+#      split). Errors; empty files pass.
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
@@ -101,6 +105,18 @@ def seed-id-literal-errors [f] {
     }
 }
 
+# check 8: prompt .md files must end with a trailing newline — a prompt
+# whose last byte is not \n leaves a POSIX-incomplete last line that
+# concatenation edits and diffs surface as noise. Empty files pass.
+def trailing-newline-errors [f] {
+    let text = (open --raw $f)
+    if (($text | str length) == 0) or ($text | str ends-with "\n") {
+        []
+    } else {
+        [$"($f): prompt file does not end with a trailing newline"]
+    }
+}
+
 # check 5: routing-named top-level properties in workflow @schemas/*.json —
 # warnings only: a payload containing such a field opts the node into
 # routing semantics even under a custom schema (fabro-a211)
@@ -136,6 +152,8 @@ def main [] {
         $errors = ($errors | append (provenance-errors $f))
         # 7. seed-id literals in prompts — strict id-free prompt set
         $errors = ($errors | append (seed-id-literal-errors $f))
+        # 8. trailing newline on prompt files
+        $errors = ($errors | append (trailing-newline-errors $f))
     }
 
     let justfile_lines = (if ('justfile' | path exists) { open --raw justfile | lines } else { [] })
