@@ -150,6 +150,12 @@ pub enum PlatformRecordKind {
     #[serde(rename = "run.branch_published")]
     #[strum(serialize = "run.branch_published")]
     RunBranchPublished,
+    #[serde(rename = "work.claimed")]
+    #[strum(serialize = "work.claimed")]
+    WorkClaimed,
+    #[serde(rename = "work.released")]
+    #[strum(serialize = "work.released")]
+    WorkReleased,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -205,6 +211,12 @@ pub enum PlatformRecord {
     /// it did not (fabro-ac40).
     #[serde(rename = "run.branch_published")]
     RunBranchPublished(RunBranchPublishedRecord),
+    /// The run's claim on one work item was granted (ADR-0032).
+    #[serde(rename = "work.claimed")]
+    WorkClaimed(WorkClaimedRecord),
+    /// The run's claim on one work item ended (released or landed).
+    #[serde(rename = "work.released")]
+    WorkReleased(WorkReleasedRecord),
     /// A pull request was asked for: the supervisor creates it.
     #[serde(rename = "pull_request.requested")]
     PullRequestRequested(PullRequestRequestedRecord),
@@ -250,6 +262,8 @@ impl PlatformRecord {
             Self::NotificationSent(_) => PlatformRecordKind::NotificationSent,
             Self::RunPaired(_) => PlatformRecordKind::RunPaired,
             Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
+            Self::WorkClaimed(_) => PlatformRecordKind::WorkClaimed,
+            Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
         }
     }
 
@@ -279,7 +293,9 @@ impl PlatformRecord {
             | Self::PullRequestLinked(_)
             | Self::PullRequestUnlinked(_)
             | Self::RunPaired(_)
-            | Self::RunBranchPublished(_) => None,
+            | Self::RunBranchPublished(_)
+            | Self::WorkClaimed(_)
+            | Self::WorkReleased(_) => None,
         }
     }
 }
@@ -376,6 +392,26 @@ impl RunLifecycleRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunTitleRecord {
     pub title: String,
+}
+
+/// A granted work-item claim (ADR-0032): which item this run now owns.
+/// The claim ledger in `fabro-work` is the authority; this record is the
+/// run-stream audit entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkClaimedRecord {
+    pub claim_id:   String,
+    pub project_id: String,
+    pub item_key:   String,
+    pub lane:       String,
+}
+
+/// An ended work-item claim (released or landed); `reason` names why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkReleasedRecord {
+    pub claim_id:   String,
+    pub project_id: String,
+    pub item_key:   String,
+    pub reason:     String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -799,6 +835,18 @@ mod tests {
             ),
             PlatformRecordKind::RunTitle => PlatformRecord::RunTitle(RunTitleRecord {
                 title: "Renamed".to_string(),
+            }),
+            PlatformRecordKind::WorkClaimed => PlatformRecord::WorkClaimed(WorkClaimedRecord {
+                claim_id:   "claim-1".to_string(),
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1".to_string(),
+                lane:       "loop".to_string(),
+            }),
+            PlatformRecordKind::WorkReleased => PlatformRecord::WorkReleased(WorkReleasedRecord {
+                claim_id:   "claim-1".to_string(),
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1".to_string(),
+                reason:     "run failed".to_string(),
             }),
             PlatformRecordKind::RunParent => PlatformRecord::RunParent(RunParentRecord {
                 parent_id:          Some(fixtures::RUN_2),

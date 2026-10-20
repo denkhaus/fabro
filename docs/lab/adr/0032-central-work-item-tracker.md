@@ -331,6 +331,11 @@ authority.
 - New agent tools and a project-scoped API/UI are capability and product
   additions, approved here for the work-item surface and gated by
   ADR-0019 for anything beyond it.
+- `fabro_work_*` removes the line's last remaining reason to touch `gh`:
+  the toolchain image stays gh-free, the host-side nu scripts that shell
+  out to `gh` (`push-gate.nu`'s open-PR check) move onto the
+  project-scoped API, and no workflow prompt mentions a forge CLI
+  (user direction 2026-10-20).
 - Cross-repo issue links are less integrated than same-repo links; the
   server writes the PR link to the issue and the issue reference to the PR.
 - The product gains a project-scoped work-item/claim surface. Fabro's own

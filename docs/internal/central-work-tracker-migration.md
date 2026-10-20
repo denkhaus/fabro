@@ -176,10 +176,24 @@ config. Key files:
 - docs and skills: `AGENTS.md`, `CLAUDE.md`, `.agents/skills/iterate`,
   `.agents/skills/integrate`, workflow `project-facts.md` files.
 
-Rules for the rewrite:
+Rules for the rewrite (user direction 2026-10-20):
 
 - No prompt names a tracker vendor, repository, label or ID scheme; it
   names the run tools and the project.
+- **No `gh` anywhere in the line's assets.** `fabro_work_*` + the
+  project-scoped API remove the last reason for it. The toolchain image
+  STAYS gh-free (ADR-0019; the Dockerfile.toolchain pin from 2026-09-08
+  must survive this migration — nothing gets re-added). Host-side nu
+  scripts that still shell out to `gh` are slimmed onto the server API:
+  `push-gate.nu` (open-PR check -> the lane's queue/PR view),
+  `closeout.nu`, plus the tracker-parsing scripts
+  (`dup-run-check.nu`, `planner-preflight.nu` arms, `claim-check.nu`,
+  `tracker-guard.nu`, `close-claim-check.nu`, seed fixtures) — their
+  seeds/JSONL parsing collapses into `fabro_work_*` calls or retires.
+- Prompts that mention `gh` today (`develop/planner.md`,
+  `develop/reviewer.md`, `revisor/file.md`, `pr-simplify/simplify.md`,
+  `patch-cves/patch-cves.md`) are rewritten onto the tools in the same
+  unit as their workflow's script changes (ADR-0008 one-unit rule).
 - The planner's candidate source is `fabro_work_next` (tool grant), not
   `seeds ready`. A misrouted/stale item is released with
   `fabro_work_release` and the planner asks again.
@@ -224,6 +238,9 @@ Rules for the rewrite:
       new tools (one PR, reviewed; the line is off).
 - [ ] Remove `seeds` from the line's sandbox toolchain and prompts; keep
       the `seeds` product and adapter for other projects.
+- [ ] No `gh` call sites remain in `.fabro/` (scripts or prompts); the
+      toolchain image stays gh-free (ADR-0019 pin in
+      `.fabro/Dockerfile.toolchain` unchanged).
 - [ ] Freeze `.seeds` in the Fabro repo (no new writes; leave the file or
       move it to the tracker archive in a separate commit).
 - [ ] Update `docs/internal/line-restore-handoff.md` and the iterate/

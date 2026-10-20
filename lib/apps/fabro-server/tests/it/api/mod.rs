@@ -13,7 +13,6 @@ mod run_files;
 mod run_wait;
 mod runs;
 mod sandbox_vnc;
-mod seeds;
 mod sessions;
 mod settings;
 mod system;

@@ -606,4 +606,72 @@ mod next_item {
                 .any(|label| label == "revision")
         );
     }
+
+    #[tokio::test]
+    async fn work_routes_accept_run_tools_workers_and_refuse_plain_workers() {
+        use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
+        use tower::ServiceExt;
+
+        let tracker = FakeTracker::with_items(vec![item(1, 1)]);
+        let state = TestAppStateBuilder::new()
+            .work_tracker(Arc::clone(&tracker) as Arc<dyn TrackerProvider>)
+            .build();
+        let app = build_test_router(state.clone());
+        put_project(&app).await;
+
+        let run_id = fabro_types::RunId::new();
+        let plain = state.test_issue_worker_token(&run_id);
+        let refused = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/projects/fabro/next"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("authorization", format!("Bearer {plain}"))
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "runId": RUN_A,
+                            "lane": "loop"
+                        }))
+                        .expect("fixture serializes"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(
+            refused.status(),
+            StatusCode::FORBIDDEN,
+            "a plain run worker lacks the run-tools capability"
+        );
+
+        let tools = state.test_issue_worker_token_with_run_tools(&run_id);
+        let granted = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/projects/fabro/next"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("authorization", format!("Bearer {tools}"))
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "runId": RUN_A,
+                            "lane": "loop"
+                        }))
+                        .expect("fixture serializes"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(granted.status(), StatusCode::OK);
+        let body: Value = serde_json::from_slice(
+            &axum::body::to_bytes(granted.into_body(), usize::MAX)
+                .await
+                .expect("body"),
+        )
+        .expect("json");
+        assert_eq!(body["outcome"], "granted");
+    }
 }

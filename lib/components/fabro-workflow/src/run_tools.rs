@@ -239,6 +239,49 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::pair_run_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_WORK_NEXT_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkNextParams>(name, args)?;
+            // The planner's documented call carries no run argument; the
+            // stage-session backend is not run-scoped, so THIS run is
+            // injected here (same seam as fabro_run_set_title).
+            let params = fabro_tool::FabroWorkNextParams {
+                run: params
+                    .run
+                    .or_else(|| Some(services.current_run_id.to_string())),
+                ..params
+            };
+            let result = fabro_tool::work_next(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedWorkNext::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::work_next_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_SHOW_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkShowParams>(name, args)?;
+            let result = fabro_tool::work_show(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::work_show_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_CREATE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkCreateParams>(name, args)?;
+            let result = fabro_tool::work_create(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::work_create_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_CLOSE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkCloseParams>(name, args)?;
+            let result = fabro_tool::work_close(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::work_close_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_RELEASE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkReleaseParams>(name, args)?;
+            let result = fabro_tool::work_release(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::work_release_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_ASK_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroAskParams>(name, args)?;
             let result =

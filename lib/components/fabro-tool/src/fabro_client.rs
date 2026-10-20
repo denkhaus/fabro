@@ -152,6 +152,59 @@ impl FabroToolBackend for ClientBackend {
         self.client.update_run_title(&run_id, title).await
     }
 
+    async fn resolve_optional_own_run(&self, run: Option<&str>) -> anyhow::Result<RunId> {
+        match run {
+            Some(selector) => Ok(self.resolve_run(selector).await?.id),
+            None => match self.run_scope {
+                Some(run) => Ok(run),
+                None => anyhow::bail!(
+                    "run is required when this surface has no own run; pass the run id"
+                ),
+            },
+        }
+    }
+
+    async fn work_next(
+        &self,
+        project: &str,
+        run_id: &RunId,
+        lane: &str,
+    ) -> anyhow::Result<types::WorkClaimNextResponse> {
+        self.ensure_run_scope(run_id)?;
+        self.client
+            .claim_next_work_item(project, run_id, lane)
+            .await
+    }
+
+    async fn work_show(&self, project: &str, item_key: &str) -> anyhow::Result<types::WorkItem> {
+        self.client.retrieve_work_item(project, item_key).await
+    }
+
+    async fn work_create(
+        &self,
+        project: &str,
+        title: &str,
+        body: &str,
+        labels: Vec<String>,
+    ) -> anyhow::Result<types::WorkItem> {
+        self.client
+            .create_work_item(project, title, body, labels)
+            .await
+    }
+
+    async fn work_close(
+        &self,
+        project: &str,
+        item_key: &str,
+        reason: &str,
+    ) -> anyhow::Result<types::WorkItem> {
+        self.client.close_work_item(project, item_key, reason).await
+    }
+
+    async fn work_release(&self, claim_id: &str, reason: &str) -> anyhow::Result<types::WorkClaim> {
+        self.client.release_work_claim(claim_id, reason).await
+    }
+
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run> {
         self.ensure_run_scope(run_id)?;
         self.client.start_run(run_id, resume).await

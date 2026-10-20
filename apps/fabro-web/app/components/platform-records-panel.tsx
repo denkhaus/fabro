@@ -14,6 +14,8 @@ const KIND_LABEL: Record<string, string> = {
   "run.notice": "Notice",
   "run.title": "Title",
   "run.branch": "Run branch",
+  "work.claimed": "Work item",
+  "work.released": "Work item released",
 };
 
 function kindLabel(kind: string): string {

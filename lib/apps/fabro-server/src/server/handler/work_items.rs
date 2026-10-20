@@ -16,6 +16,7 @@ use fabro_api::types::{
     WorkItemCreateRequest, WorkItemListResponse, WorkProject as ApiWorkProject,
     WorkProjectListResponse, WorkProjectUpsertRequest,
 };
+use fabro_store::platform_records::{PlatformRecord, WorkClaimedRecord, WorkReleasedRecord};
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
@@ -25,6 +26,7 @@ use fabro_work::{
 use super::super::{
     ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode, get, post,
 };
+use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -46,13 +48,17 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             post(close_work_item),
         )
         .route("/projects/{projectId}/next", post(claim_next))
+        .route("/projects/{projectId}/work-item", get(retrieve_work_item))
         .route("/claims/{claimId}", get(retrieve_claim))
         .route("/claims/{claimId}/transition", post(transition_claim))
         .route("/claims/{claimId}/release", post(release_claim))
         .route("/claims/{claimId}/events", get(list_claim_events))
 }
 
-async fn list_projects(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+async fn list_projects(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+) -> Result<Response, ApiError> {
     let projects = state.work_store().projects().await.map_err(store_error)?;
     let response = WorkProjectListResponse {
         data: projects.into_iter().map(api_project).collect(),
@@ -61,6 +67,7 @@ async fn list_projects(State(state): State<Arc<AppState>>) -> Result<Response, A
 }
 
 async fn retrieve_project(
+    _auth: RequiredUser,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
 ) -> Result<Response, ApiError> {
@@ -74,6 +81,7 @@ async fn retrieve_project(
 }
 
 async fn upsert_project(
+    _auth: RequiredUser,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkProjectUpsertRequest>,
@@ -101,6 +109,7 @@ async fn upsert_project(
 }
 
 async fn list_claims(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
 ) -> Result<Response, ApiError> {
@@ -128,6 +137,7 @@ async fn list_claims(
 }
 
 async fn grant_claim(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimGrantRequest>,
@@ -159,6 +169,7 @@ async fn grant_claim(
 }
 
 async fn retrieve_claim(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
 ) -> Result<Response, ApiError> {
@@ -173,6 +184,7 @@ async fn retrieve_claim(
 }
 
 async fn transition_claim(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
     Json(request): Json<WorkClaimTransitionRequest>,
@@ -192,11 +204,27 @@ async fn transition_claim(
         if let Ok(Some(project)) = state.work_store().project(&claim.project_id).await {
             best_effort_clear_claim(&state, &project, &claim).await;
         }
+    } else {
+        append_work_record(
+            &state,
+            claim.run_id,
+            PlatformRecord::WorkReleased(WorkReleasedRecord {
+                claim_id:   claim.claim_id.clone(),
+                project_id: claim.project_id.clone(),
+                item_key:   claim.item_key.clone(),
+                reason:     claim
+                    .release_reason
+                    .clone()
+                    .unwrap_or_else(|| claim.state.as_str().to_string()),
+            }),
+        )
+        .await;
     }
     Ok(Json(api_claim(claim)?).into_response())
 }
 
 async fn release_claim(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
     Json(request): Json<WorkClaimReleaseRequest>,
@@ -210,10 +238,22 @@ async fn release_claim(
     if let Ok(Some(project)) = state.work_store().project(&claim.project_id).await {
         best_effort_clear_claim(&state, &project, &claim).await;
     }
+    append_work_record(
+        &state,
+        claim.run_id,
+        PlatformRecord::WorkReleased(WorkReleasedRecord {
+            claim_id:   claim.claim_id.clone(),
+            project_id: claim.project_id.clone(),
+            item_key:   claim.item_key.clone(),
+            reason:     format!("released: {}", request.reason),
+        }),
+    )
+    .await;
     Ok(Json(api_claim(claim)?).into_response())
 }
 
 async fn list_claim_events(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
 ) -> Result<Response, ApiError> {
@@ -310,6 +350,7 @@ fn store_error(error: fabro_work::Error) -> ApiError {
 }
 
 async fn list_work_items(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemQuery>,
@@ -336,6 +377,7 @@ struct WorkItemQuery {
 }
 
 async fn create_work_item(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCreateRequest>,
@@ -364,6 +406,7 @@ async fn create_work_item(
 }
 
 async fn close_work_item(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCloseRequest>,
@@ -397,6 +440,7 @@ async fn close_work_item(
 }
 
 async fn claim_next(
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimNextRequest>,
@@ -472,6 +516,17 @@ async fn claim_next(
                         )
                         .await;
                 }
+                append_work_record(
+                    &state,
+                    run_id,
+                    PlatformRecord::WorkClaimed(WorkClaimedRecord {
+                        claim_id:   claim.claim_id.clone(),
+                        project_id: claim.project_id.clone(),
+                        item_key:   claim.item_key.clone(),
+                        lane:       claim.lane.clone(),
+                    }),
+                )
+                .await;
                 return Ok(Json(WorkClaimNextResponse {
                     outcome: WorkClaimNextOutcome::Granted,
                     claim:   Some(api_claim(claim)?),
@@ -521,6 +576,40 @@ async fn claim_next(
         item:    None,
     })
     .into_response())
+}
+
+/// Append a work record to the run's stream, best effort: the claim in the
+/// store is the authority; the record is audit. A failed append is logged,
+/// never fatal to the claim path.
+async fn append_work_record(state: &Arc<AppState>, run_id: RunId, record: PlatformRecord) {
+    if let Err(error) = super::super::run_records::append(state, run_id, record).await {
+        tracing::warn!(run_id = %run_id, error = %error, "work record append failed");
+    }
+}
+
+async fn retrieve_work_item(
+    _auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    ExtraQuery(params): ExtraQuery<WorkItemKeyQuery>,
+) -> Result<Response, ApiError> {
+    let item_key = params
+        .item_key
+        .ok_or_else(|| ApiError::bad_request("itemKey is required"))?;
+    let project = load_project(&state, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    let item = tracker
+        .get(&project, &item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| not_found("work item", &item_key))?;
+    Ok(Json(api_item(item)).into_response())
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct WorkItemKeyQuery {
+    #[serde(rename = "itemKey")]
+    item_key: Option<String>,
 }
 
 async fn load_project(state: &Arc<AppState>, project_id: &str) -> Result<WorkProject, ApiError> {

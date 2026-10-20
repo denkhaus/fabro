@@ -1684,6 +1684,147 @@ impl Client {
         convert_type(response.into_inner())
     }
 
+    /// Every configured work-item project (ADR-0032).
+    pub async fn list_work_projects(&self) -> Result<Vec<types::WorkProject>> {
+        let response = self
+            .send_api(|client| async move { client.list_work_projects().send().await })
+            .await?;
+        Ok(response.into_inner().data)
+    }
+
+    /// The atomic next-item grant: the server picks the highest-priority
+    /// free item of the project's lane and grants it to `run_id`.
+    pub async fn claim_next_work_item(
+        &self,
+        project_id: &str,
+        run_id: &RunId,
+        lane: &str,
+    ) -> Result<types::WorkClaimNextResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .claim_next_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkClaimNextRequest {
+                        lane:   lane.to_string(),
+                        run_id: run_id.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The project's open work items, optionally lane-filtered.
+    pub async fn list_work_items(
+        &self,
+        project_id: &str,
+        lane: Option<&str>,
+    ) -> Result<Vec<types::WorkItem>> {
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.list_work_items().project_id(project_id.to_string());
+                if let Some(lane) = lane {
+                    request = request.lane(lane.to_string());
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner().data)
+    }
+
+    /// One work item by its provider-stable key.
+    pub async fn retrieve_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .retrieve_work_item()
+                    .project_id(project_id.to_string())
+                    .item_key(item_key.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// File a work item in the project's tracker.
+    pub async fn create_work_item(
+        &self,
+        project_id: &str,
+        title: &str,
+        body: &str,
+        labels: Vec<String>,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .create_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemCreateRequest {
+                        body: body.to_string(),
+                        labels,
+                        title: title.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Close a work item with a reason comment.
+    pub async fn close_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        reason: &str,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .close_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemCloseRequest {
+                        item_key: item_key.to_string(),
+                        reason:   reason.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Release a claim back to the queue.
+    pub async fn release_work_claim(
+        &self,
+        claim_id: &str,
+        reason: &str,
+    ) -> Result<types::WorkClaim> {
+        let claim_id = claim_id
+            .parse::<::uuid::Uuid>()
+            .context("claim id must be a UUID")?;
+        let response = self
+            .send_api(move |client| async move {
+                client
+                    .release_work_claim()
+                    .claim_id(claim_id)
+                    .body(types::WorkClaimReleaseRequest {
+                        reason: reason.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// The run's checkpoint timeline, and where it was forked from.
     pub async fn run_timeline(&self, run_id: &RunId) -> Result<types::RunTimelineResponse> {
         let response = self

@@ -875,6 +875,29 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
             };
             Some(format!("{ts}   {}", styles.dim.apply_to(line)))
         }
+        "work.claimed" => {
+            let item = record
+                .get("item_key")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let lane = record.get("lane").and_then(Value::as_str).unwrap_or("?");
+            Some(format!(
+                "{ts}   Claimed work item {} ({lane})",
+                styles.dim.apply_to(item),
+            ))
+        }
+        "work.released" => {
+            let item = record
+                .get("item_key")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let reason = record.get("reason").and_then(Value::as_str).unwrap_or("?");
+            Some(format!(
+                "{ts}   Released work item {}: {}",
+                styles.dim.apply_to(item),
+                styles.dim.apply_to(reason),
+            ))
+        }
         "run.diff" => {
             let summary = record.get("diff_summary")?;
             let count = |key: &str| summary.get(key).and_then(Value::as_i64).unwrap_or(0);

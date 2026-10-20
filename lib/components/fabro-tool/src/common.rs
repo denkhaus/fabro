@@ -91,6 +91,59 @@ pub trait FabroToolBackend: Send + Sync {
     async fn set_run_title(&self, _run: Option<&str>, _title: &str) -> anyhow::Result<Run> {
         Err(run_title_tool_unavailable_error())
     }
+    /// The run a work tool acts for: the resolved selector, or the
+    /// session's own run when none is given. A surface without an own-run
+    /// context requires an explicit run.
+    async fn resolve_optional_own_run(&self, _run: Option<&str>) -> anyhow::Result<RunId> {
+        match _run {
+            Some(selector) => Ok(self.resolve_run(selector).await?.id),
+            None => Err(anyhow::anyhow!(
+                "run is required when this surface has no own run; pass the run id"
+            )),
+        }
+    }
+
+    /// `fabro_work_next` (ADR-0032): the atomic next-item grant.
+    async fn work_next(
+        &self,
+        _project: &str,
+        _run_id: &RunId,
+        _lane: &str,
+    ) -> anyhow::Result<types::WorkClaimNextResponse> {
+        Err(work_tool_unavailable_error(FABRO_WORK_NEXT_TOOL_NAME))
+    }
+
+    async fn work_show(&self, _project: &str, _item_key: &str) -> anyhow::Result<types::WorkItem> {
+        Err(work_tool_unavailable_error(FABRO_WORK_SHOW_TOOL_NAME))
+    }
+
+    async fn work_create(
+        &self,
+        _project: &str,
+        _title: &str,
+        _body: &str,
+        _labels: Vec<String>,
+    ) -> anyhow::Result<types::WorkItem> {
+        Err(work_tool_unavailable_error(FABRO_WORK_CREATE_TOOL_NAME))
+    }
+
+    async fn work_close(
+        &self,
+        _project: &str,
+        _item_key: &str,
+        _reason: &str,
+    ) -> anyhow::Result<types::WorkItem> {
+        Err(work_tool_unavailable_error(FABRO_WORK_CLOSE_TOOL_NAME))
+    }
+
+    async fn work_release(
+        &self,
+        _claim_id: &str,
+        _reason: &str,
+    ) -> anyhow::Result<types::WorkClaim> {
+        Err(work_tool_unavailable_error(FABRO_WORK_RELEASE_TOOL_NAME))
+    }
+
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run>;
     async fn approve_run(&self, run_id: &RunId) -> anyhow::Result<Run>;
     async fn deny_run(&self, run_id: &RunId, reason: Option<String>) -> anyhow::Result<Run>;
@@ -229,7 +282,11 @@ pub(crate) fn workflow_version_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
-pub(crate) fn run_title_tool_unavailable_error() -> anyhow::Error {
+pub(crate) fn work_tool_unavailable_error(tool: &str) -> anyhow::Error {
+    ToolError::message(format!("{tool} is not available on this surface")).into()
+}
+
+fn run_title_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!(
         "{FABRO_RUN_SET_TITLE_TOOL_NAME} is not available on this surface"
     ))
@@ -292,6 +349,11 @@ pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
 pub const FABRO_SEEDS_SEARCH_TOOL_NAME: &str = "fabro_seeds_search";
+pub const FABRO_WORK_NEXT_TOOL_NAME: &str = "fabro_work_next";
+pub const FABRO_WORK_SHOW_TOOL_NAME: &str = "fabro_work_show";
+pub const FABRO_WORK_CREATE_TOOL_NAME: &str = "fabro_work_create";
+pub const FABRO_WORK_CLOSE_TOOL_NAME: &str = "fabro_work_close";
+pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -342,6 +404,26 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroBlobParams>(
             FABRO_BLOB_TOOL_NAME,
             "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative.",
+        ),
+        tool_definition::<crate::FabroWorkNextParams>(
+            FABRO_WORK_NEXT_TOOL_NAME,
+            "Atomically claim the next free work item of the project's lane for this run: the server picks the highest-priority unclaimed item and grants it exclusively (one live claim per item and per run — two runs never get the same item). Returns outcome granted (claim + item), already_held (this run's live claim), or empty. Release a misrouted or stale-basis claim with fabro_work_release and call again.",
+        ),
+        tool_definition::<crate::FabroWorkShowParams>(
+            FABRO_WORK_SHOW_TOOL_NAME,
+            "Read one work item of the project by its provider-stable item key (e.g. owner/repo#123): title, body, labels, state.",
+        ),
+        tool_definition::<crate::FabroWorkCreateParams>(
+            FABRO_WORK_CREATE_TOOL_NAME,
+            "File a new work item in the project's tracker (title, body, optional labels). Files immediately; claims nothing.",
+        ),
+        tool_definition::<crate::FabroWorkCloseParams>(
+            FABRO_WORK_CLOSE_TOOL_NAME,
+            "Close a work item with a reason (lands as a tracker comment); a live claim on it is released.",
+        ),
+        tool_definition::<crate::FabroWorkReleaseParams>(
+            FABRO_WORK_RELEASE_TOOL_NAME,
+            "Release a claim back to the queue (claim id from fabro_work_next) with the reason: misroute, stale basis, planner skip.",
         ),
         tool_definition::<crate::FabroAskParams>(
             FABRO_ASK_TOOL_NAME,
@@ -494,6 +576,11 @@ mod tests {
             FABRO_RUN_SET_TITLE_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,
+            FABRO_WORK_NEXT_TOOL_NAME,
+            FABRO_WORK_SHOW_TOOL_NAME,
+            FABRO_WORK_CREATE_TOOL_NAME,
+            FABRO_WORK_CLOSE_TOOL_NAME,
+            FABRO_WORK_RELEASE_TOOL_NAME,
             FABRO_ASK_TOOL_NAME,
         ]);
     }

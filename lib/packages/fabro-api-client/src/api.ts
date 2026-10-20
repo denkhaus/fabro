@@ -36,5 +36,6 @@ export * from './api/settings-api';
 export * from './api/system-api';
 export * from './api/usage-api';
 export * from './api/variables-api';
+export * from './api/work-items-api';
 export * from './api/workflow-versions-api';
 export * from './api/workflows-api';

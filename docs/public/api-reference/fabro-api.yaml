@@ -6697,6 +6697,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-item:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    get:
+      operationId: retrieveWorkItem
+      tags: [Work Items]
+      summary: Retrieve one work item
+      parameters:
+        - name: itemKey
+          in: query
+          required: true
+          description: Provider-stable item identity, e.g. `denkhaus/work#123`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Work item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Missing itemKey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 
 components:
   securitySchemes:
