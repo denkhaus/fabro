@@ -3,3 +3,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5CR2B9DKQ0ZRXKD3DZSPMP0","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-20T13:30:39Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5CR2B9DKQ0ZRXKD3DZSPMP0","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-20T13:30:43Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5CR2B9DKQ0ZRXKD3DZSPMP0","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-20T13:31:48Z","data":{"painpoints":[],"observations":["skipped: fabro-8932 preflight in-flight marker (run 01M5CPBDF5PNC8EGDK805SVW10)","fabro-11d3 basis resolved first try; step-2 heading and tie-break absence confirmed via shell grep"]}}
+{"$schema":"fabro-journal-v1","run_id":"01M5CR2B9DKQ0ZRXKD3DZSPMP0","node":"claim_check","visit":1,"status":"succeeded","ts":"2026-10-20T13:31:49Z","data":{}}
