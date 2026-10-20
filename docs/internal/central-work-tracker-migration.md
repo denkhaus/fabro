@@ -98,10 +98,17 @@ fake tracker). A second slice landed the same day: the `fabro_work_next/show/cre
 close/release` run tools (engine-mediated, catalog + dispatch +
 fabro-client wrappers), the `work.claimed`/`work.released` platform
 records (CLI + web rendering), and the auth seam (project config
-user-only; claims/items/next accept the `agent:run_tools` worker). Still
-open below: backpressure, reconciler loop, outbox worker,
-`current_work_item` in the run projection, and the merger's issue-close
-on merge.
+user-only; claims/items/next accept the `agent:run_tools` worker). A
+third slice closed Phase 1: lane backpressure (`awaiting_merge` claims
+block the lane's next grant, cap `backpressureOpenPrCap` per project,
+fabro-4580), the work reconciler (outbox drain with backoff, DB->tracker
+projection healing, run-status-driven awaiting_merge/release with a
+30-minute orphan grace instead of the 6-hour timer, run-id label GC),
+`current_work_item` in the run projection (folded from
+`work.claimed`/`work.released`), and the ADR-0031 merger closing the
+landed work item + landing its claim, and releasing a duplicate's claim.
+Phase 1 code is complete; what remains before Phase 2 is the live
+dry-run against a real tracker repository.
 
 1. `ProjectRegistry`: project id, display name, tracker provider, tracker
    repo, project/lane/type/priority label maps, claim label prefix, code

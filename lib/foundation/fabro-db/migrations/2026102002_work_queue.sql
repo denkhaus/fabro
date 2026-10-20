@@ -16,6 +16,7 @@ CREATE TABLE work_projects (
     lane_labels_json      TEXT NOT NULL DEFAULT '{}',
     claim_label_prefix    TEXT NOT NULL DEFAULT 'fabro:run:',
     claim_comment_enabled INTEGER NOT NULL DEFAULT 0,
+    backpressure_open_pr_cap INTEGER NOT NULL DEFAULT 0,
     created_at_ms         INTEGER NOT NULL,
     updated_at_ms         INTEGER NOT NULL
 );

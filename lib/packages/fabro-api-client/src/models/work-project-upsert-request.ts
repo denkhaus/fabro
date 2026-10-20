@@ -25,4 +25,5 @@ export interface WorkProjectUpsertRequest {
     'laneLabels'?: { [key: string]: string; };
     'claimLabelPrefix'?: string;
     'claimCommentEnabled'?: boolean;
+    'backpressureOpenPrCap'?: number;
 }

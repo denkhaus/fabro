@@ -60,9 +60,13 @@ impl RunView {
             | PlatformRecord::InterviewAnswered(_)
             | PlatformRecord::NotificationSent(_)
             | PlatformRecord::RunPaired(_)
-            | PlatformRecord::RunBranchPublished(_)
-            | PlatformRecord::WorkClaimed(_)
-            | PlatformRecord::WorkReleased(_) => {}
+            | PlatformRecord::RunBranchPublished(_) => {}
+            PlatformRecord::WorkClaimed(record) => {
+                projection.current_work_item = Some(record.item_key.clone());
+            }
+            PlatformRecord::WorkReleased(_) => {
+                projection.current_work_item = None;
+            }
             PlatformRecord::RunBranch(record) => {
                 self.state.run_branch.clone_from(&record.run_branch);
                 self.state.base_sha.clone_from(&record.base_sha);

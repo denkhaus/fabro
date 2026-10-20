@@ -209,6 +209,13 @@ pub fn work_next_text(result: &WorkNextResult) -> String {
             None => "this run already holds an item".to_string(),
         },
         "empty" => "no free work item in this lane".to_string(),
+        "blocked" => match &result.claim {
+            Some(claim) => format!(
+                "lane backpressure: claim {} on {} still awaits its merge",
+                claim.claim_id, claim.item_key
+            ),
+            None => "lane backpressure: an open run PR blocks this lane".to_string(),
+        },
         other => format!("work claim outcome: {other}"),
     }
 }

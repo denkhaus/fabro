@@ -89,16 +89,17 @@ async fn upsert_project(
     validate_project_id(&project_id)?;
     validate_project(&request)?;
     let project = WorkProject {
-        project_id:            project_id.clone(),
-        display_name:          request.display_name,
-        tracker_provider:      request.tracker_provider,
-        tracker_repo:          request.tracker_repo,
-        project_label:         request.project_label,
-        lane_labels:           request.lane_labels.into_iter().collect::<BTreeMap<_, _>>(),
-        claim_label_prefix:    request
+        project_id:               project_id.clone(),
+        display_name:             request.display_name,
+        tracker_provider:         request.tracker_provider,
+        tracker_repo:             request.tracker_repo,
+        project_label:            request.project_label,
+        lane_labels:              request.lane_labels.into_iter().collect::<BTreeMap<_, _>>(),
+        claim_label_prefix:       request
             .claim_label_prefix
             .unwrap_or_else(|| "fabro:run:".to_string()),
-        claim_comment_enabled: request.claim_comment_enabled.unwrap_or(false),
+        claim_comment_enabled:    request.claim_comment_enabled.unwrap_or(false),
+        backpressure_open_pr_cap: request.backpressure_open_pr_cap.unwrap_or(0),
     };
     state
         .work_store()
@@ -475,6 +476,38 @@ async fn claim_next(
         .map(|claim| claim.item_key)
         .collect();
 
+    // Lane backpressure (fabro-4580, ADR-0032): a lane grants only when its
+    // open run PRs are drained. Cap 0 = refuse while ANY claim of the lane
+    // awaits merge; the scheduler cannot fire a second overlapping run past
+    // the grant even when it forgets the guard.
+    let awaiting_merge = state
+        .work_store()
+        .active_claims_of_lane(&project_id, &request.lane)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .filter(|claim| claim.state == ClaimState::AwaitingMerge)
+        .count();
+    if awaiting_merge > usize::try_from(project.backpressure_open_pr_cap.max(0)).unwrap_or(0) {
+        let blocking = state
+            .work_store()
+            .active_claims_of_lane(&project_id, &request.lane)
+            .await
+            .map_err(store_error)?
+            .into_iter()
+            .find(|claim| claim.state == ClaimState::AwaitingMerge);
+        let blocking_item = match blocking.as_ref() {
+            Some(claim) => tracker.get(&project, &claim.item_key).await.ok().flatten(),
+            None => None,
+        };
+        return Ok(Json(WorkClaimNextResponse {
+            outcome: WorkClaimNextOutcome::Blocked,
+            claim:   blocking.map(api_claim).transpose()?,
+            item:    blocking_item.map(api_item),
+        })
+        .into_response());
+    }
+
     for item in items {
         if claimed.contains(&item.item_key) {
             continue;
@@ -697,14 +730,15 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
 
 fn api_project(project: WorkProject) -> ApiWorkProject {
     ApiWorkProject {
-        claim_comment_enabled: project.claim_comment_enabled,
-        claim_label_prefix:    project.claim_label_prefix,
-        display_name:          project.display_name,
-        lane_labels:           project.lane_labels.into_iter().collect(),
-        project_id:            project.project_id,
-        project_label:         project.project_label,
-        tracker_provider:      project.tracker_provider,
-        tracker_repo:          project.tracker_repo,
+        backpressure_open_pr_cap: project.backpressure_open_pr_cap,
+        claim_comment_enabled:    project.claim_comment_enabled,
+        claim_label_prefix:       project.claim_label_prefix,
+        display_name:             project.display_name,
+        lane_labels:              project.lane_labels.into_iter().collect(),
+        project_id:               project.project_id,
+        project_label:            project.project_label,
+        tracker_provider:         project.tracker_provider,
+        tracker_repo:             project.tracker_repo,
     }
 }
 

@@ -82,6 +82,10 @@ export interface Run {
      * The seed this run works on, lifted from the claiming planner\'s `current_seed_id` context update. Absent until a stage declares it.
      */
     'claimed_seed_id'?: string | null;
+    /**
+     * The work item this run owns, as its claim\'s `work.claimed` record declared it (ADR-0032; provider-stable key). Cleared by `work.released`.
+     */
+    'current_work_item'?: string | null;
     'title': string;
     'goal': string;
     'workflow': WorkflowRef;

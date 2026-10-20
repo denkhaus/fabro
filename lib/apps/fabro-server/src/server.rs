@@ -200,6 +200,7 @@ mod run_publish;
 pub(crate) mod run_records;
 mod session_runtime;
 pub(crate) mod stream_follower;
+pub(crate) mod work_reconciler;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
 pub(crate) use fork_run_retention::spawn_run_retention_supervisor;

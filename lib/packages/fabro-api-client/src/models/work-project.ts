@@ -18,6 +18,10 @@
  * Tracker configuration for one logical work-item project.
  */
 export interface WorkProject {
+    /**
+     * How many awaiting_merge claims (open run PRs) a lane tolerates before the next grant is refused; 0 = fire only when drained.
+     */
+    'backpressureOpenPrCap': number;
     'projectId': string;
     'displayName': string;
     /**

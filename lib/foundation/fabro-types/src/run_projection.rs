@@ -59,6 +59,11 @@ pub struct RunProjection {
     /// the run context's merge order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_seed_id:       Option<String>,
+    /// The work item this run owns, as its claim's `work.claimed` record
+    /// declared it (ADR-0032; provider-stable key, e.g. `owner/repo#123`).
+    /// Cleared by `work.released`. Absent until the run claims.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_work_item:     Option<String>,
     /// Where the run's records came from when it is a fork: the source run
     /// and the position its records were kept up to, as Petri's own run
     /// declaration names them.
@@ -754,6 +759,7 @@ impl RunProjection {
             superseded_by: None,
             retried_from: None,
             claimed_seed_id: None,
+            current_work_item: None,
             forked_from: None,
             git_identity: None,
             pending_interviews: BTreeMap::new(),

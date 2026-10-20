@@ -413,7 +413,14 @@ impl Projector {
     /// One pass over every Petri run the database holds: the runs with a
     /// Petri record, and the runs with platform records. Runs whose view
     /// already covers every committed record are skipped cheaply.
+    /// The startup pass over every run. The body is boxed: the fold's
+    /// platform-record coverage keeps growing (work-item records, ADR-0032)
+    /// and an unboxed future tips callers over the `large_futures` budget.
     pub async fn startup_pass(&self) -> Result<StartupReport, ProjectError> {
+        Box::pin(self.startup_pass_inner()).await
+    }
+
+    async fn startup_pass_inner(&self) -> Result<StartupReport, ProjectError> {
         let mut ids: Vec<String> = sqlx::query_scalar("SELECT run_id FROM petri_runs")
             .fetch_all(&self.records)
             .await

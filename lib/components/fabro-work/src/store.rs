@@ -26,14 +26,18 @@ use crate::{Error, Result};
 /// many projects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkProject {
-    pub project_id:            String,
-    pub display_name:          String,
-    pub tracker_provider:      String,
-    pub tracker_repo:          String,
-    pub project_label:         String,
-    pub lane_labels:           BTreeMap<String, String>,
-    pub claim_label_prefix:    String,
-    pub claim_comment_enabled: bool,
+    pub project_id:               String,
+    pub display_name:             String,
+    pub tracker_provider:         String,
+    pub tracker_repo:             String,
+    pub project_label:            String,
+    pub lane_labels:              BTreeMap<String, String>,
+    pub claim_label_prefix:       String,
+    pub claim_comment_enabled:    bool,
+    /// How many `awaiting_merge` claims (open run PRs) a lane tolerates
+    /// before the next grant is refused (fabro-4580; 0 = fire only when
+    /// drained).
+    pub backpressure_open_pr_cap: i64,
 }
 
 /// The claim lifecycle. `AwaitingMerge` still holds the item: a pending
@@ -179,8 +183,8 @@ impl WorkStore {
 INSERT INTO work_projects (
     project_id, display_name, tracker_provider, tracker_repo, project_label,
     lane_labels_json, claim_label_prefix, claim_comment_enabled,
-    created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    backpressure_open_pr_cap, created_at_ms, updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id) DO UPDATE SET
     display_name = excluded.display_name,
     tracker_provider = excluded.tracker_provider,
@@ -189,6 +193,7 @@ ON CONFLICT(project_id) DO UPDATE SET
     lane_labels_json = excluded.lane_labels_json,
     claim_label_prefix = excluded.claim_label_prefix,
     claim_comment_enabled = excluded.claim_comment_enabled,
+    backpressure_open_pr_cap = excluded.backpressure_open_pr_cap,
     updated_at_ms = excluded.updated_at_ms
 ",
         )
@@ -200,6 +205,7 @@ ON CONFLICT(project_id) DO UPDATE SET
         .bind(lane_labels)
         .bind(&project.claim_label_prefix)
         .bind(i64::from(project.claim_comment_enabled))
+        .bind(project.backpressure_open_pr_cap)
         .bind(now)
         .bind(now)
         .execute(&self.pool)
@@ -213,7 +219,7 @@ ON CONFLICT(project_id) DO UPDATE SET
             r"
 SELECT project_id, display_name, tracker_provider, tracker_repo,
        project_label, lane_labels_json, claim_label_prefix,
-       claim_comment_enabled
+       claim_comment_enabled, backpressure_open_pr_cap
 FROM work_projects
 WHERE project_id = ?
 ",
@@ -230,7 +236,7 @@ WHERE project_id = ?
             r"
 SELECT project_id, display_name, tracker_provider, tracker_repo,
        project_label, lane_labels_json, claim_label_prefix,
-       claim_comment_enabled
+       claim_comment_enabled, backpressure_open_pr_cap
 FROM work_projects
 ORDER BY project_id
 ",
@@ -458,6 +464,21 @@ WHERE run_id = ? AND state IN ('granted', 'active', 'awaiting_merge')
         .fetch_optional(&self.pool)
         .await?;
         row.as_ref().map(claim_from_row).transpose()
+    }
+
+    /// The project's live claims of one lane (assignment backpressure and
+    /// lane-queue views).
+    pub async fn active_claims_of_lane(
+        &self,
+        project_id: &str,
+        lane: &str,
+    ) -> Result<Vec<WorkClaim>> {
+        Ok(self
+            .active_claims(project_id)
+            .await?
+            .into_iter()
+            .filter(|claim| claim.lane == lane)
+            .collect())
     }
 
     /// Every live claim of a project.
@@ -748,14 +769,15 @@ fn parse_run_id(value: &str) -> Result<RunId> {
 fn project_from_row(row: &SqliteRow) -> Result<WorkProject> {
     let lane_labels_json: String = row.try_get("lane_labels_json")?;
     Ok(WorkProject {
-        project_id:            row.try_get("project_id")?,
-        display_name:          row.try_get("display_name")?,
-        tracker_provider:      row.try_get("tracker_provider")?,
-        tracker_repo:          row.try_get("tracker_repo")?,
-        project_label:         row.try_get("project_label")?,
-        lane_labels:           serde_json::from_str(&lane_labels_json)?,
-        claim_label_prefix:    row.try_get("claim_label_prefix")?,
-        claim_comment_enabled: row.try_get::<i64, _>("claim_comment_enabled")? != 0,
+        project_id:               row.try_get("project_id")?,
+        display_name:             row.try_get("display_name")?,
+        tracker_provider:         row.try_get("tracker_provider")?,
+        tracker_repo:             row.try_get("tracker_repo")?,
+        project_label:            row.try_get("project_label")?,
+        lane_labels:              serde_json::from_str(&lane_labels_json)?,
+        claim_label_prefix:       row.try_get("claim_label_prefix")?,
+        claim_comment_enabled:    row.try_get::<i64, _>("claim_comment_enabled")? != 0,
+        backpressure_open_pr_cap: row.try_get("backpressure_open_pr_cap")?,
     })
 }
 
@@ -842,16 +864,17 @@ mod tests {
 
     fn project() -> WorkProject {
         WorkProject {
-            project_id:            "fabro".to_string(),
-            display_name:          "Fabro".to_string(),
-            tracker_provider:      "github".to_string(),
-            tracker_repo:          "denkhaus/work".to_string(),
-            project_label:         "project:fabro".to_string(),
-            lane_labels:           [("loop".to_string(), "lane:loop".to_string())]
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
                 .into_iter()
                 .collect(),
-            claim_label_prefix:    "fabro:run:".to_string(),
-            claim_comment_enabled: false,
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
         }
     }
 

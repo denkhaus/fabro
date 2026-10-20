@@ -14071,6 +14071,9 @@ components:
         claimed_seed_id:
           type: ["string", "null"]
           description: The seed this run works on, lifted from the claiming planner's `current_seed_id` context update. Absent until a stage declares it.
+        current_work_item:
+          type: ["string", "null"]
+          description: The work item this run owns, as its claim's `work.claimed` record declared it (ADR-0032; provider-stable key). Cleared by `work.released`.
         title:
           type: string
         goal:
@@ -18292,7 +18295,12 @@ components:
         - laneLabels
         - claimLabelPrefix
         - claimCommentEnabled
+        - backpressureOpenPrCap
       properties:
+        backpressureOpenPrCap:
+          type: integer
+          format: int64
+          description: How many awaiting_merge claims (open run PRs) a lane tolerates before the next grant is refused; 0 = fire only when drained.
         projectId:
           type: string
         displayName:
@@ -18342,6 +18350,9 @@ components:
           type: string
         claimCommentEnabled:
           type: boolean
+        backpressureOpenPrCap:
+          type: integer
+          format: int64
 
     WorkProjectListResponse:
       description: Configured work projects.
@@ -18610,6 +18621,7 @@ components:
         - granted
         - already_held
         - empty
+        - blocked
 
     WorkClaimNextResponse:
       description: The next-item grant outcome.

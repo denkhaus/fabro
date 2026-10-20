@@ -773,6 +773,7 @@ where
         spawn_pull_request_creation_supervisor(Arc::clone(&state));
     spawn_pull_request_staleness_supervisor(Arc::clone(&state));
     spawn_run_publish_supervisor(Arc::clone(&state));
+    let work_reconciler = server::work_reconciler::spawn(Arc::clone(&state));
     spawn_run_retention_supervisor(Arc::clone(&state));
     spawn_run_stall_watchdog(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
@@ -945,6 +946,7 @@ where
     } else {
         cleanup_handle.abort();
         pull_request_creation_supervisor.abort();
+        work_reconciler.abort();
     }
     if let Err(join_err) = pull_request_creation_supervisor.await {
         if !join_err.is_cancelled() {

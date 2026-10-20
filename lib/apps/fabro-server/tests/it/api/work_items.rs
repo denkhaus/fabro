@@ -674,4 +674,64 @@ mod next_item {
         .expect("json");
         assert_eq!(body["outcome"], "granted");
     }
+
+    #[tokio::test]
+    async fn next_refuses_while_the_lane_awaits_a_merge() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 2)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let granted = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_A, "lane": "loop"}),
+        )
+        .await;
+        let claim_id = granted["claim"]["claimId"].as_str().unwrap().to_string();
+
+        // The run starts, then ends with an open pull request: the claim
+        // awaits its merge.
+        json_request(
+            app.clone(),
+            Method::POST,
+            &format!("/claims/{claim_id}/transition"),
+            &json!({"state": "active"}),
+        )
+        .await;
+        json_request(
+            app.clone(),
+            Method::POST,
+            &format!("/claims/{claim_id}/transition"),
+            &json!({"state": "awaiting_merge", "prUrl": "https://github.com/o/r/pull/9"}),
+        )
+        .await;
+
+        let blocked = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_B, "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(blocked["outcome"], "blocked");
+        assert_eq!(blocked["claim"]["claimId"], claim_id);
+        assert_eq!(blocked["claim"]["state"], "awaiting_merge");
+
+        // Once landed, the lane grants again.
+        json_request(
+            app.clone(),
+            Method::POST,
+            &format!("/claims/{claim_id}/transition"),
+            &json!({"state": "landed"}),
+        )
+        .await;
+        let granted_again = json_request(
+            app,
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_B, "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(granted_again["outcome"], "granted");
+    }
 }

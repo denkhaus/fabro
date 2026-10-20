@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fabro_store::platform_records::{PlatformRecord, PullRequestLinkedRecord};
+use fabro_store::platform_records::{PlatformRecord, PullRequestLinkedRecord, WorkReleasedRecord};
 use fabro_types::RunId;
 use fabro_types::settings::run::MergeStrategy;
 use tokio::task::JoinHandle;
@@ -474,7 +474,7 @@ async fn merge_phase(
     // (repo, number) -> landed file set + merge sha, for the duplicate
     // predicate. Only PRs merged by THIS pass participate.
     let mut landed: Vec<(String, String, u64, Vec<String>)> = Vec::new();
-    for (_number, record, _run_id) in clean_candidates.drain(..) {
+    for (_number, record, run_id) in clean_candidates.drain(..) {
         let merge = time::timeout(
             PULL_REQUEST_GITHUB_CALL_TIMEOUT,
             fabro_github::merge_pull_request(
@@ -513,6 +513,10 @@ async fn merge_phase(
                         set,
                     ));
                 }
+                // ADR-0032: the merge closes the run's work item and lands
+                // its claim (the merger is the only landing path, so it owns
+                // the item's closure too). Runs without a claim no-op.
+                land_work_claim(state, &run_id, &record).await;
             }
             Ok(Err(error)) => {
                 // Fail-closed: a PR that cannot merge right now (e.g. the
@@ -572,12 +576,114 @@ async fn merge_phase(
             );
             continue;
         }
+        // ADR-0032: the duplicate's claim releases back to the queue.
+        release_work_claim(
+            state,
+            run_id,
+            &format!("duplicate close: same file set as #{landed_number}"),
+        )
+        .await;
         info!(
             pr_number = record.number,
             landed_pr = landed_number,
             "Run-PR merger: closed CONFLICTING duplicate run pull request (identical file \
              set; ADR-0031 exact predicate)"
         );
+    }
+}
+
+/// Land the run's work-item claim after its pull request merged (ADR-0032):
+/// close the tracker item, clear the claim projection, move the claim to
+/// `landed`, and append the `work.released` stream record. Best effort per
+/// step — the claim ledger is the authority and the reconciler heals.
+async fn land_work_claim(state: &AppState, run_id: &RunId, record: &fabro_types::PullRequestLink) {
+    let Ok(Some(claim)) = state.work_store().active_claim_for_run(run_id).await else {
+        return;
+    };
+    let project = state
+        .work_store()
+        .project(&claim.project_id)
+        .await
+        .ok()
+        .flatten();
+    let tracker = match project.as_ref() {
+        Some(project) => state.work_tracker_for_project(project).await.ok(),
+        None => None,
+    };
+    if let (Some(project), Some(tracker)) = (project.as_ref(), tracker) {
+        let reason = format!(
+            "landed via pull request #{} (ADR-0031 merger)",
+            record.number
+        );
+        if let Err(error) = tracker.close(project, &claim.item_key, &reason).await {
+            warn!(
+                claim_id = %claim.claim_id,
+                %error,
+                "Run-PR merger: work item close failed; the reconciler retries"
+            );
+        }
+        let _ = tracker
+            .clear_claim(project, &claim.item_key, &claim.run_id.to_string())
+            .await;
+    }
+    match state
+        .work_store()
+        .land(&claim.claim_id, Some(&record.html_url()))
+        .await
+    {
+        Ok(landed) => {
+            let _ = run_records::append(
+                state,
+                *run_id,
+                PlatformRecord::WorkReleased(WorkReleasedRecord {
+                    claim_id:   landed.claim_id.clone(),
+                    project_id: landed.project_id.clone(),
+                    item_key:   landed.item_key.clone(),
+                    reason:     "landed".to_string(),
+                }),
+            )
+            .await;
+        }
+        Err(error) => warn!(
+            claim_id = %claim.claim_id,
+            %error,
+            "Run-PR merger: claim land transition failed; the reconciler heals"
+        ),
+    }
+}
+
+/// Release a duplicate run's claim back to the queue (ADR-0032).
+async fn release_work_claim(state: &AppState, run_id: &RunId, reason: &str) {
+    let Ok(Some(claim)) = state.work_store().active_claim_for_run(run_id).await else {
+        return;
+    };
+    let project = state
+        .work_store()
+        .project(&claim.project_id)
+        .await
+        .ok()
+        .flatten();
+    let tracker = match project.as_ref() {
+        Some(project) => state.work_tracker_for_project(project).await.ok(),
+        None => None,
+    };
+    if let (Some(project), Some(tracker)) = (project.as_ref(), tracker) {
+        let _ = tracker
+            .clear_claim(project, &claim.item_key, &claim.run_id.to_string())
+            .await;
+    }
+    if let Ok(released) = state.work_store().release(&claim.claim_id, reason).await {
+        let _ = run_records::append(
+            state,
+            *run_id,
+            PlatformRecord::WorkReleased(WorkReleasedRecord {
+                claim_id:   released.claim_id.clone(),
+                project_id: released.project_id.clone(),
+                item_key:   released.item_key.clone(),
+                reason:     reason.to_string(),
+            }),
+        )
+        .await;
     }
 }
 

@@ -95,6 +95,13 @@ pub trait TrackerProvider: Send + Sync {
         item_key: &str,
         run_id: &str,
     ) -> anyhow::Result<()>;
+
+    /// Delete claim projections nothing references (label GC). Returns the
+    /// number removed; providers without a collectable projection no-op.
+    async fn gc_claim_labels(&self, project: &crate::WorkProject) -> anyhow::Result<u64> {
+        let _ = project;
+        Ok(0)
+    }
 }
 
 /// A provider for projects without a forge: no items, no writes. The claim

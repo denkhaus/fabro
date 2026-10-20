@@ -378,4 +378,41 @@ impl TrackerProvider for GitHubTracker {
         self.remove_label_from_issue(number, &label).await?;
         self.delete_label(&label).await
     }
+
+    /// Delete run-id labels no issue carries anymore (ADR-0032 label GC):
+    /// only live claims stay visible in the tracker's label list.
+    async fn gc_claim_labels(&self, project: &WorkProject) -> anyhow::Result<u64> {
+        let mut removed = 0;
+        for page in 1..=3 {
+            let url = format!("{}?per_page=100&page={page}", self.url("labels"));
+            let response = self.request(Method::GET, &url).send().await?;
+            let value = self.send_json(response).await?;
+            let labels = value
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("GitHub label list was not an array"))?;
+            if labels.is_empty() {
+                break;
+            }
+            for label in labels {
+                let Some(name) = label.get("name").and_then(Value::as_str) else {
+                    continue;
+                };
+                if !name.starts_with(&project.claim_label_prefix) {
+                    continue;
+                }
+                let encoded = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
+                let issues_url = format!(
+                    "{}?state=all&per_page=1&labels={encoded}",
+                    self.url("issues")
+                );
+                let issues = self.request(Method::GET, &issues_url).send().await?;
+                let issues = self.send_json(issues).await?;
+                let empty = issues.as_array().is_some_and(Vec::is_empty);
+                if empty && self.delete_label(name).await.is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        Ok(removed)
+    }
 }

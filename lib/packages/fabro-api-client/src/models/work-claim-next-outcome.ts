@@ -18,7 +18,8 @@
 export const WorkClaimNextOutcome = {
     GRANTED: 'granted',
     ALREADY_HELD: 'already_held',
-    EMPTY: 'empty'
+    EMPTY: 'empty',
+    BLOCKED: 'blocked'
 } as const;
 
 export type WorkClaimNextOutcome = typeof WorkClaimNextOutcome[keyof typeof WorkClaimNextOutcome];
