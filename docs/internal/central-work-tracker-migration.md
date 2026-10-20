@@ -94,8 +94,14 @@ the `GitHubTracker` adapter, the project-scoped API (`/projects`,
 `/projects/{id}/work-items` list/create/close, `/projects/{id}/next` with
 DB-first grant and best-effort label projection), and tests (store unit
 tests including the concurrent-grant race, API tests including a scripted
-fake tracker). Still open below: platform records, run tools, backpressure,
-reconciler loop, outbox worker, `current_work_item` in the run projection.
+fake tracker). A second slice landed the same day: the `fabro_work_next/show/create/
+close/release` run tools (engine-mediated, catalog + dispatch +
+fabro-client wrappers), the `work.claimed`/`work.released` platform
+records (CLI + web rendering), and the auth seam (project config
+user-only; claims/items/next accept the `agent:run_tools` worker). Still
+open below: backpressure, reconciler loop, outbox worker,
+`current_work_item` in the run projection, and the merger's issue-close
+on merge.
 
 1. `ProjectRegistry`: project id, display name, tracker provider, tracker
    repo, project/lane/type/priority label maps, claim label prefix, code
