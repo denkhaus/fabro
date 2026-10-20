@@ -70,6 +70,14 @@ expect-extraction "Fix `lib/apps/fabro-cli/src/main.rs`, docs/public/x.md, apps/
 expect-extraction "See https://host.io/scripts/x.nu and the justfile, then edit `.fabro/scripts/stage-journal.nu:12`." [
     ".fabro/scripts/stage-journal.nu"
 ]
+# fabro-6b0f: stage-journal citations drop — a seed body names a
+# journal path as ORIGIN/provenance ("reviewer journal <path>"), and
+# journals are hook-owned run records an implementer never edits (the
+# product-denied? exemption). Keeping them false-REDded every residual
+# seed that cites its origin journal.
+expect-extraction "Origin: closed seed fabro-52b4, reviewer journal .fabro/journal/01M59JSC3MKGRCH5PMR53XHADZ.jsonl. Extend scripts/qualitygate.nu." [
+    "scripts/qualitygate.nu"
+]
 # An empty/absent description names nothing.
 expect-extraction "" []
 

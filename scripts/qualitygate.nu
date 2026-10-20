@@ -331,6 +331,12 @@ def check-run-scope [lane: string]: nothing -> nothing {
 #   - creation-named paths drop (fabro-48f3): a path the body names
 #     inside an add/create-naming window is a proposed target, not an
 #     edit-this-file mandate — the claim gate's shared seam;
+#   - stage-journal paths (`.fabro/journal/<run>.jsonl`) drop: a seed
+#     body cites a journal as ORIGIN/provenance ("reviewer journal
+#     <path>"), and journals are hook-owned run records an implementer
+#     never edits (the same exemption product-denied? carries) —
+#     keeping them was a permanent false RED on every residual seed
+#     that names its origin journal (fabro-6b0f);
 #   - the loop-asset? allow-list decides "under the loop-asset roots"
 #     — the SAME predicate run-scope uses, one list, no drift.
 export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
@@ -346,6 +352,7 @@ export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
         ((not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
     }
     | where {|p| ($p | path type) != 'dir'}
+    | where {|p| not ($p | str starts-with '.fabro/journal/')}
     | where {|p| not (creation-named? $clean $p)}
 }
 
