@@ -1,2 +1,3 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5C01BS1C5G36CGMP14S5STX","node":"start","visit":1,"status":"succeeded","ts":"2026-10-20T06:30:38Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5C01BS1C5G36CGMP14S5STX","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-20T06:30:38Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M5C01BS1C5G36CGMP14S5STX","node":"select","visit":1,"status":"succeeded","ts":"2026-10-20T06:31:28Z","data":{"painpoints":[],"observations":["21 runs listed: 1 develop (already revised), 1 loop running (non-terminal, likely this pass's parent), 10 loop runs stale-evidence (version drift, unrevised, blocked), 9 loop runs revised; only fresh unrevised terminal candidate was 01M5BYTX2X8Q55PQ91RTHWAXB5"]}}
