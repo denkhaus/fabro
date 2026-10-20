@@ -6,10 +6,12 @@
 #
 # Stages:
 #   implementer — crate-scoped fmt + clippy (default features, -D warnings)
-#                 on every code-touched crate; the FULL crate suite ONLY
-#                 for test-file-touched crates; a compile check for
-#                 code-touched-only crates. Never the gate, never the
-#                 workspace suite (the deterministic tester owns both).
+#                 on every code-touched crate; for test-file-touched crates
+#                 the new tests BY NAME FILTER when the diff only ADDS test
+#                 files, the FULL crate suite when existing tests are edited
+#                 (or name extraction comes up empty — fail-safe); a compile
+#                 check for code-touched-only crates. Never the gate, never
+#                 the workspace suite (the deterministic tester owns both).
 # Exit 0 = all checks green. First red stops (qualitygate style:
 # `do { ^cmd } | complete`).
 #
@@ -144,7 +146,8 @@ def run-base [] {
 # `tests` = crates with at least one test-file change, `code` = every
 # touched crate (tests included — fmt/clippy cover them too).
 def touched [] {
-    let base = (run-base).base
+    let run = (run-base)
+    let base = $run.base
     let paths = (git diff --name-only $base | lines | compact)
     let crate_paths = ($paths | where {|p| $p | str starts-with 'lib/' })
     let crates = ($crate_paths
@@ -153,14 +156,67 @@ def touched [] {
         | get -o crate
         | uniq
         | compact)
-    let test_crates = ($crate_paths
-        | where {|p| (is-test-file $p) or (is-inline-test-diff $base $p) }
+    let test_files = ($crate_paths
+        | where {|p| (is-test-file $p) or (is-inline-test-diff $base $p) })
+    let test_crates = ($test_files
         | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
         | flatten
         | get -o crate
         | uniq
         | compact)
-    {code: $crates, tests: $test_crates}
+    {base: $base, code: $crates, tests: $test_crates, test_files: $test_files}
+}
+
+# Test function names declared under a test attribute in a file's Rust
+# source: the attribute line (#[test], #[tokio::test(...)], #[e2e_test...],
+# ...) sets a pending flag; the immediately following `fn <name>` captures
+# the name. Extraction-only heuristic — an empty result never narrows
+# verification (the caller falls back to the full crate suite).
+def test-names [content: string] {
+    mut names = []
+    mut pending = false
+    for l in ($content | lines) {
+        let t = ($l | str trim)
+        if ($t | str starts-with '#[') {
+            if ($t | str contains 'test') { $pending = true }
+        } else if $pending {
+            let m = ($t | parse --regex '^(?:pub\s+)?(?:const\s+)?(?:async\s+)?fn\s+(?P<name>[A-Za-z0-9_]+)')
+            if ($m | is-not-empty) {
+                $names = ($names | append $m.name.0)
+                $pending = false
+            } else if ($t | str starts-with 'fn') or ($t | str starts-with 'pub fn') {
+                $pending = false
+            }
+        }
+    }
+    $names
+}
+
+# Per-crate nextest scope (fabro-7f58): when EVERY test-touched file in the
+# crate is purely added (absent from the base, present in the worktree),
+# run only the extracted test names; any file that edits existing tests
+# (present in base — modified or deleted) widens to the full crate suite.
+# Fail-safe on both edges: no extractable names and unclassifiable files
+# both widen to the full suite.
+def test-mode-for [base: string, files: list<string>] {
+    mut added = []
+    for p in $files {
+        let old = (do { git show $"($base):($p)" } | complete)
+        if $old.exit_code == 0 {
+            return {mode: 'full', reason: $"($p) edits existing tests"}
+        }
+        if (not ($p | path exists)) {
+            return {mode: 'full', reason: $"($p) deleted"}
+        }
+        $added = ($added | append $p)
+    }
+    mut names = []
+    for p in $added {
+        $names = ($names | append (test-names (open --raw $p)))
+    }
+    let flat = ($names | flatten | uniq | compact)
+    if ($flat | is-empty) { return {mode: 'full', reason: 'no test names extracted'} }
+    {mode: 'names', names: $flat}
 }
 
 def stage-implementer [] {
@@ -205,15 +261,28 @@ def stage-implementer [] {
         print $"verify: PASS compile ($c)"
     }
     for c in $t.tests {
-        let label = ("== nextest -p " + $c + " (full crate suite: test files touched) ==")
-        print $label
-        let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
-        if $res.exit_code != 0 {
-            print (output-tail ($res.stdout + $res.stderr) 3000)
-            print $"verify: FAIL nextest ($c)"
-            return
+        let files = ($t.test_files
+            | where {|p| (($p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/') | get -o crate.0) == $c })
+        let tm = (test-mode-for $t.base $files)
+        if $tm.mode == 'names' {
+            print $"== nextest -p ($c) (added tests by name filter: ($tm.names | str join ', ')) =="
+            let res = (do { ^cargo nextest run -p $c --no-fail-fast ...$tm.names } | complete)
+            if $res.exit_code != 0 {
+                print (output-tail ($res.stdout + $res.stderr) 3000)
+                print $"verify: FAIL nextest ($c)"
+                return
+            }
+            print $"verify: PASS nextest ($c)"
+        } else {
+            print $"== nextest -p ($c) (full crate suite: ($tm.reason)) =="
+            let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
+            if $res.exit_code != 0 {
+                print (output-tail ($res.stdout + $res.stderr) 3000)
+                print $"verify: FAIL nextest ($c)"
+                return
+            }
+            print $"verify: PASS nextest ($c)"
         }
-        print $"verify: PASS nextest ($c)"
     }
     print "verify: implementer stage green"
 }
