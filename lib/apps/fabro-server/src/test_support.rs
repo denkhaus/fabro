@@ -104,6 +104,7 @@ pub struct TestAppStateBuilder {
     llm_overlay:                  LlmLayer,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
+    work_tracker:                 Option<Arc<dyn fabro_work::TrackerProvider>>,
     github_api_base_url:          Option<String>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
@@ -128,6 +129,7 @@ impl Default for TestAppStateBuilder {
             llm_overlay:                  LlmLayer::default(),
             automation_materializer:      None,
             automation_breaker_notifier:  None,
+            work_tracker:                 None,
             github_api_base_url:          None,
             #[cfg(test)]
             worker_runtime:               None,
@@ -248,6 +250,13 @@ impl TestAppStateBuilder {
         self
     }
 
+    /// The work tracker provider for every project (ADR-0032): scripted in
+    /// tests; production resolves GitHub credentials per project.
+    pub fn work_tracker(mut self, tracker: Arc<dyn fabro_work::TrackerProvider>) -> Self {
+        self.work_tracker = Some(tracker);
+        self
+    }
+
     fn server_env_path(mut self, server_env_path: PathBuf) -> Self {
         self.server_env_path = Some(server_env_path);
         self
@@ -338,6 +347,7 @@ impl TestAppStateBuilder {
             #[cfg(test)]
             worker_runtime: self.worker_runtime,
             automation_materializer_override,
+            work_tracker_override: self.work_tracker,
             automation_breaker_notifier_override: self.automation_breaker_notifier,
         })
     }

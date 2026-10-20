@@ -102,6 +102,7 @@ use fabro_util::error::{SharedError, collect_chain, render_compact_with_causes};
 use fabro_util::version::FABRO_VERSION;
 use fabro_variable::{Error as VariableError, VariableStore};
 use fabro_vault::{SecretStore, SecretStoreError, SecretType, Vault};
+use fabro_work::WorkStore;
 use fabro_workflow::run_lookup::{
     RunInfo, StatusFilter, filter_runs, scan_runs_with_summaries, scratch_base,
 };
@@ -1177,6 +1178,10 @@ pub struct AppState {
     /// documented `503` instead of guessing a checkout (fabro-3488).
     #[cfg(any(test, feature = "test-support"))]
     automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
+    /// The work tracker provider override (ADR-0032): tests script the
+    /// provider; production resolves GitHub credentials per project.
+    #[cfg(any(test, feature = "test-support"))]
+    work_tracker_override: Option<Arc<dyn fabro_work::TrackerProvider>>,
     worker_tokens: WorkerTokenKeys,
     started_at: Instant,
     resource_sampler: resource_sampler::ResourceSampler,
@@ -1253,6 +1258,9 @@ pub(crate) struct AppStores {
     pub(crate) mcp_servers:     Arc<McpServerStore>,
     pub(crate) vault:           Arc<SecretStore>,
     pub(crate) variables:       Arc<VariableStore>,
+    /// Project registry, server-owned claim ledger and projection outbox
+    /// (ADR-0032).
+    pub(crate) work:            Arc<WorkStore>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1325,6 +1333,10 @@ impl AppState {
 impl AppState {
     pub(crate) fn automation_store(&self) -> &AutomationStore {
         &self.stores.automations
+    }
+
+    pub(crate) fn work_store(&self) -> &Arc<WorkStore> {
+        &self.stores.work
     }
 
     pub(crate) fn environment_store(&self) -> &EnvironmentStore {
@@ -1448,6 +1460,8 @@ pub(crate) struct AppStateConfig {
     pub(crate) worker_runtime: Option<Arc<dyn WorkerRuntime>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) work_tracker_override: Option<Arc<dyn fabro_work::TrackerProvider>>,
 }
 
 #[derive(Clone)]
@@ -1819,6 +1833,62 @@ impl AppState {
                     ),
                 }
             }
+        }
+    }
+
+    /// The tracker provider for one project (ADR-0032): dispatch on the
+    /// project's `tracker_provider` id. Tests script one provider for every
+    /// id; production resolves the named forge. Adding a forge (Forgejo)
+    /// means adding an adapter that implements `fabro_work::TrackerProvider`
+    /// and one match arm here — the port, the store and the API change
+    /// nothing.
+    pub(crate) async fn work_tracker_for_project(
+        &self,
+        project: &fabro_work::WorkProject,
+    ) -> anyhow::Result<Arc<dyn fabro_work::TrackerProvider>> {
+        #[cfg(any(test, feature = "test-support"))]
+        if let Some(tracker) = self.work_tracker_override.as_ref() {
+            return Ok(Arc::clone(tracker));
+        }
+
+        match project.tracker_provider.as_str() {
+            "github" => {
+                use fabro_github::token_source::InstallationTokenSource;
+                use fabro_github::work_tracker::GitHubTracker;
+
+                let settings = self.server_settings();
+                let credentials = self
+                    .github_credentials(&settings.server.integrations.github)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "GitHub credentials are not configured -- run fabro install"
+                        )
+                    })?;
+                let (owner, name) = project.tracker_repo.split_once('/').ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "tracker repository must be owner/name: {}",
+                        project.tracker_repo
+                    )
+                })?;
+                let source = InstallationTokenSource::for_repository(
+                    &credentials,
+                    owner.to_string(),
+                    name.to_string(),
+                    serde_json::json!({"issues": "write", "metadata": "read"}),
+                )?;
+                let token = source.resolve().await?.token.expose().to_string();
+                let client = self.http_client.clone().unwrap_or_else(|| {
+                    fabro_http::http_client().expect("HTTP client should build")
+                });
+                Ok(Arc::new(GitHubTracker::new(
+                    client,
+                    &self.github_api_base_url,
+                    token,
+                    project.tracker_repo.clone(),
+                )))
+            }
+            other => anyhow::bail!("unknown tracker provider `{other}` -- known providers: github"),
         }
     }
 
@@ -2617,6 +2687,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
         #[cfg(any(test, feature = "test-support"))]
+        work_tracker_override,
+        #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override,
     } = config;
 
@@ -2658,6 +2730,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         .context("load mcp servers")?,
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
+    let work = Arc::new(WorkStore::new(db_pool.clone()));
     let petri_runs = PetriRuns::new(db_pool.clone());
     // Petri's records live on the shared pool; the view tables live where the
     // run summary store keeps the `runs` row (the same database in the
@@ -2783,12 +2856,15 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
             mcp_servers: mcp_server_store,
             vault: secret_store,
             variables,
+            work,
         },
         session_runtimes: SessionRuntimeManager::new(),
         artifact_store,
         automation_repo_cache,
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
+        #[cfg(any(test, feature = "test-support"))]
+        work_tracker_override,
         worker_tokens,
         started_at: Instant::now(),
         resource_sampler: resource_sampler::ResourceSampler::new(),

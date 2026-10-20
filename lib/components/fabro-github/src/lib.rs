@@ -14,6 +14,7 @@ use crate::token_source::SecretString;
 pub mod access;
 pub mod identity;
 pub mod token_source;
+pub mod work_tracker;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;

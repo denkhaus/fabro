@@ -49,6 +49,8 @@ tags:
     description: Server runtime, maintenance, and event streaming
   - name: Seeds
     description: Read-only access to the line's seed tracker (ADR-0023 step 5)
+  - name: Work Items
+    description: Project-scoped work items and the server-owned claim ledger (ADR-0032)
 
 security:
   - BearerAuth: []
@@ -6215,6 +6217,486 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  # ── Work Items (ADR-0032) ─────────────────────────────────────────────
+
+  /api/v1/projects:
+    get:
+      operationId: listWorkProjects
+      tags: [Work Items]
+      summary: List work projects
+      description: Returns every configured work-item project, sorted by project id.
+      responses:
+        "200":
+          description: Configured work projects
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkProjectListResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    get:
+      operationId: retrieveWorkProject
+      tags: [Work Items]
+      summary: Retrieve a work project
+      responses:
+        "200":
+          description: Work project configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkProject"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: upsertWorkProject
+      tags: [Work Items]
+      summary: Create or replace a work project
+      description: |
+        Creates or updates the project's tracker configuration. The path id is
+        authoritative; the body omits it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkProjectUpsertRequest"
+      responses:
+        "200":
+          description: Work project configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkProject"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Project configuration failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/claims:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    get:
+      operationId: listWorkClaims
+      tags: [Work Items]
+      summary: List live claims of a project
+      responses:
+        "200":
+          description: Live claims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaimListResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: grantWorkClaim
+      tags: [Work Items]
+      summary: Atomically grant a work item to a run
+      description: |
+        The server mutex. One non-terminal claim exists per item and per run;
+        a losing concurrent grant returns outcome=conflict with the live claim.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkClaimGrantRequest"
+      responses:
+        "200":
+          description: Grant outcome (granted, already_held, or conflict)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaimGrantResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/claims/{claimId}:
+    parameters:
+      - $ref: "#/components/parameters/WorkClaimId"
+    get:
+      operationId: retrieveWorkClaim
+      tags: [Work Items]
+      summary: Retrieve a claim
+      responses:
+        "200":
+          description: Claim record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaim"
+        "404":
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/claims/{claimId}/transition:
+    parameters:
+      - $ref: "#/components/parameters/WorkClaimId"
+    post:
+      operationId: transitionWorkClaim
+      tags: [Work Items]
+      summary: Move a claim to another lifecycle state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkClaimTransitionRequest"
+      responses:
+        "200":
+          description: Updated claim record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaim"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid claim transition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/claims/{claimId}/release:
+    parameters:
+      - $ref: "#/components/parameters/WorkClaimId"
+    post:
+      operationId: releaseWorkClaim
+      tags: [Work Items]
+      summary: Release a claim back to the queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkClaimReleaseRequest"
+      responses:
+        "200":
+          description: Released claim record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaim"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/claims/{claimId}/events:
+    parameters:
+      - $ref: "#/components/parameters/WorkClaimId"
+    get:
+      operationId: listWorkClaimEvents
+      tags: [Work Items]
+      summary: List a claim's transition history
+      responses:
+        "200":
+          description: Claim transition history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaimEventListResponse"
+        "404":
+          description: Claim not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/next:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: claimNextWorkItem
+      tags: [Work Items]
+      summary: Grant the next eligible work item to a run
+      description: |
+        The server mutex plus candidate selection (the `fabro_work_next` tool,
+        ADR-0032). Lists the project's open items from its tracker, skips items
+        with live claims, and atomically grants the highest-priority free item.
+        A run that already holds an item gets outcome=already_held; an empty
+        queue returns outcome=empty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkClaimNextRequest"
+      responses:
+        "200":
+          description: The grant outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkClaimNextResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Work store operation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    get:
+      operationId: listWorkItems
+      tags: [Work Items]
+      summary: List open work items of a project
+      parameters:
+        - name: lane
+          in: query
+          required: false
+          description: Lane name; filters by the project's lane label.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum items to return (1-100).
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "200":
+          description: Open work items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItemListResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createWorkItem
+      tags: [Work Items]
+      summary: File a work item in the project's tracker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemCreateRequest"
+      responses:
+        "201":
+          description: Work item created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/close:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: closeWorkItem
+      tags: [Work Items]
+      summary: Close a work item in the project's tracker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemCloseRequest"
+      responses:
+        "200":
+          description: Work item closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 
 components:
   securitySchemes:
@@ -6272,6 +6754,25 @@ components:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
       example: sentry
+
+    WorkProjectId:
+      name: projectId
+      in: path
+      required: true
+      description: Stable work-item project identifier.
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+      example: fabro
+
+    WorkClaimId:
+      name: claimId
+      in: path
+      required: true
+      description: Claim identifier.
+      schema:
+        type: string
+        format: uuid
 
     IfMatch:
       name: If-Match
@@ -17732,3 +18233,349 @@ components:
             $ref: "#/components/schemas/SeedSummary"
         meta:
           $ref: "#/components/schemas/PaginationMeta"
+
+    WorkProject:
+      description: Tracker configuration for one logical work-item project.
+      type: object
+      required:
+        - projectId
+        - displayName
+        - trackerProvider
+        - trackerRepo
+        - projectLabel
+        - laneLabels
+        - claimLabelPrefix
+        - claimCommentEnabled
+      properties:
+        projectId:
+          type: string
+        displayName:
+          type: string
+        trackerProvider:
+          type: string
+          description: Tracker adapter id; `github` is the first full adapter.
+        trackerRepo:
+          type: string
+          description: Provider repository, e.g. `denkhaus/work`.
+        projectLabel:
+          type: string
+          description: Label that scopes items to this project, e.g. `project:fabro`.
+        laneLabels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Lane name to tracker label mapping.
+        claimLabelPrefix:
+          type: string
+          description: Prefix for the run-id claim label.
+        claimCommentEnabled:
+          type: boolean
+
+    WorkProjectUpsertRequest:
+      description: Create or replace a project's tracker configuration. The path id is authoritative.
+      type: object
+      required:
+        - displayName
+        - trackerProvider
+        - trackerRepo
+        - projectLabel
+      properties:
+        displayName:
+          type: string
+        trackerProvider:
+          type: string
+        trackerRepo:
+          type: string
+        projectLabel:
+          type: string
+        laneLabels:
+          type: object
+          additionalProperties:
+            type: string
+        claimLabelPrefix:
+          type: string
+        claimCommentEnabled:
+          type: boolean
+
+    WorkProjectListResponse:
+      description: Configured work projects.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkProject"
+
+    WorkClaimState:
+      type: string
+      enum:
+        - granted
+        - active
+        - awaiting_merge
+        - landed
+        - released
+
+    WorkClaim:
+      description: One server-owned claim record. A non-terminal claim holds the item.
+      type: object
+      required:
+        - claimId
+        - projectId
+        - itemKey
+        - runId
+        - lane
+        - state
+        - grantedAt
+        - updatedAt
+      properties:
+        claimId:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+        itemKey:
+          type: string
+          description: Provider-stable item identity, e.g. `denkhaus/work#123`.
+        runId:
+          type: string
+        lane:
+          type: string
+        state:
+          $ref: "#/components/schemas/WorkClaimState"
+        grantedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        releasedAt:
+          type: string
+          format: date-time
+          nullable: true
+        releaseReason:
+          type: string
+          nullable: true
+        prUrl:
+          type: string
+          nullable: true
+
+    WorkClaimListResponse:
+      description: Live claims of one project.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkClaim"
+
+    WorkClaimGrantRequest:
+      description: Grant one work item to one run.
+      type: object
+      required:
+        - itemKey
+        - runId
+        - lane
+      properties:
+        itemKey:
+          type: string
+        runId:
+          type: string
+        lane:
+          type: string
+
+    WorkClaimGrantOutcome:
+      type: string
+      enum:
+        - granted
+        - already_held
+        - conflict
+
+    WorkClaimGrantResponse:
+      description: The grant result; `conflict` carries the live claim that won.
+      type: object
+      required:
+        - outcome
+        - claim
+      properties:
+        outcome:
+          $ref: "#/components/schemas/WorkClaimGrantOutcome"
+        claim:
+          $ref: "#/components/schemas/WorkClaim"
+
+    WorkClaimTransitionRequest:
+      description: Move a claim to another lifecycle state.
+      type: object
+      required:
+        - state
+      properties:
+        state:
+          $ref: "#/components/schemas/WorkClaimState"
+        reason:
+          type: string
+          nullable: true
+        prUrl:
+          type: string
+          nullable: true
+
+    WorkClaimReleaseRequest:
+      description: Release a claim back to the queue.
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+
+    WorkClaimEvent:
+      description: One transition of a claim.
+      type: object
+      required:
+        - claimId
+        - seq
+        - at
+        - toState
+        - runId
+      properties:
+        claimId:
+          type: string
+        seq:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+        fromState:
+          $ref: "#/components/schemas/WorkClaimState"
+          nullable: true
+        toState:
+          $ref: "#/components/schemas/WorkClaimState"
+        reason:
+          type: string
+          nullable: true
+        runId:
+          type: string
+
+    WorkClaimEventListResponse:
+      description: Transition history of one claim, oldest first.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkClaimEvent"
+
+    WorkItem:
+      description: One work item as the tracker provider sees it.
+      type: object
+      required:
+        - itemKey
+        - title
+        - body
+        - state
+        - labels
+        - priority
+        - url
+      properties:
+        itemKey:
+          type: string
+          description: Provider-stable item identity, e.g. `denkhaus/work#123`.
+        title:
+          type: string
+        body:
+          type: string
+        state:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+        priority:
+          type: integer
+          format: int64
+          description: Priority band (0 most urgent); 2 when the tracker carries none.
+        url:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    WorkItemListResponse:
+      description: Open work items of one project.
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkItem"
+
+    WorkItemCreateRequest:
+      description: File a work item in the project's tracker.
+      type: object
+      required:
+        - title
+        - body
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        labels:
+          type: array
+          items:
+            type: string
+          description: Additional labels beyond the project label.
+
+    WorkItemCloseRequest:
+      description: Close a work item with a reason comment.
+      type: object
+      required:
+        - itemKey
+        - reason
+      properties:
+        itemKey:
+          type: string
+        reason:
+          type: string
+
+    WorkClaimNextRequest:
+      description: Grant the next free work item to a run.
+      type: object
+      required:
+        - runId
+        - lane
+      properties:
+        runId:
+          type: string
+        lane:
+          type: string
+
+    WorkClaimNextOutcome:
+      type: string
+      enum:
+        - granted
+        - already_held
+        - empty
+
+    WorkClaimNextResponse:
+      description: The next-item grant outcome.
+      type: object
+      required:
+        - outcome
+      properties:
+        outcome:
+          $ref: "#/components/schemas/WorkClaimNextOutcome"
+        claim:
+          $ref: "#/components/schemas/WorkClaim"
+          nullable: true
+        item:
+          $ref: "#/components/schemas/WorkItem"
+          nullable: true

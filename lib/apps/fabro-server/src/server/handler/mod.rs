@@ -33,6 +33,7 @@ pub(in crate::server) mod system;
 mod usage;
 mod variables;
 mod wait;
+mod work_items;
 mod worker_control;
 mod workflow_versions;
 
@@ -231,6 +232,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .merge(workflow_versions::routes())
         .merge(sessions::routes())
         .merge(seeds::routes())
+        .merge(work_items::routes())
         .merge(system::routes())
         .merge(completions::routes())
 }

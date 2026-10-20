@@ -82,7 +82,20 @@ Fabro server
 
 ## Phase 1 — Server core (no GitHub writes yet)
 
-Build in `lib/apps/fabro-server` (OpenAPI-first) and `lib/components`:
+Build in `lib/apps/fabro-server` (OpenAPI-first), `lib/components/fabro-work`
+(the forge-agnostic port + store; user direction 2026-10-20) and
+`lib/components/fabro-github` (the GitHub adapter).
+
+**Status 2026-10-20 (first vertical slice landed):** the `work_queue` SQL
+migration (`work_projects`, `work_claims`, `work_claim_events`,
+`work_outbox`), the `fabro-work` crate (store + tracker port + NullTracker),
+the `GitHubTracker` adapter, the project-scoped API (`/projects`,
+`/projects/{id}`, `/projects/{id}/claims` grant/transition/release/events,
+`/projects/{id}/work-items` list/create/close, `/projects/{id}/next` with
+DB-first grant and best-effort label projection), and tests (store unit
+tests including the concurrent-grant race, API tests including a scripted
+fake tracker). Still open below: platform records, run tools, backpressure,
+reconciler loop, outbox worker, `current_work_item` in the run projection.
 
 1. `ProjectRegistry`: project id, display name, tracker provider, tracker
    repo, project/lane/type/priority label maps, claim label prefix, code

@@ -125,21 +125,39 @@ cannot create a second in-flight run for the lane.
 
 ### 3. The tracker is a provider, not a hard dependency
 
-A `TrackerProvider` contract covers `list`, `get`, `create`, `close`,
-`comment`, `project_claim` and `clear_claim`. The server resolves the
-provider and its configuration from a server-side `ProjectRegistry`; the
-run declares a project id (explicit config, or derived from its run
-target). The API and the UI are project-scoped from day one:
-`/api/v1/projects/{id}/work-items`, `/api/v1/projects/{id}/claims`,
-`/api/v1/projects/{id}/queue`.
+The work domain lives in its own forge-agnostic crate, `fabro-work`
+(user direction 2026-10-20: "worktracker und workstore und workitem
+müssen forge-agnostisch sein" — a Forgejo adapter must slot in without
+touching the core):
+
+- `fabro-work` — the `TrackerProvider` port (`list`, `get`, `create`,
+  `close`, `comment`, `project_claim`, `clear_claim`), the `WorkItem`
+  types, and the `WorkStore` (project registry, claim ledger, events,
+  outbox). No forge vocabulary anywhere: providers appear only as the
+  `tracker_provider` id string on a project plus a provider-stable,
+  opaque `item_key`.
+- `fabro-github::work_tracker::GitHubTracker` — the GitHub adapter
+  implementing the port (issues as items, the run-id label as the claim
+  projection). A Forgejo adapter goes in a `fabro-forgejo`-style crate
+  beside it; port, store and API change nothing.
+- The server is the composition root: `work_tracker_for_project`
+  dispatches on the project's `tracker_provider` id (`github` today) and
+  resolves that forge's credentials. Adding a forge is one adapter plus
+  one match arm.
+
+The server resolves provider configuration from a server-side
+`ProjectRegistry`; the run declares a project id (explicit config, or
+derived from its run target). The API is project-scoped from day one:
+`/api/v1/projects/{id}`, `/api/v1/projects/{id}/claims`,
+`/api/v1/projects/{id}/work-items`, `/api/v1/projects/{id}/next`.
 
 First adapters:
 
 - `GitHubTracker` — issues in a configured repository, labels mapped from
   the project config;
-- `SeedsTracker` — read-only for migration and for projects that still use
-  `.seeds`; never the line's write path;
-- `NullTracker` — manual/no tracker; the claim ledger still works.
+- `NullTracker` — manual/no tracker; the claim ledger still works;
+- `SeedsTracker` — read-only for migration and for projects that still
+  use `.seeds`; never the line's write path (planned).
 
 The core knows no tracker vendor, no repository name, no label spelling.
 

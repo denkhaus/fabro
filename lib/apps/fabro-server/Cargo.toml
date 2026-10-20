@@ -58,6 +58,7 @@ fabro-store = { path = "../../components/fabro-store" }
 fabro-vault = { path = "../../foundation/fabro-vault" }
 fabro-variable = { path = "../../components/fabro-variable" }
 fabro-http.workspace = true
+fabro-work = { path = "../../components/fabro-work" }
 fabro-redact.workspace = true
 fabro-static.workspace = true
 chrono.workspace = true

@@ -2076,6 +2076,7 @@ fn slack_app_state_with_settings_and_secret_sources(
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        work_tracker_override: None,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     })
@@ -5660,6 +5661,7 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        work_tracker_override: None,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     };
@@ -11428,6 +11430,7 @@ methods = ["dev-token"]
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        work_tracker_override: None,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     }) else {
@@ -11488,6 +11491,7 @@ fn slack_service_respects_disabled_server_config_even_with_vault_tokens() {
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
+        work_tracker_override: None,
         #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     })

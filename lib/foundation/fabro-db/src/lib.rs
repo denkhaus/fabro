@@ -36,6 +36,12 @@ pub const DROP_RUN_EVENTS_MIGRATION_SQL: &str =
 pub const RUN_TOMBSTONES_MIGRATION_SQL: &str =
     include_str!("../migrations/2026102001_run_tombstones.sql");
 
+/// The work-item tracker and claim-ledger migration (`work_projects`,
+/// `work_claims`, `work_claim_events`, `work_outbox`; ADR-0032), exposed so
+/// fixtures in other crates can install the production schema without a
+/// filesystem path into this crate.
+pub const WORK_QUEUE_MIGRATION_SQL: &str = include_str!("../migrations/2026102002_work_queue.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.
