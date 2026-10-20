@@ -91,7 +91,26 @@ def main [...command: string, --path, --by: string = "implementer"]: nothing -> 
     })
     let out = ($res.stdout | str trim -r -c "\n")
     let err = ($res.stderr | str trim -r -c "\n")
+    # Re-run stamp (fabro-16a7): a failed first attempt fixed and re-run
+    # used to leave two indistinguishable records of the same command in
+    # the transcript, and the reviewer had to adjudicate which one was
+    # the proof of record. The wrapper now counts earlier records of the
+    # SAME command in this run's transcript and stamps later ones
+    # `[re-run N]`: the LATEST record of a command is the proof of
+    # record, marked mechanically instead of judged from ordering.
+    # Fail-open: a missing transcript or a header that does not
+    # line-match (multi-line command) counts as no prior attempt —
+    # the stamp is advisory and never changes the exit code.
+    let tpath = (transcript-path (current-run-id))
+    let attempt = (if ($tpath | path exists) {
+        1 + (open --raw $tpath | lines | where {|l|
+            ($l | str starts-with "$ [by ") and (($l | str replace -r '^\$ \[by [^\]]+\] ' '') == $cmd)
+        } | length)
+    } else { 1 })
     mut record = $"$ [by ($by)] ($cmd)\n"
+    if $attempt > 1 {
+        $record = $"($record)[re-run ($attempt)] supersedes earlier attempts — this latest record is the proof of record\n"
+    }
     if ($out | is-not-empty) { $record = $"($record)($out)\n" }
     if ($err | is-not-empty) { $record = $"($record)[stderr] ($err)\n" }
     if ($recorded | is-empty) { $record = $"($record)[exit-fallback] marker unreadable — code from complete\n" }
@@ -107,7 +126,7 @@ def main [...command: string, --path, --by: string = "implementer"]: nothing -> 
     }
     $record = $"($record)-> exit ($code)\n\n"
     mkdir (transcript-dir)
-    $record | save --append (transcript-path (current-run-id))
+    $record | save --append $tpath
     # Caller sees exactly what a bare run would show, plus the record
     # framing; exit code passes through so checks fail loud.
     print --no-newline ($record | str trim -r -c "\n")

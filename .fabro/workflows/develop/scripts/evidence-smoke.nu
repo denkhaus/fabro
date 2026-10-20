@@ -231,6 +231,44 @@ if not ($q_rec | str contains "mktemp") {
     fail $"quoting pin: hint must name the mktemp nu-probe escape: ($q_rec)"
 }
 
+# Re-run stamp pin (a first-attempt failure fixed and re-run must not
+# leave two indistinguishable records): the SAME command recorded twice
+# into one isolated transcript dir must stamp the second record
+# `[re-run 2]` naming the latest record as the proof of record, while
+# the first record stays un-stamped; distinct commands never stamp.
+let tdir_rr = (mktemp -d)
+let rr_first = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_rr } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "sh -c 'exit 0'"
+    }
+} | complete)
+let rr_again = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_rr } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "sh -c 'exit 0'"
+    }
+} | complete)
+let rr_other = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_rr } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "sh -c 'exit 3'"
+    }
+} | complete)
+rm -rf $tdir_rr
+if $rr_first.exit_code != 0 or $rr_again.exit_code != 0 {
+    fail $"re-run pin: wrapper must pass through exit 0, got first=($rr_first.exit_code) again=($rr_again.exit_code)"
+}
+if ($rr_first.stdout | str contains "[re-run") {
+    fail $"re-run pin: first record must not carry a re-run stamp: ($rr_first.stdout)"
+}
+if not ($rr_again.stdout | str contains "[re-run 2]") {
+    fail $"re-run pin: second record of the same command must be stamped re-run 2: ($rr_again.stdout)"
+}
+if not ($rr_again.stdout | str contains "proof of record") {
+    fail $"re-run pin: stamp must name the latest record as the proof of record: ($rr_again.stdout)"
+}
+if ($rr_other.stdout | str contains "[re-run") {
+    fail $"re-run pin: a distinct command must never be stamped: ($rr_other.stdout)"
+}
+
 # spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
 # null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
 # are extracted from the description (sentence punctuation stripped);
