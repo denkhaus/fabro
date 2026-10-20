@@ -20,6 +20,9 @@
 #      (mx-e606d5; run 01M2N36HV2). Errors; single quotes pass.
 #   7. seed-id literals in ANY workflow's prompt .md files — the strict
 #      id-free prompt set: prompts carry rules, never seed ids. Errors.
+#   8. every linted file must end with a trailing newline — POSIX text
+#      file convention; a file ending mid-line produces noisy diffs and
+#      breaks tools that append. Errors on non-empty files.
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
@@ -172,6 +175,10 @@ def main [] {
                     $errors = ($errors | append $"($f): seed id '($full)' does not resolve in the tracker")
                 }
             }
+        }
+        # 8. trailing newline on every non-empty linted file
+        if (($text | str length) > 0) and (not ($text | str ends-with "\n")) {
+            $errors = ($errors | append $"($f): file does not end with a trailing newline")
         }
         # 2. justfile anchors must not sit on comments
         for m in ($text | parse --regex 'justfile:(?<n>\d+)') {
