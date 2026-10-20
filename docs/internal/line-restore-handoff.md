@@ -4,6 +4,17 @@ Written 2026-10-20 by the integrate session (weblab). Audience: the next
 host-side agent session. Chat language with the user: German. All times in
 this document are UTC unless noted; user-facing times are Europe/Berlin.
 
+> **SUPERSEDED IN PART (2026-10-20, later session).** The diagnosis below
+> stands: landing is solved, assignment is broken, and the server is the
+> assignment authority. The Phase-2 **store** form does not: the work-item
+> store moves to one central private GitHub issue repository, the claim is
+> a transactional server record projected as the `fabro:run:<id>` issue
+> label, and the file tracker is frozen after migration. Read
+> `docs/lab/adr/0032-central-work-item-tracker.md` and
+> `docs/internal/central-work-tracker-migration.md` before executing any
+> step below. The seeds-specific Phase-1 work (fabro-997d's preflight
+> rewrite) is re-scoped there.
+
 ## Situation — why the line is OFF and must stay OFF
 
 The user stopped both scheduled lanes (loop-fabro, revisor-fabro) at
