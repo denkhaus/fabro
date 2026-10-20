@@ -192,6 +192,15 @@ def test-names [content: string] {
     $names
 }
 
+# Tests-run count parsed from a nextest run's Summary line (fabro-bdff):
+# `Summary [  1.234s] 12 tests run: 12 passed, ...`. Null when the summary
+# cannot be parsed — the caller treats that as a failure, never as zero.
+def nextest-tests-run [output: string] {
+    let m = ($output | lines | parse --regex 'Summary\s+\[[^\]]*\]\s+(?P<ran>\d+)\s+tests?\s+run' | last)
+    if ($m | is-empty) { return null }
+    ($m | get ran | into int)
+}
+
 # Per-crate nextest scope (fabro-7f58): when EVERY test-touched file in the
 # crate is purely added (absent from the base, present in the worktree),
 # run only the extracted test names; any file that edits existing tests
@@ -267,9 +276,15 @@ def stage-implementer [] {
         if $tm.mode == 'names' {
             print $"== nextest -p ($c) (added tests by name filter: ($tm.names | str join ', ')) =="
             let res = (do { ^cargo nextest run -p $c --no-fail-fast ...$tm.names } | complete)
-            if $res.exit_code != 0 {
+            # Zero-selection guard (fabro-bdff): a filter matching zero tests
+            # must never look green. Each extracted name is a distinct test
+            # fn and nextest matches filters by substring, so a correct
+            # extraction selects at least `names` tests; anything less (or an
+            # unparseable summary) means extraction mismatch — FAIL.
+            let ran = (nextest-tests-run $res.stdout)
+            if $res.exit_code != 0 or $ran == null or $ran < ($tm.names | length) {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
-                print $"verify: FAIL nextest ($c)"
+                print $"verify: FAIL nextest ($c) (name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length))"
                 return
             }
             print $"verify: PASS nextest ($c)"
