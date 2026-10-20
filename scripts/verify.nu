@@ -6,8 +6,10 @@
 #
 # Stages:
 #   implementer — crate-scoped fmt + clippy (default features, -D warnings)
-#                 on every code-touched crate; the FULL crate suite ONLY
-#                 for test-file-touched crates; a compile check for
+#                 on every code-touched crate; the test tier is narrowed
+#                 (fabro-7f58): when the diff only ADDS test files, run the
+#                 new tests by name filter; the FULL crate suite only when
+#                 EXISTING tests are edited; a compile check for
 #                 code-touched-only crates. Never the gate, never the
 #                 workspace suite (the deterministic tester owns both).
 # Exit 0 = all checks green. First red stops (qualitygate style:
@@ -160,7 +162,66 @@ def touched [] {
         | get -o crate
         | uniq
         | compact)
-    {code: $crates, tests: $test_crates}
+    # fabro-7f58: per-file name-status split of the test-touching paths.
+    # A path is "added" only when git reports it as a new file (A);
+    # modified/deleted/renamed (and anything unparseable) count as
+    # edited — fail-safe toward the wider full-crate-suite tier.
+    let status_rows = (git diff --name-status $base | lines | compact
+        | parse --regex '^(?P<st>[A-Z])\t+(?P<path>\S+)$')
+    let status_of = {|p|
+        ($status_rows | where path == $p | get -o st.0 | default 'M')
+    }
+    let added_test_files = ($crate_paths
+        | where {|p| ((is-test-file $p) or (is-inline-test-diff $base $p)) and ((do $status_of $p) == 'A') }
+        | each {|p| {crate: ($p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' | get -o crate.0), path: $p} })
+    let edited_test_crates = ($crate_paths
+        | where {|p| ((is-test-file $p) or (is-inline-test-diff $base $p)) and ((do $status_of $p) != 'A') }
+        | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
+        | flatten
+        | get -o crate
+        | uniq
+        | compact)
+    {code: $crates, tests: $test_crates, added_test_files: $added_test_files, edited_test_crates: $edited_test_crates}
+}
+
+# fabro-7f58: test-function names inside a newly added test file — every
+# `fn name(...)` whose accumulated attribute window (the `#[...]` lines
+# directly above it) contains a test-ish attribute (`#[test]`,
+# `#[tokio::test]`, `#[e2e_test(...)]`, `#[rstest]`, ...). Extracted names
+# feed nextest's substring filters; a file yielding no names disqualifies
+# the narrowing (the caller falls back to the full crate suite).
+def test-fn-names [p: string] {
+    let lines = (open --raw $p | lines)
+    mut attrs = []
+    mut names = []
+    for l in $lines {
+        let t = ($l | str trim)
+        if ($t | str starts-with '#[') {
+            $attrs = ($attrs | append $t)
+        } else {
+            let m = ($t | parse --regex '^(?:pub )?(?:async unsafe |async |unsafe )?fn (?P<name>[A-Za-z0-9_]+)')
+            if ($m | is-not-empty) and ($attrs | any {|a| $a | str contains 'test' }) {
+                $names = ($names | append ($m | get name.0))
+            }
+            $attrs = []
+        }
+    }
+    $names | uniq
+}
+
+# fabro-7f58 shared runner: the full crate suite tier (existing tests
+# edited, or narrowing fallback). Prints its own verdict; returns success.
+def full-crate-suite [c: string] {
+    print $"== nextest -p ($c) (full crate suite: existing tests edited) =="
+    let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
+    if $res.exit_code != 0 {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print $"verify: FAIL nextest ($c)"
+        $env.LAST_VERIFY_FAIL = "nextest"
+        return false
+    }
+    print $"verify: PASS nextest ($c)"
+    true
 }
 
 def stage-implementer [] {
@@ -205,15 +266,38 @@ def stage-implementer [] {
         print $"verify: PASS compile ($c)"
     }
     for c in $t.tests {
-        let label = ("== nextest -p " + $c + " (full crate suite: test files touched) ==")
-        print $label
-        let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
-        if $res.exit_code != 0 {
-            print (output-tail ($res.stdout + $res.stderr) 3000)
-            print $"verify: FAIL nextest ($c)"
-            return
+        mut narrowed_ok = false
+        if ($c not-in $t.edited_test_crates) {
+            let names = ($t.added_test_files
+                | where crate == $c
+                | get path
+                | each {|p| test-fn-names $p }
+                | flatten
+                | uniq)
+            if ($names | is-not-empty) {
+                print $"== nextest -p ($c) (new tests by name filter: ($names | length) names from purely-added test files) =="
+                let res = (do { ^cargo nextest run -p $c --no-fail-fast ...$names } | complete)
+                if $res.exit_code != 0 {
+                    print (output-tail ($res.stdout + $res.stderr) 3000)
+                    print $"verify: FAIL nextest ($c)"
+                    $env.LAST_VERIFY_FAIL = "nextest"
+                    return
+                }
+                # Fail-safe: a filter set that matches ZERO tests would exit
+                # green without verifying anything — fall back to the full
+                # crate suite instead of trusting a 0-test pass.
+                let ran = ($res.stdout | parse --regex '(?P<n>\d+) tests run' | get -o n.0)
+                if ($ran != null) and (($ran | into int) > 0) {
+                    print $"verify: PASS nextest ($c) (narrowed: ($ran) tests)"
+                    $narrowed_ok = true
+                } else {
+                    print "verify: name filter matched no tests — falling back to the full crate suite"
+                }
+            }
         }
-        print $"verify: PASS nextest ($c)"
+        if (not $narrowed_ok) {
+            if (not (full-crate-suite $c)) { return }
+        }
     }
     print "verify: implementer stage green"
 }
