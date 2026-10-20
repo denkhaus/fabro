@@ -66,6 +66,11 @@ the recorded proof, and a check whose evidence lives in temporary fixtures
 transcript — without it the reviewer must re-run the entire proof itself.
 A PASS line whose check was not run through the wrapper is unverifiable
 prose; prefer re-running the check through the wrapper over asserting it.
+When a wrapped check FAILS on a first attempt, repair and re-run it
+through the same wrapper: the wrapper stamps the re-run record
+`[re-run N]`, and the LATEST record of a command is the proof of record —
+a superseded first-attempt failure is context for the reviewer, never
+hidden and never re-litigated.
 The wrapper records the exit code itself, captured by an explicit marker
 from the guarded command — so NEVER hand-roll an `echo $?` exit assertion
 into a check command: `$?` expands at the outer shell before the wrapper

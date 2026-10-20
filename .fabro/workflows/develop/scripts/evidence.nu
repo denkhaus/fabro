@@ -680,7 +680,7 @@ def checks-section [path: string]: nothing -> string {
     if not ($path | path exists) { return "" }
     let raw = (open --raw $path | str trim -r -c "\n")
     if ($raw | is-empty) { return "" }
-    let head = "\n== recorded checks: per-criterion transcript (commands + outputs + exit codes exactly as recorded through the check-transcript wrapper — implementer on implement runs, planner on verification-only runs; recorded proof; never re-run these) ==\n"
+    let head = "\n== recorded checks: per-criterion transcript (commands + outputs + exit codes exactly as recorded through the check-transcript wrapper — implementer on implement runs, planner on verification-only runs; recorded proof; never re-run these; when a command appears in multiple records the LATEST record is the proof of record — re-runs are stamped `[re-run N]` and supersede earlier attempts) ==\n"
     let body = (sanitize $raw)
     if (($head | str length) + ($body | str length)) > $HARD_CAP {
         let keep = ($HARD_CAP - ($head | str length) - 100)
