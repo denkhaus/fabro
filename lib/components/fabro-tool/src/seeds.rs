@@ -151,25 +151,19 @@ pub fn apply_tracker_filters(
 ) -> Vec<SeedsRow> {
     rows.into_iter()
         .filter(|row| {
-            let status_ok = status
-                .map(|wanted| {
-                    row.status
-                        .as_deref()
-                        .is_some_and(|have| have.eq_ignore_ascii_case(wanted))
-                })
-                .unwrap_or(true);
-            let assignee_ok = assignee
-                .map(|wanted| {
-                    if wanted.eq_ignore_ascii_case("none") {
-                        row.assignee.as_deref().is_none_or(str::is_empty)
-                    } else {
-                        row.assignee.as_deref().is_some_and(|have| have == wanted)
-                    }
-                })
-                .unwrap_or(true);
-            let label_ok = label
-                .map(|wanted| row.labels.iter().any(|have| have == wanted))
-                .unwrap_or(true);
+            let status_ok = status.is_none_or(|wanted| {
+                row.status
+                    .as_deref()
+                    .is_some_and(|have| have.eq_ignore_ascii_case(wanted))
+            });
+            let assignee_ok = assignee.is_none_or(|wanted| {
+                if wanted.eq_ignore_ascii_case("none") {
+                    row.assignee.as_deref().is_none_or(str::is_empty)
+                } else {
+                    row.assignee.as_deref().is_some_and(|have| have == wanted)
+                }
+            });
+            let label_ok = label.is_none_or(|wanted| row.labels.iter().any(|have| have == wanted));
             status_ok && assignee_ok && label_ok
         })
         .collect()

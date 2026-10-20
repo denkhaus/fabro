@@ -8,7 +8,7 @@ use fabro_types::{
     RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
 };
 
-use crate::{FabroToolBackend, common};
+use crate::{FabroToolBackend, common, seeds};
 
 #[derive(Clone)]
 pub struct ClientBackend {
@@ -347,7 +347,7 @@ impl FabroToolBackend for ClientBackend {
             ));
         };
         let rows = source.rows().await?;
-        let rows = crate::seeds::apply_tracker_filters(rows, status, assignee, label);
+        let rows = seeds::apply_tracker_filters(rows, status, assignee, label);
         Ok(rows)
     }
 

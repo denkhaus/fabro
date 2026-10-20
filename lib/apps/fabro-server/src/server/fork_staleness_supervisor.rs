@@ -443,7 +443,7 @@ const MERGE_WINDOW_MINUTES: [(u64, u64); 2] = [(10, 25), (40, 55)];
 type MergeCandidates = Vec<(u64, fabro_types::PullRequestLink, RunId)>;
 
 pub(super) fn inside_merge_window(now: chrono::DateTime<chrono::Utc>) -> bool {
-    let minute = u64::from(now.format("%M").to_string().parse::<u64>().unwrap_or(99));
+    let minute = now.format("%M").to_string().parse::<u64>().unwrap_or(99);
     MERGE_WINDOW_MINUTES
         .iter()
         .any(|(start, end)| minute >= *start && minute <= *end)
@@ -474,7 +474,7 @@ async fn merge_phase(
     // (repo, number) -> landed file set + merge sha, for the duplicate
     // predicate. Only PRs merged by THIS pass participate.
     let mut landed: Vec<(String, String, u64, Vec<String>)> = Vec::new();
-    for (number, record, _run_id) in clean_candidates.drain(..) {
+    for (_number, record, _run_id) in clean_candidates.drain(..) {
         let merge = time::timeout(
             PULL_REQUEST_GITHUB_CALL_TIMEOUT,
             fabro_github::merge_pull_request(

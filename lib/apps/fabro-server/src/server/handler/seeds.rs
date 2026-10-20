@@ -81,7 +81,7 @@ async fn list_run_seeds(
         )
         .into_response();
     };
-    let handle = match attach_running_run_sandbox(&access, &instance, run_id).await {
+    let handle = match attach_running_run_sandbox(&access, instance, run_id).await {
         Ok(handle) => handle,
         Err(err) => {
             return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, err.to_string()).into_response();
@@ -108,8 +108,7 @@ async fn list_run_seeds(
     let records = match parse_records(&text) {
         Ok(records) => records,
         Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err).into_response();
         }
     };
     let matched: Vec<&Value> = records

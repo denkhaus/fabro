@@ -188,9 +188,6 @@ impl TestAppStateBuilder {
         self.llm_overlay(llm_overlay_from_toml(toml))
     }
 
-    /// Serve the seeds read API from `source` instead of the disabled
-    /// default (fabro-3488 fork tests).
-
     pub fn automation_materializer(mut self, materializer: TestAutomationRunMaterializer) -> Self {
         self.automation_materializer = Some(materializer);
         self

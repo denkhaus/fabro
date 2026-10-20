@@ -563,9 +563,8 @@ impl RunSandboxSeedsSource {
     /// The tracker file's text; an absent file is the empty tracker
     /// (foreign repo), never an error.
     pub(crate) async fn tracker_text(&self) -> anyhow::Result<String> {
-        let bytes = match self.sandbox.fs().read(&self.tracker_path).await {
-            Ok(bytes) => bytes,
-            Err(_) => return Ok(String::new()),
+        let Ok(bytes) = self.sandbox.fs().read(&self.tracker_path).await else {
+            return Ok(String::new());
         };
         Ok(String::from_utf8(bytes)?)
     }

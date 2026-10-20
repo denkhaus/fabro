@@ -783,7 +783,7 @@ async fn build_agent(
     // tracker (foreign repo) serves an empty row set.
     let seeds_workspace_dir = sandbox_instance.runtime.working_directory.clone();
     let seeds_source: Arc<dyn fabro_tool::RunSeedsSource> =
-        Arc::new(crate::sandbox_access::RunSandboxSeedsSource {
+        Arc::new(sandbox_access::RunSandboxSeedsSource {
             sandbox:      Arc::clone(&handle),
             tracker_path: format!("{seeds_workspace_dir}/.seeds/issues.jsonl"),
         });

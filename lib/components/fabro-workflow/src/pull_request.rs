@@ -620,7 +620,7 @@ async fn enable_auto_merge_within_scope(
             return;
         }
     }
-    enable_auto_merge_if_requested(github, owner, repo, node_id, number, Some(options)).await;
+    enable_auto_merge_if_requested(github, owner, repo, node_id, number, Some(options));
 }
 
 /// Fork surface (fabro-67e5 retry, W2-3): bounded retry around pull request
@@ -685,7 +685,7 @@ fn final_create_error(attempts: &[String], error: &fabro_github::CreatePullReque
     }
 }
 
-async fn enable_auto_merge_if_requested(
+fn enable_auto_merge_if_requested(
     github: &github_app::GitHubContext<'_>,
     owner: &str,
     repo: &str,
