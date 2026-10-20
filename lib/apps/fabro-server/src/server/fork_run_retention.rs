@@ -20,18 +20,26 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use fabro_api::types::PruneRunsRequest;
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{Instrument as _, info, info_span, warn};
 
 use super::handler::system::{execute_prune, plan_prune};
-use super::{AppState, to_i64};
+use super::{AppState, delete_run_internal, to_i64};
 
 /// First pass waits out startup reconciliation (projector startup_pass,
 /// scheduler boot) before any deletion.
 const RUN_RETENTION_STARTUP_DELAY: Duration = Duration::from_mins(5);
 const RUN_RETENTION_SCAN_INTERVAL: Duration = Duration::from_hours(24);
+
+/// Removal reaper (fabro-d616 arm b, 2026-10-20): rows the delete flow
+/// left in status=removing — a crash mid-rm, or an error return after the
+/// lifecycle transition — are FINISHED on a fast cadence. 15 minutes of
+/// silence means no live delete is working the row any more.
+const REMOVAL_REAPER_INTERVAL: Duration = Duration::from_mins(5);
+const REMOVAL_REAPER_STUCK_AFTER: Duration = Duration::from_mins(15);
 
 /// What one executed retention pass reclaimed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,11 +73,22 @@ async fn run_retention_supervisor(state: Arc<AppState>) {
         }
     }
 
+    // Two cadences, one supervisor: the retention pass every 24h, the
+    // removal reaper every REMOVAL_REAPER_INTERVAL. Independent
+    // `interval_at` timers (a fresh `sleep` per loop iteration would
+    // reset the 24h arm on every 5-minute reaper tick).
+    let next_retention = time::Instant::now() + RUN_RETENTION_SCAN_INTERVAL;
+    let mut retention = time::interval_at(next_retention, RUN_RETENTION_SCAN_INTERVAL);
+    let next_reaper = time::Instant::now() + REMOVAL_REAPER_INTERVAL;
+    let mut reaper = time::interval_at(next_reaper, REMOVAL_REAPER_INTERVAL);
     loop {
         tokio::select! {
             () = shutdown.cancelled() => break,
-            () = time::sleep(RUN_RETENTION_SCAN_INTERVAL) => {
+            _ = retention.tick() => {
                 retention_pass_logged(&state).await;
+            }
+            _ = reaper.tick() => {
+                removal_reaper_pass_logged(&state).await;
             }
         }
     }
@@ -141,4 +160,52 @@ pub(super) async fn run_retention_pass(
         deleted_count,
         freed_bytes: to_i64(plan.total_size_bytes),
     }))
+}
+
+/// Fail-open wrapper for the reaper, mirroring the retention pass.
+async fn removal_reaper_pass_logged(state: &AppState) {
+    if let Err(error) = removal_reaper_pass(state, Utc::now()).await {
+        warn!(%error, "removal reaper pass failed");
+    }
+}
+
+/// One removal-reaper pass: finish the delete of every run stuck in
+/// `removing` with no event for over [`REMOVAL_REAPER_STUCK_AFTER`]. The
+/// pass re-enters the handler's own `delete_run_internal(force)` — the
+/// same tail the manual delete walks (sandbox prune skipped where the
+/// original delete already attempted it, dir removal, store rows, and
+/// now the tombstone), so reaper and handler cannot drift. `Ok(count)` =
+/// runs finished; individual failures warn and fail open.
+pub(super) async fn removal_reaper_pass(
+    state: &AppState,
+    now: DateTime<Utc>,
+) -> anyhow::Result<usize> {
+    let cutoff_ms =
+        (now - chrono::Duration::from_std(REMOVAL_REAPER_STUCK_AFTER)?).timestamp_millis();
+    let stuck = state
+        .stores
+        .run_summaries
+        .stuck_removing_run_ids(cutoff_ms)
+        .await?;
+    if stuck.is_empty() {
+        return Ok(0);
+    }
+    info!(
+        stuck = stuck.len(),
+        stuck_after_mins = REMOVAL_REAPER_STUCK_AFTER.as_secs() / 60,
+        "removal reaper plan: finishing stuck run deletes"
+    );
+    let mut finished = 0;
+    for run_id in stuck {
+        match delete_run_internal(state, run_id, true).await {
+            Ok(_) => finished += 1,
+            Err(error) => warn!(
+                run_id = %run_id,
+                error = error.detail(),
+                "removal reaper could not finish a stuck delete; retrying next tick"
+            ),
+        }
+    }
+    info!(finished, "removal reaper pass complete");
+    Ok(finished)
 }

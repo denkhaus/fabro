@@ -24,9 +24,9 @@ INSERT INTO runs (
     status, archived_at_ms, parent_id, title, workflow_slug, workflow_name,
     repository_name, automation_id, diff_additions, diff_deletions,
     total_usd_micros, summary_json
-) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+WHERE NOT EXISTS (SELECT 1 FROM run_tombstones WHERE run_tombstones.run_id = ?)
 ON CONFLICT(id) DO UPDATE SET
     created_at_ms = excluded.created_at_ms,
     started_at_ms = excluded.started_at_ms,
@@ -44,6 +44,7 @@ ON CONFLICT(id) DO UPDATE SET
     diff_deletions = excluded.diff_deletions,
     total_usd_micros = excluded.total_usd_micros,
     summary_json = excluded.summary_json
+WHERE NOT EXISTS (SELECT 1 FROM run_tombstones WHERE run_tombstones.run_id = runs.id)
 ";
 
 const SELECT_RUN_SUMMARIES_SQL: &str = r"
@@ -209,10 +210,13 @@ impl RunSummaryStore {
         projection: &RunProjection,
     ) -> Result<()> {
         let record = PreparedRunSummary::from_projection(run_id, projection);
+        // The tombstone guard's parameter: one bind AFTER the row columns,
+        // in the positional order the SELECT declares them.
         bind_run_columns(
             sqlx::query(UPSERT_PETRI_RUN_SQL).bind(run_id.to_string()),
             &record,
         )?
+        .bind(run_id.to_string())
         .execute(connection)
         .await?;
         Ok(())
@@ -233,12 +237,57 @@ impl RunSummaryStore {
         // while another writer is active can fail at once, bypassing the
         // configured busy timeout, so concurrent deletes wait normally.
         let mut transaction = self.pool.begin_with("BEGIN IMMEDIATE").await?;
+        // The tombstone rides the delete's own transaction: once the row
+        // is gone, the projector's upsert can never re-insert it
+        // (fabro-d616: a late projection pass resurrected a deleted run
+        // as a removing ghost and starved the loop lane for 10h).
+        sqlx::query(
+            "INSERT INTO run_tombstones (run_id, deleted_at_ms) VALUES (?, ?) \
+             ON CONFLICT(run_id) DO UPDATE SET deleted_at_ms = excluded.deleted_at_ms",
+        )
+        .bind(run_id.to_string())
+        .bind(Utc::now().timestamp_millis())
+        .execute(&mut *transaction)
+        .await?;
         sqlx::query("DELETE FROM runs WHERE id = ?")
             .bind(run_id.to_string())
             .execute(&mut *transaction)
             .await?;
         transaction.commit().await?;
         Ok(())
+    }
+
+    /// Runs stuck in `removing` whose last event predates `cutoff_ms` —
+    /// the removal reaper's candidates (fabro-d616 arm b): a delete that
+    /// crashed or errored mid-flight leaves exactly this row behind.
+    pub async fn stuck_removing_run_ids(&self, cutoff_ms: i64) -> Result<Vec<RunId>> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM runs WHERE status = 'removing' AND last_event_at_ms < ?",
+        )
+        .bind(cutoff_ms)
+        .fetch_all(&self.pool)
+        .await?;
+        ids.into_iter().map(parse_stored_run_id).collect()
+    }
+
+    /// `running` runs whose last event falls in `[older_than_ms,
+    /// younger_than_ms)` — the stall watchdog's crossing window
+    /// (fabro-d4f2): a run warns once as its silence crosses the threshold,
+    /// not on every tick.
+    pub async fn stalled_running_run_ids(
+        &self,
+        older_than_ms: i64,
+        younger_than_ms: i64,
+    ) -> Result<Vec<RunId>> {
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM runs \
+             WHERE status = 'running' AND last_event_at_ms >= ? AND last_event_at_ms < ?",
+        )
+        .bind(older_than_ms)
+        .bind(younger_than_ms)
+        .fetch_all(&self.pool)
+        .await?;
+        ids.into_iter().map(parse_stored_run_id).collect()
     }
 
     pub async fn get(&self, run_id: &RunId, now: DateTime<Utc>) -> Result<Option<Run>> {

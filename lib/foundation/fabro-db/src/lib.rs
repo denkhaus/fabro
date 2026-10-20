@@ -30,6 +30,12 @@ pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs
 pub const DROP_RUN_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/2026091803_drop_run_events.sql");
 
+/// The removal-tombstone migration (`run_tombstones`), exposed so fixtures
+/// that install [`RUNS_MIGRATION_SQL`] can apply it and get the production
+/// schema (fabro-d616: the projector upsert's resurrection guard).
+pub const RUN_TOMBSTONES_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026102001_run_tombstones.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.

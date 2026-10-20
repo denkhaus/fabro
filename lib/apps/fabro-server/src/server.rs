@@ -177,6 +177,9 @@ pub(crate) mod fork_run_retention;
 #[cfg(test)]
 mod fork_run_retention_tests;
 mod fork_run_scoped_seeds_api_tests;
+pub(crate) mod fork_run_stall_watchdog;
+#[cfg(test)]
+mod fork_run_stall_watchdog_tests;
 #[cfg(test)]
 #[cfg(test)]
 mod fork_slack_recovery_tests;
@@ -199,6 +202,7 @@ pub(crate) mod stream_follower;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
 pub(crate) use fork_run_retention::spawn_run_retention_supervisor;
+pub(crate) use fork_run_stall_watchdog::spawn_run_stall_watchdog;
 pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]

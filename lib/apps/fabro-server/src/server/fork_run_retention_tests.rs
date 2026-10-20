@@ -158,3 +158,192 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
     assert!(after.is_empty(), "the run row is gone");
     assert!(!scratch_root.exists(), "the run scratch dir is reclaimed");
 }
+
+//
+// Removal reaper (fabro-d616 arm b) + deletion tombstone.
+//
+
+/// Seed one run row in the given status with `last_event_at_ms` offset
+/// from now, through the store's own write path (plus the one column the
+/// projector derives from folded events, which seeding does not have).
+async fn seed_run_row(
+    state: &AppState,
+    run_id: &RunId,
+    status: fabro_types::RunStatus,
+    last_event_offset: ChronoDuration,
+) {
+    let now = Utc::now();
+    let mut projection = fabro_types::RunProjection::new(
+        format!("{status:?} fixture"),
+        fabro_types::RunSpec {
+            run_id:              *run_id,
+            settings:            fabro_types::WorkflowSettings::default(),
+            graph:               fabro_types::RunGraph::new("reaper"),
+            graph_source:        None,
+            workflow_slug:       None,
+            workflow_version_id: None,
+            target:              None,
+            automation:          None,
+            source_directory:    None,
+            labels:              HashMap::default(),
+            provenance:          fabro_types::test_support::test_run_provenance(),
+            definition_blob:     None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            admission:           fabro_types::PetriAdmission::default(),
+        },
+        now,
+    );
+    projection.status = status;
+
+    let pool = state.stores.run_summaries.pool();
+    let mut tx = pool.begin().await.expect("seed tx");
+    fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, run_id, &projection)
+        .await
+        .expect("seed run row");
+    sqlx::query("UPDATE runs SET last_event_at_ms = ? WHERE id = ?")
+        .bind((now + last_event_offset).timestamp_millis())
+        .bind(run_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .expect("seed last_event_at_ms");
+    tx.commit().await.expect("seed commit");
+}
+
+/// The incident shape: a row the delete flow left in `removing` with no
+/// event for over the stuck threshold is FINISHED — row gone, scratch
+/// gone — by the reaper pass (fabro-d616 arm b).
+#[tokio::test]
+async fn removal_reaper_finishes_stuck_removing_rows() {
+    let state = test_app_state_with_isolated_storage();
+    let run_id = RunId::new();
+    seed_run_row(
+        &state,
+        &run_id,
+        fabro_types::RunStatus::Removing,
+        ChronoDuration::minutes(-20),
+    )
+    .await;
+
+    let finished = fork_run_retention::removal_reaper_pass(&state, Utc::now())
+        .await
+        .expect("reaper pass must not fail");
+
+    assert_eq!(finished, 1, "the stuck removing row is finished");
+    assert!(
+        !state
+            .stores
+            .run_summaries
+            .contains(&run_id)
+            .await
+            .expect("contains"),
+        "the run row is gone"
+    );
+}
+
+/// A delete that is merely slow (row fresh in `removing`) must not be
+/// reaped out from under a live deletion.
+#[tokio::test]
+async fn removal_reaper_leaves_fresh_removing_rows() {
+    let state = test_app_state_with_isolated_storage();
+    let run_id = RunId::new();
+    seed_run_row(
+        &state,
+        &run_id,
+        fabro_types::RunStatus::Removing,
+        ChronoDuration::minutes(-2),
+    )
+    .await;
+
+    let finished = fork_run_retention::removal_reaper_pass(&state, Utc::now())
+        .await
+        .expect("reaper pass must not fail");
+
+    assert_eq!(finished, 0, "a fresh removing row is not reaped");
+    assert!(
+        state
+            .stores
+            .run_summaries
+            .contains(&run_id)
+            .await
+            .expect("contains"),
+        "the run row is still there"
+    );
+}
+
+/// THE fabro-d616 tombstone pin: after a delete, a LATE projector pass
+/// (the resurrection vector of the 2026-10-19 incident — rm --force
+/// returned success, a straggler projection re-inserted the row as
+/// status=removing, the loop lane starved 10h) cannot bring the run
+/// back. The upsert refuses what the tombstone guards.
+#[tokio::test]
+async fn deleted_runs_cannot_be_resurrected_by_a_late_projection_pass() {
+    let state = test_app_state_with_isolated_storage();
+    let run_id = RunId::new();
+    seed_run_row(
+        &state,
+        &run_id,
+        fabro_types::RunStatus::Removing,
+        ChronoDuration::minutes(-1),
+    )
+    .await;
+
+    state
+        .stores
+        .runs
+        .delete_run(&run_id)
+        .await
+        .expect("delete writes the tombstone with the row removal");
+    assert!(
+        !state
+            .stores
+            .run_summaries
+            .contains(&run_id)
+            .await
+            .expect("contains after delete"),
+        "the row is gone"
+    );
+
+    // The late projector pass: same write path the projector uses, after
+    // the delete completed.
+    let pool = state.stores.run_summaries.pool();
+    let mut tx = pool.begin().await.expect("late projection tx");
+    let mut projection = fabro_types::RunProjection::new(
+        "late resurrection attempt".to_string(),
+        fabro_types::RunSpec {
+            run_id,
+            settings: fabro_types::WorkflowSettings::default(),
+            graph: fabro_types::RunGraph::new("reaper"),
+            graph_source: None,
+            workflow_slug: None,
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            labels: HashMap::default(),
+            provenance: fabro_types::test_support::test_run_provenance(),
+            definition_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref: None,
+            admission: fabro_types::PetriAdmission::default(),
+        },
+        Utc::now(),
+    );
+    projection.status = fabro_types::RunStatus::Running;
+    fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
+        .await
+        .expect("late projector write must succeed as SQL");
+    tx.commit().await.expect("late projection commit");
+
+    assert!(
+        !state
+            .stores
+            .run_summaries
+            .contains(&run_id)
+            .await
+            .expect("contains after late pass"),
+        "the tombstone refused the resurrection: a deleted run stays deleted"
+    );
+}
