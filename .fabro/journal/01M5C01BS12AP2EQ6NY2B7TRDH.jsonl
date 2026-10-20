@@ -2,3 +2,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5C01BS12AP2EQ6NY2B7TRDH","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-20T06:30:39Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5C01BS12AP2EQ6NY2B7TRDH","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-20T06:30:40Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5C01BS12AP2EQ6NY2B7TRDH","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-20T06:30:44Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M5C01BS12AP2EQ6NY2B7TRDH","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-20T06:33:01Z","data":{"painpoints":[],"observations":["fabro-8932 is in-flight on run 01M5BYTX2X8Q55PQ91RTHWAXB5 — skipped, not parked","the fabro_run_search status vocabulary rejects waiting_human/changes_requested; only running+pending queried"]}}
