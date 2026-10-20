@@ -4,6 +4,10 @@ Written 2026-10-20 by the integrate session (weblab). Audience: the next
 host-side agent session. Chat language with the user: German. All times in
 this document are UTC unless noted; user-facing times are Europe/Berlin.
 
+> **CURRENT HANDOFF:** `docs/internal/work-tracker-handoff.md` (2026-10-20,
+> later session). This document stays as the incident evidence; its plan is
+> superseded.
+>
 > **SUPERSEDED IN PART (2026-10-20, later session).** The diagnosis below
 > stands: landing is solved, assignment is broken, and the server is the
 > assignment authority. The Phase-2 **store** form does not: the work-item
