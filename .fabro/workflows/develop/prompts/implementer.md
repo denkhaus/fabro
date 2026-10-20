@@ -72,6 +72,11 @@ into a check command: `$?` expands at the outer shell before the wrapper
 runs, and that once recorded a green code for a check whose guard script
 actually failed. Assert negative paths by the wrapper's own recorded
 `-> exit N` line and exit code, not by echoing codes inside the command.
+TRANSIENT FAILURES: when a wrapped check exits non-zero from a transient
+cause (temp-fixture race, a probe script that no longer exists, an env
+hiccup), re-run the check through the wrapper and let the re-run record
+stand as the proof of record — never leave a transient first-attempt
+non-zero exit as the only record behind a PASS line.
 NESTED-SHELL PROBES: a check command that itself shells out (`sh -c "..."`,
 nested quotes, embedded both-quote strings) is quoting-fragile — the outer
 shell layers can mangle the quotes before the wrapper sees them, and the
