@@ -180,6 +180,18 @@ impl FabroToolBackend for ClientBackend {
         self.client.retrieve_work_item(project, item_key).await
     }
 
+    async fn work_list(
+        &self,
+        project: &str,
+        lane: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<types::WorkItem>> {
+        let limit = u32::try_from(limit).unwrap_or(u32::MAX);
+        self.client
+            .list_work_items(project, lane, Some(limit))
+            .await
+    }
+
     async fn work_create(
         &self,
         project: &str,

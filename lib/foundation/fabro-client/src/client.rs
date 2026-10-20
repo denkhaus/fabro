@@ -1716,17 +1716,22 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// The project's open work items, optionally lane-filtered.
+    /// The project's open work items, optionally lane-filtered and
+    /// limit-capped (the API clamps 1..=100).
     pub async fn list_work_items(
         &self,
         project_id: &str,
         lane: Option<&str>,
+        limit: Option<u32>,
     ) -> Result<Vec<types::WorkItem>> {
         let response = self
             .send_api(|client| async move {
                 let mut request = client.list_work_items().project_id(project_id.to_string());
                 if let Some(lane) = lane {
                     request = request.lane(lane.to_string());
+                }
+                if let Some(limit) = limit {
+                    request = request.limit(limit);
                 }
                 request.send().await
             })

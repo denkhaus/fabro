@@ -7,6 +7,7 @@
 //! `fabro_work_create`, and releases a misrouted or stale claim with
 //! `fabro_work_release`; `fabro_work_close` lands an item's closure.
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use fabro_api::types::{WorkClaim, WorkItem};
@@ -36,6 +37,60 @@ pub struct FabroWorkShowParams {
     /// The provider-stable item key, e.g. `denkhaus/work#123`.
     #[serde(rename = "itemKey")]
     pub item_key: String,
+}
+
+/// `fabro_work_list`: the project's open work items, optionally
+/// lane-filtered — the read-only candidate/dedupe surface that replaces
+/// the file tracker's `seeds list`/`seeds ready` reads (ADR-0032).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroWorkListParams {
+    /// The project id.
+    pub project: String,
+    /// Only items carrying the project's label for this lane. Optional.
+    pub lane:    Option<String>,
+    /// How many items to return at most (default 50, at most 100 — the
+    /// API cap). The list is sorted by priority, then recency.
+    pub limit:   Option<usize>,
+}
+
+/// A validated list request: non-blank project, a trimmed lane or none,
+/// and the limit clamped to the API's 1..=100 window.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ValidatedWorkList {
+    pub project: String,
+    pub lane:    Option<String>,
+    pub limit:   usize,
+}
+
+impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
+    type Error = ToolError;
+
+    fn try_from(params: FabroWorkListParams) -> Result<Self, Self::Error> {
+        let FabroWorkListParams {
+            project,
+            lane,
+            limit,
+        } = params;
+        let project = non_blank(&project, "project")?;
+        let lane = match lane.as_deref() {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(ToolError::message(
+                        "lane must not be blank; omit it to list every lane",
+                    ));
+                }
+                Some(trimmed.to_string())
+            }
+            None => None,
+        };
+        let limit = limit.unwrap_or(50).clamp(1, 100);
+        Ok(Self {
+            project,
+            lane,
+            limit,
+        })
+    }
 }
 
 /// `fabro_work_create`: file a work item in the project's tracker.
@@ -148,6 +203,23 @@ pub async fn work_show(
         .map_err(|err| ToolError::from_anyhow(&err))
 }
 
+/// The open items of a project: the server-side lane filter and limit,
+/// then the provider's list. An omitted lane lists every lane.
+pub async fn work_list(
+    backend: Arc<dyn FabroToolBackend>,
+    params: ValidatedWorkList,
+) -> ToolResult<Vec<WorkItem>> {
+    let ValidatedWorkList {
+        project,
+        lane,
+        limit,
+    } = params;
+    backend
+        .work_list(&project, lane.as_deref(), limit)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))
+}
+
 pub async fn work_create(
     backend: Arc<dyn FabroToolBackend>,
     params: FabroWorkCreateParams,
@@ -224,6 +296,23 @@ pub fn work_show_text(result: &WorkItem) -> String {
     format!("{} — {} [{}]", result.item_key, result.title, result.state)
 }
 
+/// The list rendering: count plus one line per item — the shape a
+/// planner or dedupe pass scans mechanically.
+pub fn work_list_text(items: &[WorkItem]) -> String {
+    if items.is_empty() {
+        return "no open work items".to_string();
+    }
+    let mut listed = format!("{} open work item(s):", items.len());
+    for item in items {
+        let _ = write!(
+            listed,
+            "\n{} — {} [{}] prio {}",
+            item.item_key, item.title, item.state, item.priority
+        );
+    }
+    listed
+}
+
 pub fn work_create_text(result: &WorkItem) -> String {
     format!("filed {} — {}", result.item_key, result.title)
 }
@@ -286,6 +375,54 @@ mod tests {
     }
 
     #[test]
+    fn a_list_request_validates_clamps_and_trims() {
+        let validated = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: " fabro ".to_string(),
+            lane:    Some(" loop ".to_string()),
+            limit:   Some(500),
+        })
+        .expect("a normal list request validates");
+        assert_eq!(validated.project, "fabro");
+        assert_eq!(validated.lane.as_deref(), Some("loop"));
+        assert_eq!(validated.limit, 100);
+
+        let defaulted = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: "fabro".to_string(),
+            lane:    None,
+            limit:   None,
+        })
+        .expect("an omitted lane and limit are valid");
+        assert_eq!(defaulted.lane, None);
+        assert_eq!(defaulted.limit, 50);
+
+        let zero = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: "fabro".to_string(),
+            lane:    None,
+            limit:   Some(0),
+        })
+        .expect("a zero limit clamps instead of failing");
+        assert_eq!(zero.limit, 1);
+    }
+
+    #[test]
+    fn a_list_request_rejects_blank_inputs_with_teaching_messages() {
+        let error = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: "  ".to_string(),
+            lane:    None,
+            limit:   None,
+        })
+        .expect_err("a blank project must fail");
+        assert!(error.to_string().contains("project"));
+        let error = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: "fabro".to_string(),
+            lane:    Some("  ".to_string()),
+            limit:   None,
+        })
+        .expect_err("a blank lane must fail");
+        assert!(error.to_string().contains("lane"));
+    }
+
+    #[test]
     fn the_text_renderers_name_the_essentials() {
         let granted = WorkNextResult {
             outcome: "granted".to_string(),
@@ -314,5 +451,24 @@ mod tests {
             item:    None,
         };
         assert!(work_next_text(&empty).contains("no free work item"));
+    }
+
+    #[test]
+    fn the_list_renderer_reports_count_and_items() {
+        let item = WorkItem {
+            item_key:   "denkhaus/work#1".to_string(),
+            title:      "Dry-run: verify the GitHub tracker adapter".to_string(),
+            body:       String::new(),
+            state:      "open".to_string(),
+            labels:     vec!["project:fabro-dryrun".to_string()],
+            priority:   2,
+            url:        "https://github.com/denkhaus/work/issues/1".to_string(),
+            updated_at: None,
+        };
+        let listed = work_list_text(&[item]);
+        assert!(listed.starts_with("1 open work item(s):"));
+        assert!(listed.contains("denkhaus/work#1"));
+        assert!(listed.contains("prio 2"));
+        assert_eq!(work_list_text(&[]), "no open work items");
     }
 }

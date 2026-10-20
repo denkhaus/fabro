@@ -117,6 +117,17 @@ pub trait FabroToolBackend: Send + Sync {
         Err(work_tool_unavailable_error(FABRO_WORK_SHOW_TOOL_NAME))
     }
 
+    /// `fabro_work_list`: the project's open items (optional lane and
+    /// limit) — the read-only candidate/dedupe surface.
+    async fn work_list(
+        &self,
+        _project: &str,
+        _lane: Option<&str>,
+        _limit: usize,
+    ) -> anyhow::Result<Vec<types::WorkItem>> {
+        Err(work_tool_unavailable_error(FABRO_WORK_LIST_TOOL_NAME))
+    }
+
     async fn work_create(
         &self,
         _project: &str,
@@ -351,6 +362,7 @@ pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
 pub const FABRO_SEEDS_SEARCH_TOOL_NAME: &str = "fabro_seeds_search";
 pub const FABRO_WORK_NEXT_TOOL_NAME: &str = "fabro_work_next";
 pub const FABRO_WORK_SHOW_TOOL_NAME: &str = "fabro_work_show";
+pub const FABRO_WORK_LIST_TOOL_NAME: &str = "fabro_work_list";
 pub const FABRO_WORK_CREATE_TOOL_NAME: &str = "fabro_work_create";
 pub const FABRO_WORK_CLOSE_TOOL_NAME: &str = "fabro_work_close";
 pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
@@ -412,6 +424,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroWorkShowParams>(
             FABRO_WORK_SHOW_TOOL_NAME,
             "Read one work item of the project by its provider-stable item key (e.g. owner/repo#123): title, body, labels, state.",
+        ),
+        tool_definition::<crate::FabroWorkListParams>(
+            FABRO_WORK_LIST_TOOL_NAME,
+            "List the project's OPEN work items read-only, optionally lane-filtered, sorted by priority then recency (default 50, cap 100). Use it for candidate overviews and duplicate checks before filing; use fabro_work_show for one item's full body.",
         ),
         tool_definition::<crate::FabroWorkCreateParams>(
             FABRO_WORK_CREATE_TOOL_NAME,
@@ -578,6 +594,7 @@ mod tests {
             FABRO_BLOB_TOOL_NAME,
             FABRO_WORK_NEXT_TOOL_NAME,
             FABRO_WORK_SHOW_TOOL_NAME,
+            FABRO_WORK_LIST_TOOL_NAME,
             FABRO_WORK_CREATE_TOOL_NAME,
             FABRO_WORK_CLOSE_TOOL_NAME,
             FABRO_WORK_RELEASE_TOOL_NAME,

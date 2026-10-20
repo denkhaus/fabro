@@ -37,8 +37,8 @@ pub use common::{
     FABRO_RUN_EVENTS_TOOL_NAME, FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME,
     FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME,
     FABRO_RUN_SET_TITLE_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME, FABRO_SEEDS_SEARCH_TOOL_NAME,
-    FABRO_WORK_CLOSE_TOOL_NAME, FABRO_WORK_CREATE_TOOL_NAME, FABRO_WORK_NEXT_TOOL_NAME,
-    FABRO_WORK_RELEASE_TOOL_NAME, FABRO_WORK_SHOW_TOOL_NAME,
+    FABRO_WORK_CLOSE_TOOL_NAME, FABRO_WORK_CREATE_TOOL_NAME, FABRO_WORK_LIST_TOOL_NAME,
+    FABRO_WORK_NEXT_TOOL_NAME, FABRO_WORK_RELEASE_TOOL_NAME, FABRO_WORK_SHOW_TOOL_NAME,
     FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSeedsSource, RunSummaryResult,
     ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
@@ -80,10 +80,11 @@ pub use wait::{
     run_wait_text,
 };
 pub use work::{
-    FabroWorkCloseParams, FabroWorkCreateParams, FabroWorkNextParams, FabroWorkReleaseParams,
-    FabroWorkShowParams, ValidatedWorkNext, WorkNextResult, work_close, work_close_text,
-    work_create, work_create_text, work_next, work_next_text, work_release, work_release_text,
-    work_show, work_show_text,
+    FabroWorkCloseParams, FabroWorkCreateParams, FabroWorkListParams, FabroWorkNextParams,
+    FabroWorkReleaseParams, FabroWorkShowParams, ValidatedWorkList, ValidatedWorkNext,
+    WorkNextResult, work_close, work_close_text, work_create, work_create_text, work_list,
+    work_list_text, work_next, work_next_text, work_release, work_release_text, work_show,
+    work_show_text,
 };
 pub use workflow_version::{
     FabroWorkflowVersionCreateParams, ValidatedWorkflowVersionCreate, WorkflowVersionPackager,

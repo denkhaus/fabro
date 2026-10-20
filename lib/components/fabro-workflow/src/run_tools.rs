@@ -264,6 +264,13 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::work_show_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_WORK_LIST_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkListParams>(name, args)?;
+            let result =
+                fabro_tool::work_list(Arc::clone(&services.backend), params.try_into()?).await?;
+            let summary = fabro_tool::work_list_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_WORK_CREATE_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroWorkCreateParams>(name, args)?;
             let result = fabro_tool::work_create(Arc::clone(&services.backend), params).await?;
@@ -678,6 +685,54 @@ mod tests {
         assert_eq!(body["rows"][0]["id"], "fabro-0001");
         assert_eq!(body["rows"][0]["assignee"], "loop");
         assert_eq!(body["truncated"], false);
+    }
+
+    /// `fabro_work_list` (ADR-0032): the read-only candidate/dedupe
+    /// surface reaches the project-scoped API with the lane and limit the
+    /// prompt passed, and renders one line per item.
+    #[tokio::test]
+    async fn work_list_dispatches_lane_and_limit_to_the_project_api() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/projects/fabro/work-items")
+                    .query_param("lane", "loop")
+                    .query_param("limit", "10");
+                then.status(200).json_body(json!({
+                    "data": [{
+                        "itemKey": "denkhaus/work#1",
+                        "title": "Dry-run: verify the GitHub tracker adapter",
+                        "body": "probe item",
+                        "state": "open",
+                        "labels": ["project:fabro-dryrun"],
+                        "priority": 2,
+                        "url": "https://github.com/denkhaus/work/issues/1"
+                    }]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_WORK_LIST_TOOL_NAME,
+            json!({"project": "fabro", "lane": "loop", "limit": 10}),
+            &services,
+        )
+        .await
+        .expect("the tool dispatches over the real backend");
+        listed.assert_calls_async(1).await;
+        // The summary is multi-line (count line + one line per item); the
+        // pretty-printed JSON array starts at its own line after it.
+        let (rendered, json) = output.split_once("\n[\n").expect("summary then JSON array");
+        assert!(rendered.starts_with("1 open work item(s):"), "{rendered}");
+        assert!(rendered.contains("denkhaus/work#1"), "summary: {rendered}");
+        let body: serde_json::Value = serde_json::from_str(&format!("[\n{json}"))
+            .expect("the trailing payload is the item array");
+        assert_eq!(body[0]["itemKey"], "denkhaus/work#1");
     }
 
     #[tokio::test]
