@@ -15,6 +15,9 @@
 # 42 is flock's distinctive "lock busy" code (-E 42).
 
 const LOCK_PATH = "tmp/just-up.lock"
+# Parse-time self path: `path self` errors at run time since nu 0.115
+# ("can't run after parse-time"), which broke the flock re-exec entry.
+const SELF = (path self)
 
 # Print the cross-process ALARM block and exit 1 (second-run refusal).
 def alarm [holder: string] {
@@ -35,7 +38,7 @@ def main [--locked] {
         # replayed below), then propagates the inner exit code verbatim.
         mkdir tmp
         let res = try {
-            (^flock -n -E 42 $LOCK_PATH nu (path self) --locked | complete)
+            (^flock -n -E 42 $LOCK_PATH nu $SELF --locked | complete)
         } catch {|err|
             { stdout: "", stderr: $"up: unable to run flock: ($err.msg)", exit_code: 127 }
         }
