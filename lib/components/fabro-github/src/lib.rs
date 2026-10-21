@@ -760,10 +760,18 @@ pub(crate) async fn mint_installation_token_for_id_with_jwt(
     match token_resp.status {
         201 => {}
         422 => {
+            // GitHub's 422 names the real cause in its body — repository
+            // access OR requested permissions beyond the installation's
+            // grant. Both are user-actionable; carry the source detail
+            // instead of guessing one of them (2026-10-21: a permissions
+            // 422 masked as a repository-access error sent the install
+            // diagnosis down the wrong path).
             bail!(
-                "GitHub App does not have access to every requested repository ({}). \
-                 Update the installation's repository permissions to include them.",
-                repos.join(", ")
+                "GitHub refused the installation access token ({}): {} — check the \
+                 installation's repository selection AND that the app's permissions \
+                 cover the requested scopes (issues: write, metadata: read)",
+                repos.join(", "),
+                token_resp.text().trim(),
             );
         }
         401 => {
@@ -2759,7 +2767,7 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains("does not have access"), "got: {err}");
+        assert!(err.contains("refused the installation access token"), "got: {err}");
         assert!(err.contains("repo"), "got: {err}");
     }
 
