@@ -155,7 +155,7 @@ impl GitHubTracker {
             .ok_or_else(|| anyhow::anyhow!("work item key must be owner/repo#number: {item_key}"))
     }
 
-    fn project_lane_labels(project: &WorkProject, filter: &WorkItemFilter) -> String {
+    fn project_lane_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
         let mut labels = vec![project.project_label.clone()];
         if let Some(lane) = filter.lane.as_deref() {
             let label = project
@@ -165,7 +165,7 @@ impl GitHubTracker {
                 .unwrap_or_else(|| format!("lane:{lane}"));
             labels.push(label);
         }
-        labels.join(",")
+        labels
     }
 
     fn priority(labels: &[String]) -> i64 {
@@ -230,19 +230,15 @@ impl GitHubTracker {
                 .and_then(|raw| raw.parse::<DateTime<Utc>>().ok()),
         })
     }
-}
 
-#[async_trait]
-impl TrackerProvider for GitHubTracker {
-    async fn list_open(
+    async fn list_open_items(
         &self,
         project: &WorkProject,
-        filter: WorkItemFilter,
+        filter: &WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
         let limit = filter.limit.clamp(1, 100);
-        let labels = Self::project_lane_labels(project, &filter);
-        let encoded_labels = labels
-            .split(',')
+        let encoded_labels = Self::project_lane_labels(project, filter)
+            .iter()
             .map(|label| utf8_percent_encode(label, NON_ALPHANUMERIC).to_string())
             .collect::<Vec<_>>()
             .join(",");
@@ -261,6 +257,59 @@ impl TrackerProvider for GitHubTracker {
             .collect();
         items.sort_by_key(|item| (item.priority, item.updated_at));
         Ok(items)
+    }
+
+    /// Title+body text search INCLUDING closed items (ADR-0032 phase 3:
+    /// the pre-create duplicate check must see what already closed, not
+    /// just what is open). Search ranks by relevance; the caller's
+    /// judgment decides whether a hit covers the planned filing.
+    async fn search_items(
+        &self,
+        project: &WorkProject,
+        filter: &WorkItemFilter,
+        query: &str,
+    ) -> anyhow::Result<Vec<WorkItem>> {
+        let limit = filter.limit.clamp(1, 100);
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("work item search query must not be blank");
+        }
+        let mut terms = vec![format!("repo:{}", self.repo), "is:issue".to_string()];
+        terms.extend(
+            Self::project_lane_labels(project, filter)
+                .into_iter()
+                .map(|label| format!("label:\"{label}\"")),
+        );
+        terms.push(trimmed.to_string());
+        let encoded = utf8_percent_encode(&terms.join(" "), NON_ALPHANUMERIC).to_string();
+        let url = format!(
+            "{}/search/issues?q={encoded}&per_page={limit}",
+            self.base_url
+        );
+        let response = self.request(Method::GET, &url).send().await?;
+        let value = self.send_json(response).await?;
+        let values = value
+            .get("items")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow::anyhow!("GitHub issue search returned no items array"))?;
+        Ok(values
+            .iter()
+            .filter_map(|value| self.json_item(value))
+            .collect())
+    }
+}
+
+#[async_trait]
+impl TrackerProvider for GitHubTracker {
+    async fn list(
+        &self,
+        project: &WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<Vec<WorkItem>> {
+        match filter.query.as_deref() {
+            Some(query) => self.search_items(project, &filter, query).await,
+            None => self.list_open_items(project, &filter).await,
+        }
     }
 
     async fn get(&self, project: &WorkProject, item_key: &str) -> anyhow::Result<Option<WorkItem>> {
@@ -414,5 +463,129 @@ impl TrackerProvider for GitHubTracker {
             }
         }
         Ok(removed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_http::HttpClientBuilder;
+    use fabro_work::{TrackerProvider as _, WorkItemFilter, WorkProject};
+
+    use super::GitHubTracker;
+
+    fn project() -> WorkProject {
+        WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    fn tracker(base_url: &str) -> GitHubTracker {
+        let client = HttpClientBuilder::new()
+            .no_proxy()
+            .build()
+            .expect("test http client");
+        GitHubTracker::new(
+            client,
+            base_url,
+            "token".to_string(),
+            "denkhaus/work".to_string(),
+        )
+    }
+
+    #[tokio::test]
+    async fn search_sends_repo_issue_and_label_qualifiers() {
+        let server = httpmock::MockServer::start_async().await;
+        // The q value is fully percent-encoded (NON_ALPHANUMERIC), so the
+        // mock below pins the exact qualifiers on the wire: repo,
+        // issue-only, both labels (project + lane), then the keyword.
+        let searched = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .query_param(
+                        "q",
+                        "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"lane:loop\" watchdog",
+                    )
+                    .query_param("per_page", "25");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 2,
+                    "items": [
+                        {"number": 7, "title": "Stall watchdog", "body": "b", "state": "closed",
+                         "labels": [{"name": "project:fabro"}], "html_url": "u7",
+                         "updated_at": "2026-10-21T04:00:00Z"},
+                        {"number": 9, "title": "Watchdog tuning", "body": "b", "state": "open",
+                         "labels": [{"name": "project:fabro"}], "html_url": "u9",
+                         "updated_at": "2026-10-21T05:00:00Z"}
+                    ]
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let items = tracker
+            .list(&project(), WorkItemFilter {
+                lane:  Some("loop".to_string()),
+                limit: 25,
+                query: Some("watchdog".to_string()),
+            })
+            .await
+            .expect("the search arm resolves");
+        searched.assert_calls_async(1).await;
+        assert_eq!(items.len(), 2, "closed items are part of search results");
+        assert_eq!(items[0].state, "closed");
+        assert_eq!(items[0].item_key, "denkhaus/work#7");
+        assert_eq!(items[1].state, "open");
+    }
+
+    #[tokio::test]
+    async fn a_blank_query_is_rejected_before_any_request() {
+        let server = httpmock::MockServer::start_async().await;
+        let tracker = tracker(&server.base_url());
+        let error = tracker
+            .list(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 50,
+                query: Some("   ".to_string()),
+            })
+            .await
+            .expect_err("a blank query must fail");
+        // No mock is registered: any request would have failed the call
+        // with a connection-level mock error instead of the blank guard.
+        assert!(error.to_string().contains("blank"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn list_mode_keeps_the_open_only_label_filter_path() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "open")
+                    .query_param("labels", "project:fabro,lane:loop")
+                    .query_param("per_page", "50");
+                then.status(200).json_body(serde_json::json!([]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let items = tracker
+            .list(&project(), WorkItemFilter {
+                lane:  Some("loop".to_string()),
+                limit: 50,
+                query: None,
+            })
+            .await
+            .expect("the open-list arm resolves");
+        listed.assert_calls_async(1).await;
+        assert!(items.is_empty());
     }
 }

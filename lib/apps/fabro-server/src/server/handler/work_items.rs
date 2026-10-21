@@ -359,9 +359,10 @@ async fn list_work_items(
     let project = load_project(&state, &project_id).await?;
     let tracker = tracker_for(&state, &project).await?;
     let items = tracker
-        .list_open(&project, WorkItemFilter {
+        .list(&project, WorkItemFilter {
             lane:  params.lane,
             limit: params.limit.unwrap_or(50).clamp(1, 100) as usize,
+            query: params.query,
         })
         .await
         .map_err(tracker_failed)?;
@@ -375,6 +376,7 @@ async fn list_work_items(
 struct WorkItemQuery {
     lane:  Option<String>,
     limit: Option<u32>,
+    query: Option<String>,
 }
 
 async fn create_work_item(
@@ -461,9 +463,10 @@ async fn claim_next(
             )
         })?;
     let items = tracker
-        .list_open(&project, WorkItemFilter {
+        .list(&project, WorkItemFilter {
             lane:  Some(request.lane.clone()),
             limit: 50,
+            query: None,
         })
         .await
         .map_err(tracker_failed)?;

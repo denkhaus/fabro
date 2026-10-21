@@ -6570,12 +6570,23 @@ paths:
     get:
       operationId: listWorkItems
       tags: [Work Items]
-      summary: List open work items of a project
+      summary: List work items of a project (open, or text-searched)
       parameters:
         - name: lane
           in: query
           required: false
           description: Lane name; filters by the project's lane label.
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: false
+          description: >-
+            Plain-keyword text search over item title and body, INCLUDING
+            closed items (duplicate checks before filing need the closed
+            half). Without `query` the call lists OPEN items only, sorted
+            by priority then recency; with `query` the tracker's search
+            ranks by relevance instead.
           schema:
             type: string
         - name: limit
@@ -6587,7 +6598,7 @@ paths:
             format: int32
       responses:
         "200":
-          description: Open work items
+          description: Work items (open-only list, or search results incl. closed)
           content:
             application/json:
               schema:

@@ -266,7 +266,7 @@ mod next_item {
     use tokio::sync::Mutex as AsyncMutex;
     use tower::ServiceExt;
 
-    use crate::helpers::api;
+    use crate::helpers::{api, response_json};
 
     const RUN_A: &str = "01JNQVR7M0EJ5GKAT2SC4ERS1Z";
     const RUN_B: &str = "01JNQVR7M0EJ5GKAT2SC4ERS20";
@@ -303,20 +303,32 @@ mod next_item {
 
     #[async_trait]
     impl TrackerProvider for FakeTracker {
-        async fn list_open(
+        async fn list(
             &self,
             _project: &WorkProject,
             filter: WorkItemFilter,
         ) -> anyhow::Result<Vec<WorkItem>> {
-            // The server grants in the order the provider returns; the
-            // GitHub adapter sorts by (priority, updated_at). The fake sorts
-            // the same way so the endpoint's candidate order is exercised.
             let mut items: Vec<WorkItem> = self
                 .items
                 .lock()
                 .expect("work-item test step should succeed")
                 .iter()
-                .filter(|item| item.state == "open")
+                .filter(|item| match filter.query.as_deref() {
+                    // Search mode mirrors the GitHub adapter: both states,
+                    // case-insensitive title+body text match, relevance
+                    // approximated by recency (the fake has no ranking
+                    // signal).
+                    Some(query) => {
+                        let needle = query.trim().to_lowercase();
+                        item.title.to_lowercase().contains(&needle)
+                            || item.body.to_lowercase().contains(&needle)
+                    }
+                    // List mode mirrors the open-only listing; the server
+                    // grants in the order the provider returns and the
+                    // GitHub adapter sorts by (priority, updated_at), so
+                    // the fake sorts the same way.
+                    None => item.state == "open",
+                })
                 .cloned()
                 .collect();
             items.sort_by_key(|item| (item.priority, item.updated_at));
@@ -540,6 +552,49 @@ mod next_item {
         .await;
         assert_eq!(empty["outcome"], "empty");
         assert!(empty["claim"].is_null());
+    }
+
+    #[tokio::test]
+    async fn work_items_search_includes_closed_matches_and_plain_list_does_not() {
+        let mut closed_match = item(7, 1);
+        closed_match.state = "closed".to_string();
+        closed_match.body = "the watchdog WARN threshold".to_string();
+        let mut titled_match = item(9, 2);
+        titled_match.title = "Watchdog tuning".to_string();
+        let unrelated = item(10, 1);
+        let tracker = FakeTracker::with_items(vec![closed_match, titled_match, unrelated]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api("/projects/fabro/work-items?query=watchdog"))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        let searched = response_json(response, StatusCode::OK, "search mode").await;
+        let keys = searched["data"]
+            .as_array()
+            .expect("search returns an array")
+            .iter()
+            .map(|item| item["itemKey"].as_str().expect("keys are strings"))
+            .collect::<Vec<_>>();
+        assert!(
+            keys.contains(&"denkhaus/work#7"),
+            "closed matches appear: {keys:?}"
+        );
+        assert!(
+            keys.contains(&"denkhaus/work#9"),
+            "open matches appear: {keys:?}"
+        );
+        assert!(
+            !keys.contains(&"denkhaus/work#10"),
+            "non-matching items stay out: {keys:?}"
+        );
     }
 
     #[tokio::test]

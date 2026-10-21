@@ -40,13 +40,22 @@ pub struct WorkItemDraft {
 pub struct WorkItemFilter {
     pub lane:  Option<String>,
     pub limit: usize,
+    /// Plain-keyword text search over title and body, INCLUDING closed
+    /// items (ADR-0032 phase 3: the pre-create duplicate check needs the
+    /// closed half). When set, the provider searches instead of listing
+    /// open items and relevance replaces the priority ordering.
+    pub query: Option<String>,
 }
 
 /// The forge-agnostic tracker port. Implemented per forge; the work store
 /// and the server never name a forge.
 #[async_trait]
 pub trait TrackerProvider: Send + Sync {
-    async fn list_open(
+    /// Open items when `filter.query` is absent; a title+body text search
+    /// including closed items when it is set. One method because both are
+    /// the same read surface for callers — the filter, not the call site,
+    /// picks the mode.
+    async fn list(
         &self,
         project: &crate::WorkProject,
         filter: WorkItemFilter,
@@ -110,7 +119,7 @@ pub struct NullTracker;
 
 #[async_trait]
 impl TrackerProvider for NullTracker {
-    async fn list_open(
+    async fn list(
         &self,
         _project: &crate::WorkProject,
         _filter: WorkItemFilter,

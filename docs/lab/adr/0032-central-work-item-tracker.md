@@ -276,6 +276,12 @@ authority.
   `Original-Closed` in the body (GitHub cannot set historical timestamps).
   The JSONL is archived in the tracker repository. Legacy ids are kept as
   `Legacy-ID: fabro-xxxx` in the body; new items use the issue number.
+  Amended 2026-10-21 (user decision): every migrated issue also carries
+  the legacy id as a namespaced label (`seeds:fabro-xxxx`; the prefix
+  names the origin system — chosen over `legacy:` the same day). The label IS
+  the mapping — an exact label lookup resolves old references through the
+  forge API, with no separate mapping file and no false positives from
+  bodies that merely cite another id.
 - The line's `.seeds` writes stop at cutover. The file is frozen; the
   `seeds` CLI leaves the line's toolchain and prompts. The seeds product
   (ADR-0023) remains a product and a provider; it is no longer the line's

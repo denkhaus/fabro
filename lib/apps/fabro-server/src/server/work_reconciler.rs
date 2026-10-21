@@ -272,7 +272,7 @@ mod tests {
 
     #[async_trait]
     impl fabro_work::TrackerProvider for ScriptedTracker {
-        async fn list_open(
+        async fn list(
             &self,
             _project: &WorkProject,
             _filter: WorkItemFilter,

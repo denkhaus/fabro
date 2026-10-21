@@ -266,9 +266,10 @@ pub(crate) async fn execute_fabro_run_tool(
         }
         fabro_tool::FABRO_WORK_LIST_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroWorkListParams>(name, args)?;
-            let result =
-                fabro_tool::work_list(Arc::clone(&services.backend), params.try_into()?).await?;
-            let summary = fabro_tool::work_list_text(&result);
+            let validated: fabro_tool::ValidatedWorkList = params.try_into()?;
+            let query = validated.query.clone();
+            let result = fabro_tool::work_list(Arc::clone(&services.backend), validated).await?;
+            let summary = fabro_tool::work_list_text(&result, query.as_deref());
             render_fabro_tool_result(&summary, &result)
         }
         fabro_tool::FABRO_WORK_CREATE_TOOL_NAME => {
@@ -733,6 +734,70 @@ mod tests {
         let body: serde_json::Value = serde_json::from_str(&format!("[\n{json}"))
             .expect("the trailing payload is the item array");
         assert_eq!(body[0]["itemKey"], "denkhaus/work#1");
+    }
+
+    #[tokio::test]
+    async fn work_list_dispatches_the_search_query_to_the_project_api() {
+        let server = httpmock::MockServer::start_async().await;
+        let searched = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/projects/fabro/work-items")
+                    .query_param("query", "watchdog")
+                    .query_param("limit", "25");
+                then.status(200).json_body(json!({
+                    "data": [
+                        {
+                            "itemKey": "denkhaus/work#7",
+                            "title": "Stall watchdog",
+                            "body": "WARN-only watchdog",
+                            "state": "closed",
+                            "labels": ["project:fabro"],
+                            "priority": 1,
+                            "url": "https://github.com/denkhaus/work/issues/7"
+                        },
+                        {
+                            "itemKey": "denkhaus/work#9",
+                            "title": "Watchdog tuning",
+                            "body": "tune the WARN threshold",
+                            "state": "open",
+                            "labels": ["project:fabro"],
+                            "priority": 2,
+                            "url": "https://github.com/denkhaus/work/issues/9"
+                        }
+                    ]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_WORK_LIST_TOOL_NAME,
+            json!({"project": "fabro", "query": " watchdog ", "limit": 25}),
+            &services,
+        )
+        .await
+        .expect("the search-mode dispatch reaches the API");
+        searched.assert_calls_async(1).await;
+        let (rendered, json) = output.split_once("\n[\n").expect("summary then JSON array");
+        assert!(
+            rendered.starts_with("2 work-item match(es) for 'watchdog' (open and closed):"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("denkhaus/work#7 — Stall watchdog [closed] prio 1"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("denkhaus/work#9 — Watchdog tuning [open] prio 2"),
+            "{rendered}"
+        );
+        let body: serde_json::Value = serde_json::from_str(&format!("[\n{json}"))
+            .expect("the trailing payload is the item array");
+        assert_eq!(body.as_array().expect("the payload is an array").len(), 2);
     }
 
     #[tokio::test]

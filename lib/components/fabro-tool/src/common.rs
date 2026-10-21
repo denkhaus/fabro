@@ -118,12 +118,14 @@ pub trait FabroToolBackend: Send + Sync {
     }
 
     /// `fabro_work_list`: the project's open items (optional lane and
-    /// limit) — the read-only candidate/dedupe surface.
+    /// limit), or — with `query` — a title+body text search including
+    /// closed items: the read-only candidate/dedupe surface.
     async fn work_list(
         &self,
         _project: &str,
         _lane: Option<&str>,
         _limit: usize,
+        _query: Option<&str>,
     ) -> anyhow::Result<Vec<types::WorkItem>> {
         Err(work_tool_unavailable_error(FABRO_WORK_LIST_TOOL_NAME))
     }
@@ -427,7 +429,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroWorkListParams>(
             FABRO_WORK_LIST_TOOL_NAME,
-            "List the project's OPEN work items read-only, optionally lane-filtered, sorted by priority then recency (default 50, cap 100). Use it for candidate overviews and duplicate checks before filing; use fabro_work_show for one item's full body.",
+            "List the project's work items read-only: OPEN items (optional lane filter, priority then recency, default 50, cap 100) or — with query — a plain-keyword title+body search INCLUDING closed items, ranked by relevance. Use the search for duplicate checks before filing (one keyword per call); use fabro_work_show for one item's full body.",
         ),
         tool_definition::<crate::FabroWorkCreateParams>(
             FABRO_WORK_CREATE_TOOL_NAME,

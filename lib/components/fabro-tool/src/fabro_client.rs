@@ -185,10 +185,11 @@ impl FabroToolBackend for ClientBackend {
         project: &str,
         lane: Option<&str>,
         limit: usize,
+        query: Option<&str>,
     ) -> anyhow::Result<Vec<types::WorkItem>> {
         let limit = u32::try_from(limit).unwrap_or(u32::MAX);
         self.client
-            .list_work_items(project, lane, Some(limit))
+            .list_work_items(project, lane, Some(limit), query)
             .await
     }
 

@@ -38,5 +38,6 @@ thiserror.workspace = true
 [dev-dependencies]
 fabro-macros = { path = "../../foundation/fabro-macros" }
 fabro-test = { workspace = true }
+httpmock = "0.8"
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tracing-subscriber.workspace = true

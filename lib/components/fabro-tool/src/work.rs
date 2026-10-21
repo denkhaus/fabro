@@ -48,17 +48,24 @@ pub struct FabroWorkListParams {
     pub project: String,
     /// Only items carrying the project's label for this lane. Optional.
     pub lane:    Option<String>,
+    /// Plain-keyword text search over title and body, INCLUDING closed
+    /// items — the duplicate check before filing. Without it the call
+    /// lists OPEN items only, sorted by priority, then recency; with it
+    /// the tracker ranks by relevance.
+    pub query:   Option<String>,
     /// How many items to return at most (default 50, at most 100 — the
-    /// API cap). The list is sorted by priority, then recency.
+    /// API cap).
     pub limit:   Option<usize>,
 }
 
 /// A validated list request: non-blank project, a trimmed lane or none,
-/// and the limit clamped to the API's 1..=100 window.
+/// a trimmed search query or none, and the limit clamped to the API's
+/// 1..=100 window.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidatedWorkList {
     pub project: String,
     pub lane:    Option<String>,
+    pub query:   Option<String>,
     pub limit:   usize,
 }
 
@@ -69,6 +76,7 @@ impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
         let FabroWorkListParams {
             project,
             lane,
+            query,
             limit,
         } = params;
         let project = non_blank(&project, "project")?;
@@ -84,10 +92,23 @@ impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
             }
             None => None,
         };
+        let query = match query.as_deref() {
+            Some(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    return Err(ToolError::message(
+                        "query must not be blank; omit it to list open items",
+                    ));
+                }
+                Some(trimmed.to_string())
+            }
+            None => None,
+        };
         let limit = limit.unwrap_or(50).clamp(1, 100);
         Ok(Self {
             project,
             lane,
+            query,
             limit,
         })
     }
@@ -212,10 +233,11 @@ pub async fn work_list(
     let ValidatedWorkList {
         project,
         lane,
+        query,
         limit,
     } = params;
     backend
-        .work_list(&project, lane.as_deref(), limit)
+        .work_list(&project, lane.as_deref(), limit, query.as_deref())
         .await
         .map_err(|err| ToolError::from_anyhow(&err))
 }
@@ -298,11 +320,24 @@ pub fn work_show_text(result: &WorkItem) -> String {
 
 /// The list rendering: count plus one line per item — the shape a
 /// planner or dedupe pass scans mechanically.
-pub fn work_list_text(items: &[WorkItem]) -> String {
+pub fn work_list_text(items: &[WorkItem], query: Option<&str>) -> String {
+    let (empty, head) = match query {
+        Some(query) => (
+            format!("no work-item matches for '{query}'"),
+            format!(
+                "{} work-item match(es) for '{query}' (open and closed):",
+                items.len()
+            ),
+        ),
+        None => (
+            "no open work items".to_string(),
+            format!("{} open work item(s):", items.len()),
+        ),
+    };
     if items.is_empty() {
-        return "no open work items".to_string();
+        return empty;
     }
-    let mut listed = format!("{} open work item(s):", items.len());
+    let mut listed = head;
     for item in items {
         let _ = write!(
             listed,
@@ -379,25 +414,30 @@ mod tests {
         let validated = ValidatedWorkList::try_from(FabroWorkListParams {
             project: " fabro ".to_string(),
             lane:    Some(" loop ".to_string()),
+            query:   Some(" watcher ".to_string()),
             limit:   Some(500),
         })
         .expect("a normal list request validates");
         assert_eq!(validated.project, "fabro");
         assert_eq!(validated.lane.as_deref(), Some("loop"));
+        assert_eq!(validated.query.as_deref(), Some("watcher"));
         assert_eq!(validated.limit, 100);
 
         let defaulted = ValidatedWorkList::try_from(FabroWorkListParams {
             project: "fabro".to_string(),
             lane:    None,
+            query:   None,
             limit:   None,
         })
-        .expect("an omitted lane and limit are valid");
+        .expect("an omitted lane, query and limit are valid");
         assert_eq!(defaulted.lane, None);
+        assert_eq!(defaulted.query, None);
         assert_eq!(defaulted.limit, 50);
 
         let zero = ValidatedWorkList::try_from(FabroWorkListParams {
             project: "fabro".to_string(),
             lane:    None,
+            query:   None,
             limit:   Some(0),
         })
         .expect("a zero limit clamps instead of failing");
@@ -409,6 +449,7 @@ mod tests {
         let error = ValidatedWorkList::try_from(FabroWorkListParams {
             project: "  ".to_string(),
             lane:    None,
+            query:   None,
             limit:   None,
         })
         .expect_err("a blank project must fail");
@@ -416,10 +457,19 @@ mod tests {
         let error = ValidatedWorkList::try_from(FabroWorkListParams {
             project: "fabro".to_string(),
             lane:    Some("  ".to_string()),
+            query:   None,
             limit:   None,
         })
         .expect_err("a blank lane must fail");
         assert!(error.to_string().contains("lane"));
+        let error = ValidatedWorkList::try_from(FabroWorkListParams {
+            project: "fabro".to_string(),
+            lane:    None,
+            query:   Some("   ".to_string()),
+            limit:   None,
+        })
+        .expect_err("a blank query must fail");
+        assert!(error.to_string().contains("query"));
     }
 
     #[test]
@@ -465,10 +515,17 @@ mod tests {
             url:        "https://github.com/denkhaus/work/issues/1".to_string(),
             updated_at: None,
         };
-        let listed = work_list_text(&[item]);
+        let listed = work_list_text(std::slice::from_ref(&item), None);
         assert!(listed.starts_with("1 open work item(s):"));
         assert!(listed.contains("denkhaus/work#1"));
         assert!(listed.contains("prio 2"));
-        assert_eq!(work_list_text(&[]), "no open work items");
+        assert_eq!(work_list_text(&[], None), "no open work items");
+        let searched = work_list_text(&[item], Some("dry-run"));
+        assert!(searched.starts_with("1 work-item match(es) for 'dry-run' (open and closed):"));
+        assert!(searched.contains("[open]"));
+        assert_eq!(
+            work_list_text(&[], Some("never-matches")),
+            "no work-item matches for 'never-matches'"
+        );
     }
 }

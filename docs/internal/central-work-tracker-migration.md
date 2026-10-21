@@ -39,7 +39,15 @@ The grill session settled these; do not re-open them without the user.
     `sensitive` items get neutral public run/PR/commit titles; details stay
     in the private issue; vulnerabilities use Security Advisories.
 11. **IDs:** migrated items keep `Legacy-ID: fabro-xxxx` in the body; new
-    items use the issue number. A mapping file resolves old references.
+    items use the issue number. Old references resolve through the
+    tracker itself, not a mapping file: every migrated issue carries the
+    legacy id as a namespaced label (`seeds:fabro-xxxx`), so an exact
+    label lookup resolves old ids with no false positives (bodies citing
+    other ids do not match). Amended 2026-10-21 (user decision, replacing
+    the original `seed-id-map.json` file; label prefix `seeds:` chosen over
+    `legacy:` the same day so the prefix names the origin system, not a
+    deprecation): the label IS the mapping; the tracker is the single
+    source of truth.
 12. **Migration scope:** all items, open first, closed imported as closed
     with original dates in the body, JSONL archived in the tracker repo.
 13. **No history rewrite** of the already-public `.seeds` file as part of
@@ -221,6 +229,63 @@ Rules for the rewrite (user direction 2026-10-20):
 - Verification commands stay parse-level in the implementer and full
   battery in the tester, as today.
 
+### Phase 3 settled forks (grill-with-docs 2026-10-21, user GO on all)
+
+Jev pre-screens ran per question (advisory; framing-bias named; recorded
+in the 2026-10-21 judgment log). Chosen path and rejected alternatives:
+
+1. **Dedupe search** — chosen: server-side `query` parameter on
+   `list_work_items` (endpoint + `fabro_work_list`): tracker text search
+   over title+body, INCLUDING closed items. Rejected: open-only dedupe
+   (re-file risk for closed work — the ADR-0027 inventory showed ~74%
+   rebuild-of-existing classes) and host-side presolve (cannot see
+   mid-run filing races). Engine unit lands BEFORE the workflow units.
+2. **Legacy-id resolution** — chosen: `fabro_work_show` accepts a legacy
+   id; the server resolves it through the forge API via the
+   `seeds:fabro-xxxx` label (exact; body text search stays the
+   human-search path). Seam lands with the Phase-4 importer unit (labels
+   exist only after import). Rejected: host dispatch-time translation
+   (silently rewrites user text) and fail-closed refusal (strands old
+   references).
+3. **overflow-ledger.nu** — chosen: KEEP as-is (the ADR-0022 noise
+   filter survives; only `filed-as` markers change format to item keys,
+   fixtures/pins follow). Rejected: retire-with-file-everything (tracker
+   flood; backlog stagnation is already the top friction component) and
+   reduce-to-report.
+4. **push-gate open-PR check** — chosen: the project claims view
+   (`granted`/`active` = running pass, `awaiting_merge` + `prUrl` = open
+   run PR; refusals name claims and PR urls). Foreign/human PRs no longer
+   block (the GitButler lane-PR class is empty; residual risk documented
+   in the gate header). The `fabro ps` active-run arm STAYS (catches
+   non-tracker runs). Rejected: new repo-PR endpoint (API surface beyond
+   ADR-0032's pipeline view) and runs-scan.
+5. **push-gate `.seeds` integrity check** — chosen: KEEP while the frozen
+   file remains in the repo; drop it in the SAME commit that moves the
+   file to the tracker archive (the path check would refuse forever
+   otherwise). Rejected: drop-at-freeze (rebase can still corrupt the
+   frozen history) and replace-by-tracker-health-probe (couples the gate
+   to GitHub availability).
+6. **Dead gh demo workflows** — chosen: DELETE `gh-list`, `gh-triage`,
+   `implement-issue` (gh-verification and pre-tracker demos; the
+   toolchain has been gh-free since ADR-0019). `merge-upstream` stays
+   untouched (ADR-0027 freeze; it never runs).
+7. **Tracker data into in-sandbox deterministic scripts** — chosen:
+   context flow. LLM stages fetch via `fabro_work_*` and forward through
+   `context_updates` -> `stdin_source`; the engine injects the grant
+   outcome deterministically as a `current_work_item` context key
+   (replaces `current_seed_id` injection; small engine seam). The
+   pre-planner preflight loses its `seeds ready` candidate list and
+   checks the GRANTED item instead; candidate iteration becomes the
+   planner's existing release-and-ask-again loop. Rejected: run-scoped
+   bridge CLI (new engine surface + ADR-0019 review + duplicate agent
+   surface) and retiring tracker arms wholesale (loses the exact-claim
+   binding of the evidence gate).
+8. **closeout-race.nu** — chosen: RETIRE both copies (develop, revisor);
+   the rule becomes a mandated prompt step: the filing stage re-runs
+   `fabro_work_list` with `query=<target run id>` fresh at filing time
+   (the freshness IS the race guard). Rejected: thin-wrapper rewrite on
+   stdin input (script shell without added determinism).
+
 ## Phase 4 — Data migration
 
 1. Freeze `.seeds/issues.jsonl` at a known commit; record the commit sha.
@@ -232,14 +297,17 @@ Rules for the rewrite (user direction 2026-10-20):
    - `Legacy-ID: fabro-xxxx`, `Original-Created`, `Original-Closed`,
      `Migrated-From: denkhaus/fabro@<sha>`;
    - closed items created and closed with `state_reason=completed`;
-   - a mapping file `docs/internal/seed-id-map.json` (old id -> issue
-     number) committed to the Fabro repo;
+   - the legacy id label `seeds:fabro-xxxx` on every migrated issue
+     (amendment 2026-10-21: the label replaces the originally planned
+     mapping file — exact label lookup resolves old references; the
+     resolver also accepts the bare `fabro-xxxx` form and namespaces it);
    - a count/parity report: N source records at freeze (938 at the
      2026-10-20 decision; recount after this epic and fabro-b8b7 are
-     filed), N created issues, 0 duplicate legacy ids, 0 parse errors.
-3. Archive the JSONL and the mapping in the tracker repo
-   (`archive/issues-<date>.jsonl`, `archive/seed-id-map.json`), so the
-   tracker repository is the one place for items and history.
+     filed), N created issues, N `seeds:*` labels (must equal N), 0
+     duplicate legacy ids, 0 parse errors.
+3. Archive the JSONL in the tracker repo
+   (`archive/issues-<date>.jsonl`), so the tracker repository is the one
+   place for items and history.
 4. Dry-run the importer against `project:fabro-dryrun` and diff the
    normalized items against the source.
 

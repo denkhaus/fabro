@@ -322,14 +322,15 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         },
         /**
          *
-         * @summary List open work items of a project
+         * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems: async (projectId: string, lane?: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'projectId' is not null or undefined
             assertParamExists('listWorkItems', 'projectId', projectId)
             const localVarPath = `/api/v1/projects/{projectId}/work-items`
@@ -353,6 +354,10 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
 
             if (lane !== undefined) {
                 localVarQueryParameter['lane'] = lane;
+            }
+
+            if (query !== undefined) {
+                localVarQueryParameter['query'] = query;
             }
 
             if (limit !== undefined) {
@@ -761,15 +766,16 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         },
         /**
          *
-         * @summary List open work items of a project
+         * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkItems(projectId: string, lane?: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, limit, options);
+        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -943,15 +949,16 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         },
         /**
          *
-         * @summary List open work items of a project
+         * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems(projectId: string, lane?: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
-            return localVarFp.listWorkItems(projectId, lane, limit, options).then((request) => request(axios, basePath));
+        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
+            return localVarFp.listWorkItems(projectId, lane, query, limit, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns every configured work-item project, sorted by project id.
@@ -1105,15 +1112,16 @@ export class WorkItemsApi extends BaseAPI {
 
     /**
      *
-     * @summary List open work items of a project
+     * @summary List work items of a project (open, or text-searched)
      * @param {string} projectId Stable work-item project identifier.
      * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
+     * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
      * @param {number} [limit] Maximum items to return (1-100).
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkItems(projectId: string, lane?: string, limit?: number, options?: RawAxiosRequestConfig) {
-        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, limit, options).then((request) => request(this.axios, this.basePath));
+    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
