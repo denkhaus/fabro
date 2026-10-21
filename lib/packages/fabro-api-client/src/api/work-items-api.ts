@@ -50,6 +50,8 @@ import type { WorkItemCreateRequest } from '../models';
 // @ts-ignore
 import type { WorkItemListResponse } from '../models';
 // @ts-ignore
+import type { WorkItemUpdateRequest } from '../models';
+// @ts-ignore
 import type { WorkProject } from '../models';
 // @ts-ignore
 import type { WorkProjectListResponse } from '../models';
@@ -63,7 +65,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          * The server mutex plus candidate selection (the `fabro_work_next` tool, ADR-0032). Lists the project\'s open items from its tracker, skips items with live claims, and atomically grants the highest-priority free item. A run that already holds an item gets outcome=already_held; an empty queue returns outcome=empty.
          * @summary Grant the next eligible work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimNextRequest} workClaimNextRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -108,7 +110,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          *
          * @summary Close a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCloseRequest} workItemCloseRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -153,7 +155,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          *
          * @summary File a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCreateRequest} workItemCreateRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -198,7 +200,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimGrantRequest} workClaimGrantRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -283,7 +285,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          *
          * @summary List live claims of a project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -323,7 +325,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          *
          * @summary List work items of a project (open, or text-searched)
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
@@ -500,7 +502,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
          *
          * @summary Retrieve one work item
          * @param {string} itemKey Provider-stable item identity, e.g. &#x60;denkhaus/work#123&#x60;.
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -546,7 +548,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
         /**
          *
          * @summary Retrieve a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -629,9 +631,54 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
+         * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
+         * @summary Edit a work item\'s title and/or body in the project\'s tracker
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemUpdateRequest} workItemUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateWorkItem: async (projectId: string, workItemUpdateRequest: WorkItemUpdateRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('updateWorkItem', 'projectId', projectId)
+            // verify required parameter 'workItemUpdateRequest' is not null or undefined
+            assertParamExists('updateWorkItem', 'workItemUpdateRequest', workItemUpdateRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/update`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workItemUpdateRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Creates or updates the project\'s tracker configuration. The path id is authoritative; the body omits it.
          * @summary Create or replace a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkProjectUpsertRequest} workProjectUpsertRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -685,7 +732,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          * The server mutex plus candidate selection (the `fabro_work_next` tool, ADR-0032). Lists the project\'s open items from its tracker, skips items with live claims, and atomically grants the highest-priority free item. A run that already holds an item gets outcome=already_held; an empty queue returns outcome=empty.
          * @summary Grant the next eligible work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimNextRequest} workClaimNextRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -699,7 +746,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          *
          * @summary Close a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCloseRequest} workItemCloseRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -713,7 +760,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          *
          * @summary File a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCreateRequest} workItemCreateRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -727,7 +774,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimGrantRequest} workClaimGrantRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -754,7 +801,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          *
          * @summary List live claims of a project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -767,7 +814,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          *
          * @summary List work items of a project (open, or text-searched)
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
@@ -823,7 +870,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          *
          * @summary Retrieve one work item
          * @param {string} itemKey Provider-stable item identity, e.g. &#x60;denkhaus/work#123&#x60;.
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -836,7 +883,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
         /**
          *
          * @summary Retrieve a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -861,9 +908,23 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
+         * @summary Edit a work item\'s title and/or body in the project\'s tracker
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemUpdateRequest} workItemUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async updateWorkItem(projectId: string, workItemUpdateRequest: WorkItemUpdateRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.updateWorkItem(projectId, workItemUpdateRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.updateWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Creates or updates the project\'s tracker configuration. The path id is authoritative; the body omits it.
          * @summary Create or replace a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkProjectUpsertRequest} workProjectUpsertRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -886,7 +947,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          * The server mutex plus candidate selection (the `fabro_work_next` tool, ADR-0032). Lists the project\'s open items from its tracker, skips items with live claims, and atomically grants the highest-priority free item. A run that already holds an item gets outcome=already_held; an empty queue returns outcome=empty.
          * @summary Grant the next eligible work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimNextRequest} workClaimNextRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -897,7 +958,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          *
          * @summary Close a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCloseRequest} workItemCloseRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -908,7 +969,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          *
          * @summary File a work item in the project\'s tracker
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkItemCreateRequest} workItemCreateRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -919,7 +980,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkClaimGrantRequest} workClaimGrantRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -940,7 +1001,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          *
          * @summary List live claims of a project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -950,7 +1011,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          *
          * @summary List work items of a project (open, or text-searched)
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
          * @param {number} [limit] Maximum items to return (1-100).
@@ -994,7 +1055,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          *
          * @summary Retrieve one work item
          * @param {string} itemKey Provider-stable item identity, e.g. &#x60;denkhaus/work#123&#x60;.
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1004,7 +1065,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
         /**
          *
          * @summary Retrieve a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1023,9 +1084,20 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
             return localVarFp.transitionWorkClaim(claimId, workClaimTransitionRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
+         * @summary Edit a work item\'s title and/or body in the project\'s tracker
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemUpdateRequest} workItemUpdateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateWorkItem(projectId: string, workItemUpdateRequest: WorkItemUpdateRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+            return localVarFp.updateWorkItem(projectId, workItemUpdateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Creates or updates the project\'s tracker configuration. The path id is authoritative; the body omits it.
          * @summary Create or replace a work project
-         * @param {string} projectId Stable work-item project identifier.
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {WorkProjectUpsertRequest} workProjectUpsertRequest
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1043,7 +1115,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      * The server mutex plus candidate selection (the `fabro_work_next` tool, ADR-0032). Lists the project\'s open items from its tracker, skips items with live claims, and atomically grants the highest-priority free item. A run that already holds an item gets outcome=already_held; an empty queue returns outcome=empty.
      * @summary Grant the next eligible work item to a run
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {WorkClaimNextRequest} workClaimNextRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1055,7 +1127,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      *
      * @summary Close a work item in the project\'s tracker
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {WorkItemCloseRequest} workItemCloseRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1067,7 +1139,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      *
      * @summary File a work item in the project\'s tracker
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {WorkItemCreateRequest} workItemCreateRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1079,7 +1151,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
      * @summary Atomically grant a work item to a run
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {WorkClaimGrantRequest} workClaimGrantRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
@@ -1102,7 +1174,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      *
      * @summary List live claims of a project
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -1113,7 +1185,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      *
      * @summary List work items of a project (open, or text-searched)
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
      * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
      * @param {number} [limit] Maximum items to return (1-100).
@@ -1161,7 +1233,7 @@ export class WorkItemsApi extends BaseAPI {
      *
      * @summary Retrieve one work item
      * @param {string} itemKey Provider-stable item identity, e.g. &#x60;denkhaus/work#123&#x60;.
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -1172,7 +1244,7 @@ export class WorkItemsApi extends BaseAPI {
     /**
      *
      * @summary Retrieve a work project
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
@@ -1193,9 +1265,21 @@ export class WorkItemsApi extends BaseAPI {
     }
 
     /**
+     * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
+     * @summary Edit a work item\'s title and/or body in the project\'s tracker
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkItemUpdateRequest} workItemUpdateRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public updateWorkItem(projectId: string, workItemUpdateRequest: WorkItemUpdateRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).updateWorkItem(projectId, workItemUpdateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Creates or updates the project\'s tracker configuration. The path id is authoritative; the body omits it.
      * @summary Create or replace a work project
-     * @param {string} projectId Stable work-item project identifier.
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {WorkProjectUpsertRequest} workProjectUpsertRequest
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}

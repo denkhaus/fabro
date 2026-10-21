@@ -13,8 +13,8 @@ use fabro_api::types::{
     WorkClaimGrantOutcome, WorkClaimGrantRequest, WorkClaimGrantResponse, WorkClaimListResponse,
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
-    WorkItemCreateRequest, WorkItemListResponse, WorkProject as ApiWorkProject,
-    WorkProjectListResponse, WorkProjectUpsertRequest,
+    WorkItemCreateRequest, WorkItemListResponse, WorkItemUpdateRequest,
+    WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{PlatformRecord, WorkClaimedRecord, WorkReleasedRecord};
 use fabro_types::RunId;
@@ -46,6 +46,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/close",
             post(close_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/update",
+            post(update_work_item),
         )
         .route("/projects/{projectId}/next", post(claim_next))
         .route("/projects/{projectId}/work-item", get(retrieve_work_item))
@@ -87,12 +91,18 @@ async fn upsert_project(
     Json(request): Json<WorkProjectUpsertRequest>,
 ) -> Result<Response, ApiError> {
     validate_project_id(&project_id)?;
+    if project_id == "self" {
+        return Err(ApiError::bad_request(
+            "project id `self` is reserved for run-scoped project resolution",
+        ));
+    }
     validate_project(&request)?;
     let project = WorkProject {
         project_id:               project_id.clone(),
         display_name:             request.display_name,
         tracker_provider:         request.tracker_provider,
         tracker_repo:             request.tracker_repo,
+        target_repo:              request.target_repo,
         project_label:            request.project_label,
         lane_labels:              request.lane_labels.into_iter().collect::<BTreeMap<_, _>>(),
         claim_label_prefix:       request
@@ -138,7 +148,7 @@ async fn list_claims(
 }
 
 async fn grant_claim(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimGrantRequest>,
@@ -147,24 +157,46 @@ async fn grant_claim(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let outcome = state
         .work_store()
         .grant(&GrantRequest {
-            project_id: project_id.clone(),
-            item_key: request.item_key,
+            project_id: project.project_id.clone(),
+            item_key: request.item_key.clone(),
             run_id,
             lane: request.lane,
         })
         .await
         .map_err(store_error)?;
-    let (outcome, claim) = match outcome {
-        GrantOutcome::Granted(claim) => (WorkClaimGrantOutcome::Granted, claim),
-        GrantOutcome::AlreadyHeld(claim) => (WorkClaimGrantOutcome::AlreadyHeld, claim),
-        GrantOutcome::Conflict(claim) => (WorkClaimGrantOutcome::Conflict, claim),
+    let (outcome, claim, item_key) = match outcome {
+        GrantOutcome::Granted(claim) => {
+            let key = claim.item_key.clone();
+            (WorkClaimGrantOutcome::Granted, claim, key)
+        }
+        GrantOutcome::AlreadyHeld(claim) => {
+            let key = claim.item_key.clone();
+            (WorkClaimGrantOutcome::AlreadyHeld, claim, key)
+        }
+        GrantOutcome::Conflict(claim) => {
+            let key = claim.item_key.clone();
+            (WorkClaimGrantOutcome::Conflict, claim, key)
+        }
     };
+    // The granted item rides along (tool parity with /next: one call
+    // returns claim + item; null when the tracker cannot serve it).
+    let mut item = None;
+    if matches!(
+        outcome,
+        WorkClaimGrantOutcome::Granted | WorkClaimGrantOutcome::AlreadyHeld
+    ) {
+        if let Ok(tracker) = tracker_for(&state, &project).await {
+            item = tracker.get(&project, &item_key).await.ok().flatten();
+        }
+    }
     Ok(Json(WorkClaimGrantResponse {
         outcome,
         claim: api_claim(claim)?,
+        item: item.map(api_item),
     })
     .into_response())
 }
@@ -351,12 +383,12 @@ fn store_error(error: fabro_work::Error) -> ApiError {
 }
 
 async fn list_work_items(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemQuery>,
 ) -> Result<Response, ApiError> {
-    let project = load_project(&state, &project_id).await?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let tracker = tracker_for(&state, &project).await?;
     let items = tracker
         .list(&project, WorkItemFilter {
@@ -380,7 +412,7 @@ struct WorkItemQuery {
 }
 
 async fn create_work_item(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCreateRequest>,
@@ -391,7 +423,7 @@ async fn create_work_item(
     if request.body.trim().is_empty() {
         return Err(ApiError::bad_request("body must not be empty"));
     }
-    let project = load_project(&state, &project_id).await?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let tracker = tracker_for(&state, &project).await?;
     let mut labels = vec![project.project_label.clone()];
     labels.extend(request.labels);
@@ -409,12 +441,12 @@ async fn create_work_item(
 }
 
 async fn close_work_item(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCloseRequest>,
 ) -> Result<Response, ApiError> {
-    let project = load_project(&state, &project_id).await?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let tracker = tracker_for(&state, &project).await?;
     tracker
         .close(&project, &request.item_key, &request.reason)
@@ -423,7 +455,7 @@ async fn close_work_item(
     // A closed item releases any live claim (DB first, projection second).
     if let Some(claim) = state
         .work_store()
-        .active_claim_for_item(&project_id, &request.item_key)
+        .active_claim_for_item(&project.project_id, &request.item_key)
         .await
         .map_err(store_error)?
     {
@@ -442,8 +474,40 @@ async fn close_work_item(
     Ok(Json(api_item(item)).into_response())
 }
 
+async fn update_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemUpdateRequest>,
+) -> Result<Response, ApiError> {
+    if request.title.as_deref().map_or("", str::trim).is_empty()
+        && request.body.as_deref().map_or("", str::trim).is_empty()
+    {
+        return Err(ApiError::bad_request(
+            "work item update needs a title or a body",
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let body = request
+        .body
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let item = tracker
+        .update(&project, &request.item_key, title, body)
+        .await
+        .map_err(tracker_failed)?;
+    Ok(Json(api_item(item)).into_response())
+}
+
 async fn claim_next(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimNextRequest>,
@@ -452,7 +516,7 @@ async fn claim_next(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
-    let project = load_project(&state, &project_id).await?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let tracker = state
         .work_tracker_for_project(&project)
         .await
@@ -472,7 +536,7 @@ async fn claim_next(
         .map_err(tracker_failed)?;
     let mut claimed: std::collections::HashSet<String> = state
         .work_store()
-        .active_claims(&project_id)
+        .active_claims(&project.project_id)
         .await
         .map_err(store_error)?
         .into_iter()
@@ -485,7 +549,7 @@ async fn claim_next(
     // the grant even when it forgets the guard.
     let awaiting_merge = state
         .work_store()
-        .active_claims_of_lane(&project_id, &request.lane)
+        .active_claims_of_lane(&project.project_id, &request.lane)
         .await
         .map_err(store_error)?
         .into_iter()
@@ -494,7 +558,7 @@ async fn claim_next(
     if awaiting_merge > usize::try_from(project.backpressure_open_pr_cap.max(0)).unwrap_or(0) {
         let blocking = state
             .work_store()
-            .active_claims_of_lane(&project_id, &request.lane)
+            .active_claims_of_lane(&project.project_id, &request.lane)
             .await
             .map_err(store_error)?
             .into_iter()
@@ -518,7 +582,7 @@ async fn claim_next(
         match state
             .work_store()
             .grant(&GrantRequest {
-                project_id: project_id.clone(),
+                project_id: project.project_id.clone(),
                 item_key: item.item_key.clone(),
                 run_id,
                 lane: request.lane.clone(),
@@ -624,7 +688,7 @@ async fn append_work_record(state: &Arc<AppState>, run_id: RunId, record: Platfo
 }
 
 async fn retrieve_work_item(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemKeyQuery>,
@@ -632,7 +696,7 @@ async fn retrieve_work_item(
     let item_key = params
         .item_key
         .ok_or_else(|| ApiError::bad_request("itemKey is required"))?;
-    let project = load_project(&state, &project_id).await?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
     let tracker = tracker_for(&state, &project).await?;
     let item = tracker
         .get(&project, &item_key)
@@ -655,6 +719,52 @@ async fn load_project(state: &Arc<AppState>, project_id: &str) -> Result<WorkPro
         .await
         .map_err(store_error)?
         .ok_or_else(|| not_found("work project", project_id))
+}
+
+/// `self` resolves to the project bound to the authenticated run's target
+/// repository (project-agnostic workflows, ADR-0032 phase 3): the prompts
+/// name neither vendor, repository nor project id — the run-scoped caller
+/// says `self` and the server owns the binding. A non-run caller (a user)
+/// has no `self`; every literal id takes the direct path.
+async fn resolve_project(
+    state: &Arc<AppState>,
+    auth: &RequiredRunManagementActor,
+    project_id: &str,
+) -> Result<WorkProject, ApiError> {
+    if project_id != "self" {
+        return load_project(state, project_id).await;
+    }
+    let fabro_types::Principal::Worker { run_id } = &auth.0 else {
+        return Err(ApiError::bad_request(
+            "project `self` resolves through a run-scoped caller; a user names the project id",
+        ));
+    };
+    let projection = state.load_run_projection(run_id).await.map_err(|_| {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            format!("run {run_id} not found — cannot resolve project `self`"),
+        )
+    })?;
+    let Some(fabro_types::RunTarget::Git(target)) = projection.spec.target.as_ref() else {
+        return Err(ApiError::bad_request(
+            "run has no git target — project `self` cannot resolve; name the project id",
+        ));
+    };
+    state
+        .work_store()
+        .project_for_target(&target.repo)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                format!(
+                    "no work project is bound to target repository {} — configure the project's \
+                     targetRepo or name the project id",
+                    target.repo
+                ),
+            )
+        })
 }
 
 async fn tracker_for(
@@ -740,6 +850,7 @@ fn api_project(project: WorkProject) -> ApiWorkProject {
         lane_labels:              project.lane_labels.into_iter().collect(),
         project_id:               project.project_id,
         project_label:            project.project_label,
+        target_repo:              project.target_repo,
         tracker_provider:         project.tracker_provider,
         tracker_repo:             project.tracker_repo,
     }
@@ -795,5 +906,310 @@ fn store_state(state: WorkClaimState) -> ClaimState {
         WorkClaimState::AwaitingMerge => ClaimState::AwaitingMerge,
         WorkClaimState::Landed => ClaimState::Landed,
         WorkClaimState::Released => ClaimState::Released,
+    }
+}
+
+#[cfg(test)]
+mod resolve_self_tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use axum::http::{HeaderMap, StatusCode};
+    use fabro_static::EnvVars;
+    use fabro_types::{GitRunTarget, Principal, RunId, RunTarget, SystemActorKind, WorkflowPath};
+
+    use super::resolve_project;
+    use crate::principal_middleware::RequiredRunManagementActor;
+    use crate::server::AppState;
+    use crate::test_support::TestAppStateBuilder;
+
+    const MINIMAL_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        start -> exit
+    }"#;
+
+    fn state() -> Arc<AppState> {
+        TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .build()
+    }
+
+    async fn create_run_with_target(state: &Arc<AppState>, target: RunTarget) -> RunId {
+        let entrypoint = WorkflowPath::new("workflow.fabro").unwrap();
+        let files = BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
+        let version =
+            fabro_types::WorkflowVersion::new(entrypoint, files, BTreeMap::new()).unwrap();
+        let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version).unwrap();
+        let workflow_version_id =
+            fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs())
+                .put(&version)
+                .await
+                .unwrap();
+        let run_id = RunId::new();
+        let response = Box::pin(crate::server::handler::runs::create_run_from_intent(
+            Arc::clone(state),
+            crate::server::handler::runs::CreateRunFromIntentRequest {
+                intent:          fabro_api::types::RunIntent {
+                    workflow_version_id,
+                    target,
+                    args: fabro_api::types::RunIntentArgs::default(),
+                    environment_id: None,
+                    parent_id: None,
+                    title: None,
+                    goal: None,
+                    force: None,
+                },
+                explicit_run_id: Some(run_id),
+                actor:           Principal::System {
+                    system_kind: SystemActorKind::Engine,
+                },
+                headers:         HeaderMap::new(),
+                automation:      None,
+            },
+        ))
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::CREATED,
+            "the fixture run must be created"
+        );
+        run_id
+    }
+
+    fn bound_project() -> fabro_work::WorkProject {
+        fabro_work::WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn self_resolves_to_the_project_bound_to_the_runs_target_repo() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let project = resolve_project(&state, &auth, "self").await.unwrap();
+        assert_eq!(project.project_id, "fabro");
+        assert_eq!(project.target_repo.as_deref(), Some("denkhaus/fabro"));
+    }
+
+    #[tokio::test]
+    async fn self_with_an_unbound_target_repo_is_not_found() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/other".to_string(),
+                branch: "main".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let error = resolve_project(&state, &auth, "self")
+            .await
+            .expect_err("no project is bound to the run's target repo");
+        assert_eq!(error.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn self_without_a_git_target_is_refused() {
+        let state = state();
+        let run_id = create_run_with_target(&state, RunTarget::None {}).await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let error = resolve_project(&state, &auth, "self")
+            .await
+            .expect_err("a run without a git target has no `self` project");
+        assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn self_flows_through_next_and_lands_in_the_bound_projects_ledger() {
+        use axum::extract::{Path, State};
+        use chrono::Utc;
+        use fabro_api::types::WorkClaimNextRequest;
+        use fabro_work::{TrackerProvider, WorkItem, WorkItemFilter};
+
+        use super::claim_next;
+
+        struct OneItemTracker;
+        #[async_trait::async_trait]
+        impl TrackerProvider for OneItemTracker {
+            async fn list(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _filter: WorkItemFilter,
+            ) -> anyhow::Result<Vec<WorkItem>> {
+                Ok(vec![WorkItem {
+                    item_key:   "denkhaus/work#1".to_string(),
+                    title:      "Item 1".to_string(),
+                    body:       "the spec".to_string(),
+                    state:      "open".to_string(),
+                    labels:     vec!["lane:loop".to_string()],
+                    priority:   1,
+                    url:        "https://github.com/denkhaus/work/issues/1".to_string(),
+                    updated_at: Some(Utc::now()),
+                }])
+            }
+            async fn get(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+            ) -> anyhow::Result<Option<WorkItem>> {
+                Ok(None)
+            }
+            async fn create(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _draft: fabro_work::WorkItemDraft,
+            ) -> anyhow::Result<WorkItem> {
+                anyhow::bail!("not needed")
+            }
+            async fn update(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _title: Option<&str>,
+                _body: Option<&str>,
+            ) -> anyhow::Result<WorkItem> {
+                anyhow::bail!("not needed")
+            }
+            async fn close(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _reason: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn comment(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _body: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn project_claim(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _run_id: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn clear_claim(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _run_id: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+        }
+
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(OneItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+
+        let response = claim_next(
+            auth,
+            State(Arc::clone(&state)),
+            Path("self".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["outcome"], "granted", "the run claims through `self`");
+
+        // The claim must live under the RESOLVED project, never a literal
+        // `self` row (the ledger split the raw path id used to cause).
+        let claims = state.work_store().active_claims("fabro").await.unwrap();
+        assert_eq!(
+            claims.len(),
+            1,
+            "the grant lands in the bound project's ledger"
+        );
+        assert_eq!(claims[0].item_key, "denkhaus/work#1");
+        let ghost = state.work_store().active_claims("self").await.unwrap();
+        assert!(
+            ghost.is_empty(),
+            "no claim may land under the literal `self`"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_non_run_caller_cannot_use_self() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let auth = RequiredRunManagementActor(Principal::Webhook {
+            delivery_id: "delivery".to_string(),
+        });
+        let error = resolve_project(&state, &auth, "self")
+            .await
+            .expect_err("`self` is reserved for run-scoped callers");
+        assert_eq!(error.status(), StatusCode::BAD_REQUEST);
     }
 }

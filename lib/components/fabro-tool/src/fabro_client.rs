@@ -169,10 +169,48 @@ impl FabroToolBackend for ClientBackend {
         project: &str,
         run_id: &RunId,
         lane: &str,
+        item_key: Option<&str>,
     ) -> anyhow::Result<types::WorkClaimNextResponse> {
         self.ensure_run_scope(run_id)?;
+        match item_key {
+            Some(item_key) => {
+                let granted = self
+                    .client
+                    .grant_work_item(project, item_key, run_id, lane)
+                    .await?;
+                Ok(types::WorkClaimNextResponse {
+                    outcome: match granted.outcome {
+                        types::WorkClaimGrantOutcome::Granted => {
+                            types::WorkClaimNextOutcome::Granted
+                        }
+                        types::WorkClaimGrantOutcome::AlreadyHeld => {
+                            types::WorkClaimNextOutcome::AlreadyHeld
+                        }
+                        types::WorkClaimGrantOutcome::Conflict => {
+                            types::WorkClaimNextOutcome::Empty
+                        }
+                    },
+                    claim:   Some(granted.claim),
+                    item:    granted.item,
+                })
+            }
+            None => {
+                self.client
+                    .claim_next_work_item(project, run_id, lane)
+                    .await
+            }
+        }
+    }
+
+    async fn work_update(
+        &self,
+        project: &str,
+        item_key: &str,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> anyhow::Result<types::WorkItem> {
         self.client
-            .claim_next_work_item(project, run_id, lane)
+            .update_work_item(project, item_key, title, body)
             .await
     }
 

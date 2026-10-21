@@ -30,6 +30,10 @@ pub struct WorkProject {
     pub display_name:             String,
     pub tracker_provider:         String,
     pub tracker_repo:             String,
+    /// The code repository this project's runs work on (ADR-0032 phase 3:
+    /// run-target project resolution). `None` keeps the project
+    /// explicit-only — runs of such a project must name it.
+    pub target_repo:              Option<String>,
     pub project_label:            String,
     pub lane_labels:              BTreeMap<String, String>,
     pub claim_label_prefix:       String,
@@ -181,14 +185,16 @@ impl WorkStore {
         sqlx::query(
             r"
 INSERT INTO work_projects (
-    project_id, display_name, tracker_provider, tracker_repo, project_label,
-    lane_labels_json, claim_label_prefix, claim_comment_enabled,
-    backpressure_open_pr_cap, created_at_ms, updated_at_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    project_id, display_name, tracker_provider, tracker_repo, target_repo,
+    project_label, lane_labels_json, claim_label_prefix,
+    claim_comment_enabled, backpressure_open_pr_cap, created_at_ms,
+    updated_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(project_id) DO UPDATE SET
     display_name = excluded.display_name,
     tracker_provider = excluded.tracker_provider,
     tracker_repo = excluded.tracker_repo,
+    target_repo = excluded.target_repo,
     project_label = excluded.project_label,
     lane_labels_json = excluded.lane_labels_json,
     claim_label_prefix = excluded.claim_label_prefix,
@@ -201,6 +207,7 @@ ON CONFLICT(project_id) DO UPDATE SET
         .bind(&project.display_name)
         .bind(&project.tracker_provider)
         .bind(&project.tracker_repo)
+        .bind(&project.target_repo)
         .bind(&project.project_label)
         .bind(lane_labels)
         .bind(&project.claim_label_prefix)
@@ -218,7 +225,7 @@ ON CONFLICT(project_id) DO UPDATE SET
         let row = sqlx::query(
             r"
 SELECT project_id, display_name, tracker_provider, tracker_repo,
-       project_label, lane_labels_json, claim_label_prefix,
+       target_repo, project_label, lane_labels_json, claim_label_prefix,
        claim_comment_enabled, backpressure_open_pr_cap
 FROM work_projects
 WHERE project_id = ?
@@ -230,12 +237,33 @@ WHERE project_id = ?
         row.as_ref().map(project_from_row).transpose()
     }
 
+    /// The project whose `target_repo` names the given code repository
+    /// (run-target resolution, ADR-0032 phase 3). First match wins; the
+    /// deployment contract is one project per target repo.
+    pub async fn project_for_target(&self, target_repo: &str) -> Result<Option<WorkProject>> {
+        let row = sqlx::query(
+            r"
+SELECT project_id, display_name, tracker_provider, tracker_repo,
+       target_repo, project_label, lane_labels_json, claim_label_prefix,
+       claim_comment_enabled, backpressure_open_pr_cap
+FROM work_projects
+WHERE target_repo = ?
+ORDER BY project_id
+LIMIT 1
+",
+        )
+        .bind(target_repo)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(project_from_row).transpose()
+    }
+
     /// Read every configured project, ordered by id.
     pub async fn projects(&self) -> Result<Vec<WorkProject>> {
         let rows = sqlx::query(
             r"
 SELECT project_id, display_name, tracker_provider, tracker_repo,
-       project_label, lane_labels_json, claim_label_prefix,
+       target_repo, project_label, lane_labels_json, claim_label_prefix,
        claim_comment_enabled, backpressure_open_pr_cap
 FROM work_projects
 ORDER BY project_id
@@ -773,6 +801,7 @@ fn project_from_row(row: &SqliteRow) -> Result<WorkProject> {
         display_name:             row.try_get("display_name")?,
         tracker_provider:         row.try_get("tracker_provider")?,
         tracker_repo:             row.try_get("tracker_repo")?,
+        target_repo:              row.try_get("target_repo")?,
         project_label:            row.try_get("project_label")?,
         lane_labels:              serde_json::from_str(&lane_labels_json)?,
         claim_label_prefix:       row.try_get("claim_label_prefix")?,
@@ -868,6 +897,7 @@ mod tests {
             display_name:             "Fabro".to_string(),
             tracker_provider:         "github".to_string(),
             tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
             project_label:            "project:fabro".to_string(),
             lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
                 .into_iter()
@@ -909,6 +939,31 @@ mod tests {
         updated.claim_comment_enabled = true;
         store.upsert_project(&updated).await.unwrap();
         assert_eq!(store.project("fabro").await.unwrap(), Some(updated));
+    }
+
+    #[tokio::test]
+    async fn project_for_target_resolves_the_bound_project() {
+        let (_directory, store) = store().await;
+        assert_eq!(
+            store.project_for_target("denkhaus/fabro").await.unwrap(),
+            Some(project()),
+            "the project bound to the target repository resolves"
+        );
+        assert_eq!(
+            store.project_for_target("denkhaus/other").await.unwrap(),
+            None,
+            "an unbound repository resolves to nothing"
+        );
+
+        let mut explicit_only = project();
+        explicit_only.project_id = "explicit".to_string();
+        explicit_only.target_repo = None;
+        store.upsert_project(&explicit_only).await.unwrap();
+        assert_eq!(
+            store.project_for_target("denkhaus/unbound").await.unwrap(),
+            None,
+            "a project without target_repo stays explicit-only"
+        );
     }
 
     #[tokio::test]

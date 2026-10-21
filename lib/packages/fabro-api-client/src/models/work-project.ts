@@ -33,6 +33,10 @@ export interface WorkProject {
      */
     'trackerRepo': string;
     /**
+     * The code repository this project\'s runs work on; a run resolves its project from its run target when this is set. Null keeps the project explicit-only.
+     */
+    'targetRepo'?: string;
+    /**
      * Label that scopes items to this project, e.g. `project:fabro`.
      */
     'projectLabel': string;

@@ -103,14 +103,28 @@ pub trait FabroToolBackend: Send + Sync {
         }
     }
 
-    /// `fabro_work_next` (ADR-0032): the atomic next-item grant.
+    /// `fabro_work_next` (ADR-0032): the atomic next-item grant. An
+    /// `item_key` claims exactly that item (the goal-named fast path)
+    /// instead of the highest-priority free one.
     async fn work_next(
         &self,
         _project: &str,
         _run_id: &RunId,
         _lane: &str,
+        _item_key: Option<&str>,
     ) -> anyhow::Result<types::WorkClaimNextResponse> {
         Err(work_tool_unavailable_error(FABRO_WORK_NEXT_TOOL_NAME))
+    }
+
+    /// `fabro_work_update`: edit an item's title and/or body in place.
+    async fn work_update(
+        &self,
+        _project: &str,
+        _item_key: &str,
+        _title: Option<&str>,
+        _body: Option<&str>,
+    ) -> anyhow::Result<types::WorkItem> {
+        Err(work_tool_unavailable_error(FABRO_WORK_UPDATE_TOOL_NAME))
     }
 
     async fn work_show(&self, _project: &str, _item_key: &str) -> anyhow::Result<types::WorkItem> {
@@ -367,6 +381,7 @@ pub const FABRO_WORK_SHOW_TOOL_NAME: &str = "fabro_work_show";
 pub const FABRO_WORK_LIST_TOOL_NAME: &str = "fabro_work_list";
 pub const FABRO_WORK_CREATE_TOOL_NAME: &str = "fabro_work_create";
 pub const FABRO_WORK_CLOSE_TOOL_NAME: &str = "fabro_work_close";
+pub const FABRO_WORK_UPDATE_TOOL_NAME: &str = "fabro_work_update";
 pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
@@ -421,7 +436,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroWorkNextParams>(
             FABRO_WORK_NEXT_TOOL_NAME,
-            "Atomically claim the next free work item of the project's lane for this run: the server picks the highest-priority unclaimed item and grants it exclusively (one live claim per item and per run — two runs never get the same item). Returns outcome granted (claim + item), already_held (this run's live claim), or empty. Release a misrouted or stale-basis claim with fabro_work_release and call again.",
+            "Atomically claim a work item for this run: pass itemKey to claim exactly that item (the goal-named fast path; a taken or missing item answers empty), or omit it and the server picks the highest-priority unclaimed item of the lane. One live claim per item and per run — two runs never get the same item. Returns outcome granted (claim + item), already_held (this run's live claim), or empty. Release a misrouted or stale-basis claim with fabro_work_release and call again. Omit project to use this run's project.",
         ),
         tool_definition::<crate::FabroWorkShowParams>(
             FABRO_WORK_SHOW_TOOL_NAME,
@@ -438,6 +453,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroWorkCloseParams>(
             FABRO_WORK_CLOSE_TOOL_NAME,
             "Close a work item with a reason (lands as a tracker comment); a live claim on it is released.",
+        ),
+        tool_definition::<crate::FabroWorkUpdateParams>(
+            FABRO_WORK_UPDATE_TOOL_NAME,
+            "Edit a work item's title and/or body in place (spec corrections must reach every later reader, not just this run's brief).",
         ),
         tool_definition::<crate::FabroWorkReleaseParams>(
             FABRO_WORK_RELEASE_TOOL_NAME,
@@ -599,6 +618,7 @@ mod tests {
             FABRO_WORK_LIST_TOOL_NAME,
             FABRO_WORK_CREATE_TOOL_NAME,
             FABRO_WORK_CLOSE_TOOL_NAME,
+            FABRO_WORK_UPDATE_TOOL_NAME,
             FABRO_WORK_RELEASE_TOOL_NAME,
             FABRO_ASK_TOOL_NAME,
         ]);

@@ -73,6 +73,19 @@ pub trait TrackerProvider: Send + Sync {
         draft: WorkItemDraft,
     ) -> anyhow::Result<WorkItem>;
 
+    /// Edit an item's title and/or body in place (spec corrections must
+    /// reach every later reader — reviewers, implementers, humans in the
+    /// tracker; fabro-4c81's mandate under the new tracker). At least one
+    /// of title/body must carry a new value; providers return the updated
+    /// item.
+    async fn update(
+        &self,
+        project: &crate::WorkProject,
+        item_key: &str,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> anyhow::Result<WorkItem>;
+
     async fn close(
         &self,
         project: &crate::WorkProject,
@@ -139,6 +152,16 @@ impl TrackerProvider for NullTracker {
         &self,
         _project: &crate::WorkProject,
         _draft: WorkItemDraft,
+    ) -> anyhow::Result<WorkItem> {
+        anyhow::bail!("this project has no tracker provider")
+    }
+
+    async fn update(
+        &self,
+        _project: &crate::WorkProject,
+        _item_key: &str,
+        _title: Option<&str>,
+        _body: Option<&str>,
     ) -> anyhow::Result<WorkItem> {
         anyhow::bail!("this project has no tracker provider")
     }

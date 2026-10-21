@@ -19,6 +19,9 @@ import type { WorkClaim } from './work-claim';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { WorkClaimGrantOutcome } from './work-claim-grant-outcome';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { WorkItem } from './work-item';
 
 /**
  * The grant result; `conflict` carries the live claim that won.
@@ -26,4 +29,8 @@ import type { WorkClaimGrantOutcome } from './work-claim-grant-outcome';
 export interface WorkClaimGrantResponse {
     'outcome': WorkClaimGrantOutcome;
     'claim': WorkClaim;
+    /**
+     * The granted item; null on conflict.
+     */
+    'item'?: WorkItem;
 }

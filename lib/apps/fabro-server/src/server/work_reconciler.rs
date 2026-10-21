@@ -296,6 +296,16 @@ mod tests {
             anyhow::bail!("not needed")
         }
 
+        async fn update(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+
         async fn close(
             &self,
             _project: &WorkProject,
@@ -353,6 +363,7 @@ mod tests {
                 display_name:             "Fabro".to_string(),
                 tracker_provider:         "github".to_string(),
                 tracker_repo:             "denkhaus/work".to_string(),
+                target_repo:              None,
                 project_label:            "project:fabro".to_string(),
                 lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
                     .into_iter()

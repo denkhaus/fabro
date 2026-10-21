@@ -605,6 +605,7 @@ models/work-claim.ts
 models/work-item-close-request.ts
 models/work-item-create-request.ts
 models/work-item-list-response.ts
+models/work-item-update-request.ts
 models/work-item.ts
 models/work-project-list-response.ts
 models/work-project-upsert-request.ts

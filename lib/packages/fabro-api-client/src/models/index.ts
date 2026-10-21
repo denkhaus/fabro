@@ -575,6 +575,7 @@ export * from './work-item';
 export * from './work-item-close-request';
 export * from './work-item-create-request';
 export * from './work-item-list-response';
+export * from './work-item-update-request';
 export * from './work-project';
 export * from './work-project-list-response';
 export * from './work-project-upsert-request';

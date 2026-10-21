@@ -21,19 +21,24 @@ use super::common::{FabroToolBackend, ToolError, ToolResult};
 /// exclusively (one live claim per item and per run).
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkNextParams {
-    /// The project id (the run's tracker scope).
-    pub project: String,
+    /// The project id; omit it to use THIS run's project (its target
+    /// repository binding resolves server-side).
+    pub project:  Option<String>,
     /// The lane to claim for, e.g. `loop`.
-    pub lane:    String,
+    pub lane:     String,
+    /// Claim exactly this item (the goal-named fast path) instead of the
+    /// highest-priority free item. Refused when the item is not free.
+    #[serde(rename = "itemKey")]
+    pub item_key: Option<String>,
     /// The run that claims: a run id. Optional; defaults to THIS run.
-    pub run:     Option<String>,
+    pub run:      Option<String>,
 }
 
 /// `fabro_work_show`: read one work item by its provider-stable key.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkShowParams {
-    /// The project id.
-    pub project:  String,
+    /// The project id; omit it to use THIS run's project.
+    pub project:  Option<String>,
     /// The provider-stable item key, e.g. `denkhaus/work#123`.
     #[serde(rename = "itemKey")]
     pub item_key: String,
@@ -44,8 +49,8 @@ pub struct FabroWorkShowParams {
 /// the file tracker's `seeds list`/`seeds ready` reads (ADR-0032).
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkListParams {
-    /// The project id.
-    pub project: String,
+    /// The project id; omit it to use THIS run's project.
+    pub project: Option<String>,
     /// Only items carrying the project's label for this lane. Optional.
     pub lane:    Option<String>,
     /// Plain-keyword text search over title and body, INCLUDING closed
@@ -79,7 +84,7 @@ impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
             query,
             limit,
         } = params;
-        let project = non_blank(&project, "project")?;
+        let project = resolve_project(project.as_deref())?;
         let lane = match lane.as_deref() {
             Some(value) => {
                 let trimmed = value.trim();
@@ -117,8 +122,8 @@ impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
 /// `fabro_work_create`: file a work item in the project's tracker.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkCreateParams {
-    /// The project id.
-    pub project: String,
+    /// The project id; omit it to use THIS run's project.
+    pub project: Option<String>,
     /// Short English title (repo rule).
     pub title:   String,
     /// The spec body.
@@ -128,11 +133,29 @@ pub struct FabroWorkCreateParams {
     pub labels:  Vec<String>,
 }
 
+/// `fabro_work_update`: edit a work item's title and/or body in place
+/// (spec corrections must reach every later reader — fabro-4c81 under
+/// ADR-0032; a corrected citation lives in the tracker, never only in a
+/// run's brief).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroWorkUpdateParams {
+    /// The project id; omit it to use THIS run's project.
+    pub project:  Option<String>,
+    /// The provider-stable item key.
+    #[serde(rename = "itemKey")]
+    pub item_key: String,
+    /// The new title; omit to leave it unchanged.
+    pub title:    Option<String>,
+    /// The new body, wholesale (re-emit the FULL corrected body); omit to
+    /// leave it unchanged.
+    pub body:     Option<String>,
+}
+
 /// `fabro_work_close`: close a work item with a reason comment.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkCloseParams {
-    /// The project id.
-    pub project:  String,
+    /// The project id; omit it to use THIS run's project.
+    pub project:  Option<String>,
     /// The provider-stable item key.
     #[serde(rename = "itemKey")]
     pub item_key: String,
@@ -153,22 +176,32 @@ pub struct FabroWorkReleaseParams {
 /// (the session's own run), project and lane are non-blank.
 #[derive(Debug)]
 pub struct ValidatedWorkNext {
-    pub project: String,
-    pub lane:    String,
-    pub run:     Option<String>,
+    pub project:  String,
+    pub lane:     String,
+    pub item_key: Option<String>,
+    pub run:      Option<String>,
 }
 
 impl TryFrom<FabroWorkNextParams> for ValidatedWorkNext {
     type Error = ToolError;
 
     fn try_from(params: FabroWorkNextParams) -> Result<Self, Self::Error> {
-        let project = non_blank(&params.project, "project")?;
+        let project = resolve_project(params.project.as_deref())?;
         let lane = non_blank(&params.lane, "lane")?;
+        let item_key = match params.item_key.as_deref() {
+            Some(value) => Some(non_blank(value, "itemKey")?),
+            None => None,
+        };
         let run = match params.run.as_deref() {
             Some(value) => Some(non_blank(value, "run")?),
             None => None,
         };
-        Ok(Self { project, lane, run })
+        Ok(Self {
+            project,
+            lane,
+            item_key,
+            run,
+        })
     }
 }
 
@@ -178,6 +211,16 @@ fn non_blank(value: &str, field: &str) -> Result<String, ToolError> {
         return Err(ToolError::message(format!("{field} must not be blank")));
     }
     Ok(trimmed.to_string())
+}
+
+/// An omitted project is `self`: the server resolves it to the project
+/// bound to THIS run's target repository (project-agnostic workflows,
+/// ADR-0032 phase 3). A present-but-blank project is a caller error.
+fn resolve_project(project: Option<&str>) -> Result<String, ToolError> {
+    match project {
+        None | Some("self") => Ok("self".to_string()),
+        Some(value) => non_blank(value, "project"),
+    }
 }
 
 /// The grant outcome as the tool reports it. `granted` carries the claim
@@ -202,7 +245,12 @@ pub async fn work_next(
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
     let response = backend
-        .work_next(&params.project, &run_id, &params.lane)
+        .work_next(
+            &params.project,
+            &run_id,
+            &params.lane,
+            params.item_key.as_deref(),
+        )
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
     Ok(WorkNextResult {
@@ -216,7 +264,7 @@ pub async fn work_show(
     backend: Arc<dyn FabroToolBackend>,
     params: FabroWorkShowParams,
 ) -> ToolResult<WorkItem> {
-    let project = non_blank(&params.project, "project")?;
+    let project = resolve_project(params.project.as_deref())?;
     let item_key = non_blank(&params.item_key, "itemKey")?;
     backend
         .work_show(&project, &item_key)
@@ -246,7 +294,7 @@ pub async fn work_create(
     backend: Arc<dyn FabroToolBackend>,
     params: FabroWorkCreateParams,
 ) -> ToolResult<WorkItem> {
-    let project = non_blank(&params.project, "project")?;
+    let project = resolve_project(params.project.as_deref())?;
     let title = non_blank(&params.title, "title")?;
     let body = non_blank(&params.body, "body")?;
     backend
@@ -259,11 +307,36 @@ pub async fn work_close(
     backend: Arc<dyn FabroToolBackend>,
     params: FabroWorkCloseParams,
 ) -> ToolResult<WorkItem> {
-    let project = non_blank(&params.project, "project")?;
+    let project = resolve_project(params.project.as_deref())?;
     let item_key = non_blank(&params.item_key, "itemKey")?;
     let reason = non_blank(&params.reason, "reason")?;
     backend
         .work_close(&project, &item_key, &reason)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))
+}
+
+pub async fn work_update(
+    backend: Arc<dyn FabroToolBackend>,
+    params: FabroWorkUpdateParams,
+) -> ToolResult<WorkItem> {
+    let project = resolve_project(params.project.as_deref())?;
+    let item_key = non_blank(&params.item_key, "itemKey")?;
+    let title = match params.title.as_deref() {
+        Some(value) => Some(non_blank(value, "title")?),
+        None => None,
+    };
+    let body = match params.body.as_deref() {
+        Some(value) => Some(non_blank(value, "body")?),
+        None => None,
+    };
+    if title.is_none() && body.is_none() {
+        return Err(ToolError::message(
+            "work item update needs a title or a body; omit the call to change nothing",
+        ));
+    }
+    backend
+        .work_update(&project, &item_key, title.as_deref(), body.as_deref())
         .await
         .map_err(|err| ToolError::from_anyhow(&err))
 }
@@ -356,6 +429,10 @@ pub fn work_close_text(result: &WorkItem) -> String {
     format!("closed {} — {}", result.item_key, result.title)
 }
 
+pub fn work_update_text(result: &WorkItem) -> String {
+    format!("updated {} — {}", result.item_key, result.title)
+}
+
 pub fn work_release_text(result: &WorkClaim) -> String {
     format!(
         "released claim {} on {} ({}): {}",
@@ -374,9 +451,10 @@ mod tests {
 
     fn next_params(project: &str, lane: &str, run: Option<&str>) -> FabroWorkNextParams {
         FabroWorkNextParams {
-            project: project.to_string(),
-            lane:    lane.to_string(),
-            run:     run.map(str::to_string),
+            project:  Some(project.to_string()),
+            lane:     lane.to_string(),
+            item_key: None,
+            run:      run.map(str::to_string),
         }
     }
 
@@ -397,6 +475,39 @@ mod tests {
     }
 
     #[test]
+    fn an_omitted_or_literal_project_becomes_the_self_sentinel() {
+        let omitted = ValidatedWorkNext::try_from(FabroWorkNextParams {
+            project:  None,
+            lane:     "loop".to_string(),
+            item_key: None,
+            run:      None,
+        })
+        .expect("an omitted project validates as `self`");
+        assert_eq!(omitted.project, "self");
+
+        let literal = ValidatedWorkNext::try_from(FabroWorkNextParams {
+            project:  Some("self".to_string()),
+            lane:     "loop".to_string(),
+            item_key: None,
+            run:      None,
+        })
+        .expect("the literal `self` project validates");
+        assert_eq!(literal.project, "self");
+    }
+
+    #[test]
+    fn a_named_item_key_survives_validation() {
+        let validated = ValidatedWorkNext::try_from(FabroWorkNextParams {
+            project:  Some("fabro".to_string()),
+            lane:     "loop".to_string(),
+            item_key: Some(" denkhaus/work#7 ".to_string()),
+            run:      None,
+        })
+        .expect("a named item validates");
+        assert_eq!(validated.item_key.as_deref(), Some("denkhaus/work#7"));
+    }
+
+    #[test]
     fn blank_fields_are_rejected_with_teaching_messages() {
         let error = ValidatedWorkNext::try_from(next_params("  ", "loop", None))
             .expect_err("a blank project must fail");
@@ -412,7 +523,7 @@ mod tests {
     #[test]
     fn a_list_request_validates_clamps_and_trims() {
         let validated = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: " fabro ".to_string(),
+            project: Some(" fabro ".to_string()),
             lane:    Some(" loop ".to_string()),
             query:   Some(" watcher ".to_string()),
             limit:   Some(500),
@@ -424,7 +535,7 @@ mod tests {
         assert_eq!(validated.limit, 100);
 
         let defaulted = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: "fabro".to_string(),
+            project: Some("fabro".to_string()),
             lane:    None,
             query:   None,
             limit:   None,
@@ -435,7 +546,7 @@ mod tests {
         assert_eq!(defaulted.limit, 50);
 
         let zero = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: "fabro".to_string(),
+            project: Some("fabro".to_string()),
             lane:    None,
             query:   None,
             limit:   Some(0),
@@ -447,7 +558,7 @@ mod tests {
     #[test]
     fn a_list_request_rejects_blank_inputs_with_teaching_messages() {
         let error = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: "  ".to_string(),
+            project: Some("  ".to_string()),
             lane:    None,
             query:   None,
             limit:   None,
@@ -455,7 +566,7 @@ mod tests {
         .expect_err("a blank project must fail");
         assert!(error.to_string().contains("project"));
         let error = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: "fabro".to_string(),
+            project: Some("fabro".to_string()),
             lane:    Some("  ".to_string()),
             query:   None,
             limit:   None,
@@ -463,7 +574,7 @@ mod tests {
         .expect_err("a blank lane must fail");
         assert!(error.to_string().contains("lane"));
         let error = ValidatedWorkList::try_from(FabroWorkListParams {
-            project: "fabro".to_string(),
+            project: Some("fabro".to_string()),
             lane:    None,
             query:   Some("   ".to_string()),
             limit:   None,

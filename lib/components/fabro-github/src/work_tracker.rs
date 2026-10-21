@@ -344,6 +344,34 @@ impl TrackerProvider for GitHubTracker {
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
 
+    async fn update(
+        &self,
+        _project: &WorkProject,
+        item_key: &str,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> anyhow::Result<WorkItem> {
+        let number = Self::issue_number(item_key)?;
+        let mut patch = serde_json::Map::new();
+        if let Some(title) = title {
+            patch.insert("title".to_string(), Value::String(title.to_string()));
+        }
+        if let Some(body) = body {
+            patch.insert("body".to_string(), Value::String(body.to_string()));
+        }
+        if patch.is_empty() {
+            anyhow::bail!("work item update needs a title or a body");
+        }
+        let response = self
+            .request(Method::PATCH, &self.url(&format!("issues/{number}")))
+            .json(&Value::Object(patch))
+            .send()
+            .await?;
+        let value = self.send_json(response).await?;
+        self.json_item(&value)
+            .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
+    }
+
     async fn close(
         &self,
         _project: &WorkProject,
@@ -479,6 +507,7 @@ mod tests {
             display_name:             "Fabro".to_string(),
             tracker_provider:         "github".to_string(),
             tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
             project_label:            "project:fabro".to_string(),
             lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
                 .into_iter()

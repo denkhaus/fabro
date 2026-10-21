@@ -284,6 +284,12 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::work_close_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_WORK_UPDATE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkUpdateParams>(name, args)?;
+            let result = fabro_tool::work_update(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::work_update_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_WORK_RELEASE_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroWorkReleaseParams>(name, args)?;
             let result = fabro_tool::work_release(Arc::clone(&services.backend), params).await?;
@@ -798,6 +804,127 @@ mod tests {
         let body: serde_json::Value = serde_json::from_str(&format!("[\n{json}"))
             .expect("the trailing payload is the item array");
         assert_eq!(body.as_array().expect("the payload is an array").len(), 2);
+    }
+
+    /// `fabro_work_update` (ADR-0032 phase 3): the spec-correction edit
+    /// reaches the project API with exactly the fields the prompt passed.
+    #[tokio::test]
+    async fn work_update_edits_the_item_over_the_project_api() {
+        let server = httpmock::MockServer::start_async().await;
+        let updated = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/projects/fabro/work-items/update")
+                    .json_body(json!({
+                        "itemKey": "denkhaus/work#1",
+                        "title": "Item 1 (corrected)",
+                        "body": "the corrected spec"
+                    }));
+                then.status(200).json_body(json!({
+                    "itemKey": "denkhaus/work#1",
+                    "title": "Item 1 (corrected)",
+                    "body": "the corrected spec",
+                    "state": "open",
+                    "labels": ["project:fabro"],
+                    "priority": 1,
+                    "url": "https://github.com/denkhaus/work/issues/1"
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_WORK_UPDATE_TOOL_NAME,
+            json!({
+                "project": "fabro",
+                "itemKey": "denkhaus/work#1",
+                "title": "Item 1 (corrected)",
+                "body": "the corrected spec"
+            }),
+            &services,
+        )
+        .await
+        .expect("the update dispatches over the real backend");
+        updated.assert_calls_async(1).await;
+        assert!(
+            output.contains("denkhaus/work#1") && output.contains("Item 1 (corrected)"),
+            "the result names the edited item: {output}"
+        );
+    }
+
+    /// The goal-named fast path of `fabro_work_next`: an `itemKey` routes
+    /// through the grant endpoint (exactly that item), and this run is
+    /// injected when the call carries no run argument.
+    #[tokio::test]
+    async fn work_next_claims_a_named_item_through_the_grant_endpoint() {
+        let server = httpmock::MockServer::start_async().await;
+        let current: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let granted = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path("/api/v1/projects/fabro/claims")
+                    .json_body(json!({
+                        "itemKey": "denkhaus/work#2",
+                        "runId": current.to_string(),
+                        "lane": "loop"
+                    }));
+                then.status(200).json_body(json!({
+                    "outcome": "granted",
+                    "claim": {
+                        "claimId": "0197a1b2-c1ab-7c3d-9e4f-0123456789ab",
+                        "projectId": "fabro",
+                        "itemKey": "denkhaus/work#2",
+                        "runId": current.to_string(),
+                        "lane": "loop",
+                        "state": "granted",
+                        "grantedAt": "2026-10-21T09:00:00Z",
+                        "updatedAt": "2026-10-21T09:00:00Z"
+                    },
+                    "item": {
+                        "itemKey": "denkhaus/work#2",
+                        "title": "Item 2",
+                        "body": "the spec",
+                        "state": "open",
+                        "labels": ["lane:loop"],
+                        "priority": 2,
+                        "url": "https://github.com/denkhaus/work/issues/2"
+                    }
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: current,
+        };
+        // The injected run selector resolves through the API before the
+        // grant fires (the resolve_run seam, same as fabro_run_set_title).
+        let mut resolved = ask_target_run(current);
+        resolved.title = "Claimed run".to_string();
+        let resolved = serde_json::to_value(&resolved).expect("the fixture serializes");
+        let _resolve = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs/resolve")
+                    .query_param("selector", current.to_string());
+                then.status(200).json_body(resolved);
+            })
+            .await;
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_WORK_NEXT_TOOL_NAME,
+            json!({"project": "fabro", "lane": "loop", "itemKey": "denkhaus/work#2"}),
+            &services,
+        )
+        .await
+        .expect("the named-item fast path dispatches");
+        granted.assert_calls_async(1).await;
+        assert!(
+            output.contains("denkhaus/work#2"),
+            "the result names the granted item: {output}"
+        );
     }
 
     #[tokio::test]

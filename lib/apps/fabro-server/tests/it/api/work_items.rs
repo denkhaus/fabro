@@ -253,6 +253,16 @@ async fn invalid_project_id_is_rejected() {
     response_json(response, StatusCode::BAD_REQUEST, "invalid project id").await;
 }
 
+#[tokio::test]
+async fn the_reserved_self_project_id_is_refused() {
+    let app = app();
+    let response = app
+        .oneshot(json_request(Method::PUT, "/projects/self", &project_body()))
+        .await
+        .expect("work-item test step should succeed");
+    response_json(response, StatusCode::BAD_REQUEST, "reserved self").await;
+}
+
 mod next_item {
     use std::sync::{Arc, Mutex};
 
@@ -372,6 +382,30 @@ mod next_item {
             };
             items.push(created.clone());
             Ok(created)
+        }
+
+        async fn update(
+            &self,
+            _project: &WorkProject,
+            item_key: &str,
+            title: Option<&str>,
+            body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            let mut items = self
+                .items
+                .lock()
+                .expect("work-item test step should succeed");
+            let entry = items
+                .iter_mut()
+                .find(|item| item.item_key == item_key)
+                .ok_or_else(|| anyhow::anyhow!("work item {item_key} not found"))?;
+            if let Some(title) = title {
+                entry.title = title.to_string();
+            }
+            if let Some(body) = body {
+                entry.body = body.to_string();
+            }
+            Ok(entry.clone())
         }
 
         async fn close(
@@ -728,6 +762,90 @@ mod next_item {
         )
         .expect("json");
         assert_eq!(body["outcome"], "granted");
+    }
+
+    #[tokio::test]
+    async fn updating_an_item_edits_title_and_body_in_place() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let updated = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/work-items/update",
+            &json!({
+                "itemKey": "denkhaus/work#1",
+                "title": "Item 1 (corrected)",
+                "body": "the corrected spec"
+            }),
+        )
+        .await;
+        assert_eq!(updated["itemKey"], "denkhaus/work#1");
+        assert_eq!(updated["title"], "Item 1 (corrected)");
+        assert_eq!(updated["body"], "the corrected spec");
+
+        // A title-only edit leaves the body untouched.
+        let retitled = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/work-items/update",
+            &json!({"itemKey": "denkhaus/work#1", "title": "Item 1 (retitled)"}),
+        )
+        .await;
+        assert_eq!(retitled["title"], "Item 1 (retitled)");
+        assert_eq!(retitled["body"], "the corrected spec");
+
+        // An empty update is refused before it reaches the tracker.
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(api("/projects/fabro/work-items/update"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&json!({"itemKey": "denkhaus/work#1"}))
+                    .expect("work-item test step should succeed"),
+            ))
+            .expect("work-item test step should succeed");
+        let response = app
+            .oneshot(request)
+            .await
+            .expect("work-item test step should succeed");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn granting_a_named_item_answers_conflict_when_taken() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 2)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        // The goal-named fast path: exactly that item, no priority scan.
+        let named = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/claims",
+            &json!({
+                "itemKey": "denkhaus/work#2",
+                "runId": RUN_A,
+                "lane": "loop"
+            }),
+        )
+        .await;
+        assert_eq!(named["outcome"], "granted");
+        assert_eq!(named["claim"]["itemKey"], "denkhaus/work#2");
+        assert_eq!(named["item"]["itemKey"], "denkhaus/work#2");
+
+        // A second run naming the SAME item gets a conflict, never a grant.
+        let taken = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/claims",
+            &json!({
+                "itemKey": "denkhaus/work#2",
+                "runId": RUN_B,
+                "lane": "loop"
+            }),
+        )
+        .await;
+        assert_eq!(taken["outcome"], "conflict");
     }
 
     #[tokio::test]

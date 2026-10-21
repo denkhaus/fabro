@@ -6507,6 +6507,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-items/update:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: updateWorkItem
+      tags: [Work Items]
+      summary: Edit a work item's title and/or body in the project's tracker
+      description: >-
+        Spec corrections must reach every later reader (fabro-4c81 under
+        ADR-0032): a planner correcting a rotted citation or superseded
+        detail edits the item body itself, not just the run's brief.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemUpdateRequest"
+      responses:
+        "200":
+          description: Work item updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/projects/{projectId}/next:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -6816,7 +6865,12 @@ components:
       name: projectId
       in: path
       required: true
-      description: Stable work-item project identifier.
+      description: >-
+        Stable work-item project identifier, or the literal `self` for a
+        run-scoped caller: the server resolves `self` to the project bound
+        to the authenticated run's target repository (project-agnostic
+        workflows never name their project; ADR-0032 phase 3). Do not name
+        a literal project `self`.
       schema:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{0,62}$"
@@ -18322,6 +18376,10 @@ components:
         trackerRepo:
           type: string
           description: Provider repository, e.g. `denkhaus/work`.
+        targetRepo:
+          type: string
+          nullable: true
+          description: The code repository this project's runs work on; a run resolves its project from its run target when this is set. Null keeps the project explicit-only.
         projectLabel:
           type: string
           description: Label that scopes items to this project, e.g. `project:fabro`.
@@ -18351,6 +18409,9 @@ components:
           type: string
         trackerRepo:
           type: string
+        targetRepo:
+          type: string
+          nullable: true
         projectLabel:
           type: string
         laneLabels:
@@ -18473,6 +18534,11 @@ components:
           $ref: "#/components/schemas/WorkClaimGrantOutcome"
         claim:
           $ref: "#/components/schemas/WorkClaim"
+        item:
+          description: The granted item; null on conflict.
+          allOf:
+            - $ref: "#/components/schemas/WorkItem"
+          nullable: true
 
     WorkClaimTransitionRequest:
       description: Move a claim to another lifecycle state.
@@ -18613,6 +18679,21 @@ components:
           type: string
         reason:
           type: string
+
+    WorkItemUpdateRequest:
+      description: Edit a work item's title and/or body in place.
+      type: object
+      required:
+        - itemKey
+      properties:
+        itemKey:
+          type: string
+        title:
+          type: string
+          description: New title; omitted leaves it unchanged.
+        body:
+          type: string
+          description: New body, wholesale (the caller re-emits the full corrected body); omitted leaves it unchanged.
 
     WorkClaimNextRequest:
       description: Grant the next free work item to a run.

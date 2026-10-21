@@ -42,6 +42,13 @@ pub const RUN_TOMBSTONES_MIGRATION_SQL: &str =
 /// filesystem path into this crate.
 pub const WORK_QUEUE_MIGRATION_SQL: &str = include_str!("../migrations/2026102002_work_queue.sql");
 
+/// The work-project run-target column (`work_projects.target_repo`), exposed
+/// so fixtures that install [`WORK_QUEUE_MIGRATION_SQL`] can apply it next
+/// and get the production schema (ADR-0032 phase 3: run-target project
+/// resolution).
+pub const WORK_PROJECT_TARGET_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026102101_work_project_target.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.

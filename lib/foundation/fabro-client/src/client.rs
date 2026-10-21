@@ -1716,6 +1716,58 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// Grant one specific item to a run (the goal-named fast path):
+    /// the server refuses when another live claim holds the item.
+    pub async fn grant_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        run_id: &RunId,
+        lane: &str,
+    ) -> Result<types::WorkClaimGrantResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .grant_work_claim()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkClaimGrantRequest {
+                        item_key: item_key.to_string(),
+                        lane:     lane.to_string(),
+                        run_id:   run_id.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Edit an item's title and/or body in place (spec corrections reach
+    /// every later reader).
+    pub async fn update_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .update_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemUpdateRequest {
+                        item_key: item_key.to_string(),
+                        title:    title.map(str::to_string),
+                        body:     body.map(str::to_string),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// The project's work items: open-only when `query` is absent,
     /// title+body text search including closed items when it is set (the
     /// duplicate check before filing needs the closed half). Optionally

@@ -21,6 +21,7 @@ export interface WorkProjectUpsertRequest {
     'displayName': string;
     'trackerProvider': string;
     'trackerRepo': string;
+    'targetRepo'?: string;
     'projectLabel': string;
     'laneLabels'?: { [key: string]: string; };
     'claimLabelPrefix'?: string;
