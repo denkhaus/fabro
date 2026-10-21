@@ -31,7 +31,7 @@ bun = "1.4.0"
 # (--description/--desc/--body are gone; create keeps --description
 # only). Keep aligned with ARG SEEDS_VERSION in .fabro/Dockerfile.toolchain
 # (run sandboxes install the same release binary).
-"cargo:seeds" = "0.9.0"
+"cargo:seeds" = "0.10.0"
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt
