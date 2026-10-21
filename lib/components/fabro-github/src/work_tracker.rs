@@ -55,6 +55,10 @@ impl GitHubTracker {
             .bearer_auth(&self.token)
             .header("Accept", "application/vnd.github+json")
             .header("X-GitHub-Api-Version", "2022-11-28")
+            // GitHub refuses every API call without a User-Agent (403
+            // "request forbidden by administrative rules"); httpmock never
+            // notices, only the live API enforces it.
+            .header("User-Agent", "fabro")
     }
 
     async fn send_json(&self, response: Response) -> anyhow::Result<Value> {
@@ -541,6 +545,10 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(httpmock::Method::GET)
                     .path("/search/issues")
+                    // GitHub answers 403 "forbidden by administrative rules"
+                    // without a User-Agent — only the live API enforces it,
+                    // so the wire pin carries it (2026-10-21 live incident).
+                    .header("User-Agent", "fabro")
                     .query_param(
                         "q",
                         "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"lane:loop\" watchdog",
