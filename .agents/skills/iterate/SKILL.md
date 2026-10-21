@@ -308,6 +308,14 @@ stores it belongs to; reach them by phase need:
   default-profile timeout on a Docker/sandbox test under dev-host
   conditions is an environment artifact (known class), not a regression —
   rerun isolated with the ci profile before treating it red.
+- fabro-server's IT suite (`tests/it`, incl. the OpenAPI conformance
+  test) requires `--features test-support` and is NOT built by a plain
+  `cargo nextest run -p fabro-server` — the run stays green while the
+  it target silently sits out (2026-10-21: an interrupted unit's missing
+  FakeTracker trait impl was invisible until the explicit target ran;
+  count the tests against the handoff's expected number). Verify with
+  `cargo nextest run -p fabro-server --test it --features test-support
+  --profile ci`.
 - After any non-PR integration (emergency squash, manual land): sweep
   for the platform-created run PR and the run branch — a leftover open PR
   blocks the push-gate and fakes in-flight state. Close the PR as
