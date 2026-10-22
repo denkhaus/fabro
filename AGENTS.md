@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication conventions
+
+- Chat replies in German; all written artifacts, docs, and commit
+  messages in English.
+- Every time stated in a chat reply is Europe/Berlin (user directive
+  2026-10-22); convert UTC/server times before reporting.
+
 ## Build and test commands
 
 ### Rust
