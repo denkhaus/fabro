@@ -37,6 +37,11 @@
 #      (never nu — the failure mode is a sandbox without nu), and hands
 #      to tracker_guard. A dropped guard silently returns the cryptic
 #      "nu: command not found" death on misplaced manual fires.
+#  12. Spec-paths implementer self-check: the shared claim-check emits
+#      the `claim-check: spec-paths` list into stage output and the
+#      implementer prompt diffs it against the run diff before routing
+#      Implemented — the spec-paths miss dies at the implementer,
+#      never as a tester battery bounce.
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
 const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**"'
@@ -157,5 +162,20 @@ def main [] {
         fail $'start must have exactly ONE outgoing edge, the placement guard; found ($guard_start_edges | length) — a second edge would bypass it'
     }
 
-    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget, placement guard intact'
+    # 12. spec-paths implementer self-check (the pre-tester kill of the
+    # spec-paths bounce): the shared claim-check (the loop graph runs
+    # the develop lane's script) must emit the `claim-check: spec-paths`
+    # line into stage output, and the loop implementer prompt must carry
+    # the diff-against-the-run-diff clause before routing Implemented.
+    # Lose either half and the miss bounces off the tester battery again.
+    let CLAIM_CHECK = ('.fabro/workflows/develop/scripts/claim-check.nu' | path expand)
+    let IMPLEMENTER_PROMPT = ('.fabro/workflows/loop/prompts/implementer.md' | path expand)
+    if not ((open --raw $CLAIM_CHECK) | str contains 'claim-check: spec-paths') {
+        fail 'claim-check lost the spec-paths emission — the implementer self-check loses its input'
+    }
+    if not ((open --raw $IMPLEMENTER_PROMPT) | str contains 'claim-check: spec-paths') {
+        fail 'implementer prompt lost the spec-paths self-check line — a spec-paths miss would bounce off the tester again'
+    }
+
+    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget, placement guard, spec-paths self-check intact'
 }
