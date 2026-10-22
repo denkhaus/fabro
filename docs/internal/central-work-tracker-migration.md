@@ -169,6 +169,36 @@ adapter and the dry-run tracker exist.
 6. A dry-run project (`project:fabro-dryrun`) in the tracker repo with a
    handful of synthetic items, used by the workflow tests.
 
+**Phase 2 live verification (2026-10-22, complete)** — GitHub App
+`fabro-the-factory` (app 4924979) installed on `denkhaus/work`, the
+pending permission change (`issues: write`) accepted on the
+installation, `slug` set in `[server.integrations.github]`. Against the
+local stack (image `a186f2a36037`, carrying the User-Agent fix):
+
+- `GET /projects/fabro/work-items` → issue #1 live from GitHub
+  (relabelled `project:fabro-dryrun` → `project:fabro` + `lane:loop`).
+- `POST /next` (non-terminal run `01M5J9M1BRH1V4YFYBKFPSWREJ`, lane
+  `loop`) → `granted`, claim `60991b99`, and the tracker projection
+  landed immediately: label `fabro:run:01M5J9M1BRH1V4YFYBKFPSWREJ` on
+  issue #1.
+- Idempotency: the same run re-asks → `already_held`; a second run →
+  `empty`.
+- `POST /claims/{id}/release` → claim `released`, the `fabro:run:*`
+  label removed from the issue, ledger empty.
+- Create/close roundtrip: throwaway issue #2 filed through the adapter
+  (project label auto-added), closed with the reason as comment.
+- Reconciler pass on the healthy ledger: no projection or GC failures.
+  One finding: the outbox consumer logs `unknown outbox kind;
+  completing kind="claim.projected"` and fail-safe completes it — the
+  kind the grant path enqueues on projection failure is not consumed
+  (filed as a seed).
+
+Two live-verification fixes landed on the way: the installation-token
+422 error now carries GitHub's response body verbatim (a permissions
+422 masked as a repository-access error), and every tracker request
+carries a `User-Agent` (GitHub answers 403 "administrative rules"
+without one).
+
 ## Phase 3 — Workflow rewrite
 
 Replace every tracker read/write with the run tools and the project
