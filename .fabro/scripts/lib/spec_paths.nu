@@ -31,10 +31,11 @@ export def loop-asset? [p: string]: nothing -> bool {
 #   - globs/wildcards and directory tokens drop: the diff lists files,
 #     a glob or prefix can never match one — keeping them would
 #     false-RED every spec that names a root sweep (`.fabro/**`);
-#   - `.fabro/journal/` paths drop: a journal citation in a spec body
-#     is PROVENANCE (the Origin/Basis lines point at the reviewer run
-#     that filed the residual), never an edit mandate — the journal is
-#     append-only stage records no pass edits, so keeping the citation
+#   - `.fabro/journal/` and `.fabro/revisions/` paths drop: journal and
+#     revision citations in a spec body are PROVENANCE (the Origin/Basis
+#     lines point at the reviewer run that filed the residual or the
+#     revision record it authored), never an edit mandate — both are
+#     append-only records no pass edits, so keeping the citation
 #     was a permanent false RED on every residual seed;
 #   - creation-named paths drop (the claim gate's shared
 #     creation-intent window, anchor_check.nu): `Add scripts/new.nu`
@@ -52,7 +53,7 @@ export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
     | each {|p| $p | str trim -r -c '.'}
     | uniq
     | where {|p|
-        ((not ($p | str starts-with '.fabro/journal/')) and (not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
+        ((not ($p | str starts-with '.fabro/journal/')) and (not ($p | str starts-with '.fabro/revisions/')) and (not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
     }
     | where {|p| ($p | path type) != 'dir'}
     | where {|p| not (creation-named? $clean $p)}
