@@ -2767,7 +2767,10 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains("refused the installation access token"), "got: {err}");
+        assert!(
+            err.contains("refused the installation access token"),
+            "got: {err}"
+        );
         assert!(err.contains("repo"), "got: {err}");
     }
 
