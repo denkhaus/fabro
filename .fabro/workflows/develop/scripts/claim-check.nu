@@ -47,6 +47,19 @@
 # directory.
 source anchor_check.nu
 
+# Spec-named loop-asset paths — the SAME shared extraction the
+# tester's seed-spec-paths tier uses (`spec-named-loop-paths` in
+# .fabro/scripts/lib/spec_paths.nu, sourced there by
+# scripts/qualitygate.nu), sourced, never re-implemented. This script
+# already parses the claimed seed's body, so it also emits that path
+# list into stage output: the implementer's cheap pre-tester
+# self-check diffs the list against `git diff --name-only` and a
+# spec-paths miss dies at the implementer instead of bouncing off the
+# tester battery. `source` resolves against THIS file's directory;
+# the emission itself is fail-open ([] on any internal error, lane
+# convention — a broken probe never blocks a claim).
+source ../../../scripts/lib/spec_paths.nu
+
 # Citations rooted at a known repo root are authoritative — the body
 # presents them as existing repo state (the incident class: a body
 # naming a step "of .fabro/workflows/develop/workflow.fabro" whose node
@@ -223,4 +236,9 @@ def main []: nothing -> nothing {
         print -e ('claim-check: advisory anchor flags (non-blocking): ' + ($v.advisory | to json --raw))
     }
     print $"claim-check: ok ($seed_id)"
+    # Spec-paths emission (fail-open): the implementer's self-check
+    # input. Even a degraded path gate (empty body) emits `[]` — the
+    # downstream diff is then vacuously green.
+    let spec_paths = (do { spec-named-loop-paths $guard_body } | default [])
+    print $"claim-check: spec-paths ($spec_paths | to json --raw)"
 }

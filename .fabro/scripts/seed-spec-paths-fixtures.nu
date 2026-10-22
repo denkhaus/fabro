@@ -78,6 +78,13 @@ expect-extraction "See https://host.io/scripts/x.nu and the justfile, then edit 
 expect-extraction "Residual from run X. Origin: closed seed fabro-abcd, reviewer journal .fabro/journal/01M59JSC3MKGRCH5PMR53XHADZ.jsonl. Basis: run 01M59JSC3MKGRCH5PMR53XHADZ. Also fix .fabro/scripts/prompt-lint.nu." [
     ".fabro/scripts/prompt-lint.nu"
 ]
+# Revision-record citations (the Basis line pointing at the reviewer's
+# revision document) are provenance exactly like journal citations —
+# append-only records no pass edits, so enforcing the citation was a
+# permanent false RED on every revision-filed seed.
+expect-extraction "Revisor pass filed a revision. Basis: revisor revision .fabro/revisions/01M5CVG6XT9ABZFTMGY45QGCKT.md finding 2. Also edit .fabro/workflows/develop/scripts/claim-check.nu." [
+    ".fabro/workflows/develop/scripts/claim-check.nu"
+]
 # An empty/absent description names nothing.
 expect-extraction "" []
 

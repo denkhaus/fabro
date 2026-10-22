@@ -86,29 +86,37 @@ expect-drops [] []
 expect-drops [" mode change 100755 => 100644 a.sh" " mode change 100644 => 100755 b.sh"] ["a.sh"]
 
 # ── drift pin: the loop-asset set is encoded in evidence.nu
-# (loop-work-path — the reviewer scope) and qualitygate.nu (loop-asset?
-# — the gate scope). A silent drift between them would split reviewer
-# scope from gate scope; this textual pin REDs on either side changing
-# without the other (extraction into one shared module is blocked by
-# nu's source-auto-invoke pitfall — this is the cheap deterministic
-# substitute; the loop graph-contract smoke pins the graph side).
+# (loop-work-path — the reviewer scope) and the shared lib
+# .fabro/scripts/lib/spec_paths.nu (loop-asset? — the gate scope;
+# qualitygate.nu and the claim gate source the lib, and lib.spec_paths
+# itself is a def-only module with no auto-invoked main). A silent drift
+# between the two mirrors would split reviewer scope from gate scope;
+# this textual pin REDs on either side changing without the other (the
+# loop graph-contract smoke pins the graph side).
 const PIN_PREFIXES = '[".fabro/" "scripts/"] | any {|q| $path | str starts-with $q}'
-const PIN_PREFIXES_QG = '[".fabro/" "scripts/"] | any {|q| $p | str starts-with $q}'
+const PIN_PREFIXES_LIB = '[".fabro/" "scripts/"] | any {|q| $p | str starts-with $q}'
 const PIN_EXACT_EVIDENCE = '($path in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
-const PIN_EXACT_QG = '($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
+const PIN_EXACT_LIB = '($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
 let evidence_src = (open --raw ($SCRIPT_DIR | path join '../workflows/develop/scripts/evidence.nu'))
+let lib_src = (open --raw ($SCRIPT_DIR | path join 'lib/spec_paths.nu'))
 if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str contains $PIN_EXACT_EVIDENCE) {
-    fail $"drift pin: evidence.nu loop-work-path set changed — realign with scripts/qualitygate.nu loop-asset? \(and the loop graph x.fs_write\)"
+    fail $"drift pin: evidence.nu loop-work-path set changed — realign with lib/spec_paths.nu loop-asset? \(and the loop graph x.fs_write\)"
 }
-if not ($QUALITYGATE_SRC | str contains $PIN_PREFIXES_QG) or not ($QUALITYGATE_SRC | str contains $PIN_EXACT_QG) {
-    fail "drift pin: qualitygate.nu loop-asset? set changed — realign with evidence.nu loop-work-path \(and the loop graph x.fs_write\)"
+if not ($lib_src | str contains $PIN_PREFIXES_LIB) or not ($lib_src | str contains $PIN_EXACT_LIB) {
+    fail "drift pin: lib/spec_paths.nu loop-asset? set changed — realign with evidence.nu loop-work-path \(and the loop graph x.fs_write\)"
+}
+# qualitygate must source the shared lib, not carry a private copy — a
+# dropped seam line would resurrect the two-def drift this pin exists
+# to prevent.
+if not ($QUALITYGATE_SRC | str contains 'source ../.fabro/scripts/lib/spec_paths.nu') {
+    fail "drift pin: scripts/qualitygate.nu no longer sources lib/spec_paths.nu — restore the shared loop-asset seam"
 }
 # fabro-9973: the snapshot-dir exception must live in BOTH mirrors (and
 # the loop graph pins its own copy) — a one-sided exception would split
 # gate scope from reviewer scope.
 const PIN_SNAPSHOT_DIR = 'lib/components/fabro-dot/src/snapshots/'
-if not ($evidence_src | str contains $PIN_SNAPSHOT_DIR) or not ($QUALITYGATE_SRC | str contains $PIN_SNAPSHOT_DIR) {
-    fail "drift pin: the fabro-dot snapshot-dir exception (fabro-9973) must appear in BOTH evidence.nu loop-work-path and qualitygate.nu loop-asset?"
+if not ($evidence_src | str contains $PIN_SNAPSHOT_DIR) or not ($lib_src | str contains $PIN_SNAPSHOT_DIR) {
+    fail "drift pin: the fabro-dot snapshot-dir exception (fabro-9973) must appear in BOTH evidence.nu loop-work-path and lib/spec_paths.nu loop-asset?"
 }
 
 # ── end-to-end git fixture ────────────────────────────────────────────

@@ -214,19 +214,11 @@ def check-workspace-compiles [] {
 # Interactive invocations (no run branch) diff the working tree, same as
 # touched-crates.
 
-# Pure: one path against the loop-lane allow-list (mirrors the loop
-# implementer's x.fs_write — keep the pair in sync; the loop
-# graph-contract smoke pins the graph side).
-def loop-asset? [p: string]: nothing -> bool {
-    # fabro-9973: the ONE lib/ exception. The fabro-dot checked-in-
-    # workflows snapshot under this directory is mechanically derived
-    # from .fabro/workflows graphs — accepting it (`cargo insta accept`)
-    # is part of the loop lane's one-unit graph edit, not a product-code
-    # edit. Every other lib/ path stays out of lane.
-    if ($p | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
-    let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $p | str starts-with $q})
-    ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])
-}
+# Pure: one path against the loop-lane allow-list — moved to the
+# shared lib below (the claim gate emits the same extraction into
+# stage output for the implementer's pre-tester self-check), sourced
+# here so every qualitygate caller and fixture keeps the names.
+source ../.fabro/scripts/lib/spec_paths.nu
 
 # Pure: one path against the product-lane deny-list — EXACTLY develop's
 # implementer fs_hide set (.fabro/**, .seeds/**, .agents/**, scripts/**,
@@ -338,21 +330,8 @@ def check-run-scope [lane: string]: nothing -> nothing {
 #     that filed the residual), never an edit mandate — the journal is
 #     append-only stage records no pass edits, so keeping the citation
 #     was a permanent false RED on every residual seed (fabro-6b0f).
-export def spec-named-loop-paths [desc: string]: nothing -> list<string> {
-    if ($desc | is-empty) { return [] }
-    let clean = ($desc | str replace --all --regex '\S+://\S+' ' ')
-    $clean
-    | parse --regex '(?<![A-Za-z0-9._/-])(?<p>[A-Za-z0-9._/-]+/[A-Za-z0-9._/-]+)'
-    | get -o p
-    | default []
-    | each {|p| $p | str trim -r -c '.'}
-    | uniq
-    | where {|p|
-        ((not ($p | str starts-with '.fabro/journal/')) and (not ($p | str contains '*')) and (not ($p | str contains '?')) and (not ($p | str ends-with '/')) and (loop-asset? $p))
-    }
-    | where {|p| ($p | path type) != 'dir'}
-    | where {|p| not (creation-named? $clean $p)}
-}
+# The extraction itself is the shared `spec-named-loop-paths` sourced
+# above from the lib — one list, no drift.
 
 # Pure: the named paths the diff is missing (the RED set). Empty diff +
 # named paths -> every path missing -> RED; that is the tier's point.
