@@ -123,11 +123,18 @@ stores it belongs to; reach them by phase need:
   2026-10-02 evening).
 - Tracker reads always carry `--limit 500` (`seeds list` caps at 50
   silently). `seeds ready` for candidates; `seeds show <id>` for ids.
-- Rootprint (skill `rootprint`) observes the production server: filter on
-  body text, `severity_text` is unreliable; INFO is not ingested, so run
-  timelines come from `fabro ps`/events. For EVERY run under evaluation,
-  correlate the run's rootprint window with its journal painpoints and
-  land findings in ONE seed carrying both halves.
+- Rootprint (BASIC KNOWLEDGE, 2026-10-22): production logs are queried
+  through the `rootprint` CLI, per the skill at
+  `~/.prime/agent/skills/rootprint/SKILL.md` (command map: search, hist,
+  fields, values, trace, health; `search -q 'severity_text:ERROR'` is a
+  valid field query — the `level` field does not exist). Do NOT read
+  `docker logs rootprint-vector`: that container's stdout carries only
+  vector's own boot lines; events go to the opentelemetry sink.
+  `severity_text` values are still unreliable for catch-alls — filter on
+  body text for those. INFO is not ingested, so run timelines come from
+  `fabro ps`/events. For EVERY run under evaluation, correlate the run's
+  rootprint window with its journal painpoints and land findings in ONE
+  seed carrying both halves.
 - Friction score: run `nu .fabro/scripts/friction-score.nu` once. Verdicts:
   `normal` (<0.30), `grind` (0.30–0.60), `architecture-due` (>=0.60) —
   gates Phase 4; journal the components when a cycle ends in grind.
