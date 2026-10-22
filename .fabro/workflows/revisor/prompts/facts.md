@@ -6,22 +6,25 @@ project-agnostic). Porting the loop means editing this file plus the
 workflow graph, not the prompts. A stale value here is loop friction:
 report it in the journal, never silently work around it.
 
-- Issue tracker — the `seeds` CLI (Seeds, git-native in `.seeds/`). Seed ids
-  carry the prefix `fabro-` followed by four hex characters; the supported read path
-  is `seeds show <id> --format json`. `seeds search` matches title/description
-  text only and is AND-strict: use ONE keyword per query (broaden by
-  dropping words), and use `seeds show` — never `seeds search` — for id
-  lookups.
+- Work-item tracker (ADR-0032) — the project's work items live in the
+  central tracker behind the fabro server; agent access is EXCLUSIVELY
+  the engine-mediated run tools: `fabro_work_show` (one item by key),
+  `fabro_work_list` (open items; with `query` a plain-keyword text
+  search over title AND body, INCLUDING closed items — the duplicate
+  check before filing), `fabro_work_create`, `fabro_work_close`,
+  `fabro_work_release`. Item keys are provider-stable and look like
+  `denkhaus/work#123` — copy them verbatim, never truncated. No tracker
+  CLI, no tracker file, no forge client: everything goes through the
+  tools (ADR-0019).
 - Merge-target branch — `origin/denkhaus`: the branch the line's run PRs
-  integrate into. The duplicate-run preflight
-  (`nu .fabro/scripts/dup-run-check.nu <seed-id> --self <run-id>`) greps exactly this
-  branch; it defaults to it. The `--self` argument is the id of the run
-  whose OWN PR counts as first-party — pass the SUBJECT run's id (for the
-  revisor: `revisor_target_run_id`; for the implementer: its own run id),
-  never the consuming session's id.
-- Stage journal — `.fabro/journal/<run_id>.jsonl`: the fallback source for
-  the seed id a reviewed run claimed (shell grep for the `fabro-` prefix
-  when the run's goal names none).
+  integrate into. Duplicate-run adjudication checks exactly this branch:
+  a landed implementation commit whose run trailer names the target run
+  is a self-closure (healthy); a closure by any other run makes the
+  target a duplicate.
+- Stage journal — `.fabro/journal/<run_id>.jsonl`: the fallback source
+  for the work item a reviewed run claimed (the claim/grant record names
+  the item key; shell grep for the `#`-key shape when the run's goal
+  names none).
 - Engine-provided credentials (ADR-0019 review axis): the engine injects
   `GITHUB_TOKEN` into every agent shell call (`resolve_workflow_env` in
   `lib/components/fabro-workflow/src/services.rs`) and runs a git
