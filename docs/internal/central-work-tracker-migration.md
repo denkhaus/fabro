@@ -343,6 +343,12 @@ in the 2026-10-21 judgment log). Chosen path and rejected alternatives:
 
 ## Phase 5 — Cutover
 
+- PRODUCTION EVIDENCE 2026-10-22 (fabro-36a2): three concurrent Loop runs
+  (held-slot replay + two API-trigger fires that bypassed
+  `on_overlap=skip`) each claimed the same seed `fabro-3d9a` through the
+  file tracker — claims are not atomic across sandbox checkouts. The
+  server-side atomic grant (`fabro_work_next`) is the only mechanism that
+  prevents this class; cite this incident when justifying the cutover.
 - [ ] Configure the line's project: `tracker = github:<owner>/<repo>`,
       `project = fabro`, label maps, claim prefix.
 - [ ] Switch the develop/loop/revisor/architect/conductor workflows to the
