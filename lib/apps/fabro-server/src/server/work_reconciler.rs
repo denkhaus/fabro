@@ -149,24 +149,40 @@ async fn drain_outbox(
         return applied;
     };
     for entry in due {
-        let item_key = entry
+        // The DB is the authority, not the enqueue-time payload snapshot:
+        // grant payloads carry item_key, transition payloads do not (only
+        // claim_id + state) — both shapes heal from the claim row, whose
+        // CURRENT state names the tracker op. Fabro-ba22: the payload-only
+        // dispatch dropped transition entries as "unknown" because they
+        // lack item_key.
+        let claim_id = entry
             .payload
-            .get("item_key")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let run_id = entry
-            .payload
-            .get("run_id")
+            .get("claim_id")
             .and_then(|value| value.as_str())
             .unwrap_or_default()
             .to_string();
         let outcome = match entry.kind.as_str() {
-            "claim.projected" if !item_key.is_empty() && !run_id.is_empty() => {
-                tracker.project_claim(project, &item_key, &run_id).await
-            }
-            "claim.cleared" if !item_key.is_empty() && !run_id.is_empty() => {
-                tracker.clear_claim(project, &item_key, &run_id).await
+            "claim.projected" | "claim.cleared" if !claim_id.is_empty() => {
+                match state.work_store().claim(&claim_id).await {
+                    Ok(Some(claim))
+                        if matches!(claim.state, ClaimState::Granted | ClaimState::Active) =>
+                    {
+                        tracker
+                            .project_claim(project, &claim.item_key, &claim.run_id.to_string())
+                            .await
+                    }
+                    Ok(Some(claim)) => {
+                        // awaiting_merge / landed / released: the label
+                        // must not outlive the claim.
+                        tracker
+                            .clear_claim(project, &claim.item_key, &claim.run_id.to_string())
+                            .await
+                    }
+                    // Claim row gone: nothing to project — label GC owns
+                    // the tracker side. Complete.
+                    Ok(None) => Ok(()),
+                    Err(error) => Err(anyhow::anyhow!(error)),
+                }
             }
             other => {
                 tracing::warn!(
@@ -265,9 +281,11 @@ mod tests {
 
     #[derive(Default)]
     struct ScriptedTracker {
-        claims:  Mutex<Vec<(String, String)>>,
-        cleared: Mutex<Vec<(String, String)>>,
-        closed:  Mutex<Vec<String>>,
+        claims:                  Mutex<Vec<(String, String)>>,
+        cleared:                 Mutex<Vec<(String, String)>>,
+        closed:                  Mutex<Vec<String>>,
+        /// When set, the next project_claim call fails once (retry pin).
+        fail_project_claim_once: std::sync::atomic::AtomicBool,
     }
 
     #[async_trait]
@@ -331,6 +349,12 @@ mod tests {
             item_key: &str,
             run_id: &str,
         ) -> anyhow::Result<()> {
+            if self
+                .fail_project_claim_once
+                .swap(false, std::sync::atomic::Ordering::SeqCst)
+            {
+                anyhow::bail!("scripted projection failure");
+            }
             self.claims
                 .lock()
                 .await
@@ -466,6 +490,146 @@ mod tests {
         assert_eq!(
             released.release_reason.as_deref(),
             Some("orphan: run record gone")
+        );
+    }
+
+    // Fabro-ba22 regression: transition enqueues carry no item_key (only
+    // claim_id + run_id + state) — the payload-only dispatch used to
+    // complete them as "unknown outbox kind" without any tracker call.
+    // The claim row is the authority: its CURRENT state names the op.
+    #[tokio::test]
+    async fn transition_shaped_outbox_entries_heal_from_the_claim_row() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let run_id = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key: "denkhaus/work#9".to_string(),
+                run_id,
+                lane: "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        let fabro_work::GrantOutcome::Granted(claim) = granted else {
+            panic!("grant wins");
+        };
+        // The grant entry drains first (payload carries item_key).
+        drain_outbox(
+            &state,
+            &store.projects().await.unwrap()[0],
+            tracker.as_ref(),
+        )
+        .await;
+        tracker.claims.lock().await.clear();
+
+        // Activate: the transition enqueues claim.projected WITHOUT
+        // item_key — the shape the old dispatch dropped as unknown.
+        store.activate(&claim.claim_id).await.expect("activate");
+        let due = store
+            .due(Utc::now() + Duration::seconds(1), 10)
+            .await
+            .unwrap();
+        assert_eq!(due.len(), 1);
+        assert!(
+            due[0].payload.get("item_key").is_none(),
+            "transition payload must not need item_key: {:?}",
+            due[0].payload
+        );
+
+        let applied = drain_outbox(
+            &state,
+            &store.projects().await.unwrap()[0],
+            tracker.as_ref(),
+        )
+        .await;
+        assert_eq!(applied, 1);
+        assert!(
+            store
+                .due(Utc::now() + Duration::minutes(10), 10)
+                .await
+                .unwrap()
+                .is_empty(),
+            "entry completed"
+        );
+        let claims = tracker.claims.lock().await;
+        assert!(
+            claims
+                .iter()
+                .any(|(item, run)| item == "denkhaus/work#9" && run == &run_id.to_string()),
+            "the tracker saw the projection: {claims:?}"
+        );
+    }
+
+    // The seed's pin: a projection that fails once retries with backoff
+    // and heals on the next drain.
+    #[tokio::test]
+    async fn a_failed_projection_retries_with_backoff_and_heals() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        tracker
+            .fail_project_claim_once
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let run_id = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key: "denkhaus/work#10".to_string(),
+                run_id,
+                lane: "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        let fabro_work::GrantOutcome::Granted(claim) = granted else {
+            panic!("grant wins");
+        };
+        let project = &store.projects().await.unwrap()[0];
+
+        // First drain: the scripted failure fails the entry (backoff,
+        // not completion).
+        let applied = drain_outbox(&state, project, tracker.as_ref()).await;
+        assert_eq!(applied, 0, "nothing applied on failure");
+        assert!(tracker.claims.lock().await.is_empty(), "no label was set");
+        let entry = store
+            .outbox_entry(
+                &store
+                    .due(Utc::now() + Duration::minutes(10), 10)
+                    .await
+                    .unwrap()[0]
+                    .id,
+            )
+            .await
+            .unwrap()
+            .expect("entry survives the failure");
+        assert_eq!(entry.attempts, 1);
+        assert_eq!(
+            entry.last_error.as_deref(),
+            Some("scripted projection failure")
+        );
+
+        // Fast-forward the backoff window, then drain again: heals.
+        sqlx::query("UPDATE work_outbox SET next_attempt_at_ms = ? WHERE id = ?")
+            .bind((Utc::now() - Duration::seconds(1)).timestamp_millis())
+            .bind(&entry.id)
+            .execute(&state.db_pool)
+            .await
+            .expect("force the retry due");
+        let applied = drain_outbox(&state, project, tracker.as_ref()).await;
+        assert_eq!(applied, 1);
+        let claims = tracker.claims.lock().await;
+        assert!(
+            claims
+                .iter()
+                .any(|(item, run)| item == "denkhaus/work#10" && run == &claim.run_id.to_string()),
+            "the label healed after the retry: {claims:?}"
+        );
+        assert!(
+            store
+                .due(Utc::now() + Duration::minutes(10), 10)
+                .await
+                .unwrap()
+                .is_empty(),
+            "outbox drained"
         );
     }
 }
