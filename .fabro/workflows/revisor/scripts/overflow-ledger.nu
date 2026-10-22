@@ -10,8 +10,8 @@
 #            pass (deterministic visibility: an unconsumed overflow is
 #            never lost to journal rot again; the memoize finding in
 #            revision 01M2X8458MDWMRVBRVEMDX9W4J was the motivating loss)
-#   consume  mark one entry consumed by appending a `- filed-as: fabro-…`
-#            line directly after the overflow bullet (idempotent
+#   consume  mark one entry consumed by appending a `- filed-as: <item
+#            key>` line directly after the overflow bullet (idempotent
 #            consumption: a second consume of the same entry FAILS, so a
 #            filed overflow can never be filed twice)
 #   stats    open/consumed counts — REPORT-ONLY surface for the conductor
@@ -35,8 +35,12 @@
 #   open      `- overflow: <title> — <change>; effect: <effect>`
 #             (next line NOT a filed-as marker)
 #   consumed  the same bullet followed IMMEDIATELY by
-#             `- filed-as: fabro-xxxx (consumed YYYY-MM-DD[, run <id>])`
-#             (written only by `consume` — never hand-edited)
+#             `- filed-as: <item key> (consumed YYYY-MM-DD[, run <id>])`
+#             (written only by `consume` — never hand-edited). Item keys
+#             are the tracker's provider-stable form (ADR-0032 phase 3,
+#             fork 3); legacy `fabro-xxxx` markers in older revision
+#             files still READ as consumed — only the written shape
+#             changed.
 # Legacy overflow prose without the `- overflow:` bullet is not
 # machine-visible and is out of scope.
 #
@@ -44,7 +48,7 @@
 #   nu overflow-ledger.nu open [--dir <revisions-dir>]
 #   nu overflow-ledger.nu verify --file <marker.md>
 #   nu overflow-ledger.nu stats [--dir <revisions-dir>]
-#   nu overflow-ledger.nu consume --file <path> --line <n> --seed fabro-xxxx [--run-id <id>]
+#   nu overflow-ledger.nu consume --file <path> --line <n> --item <item key> [--run-id <id>]
 # Exit 0 on success; 2 on bad invocation/usage; 3 on consume of an
 # already-consumed entry.
 
@@ -75,8 +79,9 @@ def entries-in [text: string] {
         let rest = ($m | first | get rest)
         let nxt = if $i + 1 < $n { $lines | get ($i + 1) } else { '' }
         let consumed = (
-            ($nxt | parse --regex '^\s*[-*]\s*filed-as:\s*fabro-[0-9a-zA-Z_-]+' | is-not-empty)
+            ($nxt | parse --regex '^\s*[-*]\s*filed-as:\s*(fabro-[0-9a-zA-Z_-]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+)' | is-not-empty)
             or ($rest | str contains 'filed-as: fabro-')
+            or ($rest | parse --regex 'filed-as:\s*[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+' | is-not-empty)
         )
         $out = ($out | append {
             line: ($i + 1)
@@ -139,14 +144,18 @@ def "main stats" [--dir: path = '.fabro/revisions'] {
     } | to json --raw | print
 }
 
+# One filed-as marker id: a provider-stable item key (ADR-0032 fork 3,
+# e.g. denkhaus/work#123) or a legacy seed id from a pre-migration
+# revision file — both READ as consumed; consume WRITES only item keys.
 def "main consume" [
     --file: path          # revision file containing the overflow entry
     --line: int           # 1-based line of the '- overflow:' bullet
-    --seed: string        # fabro-xxxx id the entry was filed as
+    --item: string        # item key the entry was filed as
     --run-id: string = '' # invoking run id (optional provenance)
 ] {
-    if ($seed | parse --regex '^fabro-[0-9a-zA-Z_-]+$' | is-empty) {
-        print -e $"overflow-ledger: bad seed id '($seed)' — expected fabro-xxxx"
+    if ($item | parse --regex '^(fabro-[0-9a-zA-Z_-]+|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[0-9]+)$' | is-empty) {
+        let hint = 'expected <owner>/<repo>#<number> or a legacy fabro-xxxx id'
+        print -e ('overflow-ledger: bad item key ' + $item + ' — ' + $hint)
         exit 2
     }
     let path = ($file | path expand)
@@ -171,18 +180,18 @@ def "main consume" [
     }
     let stamp = (date now | format date '%Y-%m-%d')
     let marker = if ($run_id | is-empty) {
-        $"- filed-as: ($seed) \(consumed ($stamp)\)"
+        $"- filed-as: ($item) \(consumed ($stamp)\)"
     } else {
-        $"- filed-as: ($seed) \(consumed ($stamp), run ($run_id)\)"
+        $"- filed-as: ($item) \(consumed ($stamp), run ($run_id)\)"
     }
     let new = (( $lines | take ($idx + 1) ) ++ [ $marker ] ++ ( $lines | skip ($idx + 1) ))
     # string concat (never `append ''` on a string: nu re-splits the
     # joined string on the separator — observed 2026-09-19, fabro-552a).
     (($new | str join "\n") ++ "\n") | save --force $path
-    print $"consumed: ($file):($line) -> ($seed)"
+    print $"consumed: ($file):($line) -> ($item)"
 }
 
 def main [] {
-    print 'usage: overflow-ledger.nu <open|stats|consume> [--dir <dir>] | consume --file <path> --line <n> --seed fabro-xxxx [--run-id <id>]'
+    print 'usage: overflow-ledger.nu <open|stats|consume> [--dir <dir>] | consume --file <path> --line <n> --item <owner/repo#number> [--run-id <id>]'
     exit 2
 }

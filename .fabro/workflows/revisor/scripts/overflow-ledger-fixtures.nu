@@ -110,22 +110,26 @@ def main [] {
     expect '(b) stats consumed' $stats.consumed 1
     expect '(b) stats files' $stats.files 1
 
-    # (d) consume marks the open entry
-    let c = (do { nu $LEDGER consume --file $fixture --line $entry.line --seed fabro-fix02 --run-id 01FIXTURERUN } | complete)
+    # (d) consume marks the open entry — item-key marker shape (ADR-0032
+    # fork 3): the written marker names the provider-stable item key
+    let c = (do { nu $LEDGER consume --file $fixture --line $entry.line --item denkhaus/work#9002 --run-id 01FIXTURERUN } | complete)
     expect '(d) consume exit' $c.exit_code 0
-    expect-contains '(d) marker appended' (open --raw $fixture) '- filed-as: fabro-fix02 (consumed'
+    expect-contains '(d) marker appended' (open --raw $fixture) '- filed-as: denkhaus/work#9002 (consumed'
     let open2 = (ledger-open $scratch)
     expect '(d) open after consume' ($open2 | length) 0
     expect '(d) stats consumed after consume' (ledger-stats $scratch).consumed 2
 
-    # (e) double consume fails with exit 3
-    let c2 = (do { nu $LEDGER consume --file $fixture --line $entry.line --seed fabro-fix02 } | complete)
+    # (e) double consume fails with exit 3 (item-key re-consume attempt)
+    let c2 = (do { nu $LEDGER consume --file $fixture --line $entry.line --item denkhaus/work#9003 } | complete)
     expect '(e) double-consume exit' $c2.exit_code 3
     expect-contains '(e) double-consume message' $c2.stderr 'already consumed'
 
-    # (f) consume of a non-overflow line fails with exit 2
-    let c3 = (do { nu $LEDGER consume --file $fixture --line 1 --seed fabro-fix02 } | complete)
+    # (f) consume of a non-overflow line fails with exit 2; a malformed
+    # item key is refused with the same usage exit
+    let c3 = (do { nu $LEDGER consume --file $fixture --line 1 --item denkhaus/work#9004 } | complete)
     expect '(f) non-overflow consume exit' $c3.exit_code 2
+    let c4 = (do { nu $LEDGER consume --file $fixture --line 1 --item not-a-key } | complete)
+    expect '(f) bad item key exit' $c4.exit_code 2
 
     # (g) live invariant: while the real memoize entry stays unconsumed,
     # the default-dir listing surfaces it.
@@ -160,7 +164,7 @@ def main [] {
         '# Revision — run 01MTEST'
         ''
         '- status reviewed: failed'
-        '- seeds filed: none — zero-credit pass; 2 new overflow entries'
+        '- items filed: none — zero-credit pass; 2 new overflow entries'
         ''
         '## Findings'
         ''
@@ -176,7 +180,7 @@ def main [] {
         '# Revision — run 01MTEST'
         ''
         '- status reviewed: failed'
-        '- seeds filed: none — zero-credit pass; 2 new overflow entries'
+        '- items filed: none — zero-credit pass; 2 new overflow entries'
         ''
         '## Findings'
         ''

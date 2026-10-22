@@ -87,7 +87,7 @@ digraph Revisor {
     // grounded at the selected run. The answer is persisted in the manual
     // review shape so the artifact stays diff-compatible with
     // run_workflow.nu output. Writes are limited to the reviews tree;
-    // the analyst distills revision_findings (seed candidates) as a
+    // the analyst distills revision_findings (work-item candidates) as a
     // context key for the bookkeeper.
     analyze [
         label="Analyze",
@@ -102,7 +102,7 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
         x.fs_write=".fabro/reviews/**",
-        x.fabro_tools="fabro_ask",
+        x.fabro_tools="fabro_ask,fabro_work_list,fabro_work_show,fabro_work_release",
         // Read window: the CURRENT target trio (+wall) and journal;
         // revision_findings stays out — a previous cycle's findings are
         // stale, analyze re-emits fresh ones. journal stays: the prior
@@ -112,12 +112,13 @@ digraph Revisor {
         x.context_allow_keys="revision_findings,journal"
     ]
 
-    // File: deterministic bookkeeping. seeds create per finding (English
-    // seeds, one change each), the revision report doubles as the
-    // bookkeeping marker (.fabro/revisions/<run-id>.md — no marker on the
-    // base branch = run not yet revised), then git add+commit of exactly
-    // the artifact paths via shell. The run-scope gate rule (a9bb step 2)
-    // mechanically blocks any workflow-asset touch from this run too —
+    // File: deterministic bookkeeping. fabro_work_create per finding
+    // (English items, one change each; ADR-0032), the revision report
+    // doubles as the bookkeeping marker (.fabro/revisions/<run-id>.md —
+    // no marker on the base branch = run not yet revised), then
+    // git add+commit of exactly the artifact paths via shell. The
+    // run-scope gate rule (a9bb step 2) mechanically blocks any
+    // workflow-asset touch from this run too —
     // the revisor never changes code or its own definition.
     file [
         label="File",
@@ -130,23 +131,22 @@ digraph Revisor {
         // bookkeeping needs no repo memory; inert until fabro-9588.
         project_memory=false,
         x.preamble_stages_ignore="select,analyze,file",
-        // Filing writes the tracker through the shell (the documented
-        // escape hatch), but petri's checkpoint envelope judges the
-        // staged set, not the tool: the tracker file is admitted
-        // explicitly and leaves the hide list (a write glob under
-        // fs_hide is denied as hidden); the write-allowlist stays the
-        // artifact trees plus exactly the tracker file.
-        x.fs_hide="lib/**,apps/**,docs/**",
-        x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml,.fabro/revisions/**",
-        x.fabro_tools="",
+        // ADR-0032 phase 3: filing goes through the engine-mediated work
+        // tools (create/list/show/close), never a tracker CLI or file —
+        // the tracker leaves the fs envelope entirely; the write
+        // allowlist shrinks to the artifact trees. petri's checkpoint
+        // envelope judges the staged set, not the tool.
+        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_write=".fabro/revisions/**",
+        x.fabro_tools="fabro_work_create,fabro_work_list,fabro_work_show,fabro_work_close",
         // Read window: current target + current findings ONLY. Filing,
         // marker, and commit need no journal history — prior-pass
         // observations serve select/analyze continuity, not bookkeeping
-        // (2026-09-02 preamble review). The node's own filed_seed_ids
+        // (2026-09-02 preamble review). The node's own filed_item_keys
         // never render back either (stale on loops); its journal EMISSION
         // is unaffected (that is the write side, context_allow_keys).
         x.preamble_allow_keys="revisor_target_run_id,revisor_target_title,revisor_target_status,revisor_target_workflow_version,revision_findings",
-        x.context_allow_keys="filed_seed_ids,journal"
+        x.context_allow_keys="filed_item_keys,journal"
     ]
 
     // fabro-2357: the placement guard is the FIRST stage after start, so a
