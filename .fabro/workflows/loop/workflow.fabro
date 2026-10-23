@@ -86,8 +86,13 @@ digraph Loop {
         x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml",
         x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
         // fabro_run_set_title (fabro-9711/ADR-0030): refine this run's
-        // title to the claimed seed right after claiming.
-        x.fabro_tools="fabro_run_search,fabro_run_set_title"
+        // title to the claimed item right after the grant. The
+        // fabro_work_* catalog (ADR-0032 phase 3) is the planner's whole
+        // tracker surface: next (atomic claim), show/list (reads),
+        // update (stale-spec corrections), release (misroute/skip),
+        // close (the two superseded-close arms) — no tracker CLI, no
+        // tracker file, no forge client.
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close"
     ]
 
     // Claim-contract gate (fabro-c42f stopgap): the shared develop script
@@ -129,7 +134,11 @@ digraph Loop {
         x.preamble_stages_ignore="planner,reviewer,implementer",
         x.preamble_stages_latest_only=true,
         x.tools="read_file,write_file,edit_file,glob,grep,shell,use_skill",
-        x.fabro_tools="",
+        // ADR-0032 phase 3: the read-only work-item pair — show resolves
+        // a thin brief (the full granted item), list is the known-bug
+        // query surface on gate-red bounces. Writes stay denied; no
+        // tracker CLI, no forge client.
+        x.fabro_tools="fabro_work_show,fabro_work_list",
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
         x.fs_hide=".agents/**,.mulch/**",
         x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**",
@@ -188,7 +197,11 @@ digraph Loop {
         x.preamble_output_max_lines=2000,
         x.fs_write="",
         x.tools="read_file,grep,glob",
-        x.fabro_tools="",
+        // ADR-0032 phase 3: read-only item access — the claimed item's
+        // title/body/state by key, the spec source when the capture's
+        // spec section is thin. Never a write: claiming, closing,
+        // editing, or filing is other roles' business.
+        x.fabro_tools="fabro_work_show",
         output_schema="routing",
         output_retries=2,
         max_visits=20,

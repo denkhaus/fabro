@@ -6,38 +6,39 @@ project-agnostic). Porting the workflow means editing this file, not the
 prompts. A stale value here is loop friction: report it in the journal,
 never silently work around it.
 
-- Primary work surface — where loop-seed work lands: the loop's own
+- Primary work surface — where loop-item work lands: the loop's own
   machinery (ADR-0008 one-unit): `.fabro/workflows/**` (graphs, prompts,
   schemas, scripts), `.fabro/scripts/**`, root `scripts/**`, `justfile`,
-  and the tracker file `.seeds/issues.jsonl` — plus ONE lib/ exception:
-  `lib/components/fabro-dot/src/snapshots/**`, the snapshot file
-  mechanically derived from the workflow graphs (accept it with
-  `cargo insta accept` when the dot-snapshot gate tier goes RED on your
-  graph-shape change; ship the .snap update in the same diff). The loop
-  implementer's fs envelope pins EXACTLY this set; the loop tester's
-  run-scope check refuses every other path.
+  and the tracker assets under `.seeds/` (the frozen legacy tracker file
+  the deterministic nodes still read during the ADR-0032 transition) —
+  plus ONE lib/ exception: `lib/components/fabro-dot/src/snapshots/**`,
+  the snapshot file mechanically derived from the workflow graphs (accept
+  it with `cargo insta accept` when the dot-snapshot gate tier goes RED
+  on your graph-shape change; ship the .snap update in the same diff).
+  The loop implementer's fs envelope pins EXACTLY this set; the loop
+  tester's run-scope check refuses every other path.
 - Out-of-lane surfaces — never touched by a loop run: product code
   (`lib/`, `apps/`, `docs/`, `lib/packages/`) EXCEPT the fabro-dot
   snapshot dir above, session-level skills
-  (`.agents/`), expertise (`.mulch/`). A seed whose primary surface is
+  (`.agents/`), expertise (`.mulch/`). An item whose primary surface is
   one of these is misrouted — see the planner prompt.
-- Merge-target branch — the branch this seed loop's run PRs integrate
-  into: `origin/denkhaus`. `origin/main` is only the upstream mirror.
-- Issue tracker: the `seeds` CLI (Seeds, git-native in `.seeds/`). The
-  loop line works EXCLUSIVELY on seeds assigned to assignee `loop` —
-  the assignee is the ownership switch (ADR-0018, symmetric to @fabro).
-  Seed ids carry the prefix `fabro-` followed by four hex characters. The supported
-  read path is `seeds show <id> --format json`; never parse the raw
-  tracker file by hand. Exact command reference (never invent flags):
-
-| Command | Purpose |
-|---|---|
-| `seeds ready --assignee loop --limit 200` | Unblocked open seeds ASSIGNED TO loop — the ONLY candidate source. If it answers the question, do NOT also run `seeds list`. ALWAYS pass `--limit 200`: the default 50 silently truncates. |
-| `seeds list --format json --assignee loop --limit 200` | Full tracker picture, loop-assigned only (only when `seeds ready` was not enough). NEVER list without the assignee filter. |
-| `seeds show <id> --format json` | One seed in full (the supported path). |
-| `seeds update <id> --status in_progress --assignee loop` | Claim (the exact claim form). Takes NO `--format` flag. |
-| `seeds update <id> --set-description "<full corrected body>"` | Record a stale-spec correction BEFORE the claim — `--set-description` replaces the body wholesale: re-emit the FULL corrected body including the existing `Basis:` line. Takes NO `--format` flag. |
-| `seeds close <id>` | NEVER yours — the deterministic Closeout step closes approved seeds; the ONLY sanctioned non-Closeout close is the planner's superseded-close arms, stale-basis and fix-landed (planner.md step 3 carries both exact reason forms: `seeds close <id> --reason "superseded: fix landed in <sha>"` when a fix commit referencing the seed is already in base history and the acceptance criteria hold, `seeds close <id> --reason "superseded: basis stale (<what changed>)"` when the basis no longer resolves). Every other close form is forbidden to every role. |
+- Merge-target branch — the branch this item loop's run PRs integrate
+  into: `origin/denkhaus`. `origin/main` is only the upstream mirror;
+  branch-sensitive checks (the already-landed greps) must fetch and grep
+  the merge-target branch named here, never the mirror.
+- Work-item tracker (ADR-0032): the project's work items live in the
+  central tracker behind the fabro server; agent access is EXCLUSIVELY
+  the engine-mediated run tools — `fabro_work_next` (the atomic claim;
+  the candidate source IS the tool grant, never a list), `fabro_work_show`,
+  `fabro_work_list` (with `query`, a title+body search including closed
+  items), `fabro_work_create`, `fabro_work_update`, `fabro_work_close`,
+  `fabro_work_release`. No tracker CLI, no tracker file, no forge client
+  (ADR-0019). Item keys are provider-stable and look like
+  `<owner>/<repo>#<n>` — copy them verbatim, never truncated; legacy
+  items imported from the pre-ADR-0032 tracker keep resolving by their
+  legacy id through `fabro_work_show`. The loop line claims lane `loop`
+  — the lane is the ownership switch (ADR-0018's assignee, carried into
+  ADR-0032's lane labels).
 
 - Deterministic gate (loop lane): `nu .fabro/workflows/loop/scripts/loop-gate.nu` — the tester step owns it. The battery: validate every
   workflow graph (petri admission), lint every nu script, prompt-lint
