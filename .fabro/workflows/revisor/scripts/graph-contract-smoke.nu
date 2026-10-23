@@ -3,9 +3,10 @@
 # toolchain-placement contract. The revisor lane stays a MANUAL fire lane,
 # so a flag-less `fabro run revisor` is a real operator path — without the
 # guard it burns a pass before the first stage that needs the toolchain
-# (the agent stages shell out to nu/seeds), on the server's default sandbox
-# image. Pure file assertions, no
-# seeds, no git — the develop/loop graph-contract-smoke pattern (wired into
+# (the agent stages shell out to nu lint/ledger scripts and git, filing
+# through the fabro_work_* tools — ADR-0032), on the server's default
+# sandbox image. Pure file assertions, no tracker calls,
+# no git — the develop/loop graph-contract-smoke pattern (wired into
 # scripts/qualitygate.nu's loop-asset tier).
 #
 #   nu .fabro/workflows/revisor/scripts/graph-contract-smoke.nu
