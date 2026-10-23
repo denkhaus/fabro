@@ -56,6 +56,12 @@
 #     --report-only skip the closure side effects — report the landing
 #                   verdict without closing anything (dry-run / fixtures)
 #     --top N       how many top candidates to check (default 5)
+#     --work-item   ADR-0032 phase 3 develop mode (fork 7): read the
+#                   GRANTED-item packet {itemKey,title,body} on stdin
+#                   (planner-forwarded tool result) and report on that
+#                   ONE item — no seeds CLI, no candidate list; a bad
+#                   packet exits 1 (claim-contract bounce). The loop
+#                   lane keeps the --assignee candidate mode.
 
 #
 # STANDING POLICY (fabro-9ec3, 2026-09-17): any planner rule naming a
@@ -348,11 +354,66 @@ const SCRIPT_DIR = (path self | path dirname)
 # the primary surface is repo-visible); the loop lane flags PRODUCT
 # surfaces (the misroute detector the loop planner's surface router
 # adjudicates).
-def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5, --assignee: string = "fabro"]: nothing -> nothing {
+def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5, --assignee: string = "fabro", --work-item]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
     # degrades the self-closure identity to a no-op exclusion.
     let run_id = ($env.FABRO_RUN_ID? | default "" | str trim)
+
+    # ADR-0032 phase 3 (fork 7): develop-lane mode — the report folds
+    # onto the GRANTED item, not a seeds candidate list. stdin is the
+    # granted-item packet the planner forwarded from its fabro_work_next
+    # / fabro_work_show tool result (context key current_item_json):
+    # {"itemKey": "...", "title": "...", "body": "..."}. A missing or
+    # malformed packet is the fabro-c42f claim-contract failure — exit 1
+    # with a teaching error; the graph edge bounces the planner. The
+    # seeds CLI is never touched in this mode.
+    if $work_item {
+        let raw = (cat | str join | str trim)
+        if ($raw | is-empty) {
+            print -e "claim preflight: stdin carried no granted-item packet (current_item_json missing — planner context_updates drop, fabro-c42f class)"
+            exit 1
+        }
+        let pkt = (try { $raw | from json } catch { null })
+        if not ($pkt | describe | str starts-with "record") {
+            print -e $"claim preflight: granted-item packet is not a JSON object: ($raw | str substring 0..120)"
+            exit 1
+        }
+        let key = ($pkt | get -o itemKey | default "" | str trim)
+        let body = ($pkt | get -o body | default "")
+        if ($key | is-empty) or ((($body | describe) != "string")) {
+            print -e "claim preflight: granted-item packet must carry a non-empty itemKey and a string body (copy the fabro_work_show result fields verbatim)"
+            exit 1
+        }
+        # Already-landed verdict over the item key (fail-open: a
+        # dup-run-check failure degrades the row, never the run).
+        let dup = ($SCRIPT_DIR | path join '../../..' 'scripts' 'dup-run-check.nu')
+        let res = (do { nu $dup $key --base $base --self $run_id } | complete)
+        let verdict = (if $res.exit_code != 0 {
+            {seed: $key, verdict: "degraded"}
+        } else {
+            $res.stdout | lines | compact | each {|l| $l | from json } | first | default {seed: $key, verdict: "degraded"}
+        })
+        # Same advisory arms as the candidate mode, minus in-flight (the
+        # server's claim mutex owns exclusivity now — one live claim per
+        # item and per run is engine-guaranteed, not journal-derived).
+        let legend = {duplicate: "advisory: implementation possibly already in merge-target base — the implementer judges acceptance criteria and routes Blocked per the duplicate-run rule",
+                      clean: "no landed implementation found",
+                      degraded: "check failed (fetch/history error)"}
+        let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before implementing; loop-asset-only or external-tool items are DIRECT WORK (route Blocked naming the misroute)"}
+        let basis_legend = {basis_commit: "advisory: the body's Basis-line commit sha. basis_commit_resolves=false means the commit is unreachable in this object DB (squash-merged run branches strand their basis commits) — NOT a stale-basis verdict: adjudicate the basis via its files/worktree, never probe for the sha; null = no sha in body or tooling fail-open"}
+        let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing, already_in_base, branch_missing, or pointer_missing (resolve the implementer commit BEFORE implementing)"}
+        let report = {mode: "checked",
+                      run_id: ($run_id | default null),
+                      item: $key,
+                      candidates: [(row $verdict $body ($SCRIPT_DIR | path join '../../../..') [] $base false "fabro")],
+                      legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $salvage_legend),
+                      degraded_reason: (if $verdict.verdict == "degraded" { "dup-run-check degraded (fail-open)" } else { null })}
+        {"outcome": "succeeded",
+         "preferred_next_label": "Preflight done",
+         "context_updates": {"output.preflight": $report}} | to json --raw | print
+        return
+    }
 
     mut mode = "checked"
     mut degraded_reason = ""

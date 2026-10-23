@@ -427,7 +427,28 @@ if ($bad_capped.omitted | length) != 0 {
     fail $"capped-diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_capped.omitted)"
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note verified"
+# ADR-0032 phase 3 work-item mode pin: the --work-item invocation reads
+# the granted-item packet on stdin — a valid packet produces a capture
+# whose header names the item key (subprocess run, read-only against the
+# real repo), and a malformed packet hard-fails with exit 1 (the
+# wrong-item capture class guard). Positive AND negative arm, per the
+# edited-script dry-run rule.
+let wi_ok = (do { echo '{"itemKey":"denkhaus/work#1","title":"T","body":"Edit lib/a.rs"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item } | complete)
+if $wi_ok.exit_code != 0 {
+    fail $"evidence --work-item positive run failed: ($wi_ok.stderr | str substring 0..200)"
+}
+if not ($wi_ok.stdout | str contains "seed=denkhaus/work#1: T") {
+    fail "evidence --work-item header must name the packet's item key and title"
+}
+let wi_bad = (do { echo 'not-json' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item } | complete)
+if $wi_bad.exit_code == 0 {
+    fail "evidence --work-item must hard-fail on a malformed packet — a silent fallback would reintroduce the wrong-item capture class"
+}
+if not ($wi_bad.stderr | str contains "granted-item packet") {
+    fail $"evidence --work-item negative run must name the packet problem: ($wi_bad.stderr | str substring 0..160)"
+}
+
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note/work-item-packet verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

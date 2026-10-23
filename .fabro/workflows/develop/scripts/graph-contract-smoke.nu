@@ -1,31 +1,36 @@
 #!/usr/bin/env nu
-# Graph-contract smoke (fabro-83df / fabro-92e2, 2026-09-19): pins the
-# develop graph's deterministic-exit contract that the 2026-09-19
-# goal-gate incident broke. Pure file assertions, no seeds, no git — the
-# same closeout-smoke pattern (checked into the repo, wired into
-# scripts/qualitygate.nu's loop-asset tier).
+# Graph-contract smoke (fabro-83df / fabro-92e2, 2026-09-19; rewritten for
+# the ADR-0032 phase-3 topology): pins the develop graph's deterministic
+# contracts. Pure file assertions, no tracker, no git — the same
+# closeout-smoke pattern (checked into the repo, wired into
+# scripts/qualitygate.nu's loop-asset tier via .fabro/scripts/battery-runner.nu).
 #
 #   nu .fabro/workflows/develop/scripts/graph-contract-smoke.nu
 #
 # Contract:
-#   1. planner node carries NO goal_gate — the deterministic guards
-#      (tracker_guard) legitimately bypass it; a gate made those runs
-#      die with "goal gate unsatisfied for node planner".
+#   1. planner node carries NO goal_gate — deterministic guard bypasses
+#      made gated runs die; routing owns the flow.
 #   2. NO preflight -> exit edge — the preflight is report-only
-#      (fabro-83df); a landed-but-open top candidate is the planner's
-#      decision, never a script exit.
-#   3. tracker_guard -> exit ("Tracker empty") edge EXISTS — the
-#      zero-token drained-tracker exit must stay.
-#   4. preflight -> planner ("Preflight done") edge EXISTS — the
-#      unconditional fail-open route must stay.
-#   5. planner -> exit ("Already landed") edge EXISTS — the planner's
-#      own decision exit must stay.
-#   6. Toolchain-placement guard (fabro-2357, the loop-lane pattern of
-#      fabro-3ab2): start routes through env_guard before tracker_guard,
-#      the node runs the shared guard through POSIX sh with the develop
-#      lane flag, and start has NO second outgoing edge. A dropped or
-#      bypassed guard silently returns the cryptic "nu: command not
-#      found" death on a flag-less manual fire.
+#      (fabro-83df); a landed-but-open item is adjudicated by roles,
+#      never a script exit.
+#   3. NO retired nodes: tracker_guard, claim_check, gatebounce must not
+#      reappear (ADR-0032 phase 3 — host scripts cannot read the server-
+#      side tracker; their arms folded into the planner tools and the
+#      post-claim preflight).
+#   4. start -> env_guard -> planner wiring: the placement guard is first
+#      and start has NO second outgoing edge (fabro-2357).
+#   5. The claim-contract chain: planner -> preflight ("Seed claimed"),
+#      preflight reading the granted-item packet on stdin
+#      (stdin_source="current_item_json", script line carries
+#      --work-item), preflight -> implementer ("Preflight done"), and the
+#      outcome=failed bounce back to the planner (fabro-c42f class).
+#   6. planner -> exit ("Tracker empty") and ("Already landed") edges
+#      EXIST — the drained-queue and superseded-close exits are the
+#      planner's own since the tracker guard retired.
+#   7. The work-item tool grants: the planner's x.fabro_tools names
+#      fabro_work_next (the atomic claim), the closeout node's names
+#      fabro_work_close, and the evidence node runs --work-item with the
+#      packet on stdin (fork 7 context flow).
 
 const GRAPH = ('.fabro/workflows/develop/workflow.fabro' | path expand)
 
@@ -50,30 +55,32 @@ def main [] {
     if ($block | any {|l| ($l | split row '//' | first | str contains 'goal_gate')}) {
         fail 'planner node carries goal_gate (fabro-92e2 regression): deterministic guard exits would die at the terminal gate check'
     }
+    # 7. the atomic claim grant is pinned on the planner node itself
+    if not ($block | any {|l| ($l | str contains 'fabro_work_next')}) {
+        fail 'planner x.fabro_tools missing fabro_work_next — the atomic claim grant (ADR-0032) must live on the planner node'
+    }
 
+    # 2. report-only preflight never exits the run
     if ($lines | any {|l| ($l | str contains 'preflight -> exit')}) {
         fail 'preflight -> exit edge exists (fabro-83df regression): report-only preflight must never exit the run'
     }
-    if not ($lines | any {|l| ($l | str contains 'tracker_guard -> exit') and ($l | str contains 'Tracker empty')}) {
-        fail 'tracker_guard -> exit ("Tracker empty") edge missing: zero-token drained-tracker exit lost'
-    }
-    if not ($lines | any {|l| ($l | str contains 'preflight -> planner') and ($l | str contains 'Preflight done')}) {
-        fail 'preflight -> planner ("Preflight done") edge missing: unconditional fail-open route lost'
-    }
-    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
-        fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
-    }
-    # 6. toolchain-placement guard (fabro-2357): start -> env_guard ->
-    # tracker_guard, run through POSIX sh with the develop lane flag.
-    # Assertions read COMMENT-STRIPPED lines (the loop smoke's precedent):
-    # the rationale comments name the contract, and only real code may
-    # satisfy it.
+
+    # 3. retired nodes stay retired (comment-STRIPPED lines only — the
+    # rationale comments name them by design)
     let code = ($lines | each {|l| ($l | split row '//' | first)})
+    for node in ["tracker_guard" "claim_check" "gatebounce"] {
+        if ($code | any {|l| ($l | str contains $node)}) {
+            fail $"retired node ($node) reappeared in code — ADR-0032 phase 3 regression: its arms belong to the planner tools / post-claim preflight"
+        }
+    }
+
+    # 4. toolchain-placement guard (fabro-2357): start -> env_guard ->
+    # planner, POSIX sh guard script, single start edge.
     if not ($code | any {|l| ($l | str contains 'start -> env_guard')}) {
         fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
     }
-    if not ($code | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
-        fail 'env_guard -> tracker_guard edge missing — the placement guard must precede every nu stage'
+    if not ($code | any {|l| ($l | str contains 'env_guard -> planner')}) {
+        fail 'env_guard -> planner edge missing — the placement guard must precede every LLM/nu stage'
     }
     if not ($code | any {|l| ($l | str contains 'toolchain-guard.sh develop') and ($l | str starts-with '        script="sh ')}) {
         fail 'env_guard script line must run the shared guard via POSIX sh with the develop lane flag — nu cannot guard a sandbox without nu'
@@ -82,5 +89,47 @@ def main [] {
     if ($start_edges | length) != 1 {
         fail $'start must have exactly ONE outgoing edge, the placement guard; found ($start_edges | length) — a second edge would bypass it'
     }
-    print 'graph-contract-smoke: OK — planner ungated, preflight report-only, guard exits intact, placement guard wired'
+
+    # 5. claim-contract chain (fabro-c42f, ADR-0032 form)
+    if not ($code | any {|l| ($l | str contains 'planner -> preflight') and ($l | str contains 'Seed claimed')}) {
+        fail 'planner -> preflight ("Seed claimed") edge missing — the claimed route must pass the deterministic preflight'
+    }
+    if not ($code | any {|l| ($l | str contains 'preflight -> implementer') and ($l | str contains 'Preflight done')}) {
+        fail 'preflight -> implementer ("Preflight done") edge missing — the unconditional fail-open route lost'
+    }
+    if not ($code | any {|l| ($l | str contains 'preflight -> planner') and ($l | str contains 'outcome=failed')}) {
+        fail 'preflight -> planner bounce edge missing — a dropped granted-item packet must re-enter the planner, not park the run'
+    }
+    if not ($code | any {|l| ($l | str contains 'planner-preflight.nu --work-item')}) {
+        fail 'preflight script line missing --work-item — the develop lane must run the granted-item mode, never the seeds candidate mode'
+    }
+    if not ($code | any {|l| ($l | str contains 'stdin_source="current_item_json"')}) {
+        fail 'stdin_source="current_item_json" missing — the deterministic preflight/evidence nodes read the granted-item packet, not a tracker id'
+    }
+
+    # 6. planner decision exits
+    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Tracker empty')}) {
+        fail 'planner -> exit ("Tracker empty") edge missing: the drained-queue exit belongs to the planner since the tracker guard retired'
+    }
+    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
+        fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
+    }
+
+    # 7. closeout closes through the tool grant; evidence is work-item-fed
+    if not ($code | any {|l| ($l | str contains 'evidence.nu --work-item')}) {
+        fail 'evidence script line missing --work-item — the capture must read the granted-item packet mode'
+    }
+    let cout_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'closeout ['} | get -o index | first | default null)
+    if $cout_start == null { fail 'closeout node not found' }
+    let cout_end = ($lines | enumerate | where {|e| $e.index > $cout_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
+    if $cout_end == null { fail 'closeout node block not terminated' }
+    let cout_block = ($lines | skip ($cout_start + 1) | take ($cout_end - $cout_start - 1))
+    if not ($cout_block | any {|l| ($l | str contains 'fabro_work_close')}) {
+        fail 'closeout node missing the fabro_work_close grant — the close is a tool call (ADR-0032), never a host script'
+    }
+    if not ($cout_block | any {|l| ($l | str contains 'prompt=')}) {
+        fail 'closeout node must be a prompt (agent) node — host scripts cannot reach the tracker'
+    }
+
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout closes through tools'
 }

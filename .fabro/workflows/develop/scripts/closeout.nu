@@ -471,7 +471,45 @@ def sweep-exemption-arms [seed_id: string, run_id: string, journal_path: string]
 # from a loop run are loop-asset follow-ups (@loop); product residuals
 # stay @fabro. Passed by the calling graph's script line; deterministic
 # via the run's workflow spec.
-def main [--lane: string = "product"]: nothing -> nothing {
+def main [--lane: string = "product", --work-item, --plan-only, --item-key: string, --run-id: string]: nothing -> nothing {
+    # ADR-0032 phase 3 (develop, fork 7 + fork 8): PLAN-ONLY mode — the
+    # tracker mutations (fabro_work_create / fabro_work_close) are
+    # engine-mediated tools a host script cannot call (scrubbed worker
+    # env), so this script stays the deterministic DECISION core and the
+    # closeout agent stage EXECUTES the plan through the tools. The plan
+    # derives mechanically from the stage journal (the same pure helpers
+    # the seeds-mode sweeps use): non-blocking reviewer residuals,
+    # deferred-action markers, EXEMPTION arms — titles, bodies, labels
+    # ready for fabro_work_create. The agent owns the fork-8 fresh
+    # filing-time dedupe (fabro_work_list query=<run-id>) and the close.
+    if $work_item {
+        if not $plan_only {
+            print -e "closeout: --work-item without --plan-only is not a thing — work-item mode only derives the plan (the closeout agent executes it via fabro_work_* tools)"
+            exit 2
+        }
+        let key = ($item_key | default "" | str trim)
+        if ($key | is-empty) {
+            print -e "closeout: --work-item --plan-only needs --item-key (this run's granted item)"
+            exit 2
+        }
+        let rid = (if ($run_id | default "" | str trim | is-empty) { current-run-id } else { $run_id | str trim })
+        let journal_path = $".fabro/journal/($rid).jsonl"
+        let findings = (journal-nonblocking $journal_path)
+        let deferred = (journal-deferred $journal_path | each {|a| deferred-text $a} | where {|t| not (deferred-action-empty $t)})
+        let exemptions = (journal-exemptions $journal_path)
+        let plan = {itemKey: $key,
+                    runId: $rid,
+                    journal: $journal_path,
+                    findings: ($findings | each {|f| {title: (finding-title $f $key), body: $"Reviewer non-blocking residual from ($key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($f)\"\n\nOrigin: reviewer journal of run ($rid), closed item ($key).\nBasis: run ($rid), closed item ($key)", labels: ["residual"]}}),
+                    deferred: ($deferred | each {|a| {title: (deferred-title $a $key), body: $"Deferred human follow-up disclosed while implementing ($key).\n\nAction: \"($a)\"\n\nOrigin: implementer journal of run ($rid), deferred-action marker observation.\nBasis: run ($rid), closed item ($key)", labels: ["residual"]}}),
+                    exemptions: ($exemptions | each {|arm|
+                        let etext = (exemption-text $arm)
+                        {title: (exemption-title $etext $key),
+                         body: $"Deferred user/infra action the run exempted while implementing ($key).\n\nAction: \"($etext)\"\n\nOrigin: planner journal of run ($rid), EXEMPTION marker observation.\nBasis: run ($rid), closed item ($key)",
+                         labels: ["ops" "residual"]}})}
+        $plan | to json --raw | print
+        return
+    }
     let residual_assignee = (if $lane == "loop" { "loop" } else { "fabro" })
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes

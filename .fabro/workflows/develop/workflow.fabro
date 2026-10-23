@@ -62,65 +62,39 @@ digraph Develop {
         max_retries=0
     ]
 
-    // Tracker guard (fabro-0da8): deterministic drained-tracker terminal
-    // check AFTER start, BEFORE the preflight and planner — proves tracker
-    // state in ~1-3 s of shell (seeds list open + in_progress, both
-    // `--assignee fabro --limit 200`) so the drained-tracker case costs
-    // ZERO planner tokens. Basis (run 01M0SFEYVC9TD6MP816RHEBFQY):
-    // planner@1 spent 27.7s / $0.0186 solely to discover 0 open seeds.
-    // Both lists empty -> routes the existing "Tracker empty" label
-    // contract (declared on the planner's exit edge below) straight to
-    // the exit; either non-empty or ANY seeds failure -> fail-open to the
-    // preflight/planner unchanged (never parks, never fails the run).
-    // The node produces no context value — nothing downstream needs one.
-    // Stale-claim requeue arm (fabro-d9f7): in_progress fabro seeds with
-    // no live claiming develop run older than the stale threshold
-    // (default 6h, FABRO_GUARD_STALE_HOURS) are reset to open here —
-    // requeued ids land in the stdout JSON's `requeued` array; the
-    // routing semantics are unchanged. internal.run_id on stdin gives
-    // the arm its self-run exclusion.
-    tracker_guard [
-        label="Tracker guard: empty-tracker fast exit + stale-claim requeue",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/tracker-guard.nu",
-        output_schema="routing",
-        timeout="30s",
-        max_retries=0
-    ]
-
-    // Planner preflight: deterministic already-landed REPORT (fabro-a32f,
-    // report-only redesign fabro-83df, 2026-09-19). Runs BEFORE the
-    // planner LLM lap over the top `seeds ready --assignee fabro`
-    // candidates, grepping the merge-target base history via
-    // .fabro/scripts/dup-run-check.nu (filed-only revisor commits never
-    // count; Fabro-Run trailer identity; landed true-merge or squash
-    // `(#n)` commits count). Motivation (run 01M2Q2Q2NY211PVV0E44YDAAQN,
-    // PR #207): the planner re-derived a sub-second greppable fact
-    // (manual fix commit vs stale tracker row) across three probe rounds
-    // — 93.6s / $0.143. The script closes NOTHING and never exits early:
-    // it hands the per-candidate verdict table to the planner inline
-    // (`output.preflight`), and the planner's ALREADY LANDED arm (the
-    // fabro-d183 two-branch rule) owns the decision AND the closure —
-    // every close stays review-protected, and a deliberately reopened
-    // seed can no longer be mechanically re-closed by a subject match
-    // (incident 2026-09-19: fabro-29f7/fabro-6a78 auto-closed off
-    // reopen/verify commits, fabro-395b). Fail-open on every internal
-    // error (fetch/tracker/empty list): the unconditional edge routes
-    // the planner normally with the degraded mode recorded.
-    // gatebounce command-node idiom: output_schema="routing" lets the
-    // script emit preferred_next_label mechanically. Narrows, does not
-    // close, open fabro-a01f (claim race).
+    // ADR-0032 phase 3: the develop tracker_guard node is GONE — its
+    // shell drained-tracker check needs tracker reads a host script no
+    // longer has (work items live behind the server; the worker env is
+    // scrubbed, no CLI surface exists). The drained case is now the
+    // planner's fabro_work_next empty outcome routing "Tracker empty"
+    // (one cheap LLM call, no dead script arm). The shared script
+    // survives unchanged for the loop lane (still seeds-based there
+    // until its own phase-3 unit): one file plus a lane flag.
+    //
+    // Claim preflight (ADR-0032 phase 3, fork 7 — was the pre-planner
+    // candidate preflight): deterministic REPORT over the GRANTED item,
+    // not a candidate list — the planner claims through fabro_work_next,
+    // then this node checks that item. stdin is the granted-item packet
+    // the planner forwards from its tool result (current_item_json:
+    // itemKey/title/body); a missing or malformed packet IS the
+    // fabro-c42f claim-contract failure (the node fails, the edge below
+    // bounces the planner) — the retired claim_check node's
+    // id-presence arm folded in here. Keeps the fabro-83df report-only
+    // contract: the already-landed verdict (dup-run-check over the item
+    // key), anchor and salvage flags are ADVISORY and ship inline to the
+    // implementer as `output.preflight`; the duplicate verdict itself is
+    // adjudicated by the planner/implementer, never a script exit.
+    // Fail-open on every internal git error; the loop lane keeps the
+    // pre-planner --assignee candidate mode of the same script.
     preflight [
-        label="Planner preflight: already-landed check",
+        label="Claim preflight: granted-item already-landed + anchor report",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu",
-        // Petri has no internal.run_id (the legacy engine's run state
-        // reads as null); the script takes the invoking run id from
-        // FABRO_RUN_ID and degrades to empty when nothing binds it.
+        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu --work-item",
+        stdin_source="current_item_json",
         output_schema="routing",
         // fabro-900e producer declaration: declares `output.preflight`
-        // (the per-candidate verdict table rendered into the planner's
-        // ## Context).
+        // (the granted item's verdict row rendered into the
+        // implementer's ## Context).
         x.context_allow_keys="output.preflight",
         timeout="2m",
         max_retries=1
@@ -167,8 +141,9 @@ digraph Develop {
         // fabro-bbbb: reasoning_effort dropped high -> low. Basis: run
         // 01M1XZCWNBR33BZGHQXNRA80J9 measured the planner at 83.6s wall
         // = 40% of run, $0.080 = 45% of cost, 4,469 of 5,899 reasoning
-        // tokens — mostly tie-breaking two High seeds. `seeds ready
-        // --assignee fabro` is deterministic since fabro-5e09 (PR #38),
+        // tokens — mostly tie-breaking two High items. The candidate
+        // source is deterministic since fabro-5e09 (PR #38) — now the
+        // server's own priority ranking behind the atomic grant —
         // removing the tie-break reasoning load that justified high.
         // Static low for ALL planner passes including changes_requested
         // re-plans: the engine resolves reasoning_effort as a static node
@@ -184,25 +159,30 @@ digraph Develop {
         // durable context after the planner records, so later cycles'
         // preambles never re-render stale values.
         x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
-        // fabro-1dae (stage envelope fs scope): planning never touches
-        // loop assets by FILE tools — but the tracker CLI claim mutates
-        // the working tree, and petri's checkpoint envelope judges the
-        // staged set, not the tool: the claim write is admitted here
-        // explicitly. A write glob under fs_hide is denied as hidden,
-        // so the tracker file leaves the hide list; every other loop
-        // asset stays hidden and writes stay pinned to the tracker file.
-        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
-        x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml",
+        // ADR-0032 phase 3: the tracker left the fs envelope entirely —
+        // the claim is the fabro_work_next tool grant (engine-mediated,
+        // server-side mutex), so the planner writes NOTHING to the tree
+        // anymore. The frozen tracker file goes back behind the hide
+        // list; every loop asset stays hidden.
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
         // fabro-900e (envelope write side): the planner's context_updates
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
         // key) drops visibly with a notice instead of leaking silently.
-        x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
+        x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,current_item_json,review_verdict,journal",
         // fabro-06e0: in-flight PR check surface — read-only enumeration
         // of develop runs incl. linked PR live state (open/closed/merged).
         // fabro_run_set_title (fabro-9711/ADR-0030): the planner refines
-        // this run's title to the claimed seed right after claiming.
-        x.fabro_tools="fabro_run_search,fabro_run_set_title"
+        // this run's title to the claimed item right after claiming
+        // (sensitive items get a NEUTRAL title — ADR-0032 fork: run/PR
+        // titles are public when the code repo is public).
+        // ADR-0032 phase 3: the work-item tool grant — fabro_work_next
+        // claims (the atomic grant IS the candidate source), show/list
+        // read, update records stale-spec corrections, release returns a
+        // misrouted/stale claim to the queue (then the planner asks
+        // again), close lands the superseded-close arms. No tracker CLI,
+        // no tracker file, no forge client (ADR-0019).
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -245,25 +225,30 @@ digraph Develop {
         // catalog are denied mechanically by the same list (question tools
         // stay exempt engine-side). Restricting, never extending (ADR-0019).
         x.tools="read_file,write_file,edit_file,glob,grep,shell,use_skill",
-        // Same discipline as the reviewer: no fabro-run tools. Effective
-        // denial is the tools allow-list above (stage_policy filters every
-        // unlisted name); the empty opt-in records the intent explicitly.
-        x.fabro_tools="",
+        // ADR-0032 phase 3: the read-only work-item pair — fabro_work_show
+        // resolves a thin brief (the full granted item), fabro_work_list
+        // is the known-bug query surface on gate-red bounces (the retired
+        // deterministic gatebounce node's lookup, now a mandated prompt
+        // step: query the failure tail's distinctive token, items whose
+        // body covers the failure are known-bug context). Writes stay
+        // denied; no tracker CLI, no forge client.
+        x.fabro_tools="fabro_work_show,fabro_work_list",
         // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
         // Context section is a strict input contract — the seed trio the
         // prompt names (review feedback arrives as its own `review_feedback`
         // key when the reviewer's minor verdict re-enters directly; general
         // verdicts still fold it into the brief the planner writes; gate log
         // arrives via the kept tester SECTION, not a key)
-        // plus fabro-56f4's `output.gatebounce` — INLINE known-bug
-        // seed bodies matched deterministically from the gate failure tail
-        // on a red bounce (absent on first visits and green runs; additive
+        // plus the claim preflight's `output.preflight` — the granted
+        // item's already-landed/anchor verdict row (ADR-0032 fork 7:
+        // the preflight folds onto the granted item), INLINE on every
+        // claimed pass (additive enrichment, never a blob ref).
         // enrichment, never a blob ref). Deliberately OUT: `journal` and
         // `implementation_summary` (the implementer's OWN outputs echoing
         // back), review_verdict (planner input) — and with them the
         // planner's painpoints, which never were
         // implementer inputs (stage_ignore alone cannot filter ## Context).
-        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_feedback,output.gatebounce",
+        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_feedback,output.preflight",
         // fabro-1dae (petri checkpoint semantics): the shell is the loop-
         // asset escape hatch (just/seeds/ml/nu) and the checkpoint envelope
         // judges the staged working-tree set, not the tool — the mulch
@@ -306,33 +291,12 @@ digraph Develop {
         max_retries=1
     ]
 
-    // Gate-bounce known-bug enrichment (fabro-56f4): DETERMINISTIC script
-    // node on the Gate red path — never an LLM. Run 01M1XN2KWG6T0PHRTJWZ8R0AZX
-    // implementer@2 re-derived fabro-febd's root cause from a 186 KB log blob
-    // (704 s, $0.38); this pre-step matches the failure tail against OPEN
-    // workflows-labelled seeds so bounce passes start at the root cause.
-    // Delivery is the command-node output_schema mechanism: the script prints
-    // bounded JSON, the engine validates it and stores it under
-    // `output.gatebounce`, which the implementer's
-    // preamble_allow_keys renders INLINE in ## Context (no blob round-trip).
-    // stdin_source="command.output": the tester's captured output ref, still
-    // the last command output when this node starts (present on both the
-    // success and fail paths of the tester). Best-effort: the script exits 0
-    // with empty hits on any internal failure — the bounce must never be
-    // stranded; the unconditional edge below is the fallback either way.
-    // Complements fabro-febd (the build fix); this node does NOT fix the gate.
-    gatebounce [
-        label="Gate bounce: known-bug match",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/gate-bounce.nu",
-        stdin_source="command.output",
-        output_schema="@schemas/gate-known-bug-hits.schema.json",
-        // fabro-900e producer declaration: declares `output.gatebounce`
-        // for the preamble_allow_keys lint on the implementer node.
-        x.context_allow_keys="output.gatebounce",
-        timeout="1m",
-        max_retries=1
-    ]
+    // Gate-bounce known-bug enrichment (fabro-56f4) RETIRED (ADR-0032
+    // phase 3): the node matched gate-failure tails against OPEN tracker
+    // items from shell — a host script can no longer read work items
+    // (server-side, scrubbed worker env). The lookup is now a mandated
+    // implementer prompt step over fabro_work_list (query the failure
+    // tail's distinctive token); the script and its schema are gone.
 
     // Evidence: deterministic capture of what the read-only reviewer needs. of what the read-only reviewer needs.
     // Compact and critical-first (integrity header, seed-work file list,
@@ -343,14 +307,16 @@ digraph Develop {
     evidence [
         label="Evidence",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/evidence.nu",
-        // The engine feeds the claimed seed's id via stdin — the evidence
-        // capture resolves spec and diff base for EXACTLY this run's seed
-        // and exits non-zero on any mismatch, never a silent fallback to
-        // scanning in_progress claims (run 01M294HH quoted a different
-        // concurrent seed fabro-5082 as authoritative and the reviewer
-        // burned a re-cycle verifying the real one; fabro-189d).
-        stdin_source="current_seed_id",
+        // ADR-0032 phase 3, fork 7: stdin is the granted-item packet
+        // (current_item_json, planner-forwarded from its tool result) —
+        // the capture resolves spec and diff base for EXACTLY this
+        // run's item and exits non-zero on any mismatch, never a silent
+        // fallback to scanning claims (run 01M294HH quoted a different
+        // concurrent item as authoritative; fabro-189d). The diff base
+        // falls back to the run base explicitly (the tracker-side claim
+        // commit no longer exists — claims are server-side now).
+        script="nu .fabro/workflows/develop/scripts/evidence.nu --work-item",
+        stdin_source="current_item_json",
         timeout="2m",
         max_retries=1
     ]
@@ -470,57 +436,57 @@ digraph Develop {
     // scans run branches for journals. Delivery is
     // intrinsic — no exit-bound path can miss it.
 
-    // Closeout: DETERMINISTIC post-approval bookkeeping (ADR-0010). Never
-    // an LLM — run 01M0… measured planner@2 at 21s / $0.021 / ~7% wall
-    // time for pure `seeds close`. Closes exactly this run's seed (stdin),
-    // then the run exits: one seed per run.
+    // Closeout: post-approval bookkeeping (ADR-0010). ADR-0032 phase 3
+    // makes it an AGENT node: closing is fabro_work_close and filing is
+    // fabro_work_create — engine-mediated tools no host script can call
+    // (scrubbed worker env), so the deterministic-form axiom gives way
+    // to deterministic-CORE: the nu script stays the decision engine
+    // (closeout.nu --work-item --plan-only derives the filing plan from
+    // the stage journal mechanically — titles, labels, deferred markers,
+    // exemptions), and this low-effort stage only EXECUTES the plan
+    // through the tools: the fork-8 fresh filing-time dedupe
+    // (fabro_work_list query=<run-id> — the freshness IS the race guard,
+    // replacing the retired closeout-race.nu), fabro_work_create per
+    // surviving plan item, then fabro_work_close on EXACTLY this run's
+    // item key (the merger's close is NOT duplicated). One item per
+    // run; exits "Seed closed".
     closeout [
         label="Closeout",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/closeout.nu",
-        // The engine feeds the claimed seed's id via stdin — closeout closes
-        // EXACTLY this run's seed, never a stale first-in-progress claim
-        // (run 01M1NK4V3YG3AQAMEKDJ6V471F lesson: two wrong closures).
-        stdin_source="current_seed_id",
-        timeout="1m",
-        max_retries=1
+        prompt="@prompts/closeout.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=3,
+        retry_policy="standard",
+        reasoning_effort="low",
+        x.preamble_stages_ignore="planner,implementer,reviewer,closeout",
+        // Read-only + shell (runs the plan script, greps the journal);
+        // writes stay denied — the tracker mutations are all tools.
+        x.tools="read_file,grep,glob,shell",
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
+        x.fabro_tools="fabro_work_close,fabro_work_create,fabro_work_list",
+        // Inputs: the claimed item trio + packet, plus the implementer's
+        // summary and the reviewer verdict (the plan script reads the
+        // journal itself; the verdict's approval is why this node runs).
+        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,current_item_json,implementation_summary,review_verdict",
+        x.context_allow_keys="journal"
     ]
 
     // Claim-contract gate (fabro-c42f stopgap + fabro-4c81 path gate):
-    // fails within seconds when the planner's structured output dropped
-    // current_seed_id, and fails the claim when the seed body cites repo
-    // paths (repo-rooted, or line-anchored, outside an add/create window)
-    // that resolve nowhere in the worktree. Both arms bounce the planner
-    // via the edge below; the path arm's payload carries the stale path
-    // list plus the full body so the `seeds update --set-description`
-    // correction is one call. Fail-open on seeds CLI failure.
-    claim_check [
-        label="Claim check: seed id + body path contract",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/claim-check.nu",
-        stdin_source="current_seed_id",
-        timeout="30s",
-        max_retries=0
-    ]
+    // RETIRED as a node (ADR-0032 phase 3) — both arms folded into the
+    // post-claim preflight: the id-presence contract is the stdin packet
+    // resolution (a dropped planner context_updates fails the preflight
+    // node deterministically before any script runs), and the body
+    // path-anchor gate runs there over the granted-item packet. The
+    // script survives for the loop lane (still seeds-based).
 
     // fabro-2357: the placement guard is the FIRST stage after start, so a
     // misplaced manual fire fails closed before any nu stage exists.
+    // ADR-0032 phase 3: with the host-side tracker guard gone, the
+    // placement guard hands straight to the planner — the first LLM
+    // stage's fabro_work_next empty outcome owns the drained-queue exit
+    // (the planner's "Tracker empty" edge below).
     start -> env_guard
-    env_guard -> tracker_guard
-    // fabro-0da8: drained-tracker terminal exit — zero LLM tokens on this
-    // path. Plain edge, natural completion, same family as the planner's
-    // own "Tracker empty" edge below (the label contract predates this
-    // node; this edge reuses it).
-    tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    // Unconditional fail-open route: non-empty tracker OR any seeds failure
-    // all continue into the preflight (then the planner) unchanged.
-    tracker_guard -> preflight [label="Tracker non-empty"]
-    // Unconditional fail-open, report-only (fabro-83df): clean,
-    // degraded, or script failure all route the planner normally with
-    // the report inline. The former mechanical "Already landed" edge is
-    // GONE — a landed-but-open top candidate is the planner's decision
-    // (its own "Already landed" edge below), never a script exit.
-    preflight -> planner [label="Preflight done"]
+    env_guard -> planner
 
     // Tracker empty = the goal is achieved (NOT an error): the planner
     // emits preferred_next_label "Tracker empty" when no open seed
@@ -562,22 +528,22 @@ digraph Develop {
     // as its `recorded checks` section so the reviewer need not re-run
     // them.
     planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
-    // Claim-contract gate (fabro-c42f stopgap): a cheap script node that
-    // fails deterministically within seconds when current_seed_id is
-    // missing from the context (the engine resolves stdin_source before
-    // running the script). Without it, a planner response that validates
-    // routing but drops its context_updates parks the run at the evidence
-    // node AFTER a full implementer cycle (3x on 2026-09-18, breaker
-    // latched). The soft exit parks cheaply; the next fire retries.
-    planner -> claim_check [label="Seed claimed"]
-    claim_check -> implementer [label="Seed id present"]
+    // Claim-contract gate (fabro-c42f stopgap, ADR-0032 form): the
+    // preflight node fails deterministically within seconds when the
+    // granted-item packet (current_item_json) is missing from the
+    // context — the engine resolves stdin_source before running the
+    // script, so a planner response that validates routing but drops
+    // its context_updates bounces here, not after a full implementer
+    // cycle (3x on 2026-09-18, breaker latched).
+    planner -> preflight [label="Seed claimed"]
+    preflight -> implementer [label="Preflight done"]
     // Contract retry: the planner's context_updates drop is intermittent
     // per attempt (~50% observed 2026-09-18) — re-entering the planner
     // gives the claim a second (third, ...) chance instead of parking the
     // pass cheap-but-counted toward the schedule breaker. Bounds: the
     // graph max_node_visits=20 and the 63m stall watchdog cap the retry
-    // loop; a planner hard failure exits via its own goal-gate edge.
-    claim_check -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
+    // loop; a planner hard failure exits via its own outcome=failed edge.
+    preflight -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]
@@ -586,11 +552,11 @@ digraph Develop {
     // Structural gate-guard (fabro-6baf): third consecutive red routes to
     // the human instead of another implementer round.
     tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="nodes.tester.generation >= 3"]
-    // fabro-56f4: the red bounce passes through the deterministic
-    // gatebounce node first (edge pre-step idiom — the engine has no edge
-    // pre-steps, the closeout-pattern node is the established way).
-    tester -> gatebounce [label="Gate red"]
-    gatebounce -> implementer [label="Bounce (known-bug hits attached, if any)"]
+    // fabro-56f4 / ADR-0032 phase 3: the red bounce re-enters the
+    // implementer directly; the known-bug lookup is the implementer's
+    // fabro_work_list query step (the deterministic gatebounce node is
+    // retired — no host-side tracker reads).
+    tester -> implementer [label="Gate red"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     // Explicit outcome condition: an unconditional fallback edge makes the
