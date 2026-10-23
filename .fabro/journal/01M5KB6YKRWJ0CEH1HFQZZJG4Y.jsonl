@@ -2,3 +2,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5KB6YKRWJ0CEH1HFQZZJG4Y","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-23T03:00:39Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5KB6YKRWJ0CEH1HFQZZJG4Y","node":"tracker_guard","visit":1,"status":"succeeded","ts":"2026-10-23T03:00:40Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5KB6YKRWJ0CEH1HFQZZJG4Y","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-23T03:00:44Z","data":{}}
+{"$schema":"fabro-journal-v1","run_id":"01M5KB6YKRWJ0CEH1HFQZZJG4Y","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-23T03:01:50Z","data":{"painpoints":[],"observations":["fabro_run_search rejects status values 'in_progress' and 'queued' — the accepted open-status vocabulary differs from what the planner prompt assumes; discovering it costs two failed calls every run. Consider documenting the valid status enum next to the planner instructions (run 01M5KB6YKRWJ0CEH1HFQZZJG4Y)."]}}
