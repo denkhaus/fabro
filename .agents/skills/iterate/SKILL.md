@@ -315,6 +315,23 @@ stores it belongs to; reach them by phase need:
   default-profile timeout on a Docker/sandbox test under dev-host
   conditions is an environment artifact (known class), not a regression —
   rerun isolated with the ci profile before treating it red.
+- After an external interruption (server restart mid-build, user disk
+  cleanup): a corrupt target cache shows as compile errors on untouched
+  deps (`could not compile syn ... No such file or directory` — fix with
+  `cargo clean -p <dep>`) and deleted sandbox plugins as instant
+  `PETRI_SANDBOX_HOST_PLUGIN names the host sandbox plugin` expect-panics
+  across whole blackbox suites (fix with petri's `mise run plugins:build`;
+  fabro tests instead resolve the plugin from PATH). Repair the
+  environment BEFORE reading any of it as regression (2026-10-23: 160
+  "failed" petri tests were the wiped plugins; one clean -p syn + one
+  plugins:build made 1776/1776 green).
+- A dep-rev bump under suspicion gets a BASELINE RUN, not a revert:
+  restore Cargo.lock to HEAD, move a new pin file aside when it cannot
+  compile against the old revs, run the same suite — identical failure
+  SET means pre-existing (seed it with the evidence, keep the bump); a
+  GROWN set means the bump owns it (2026-10-23: 21 fabro-petri reds
+  proven environmental by exactly this isolation, filed fabro-4618
+  while the bump landed unchanged).
 - fabro-server's IT suite (`tests/it`, incl. the OpenAPI conformance
   test) requires `--features test-support` and is NOT built by a plain
   `cargo nextest run -p fabro-server` — the run stays green while the
