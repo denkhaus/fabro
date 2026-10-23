@@ -22,6 +22,7 @@ import {
   SettingsApi,
   SystemApi,
   VariablesApi,
+  WorkItemsApi,
   WorkflowsApi,
 } from "@qltysh/fabro-api-client";
 
@@ -149,6 +150,11 @@ export const systemApi = new SystemApi(
   generatedAxios,
 );
 export const variablesApi = new VariablesApi(
+  generatedApiConfiguration,
+  "",
+  generatedAxios,
+);
+export const workItemsApi = new WorkItemsApi(
   generatedApiConfiguration,
   "",
   generatedAxios,

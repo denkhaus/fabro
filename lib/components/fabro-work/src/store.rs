@@ -22,6 +22,11 @@ use sqlx::{Row as _, SqlitePool};
 use crate::{Error, Result};
 
 /// A project's tracker configuration. `project_id` is the run's logical
+/// The claim-label prefix a project gets when its definition omits one. The
+/// settings materializer, the API upsert, and the migration default all read
+/// this one constant, so a project never lands with an empty prefix.
+pub const DEFAULT_CLAIM_LABEL_PREFIX: &str = "fabro:run:";
+
 /// project (not a repository name); the same tracker repository may serve
 /// many projects.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

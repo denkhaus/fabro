@@ -35,6 +35,7 @@ macro_rules! select_automations_sql {
                 a.workflow_source_branch,
                 a.workflow_source_tag,
                 a.workflow_source_sha,
+                a.work_project,
                 t.id AS trigger_id,
                 t.enabled AS trigger_enabled,
                 t.expression AS trigger_expression,
@@ -296,7 +297,8 @@ impl AutomationStore {
                 workflow_source_branch = ?,
                 workflow_source_tag = ?,
                 workflow_source_sha = ?,
-                on_overlap = ?
+                on_overlap = ?,
+                work_project = ?
             WHERE id = ? AND revision = ?
             ",
         )
@@ -315,6 +317,7 @@ impl AutomationStore {
         .bind(workflow_source.and_then(|source| source.tag.as_deref()))
         .bind(workflow_source.and_then(|source| source.sha.as_deref()))
         .bind(stored_overlap(automation.on_overlap))
+        .bind(automation.work_project.as_deref())
         .bind(id.as_str())
         .bind(expected.as_str())
         .execute(&mut *transaction)
@@ -364,6 +367,7 @@ struct StoredAutomation {
     workflow:          String,
     workflow_source:   Option<AutomationGitWorkflowSource>,
     on_overlap:        Option<crate::AutomationOverlapPolicy>,
+    work_project:      Option<String>,
     schedule_triggers: Vec<ScheduleTrigger>,
 }
 
@@ -402,6 +406,7 @@ impl StoredAutomation {
             on_overlap: stored_overlap_from(
                 row.try_get::<Option<String>, _>("on_overlap")?.as_deref(),
             ),
+            work_project: row.try_get("work_project")?,
             workflow_source,
             schedule_triggers: Vec::new(),
         })
@@ -478,6 +483,7 @@ impl StoredAutomation {
                 workflow: self.workflow,
                 workflow_source: self.workflow_source,
                 on_overlap: self.on_overlap,
+                work_project: self.work_project,
                 triggers,
             })
             .map_err(|source| AutomationStoreError::StoredValidation { id, source })?;
@@ -549,8 +555,9 @@ pub(crate) async fn insert_automation_ignoring_conflict(
             workflow_source_branch,
             workflow_source_tag,
             workflow_source_sha,
-            on_overlap
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on_overlap,
+            work_project
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO NOTHING
         ",
     )
@@ -570,6 +577,7 @@ pub(crate) async fn insert_automation_ignoring_conflict(
     .bind(workflow_source.and_then(|source| source.tag.as_deref()))
     .bind(workflow_source.and_then(|source| source.sha.as_deref()))
     .bind(stored_overlap(automation.on_overlap))
+    .bind(automation.work_project.as_deref())
     .execute(&mut **transaction)
     .await?;
     if result.rows_affected() == 0 {

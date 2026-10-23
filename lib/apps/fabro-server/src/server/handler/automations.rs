@@ -200,6 +200,19 @@ async fn create_automation(
         draft.environment_id.as_deref(),
         StatusCode::UNPROCESSABLE_ENTITY,
     )?);
+    let Some(work_project) = draft
+        .work_project
+        .as_deref()
+        .map(str::trim)
+        .filter(|project| !project.is_empty())
+    else {
+        return Err(ApiError::with_code(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "automation work_project is required",
+            "automation_work_project_required",
+        ));
+    };
+    require_bound_work_project(state.as_ref(), work_project).await?;
     // A definition written through the API always carries a visible overlap
     // policy: an omitted `on_overlap` becomes an explicit `Skip` instead of
     // an untagged `None`, so replaces never silently drop the field
@@ -236,6 +249,18 @@ async fn replace_automation(
         replacement.environment_id.as_deref(),
         StatusCode::UNPROCESSABLE_ENTITY,
     )?);
+    // A replace that omits the binding keeps the stored one, so partial
+    // edits (pausing a schedule) never silently unbind a firing automation.
+    if replacement.work_project.is_none() {
+        replacement.work_project = state
+            .automation_store()
+            .get(&id)
+            .await?
+            .and_then(|current| current.work_project);
+    }
+    if let Some(work_project) = replacement.work_project.as_deref() {
+        require_bound_work_project(state.as_ref(), work_project).await?;
+    }
     // See create_automation: replaces persist a visible overlap policy.
     replacement.on_overlap = Some(
         replacement
@@ -327,6 +352,41 @@ pub(in crate::server) fn resolve_automation_environment(
     Ok(id.to_string())
 }
 
+/// fabro-f1a9: an automation names the work project its runs claim through.
+/// The save path validates the binding so a typo cannot ship an automation
+/// the scheduler would then refuse to fire (the overnight outage class: a
+/// dead tracker binding burning scheduled runs).
+async fn require_bound_work_project(state: &AppState, project_id: &str) -> Result<(), ApiError> {
+    let project = state
+        .work_store()
+        .project(project_id)
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("work store operation failed: {error}"),
+            )
+        })?;
+    match project {
+        Some(project)
+            if !project.tracker_provider.trim().is_empty()
+                && !project.tracker_repo.trim().is_empty() =>
+        {
+            Ok(())
+        }
+        Some(_) => Err(ApiError::with_code(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("work project `{project_id}` has no tracker wiring"),
+            "automation_work_project_unconfigured",
+        )),
+        None => Err(ApiError::with_code(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("work project not found: {project_id}"),
+            "automation_work_project_not_found",
+        )),
+    }
+}
+
 fn automation_with_etag_response(status: StatusCode, automation: Automation) -> Response {
     let revision = automation.revision.clone();
     json_with_etag_response(status, "automation", &revision, automation)
@@ -362,5 +422,158 @@ impl From<AutomationStoreError> for ApiError {
                 )
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, StatusCode};
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
+
+    use crate::server::AppState;
+    use crate::test_support::{TestAppStateBuilder, build_test_router};
+
+    /// A state whose registry holds the named, fully wired projects.
+    async fn app_with_projects(projects: &[&str]) -> (Arc<AppState>, axum::Router) {
+        let state = TestAppStateBuilder::new().build();
+        for project_id in projects {
+            state
+                .stores
+                .work
+                .upsert_project(&fabro_work::WorkProject {
+                    project_id:               (*project_id).to_owned(),
+                    display_name:             (*project_id).to_owned(),
+                    tracker_provider:         "github".to_owned(),
+                    tracker_repo:             "denkhaus/work".to_owned(),
+                    target_repo:              None,
+                    project_label:            format!("project:{project_id}"),
+                    lane_labels:              BTreeMap::new(),
+                    claim_label_prefix:       "fabro:run:".to_owned(),
+                    claim_comment_enabled:    false,
+                    backpressure_open_pr_cap: 0,
+                })
+                .await
+                .expect("test project upserts");
+        }
+        (Arc::clone(&state), build_test_router(state))
+    }
+
+    fn create_body(id: &str, work_project: Option<&str>) -> Value {
+        let mut body = json!({
+            "id": id,
+            "name": id,
+            "environment_id": "default",
+            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+            "workflow": "workflow.fabro",
+            "triggers": [{ "id": "manual", "type": "api", "enabled": true }],
+        });
+        if let Some(project) = work_project {
+            body["work_project"] = json!(project);
+        }
+        body
+    }
+
+    fn replace_body(work_project: Option<&str>) -> Value {
+        let mut body = json!({
+            "name": "renamed",
+            "environment_id": "default",
+            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+            "workflow": "workflow.fabro",
+            "triggers": [{ "id": "manual", "type": "api", "enabled": true }],
+        });
+        if let Some(project) = work_project {
+            body["work_project"] = json!(project);
+        }
+        body
+    }
+
+    async fn send(app: &axum::Router, request: Request<Body>) -> (StatusCode, Value) {
+        let response = app.clone().oneshot(request).await.expect("router answers");
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body reads");
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).expect("json body")
+        };
+        (status, value)
+    }
+
+    /// The machine-readable code of the first error entry, if any.
+    fn error_code(body: &Value) -> Option<&str> {
+        body["errors"][0]["code"].as_str()
+    }
+
+    fn post(body: &Value) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/automations")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("request builds")
+    }
+
+    fn put(id: &str, revision: Option<&str>, body: &Value) -> Request<Body> {
+        let mut builder = Request::builder()
+            .method("PUT")
+            .uri(format!("/api/v1/automations/{id}"))
+            .header("content-type", "application/json");
+        if let Some(revision) = revision {
+            builder = builder.header("if-match", format!("\"{revision}\""));
+        }
+        builder
+            .body(Body::from(body.to_string()))
+            .expect("request builds")
+    }
+
+    /// fabro-f1a9: creating an automation names the work project its runs
+    /// claim through, and the named project must be registered and wired.
+    #[tokio::test]
+    async fn create_requires_a_registered_wired_work_project() {
+        let (_state, app) = app_with_projects(&["fabro"]).await;
+
+        let (status, body) = send(&app, post(&create_body("unbound", None))).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error_code(&body), Some("automation_work_project_required"));
+
+        let (status, body) = send(&app, post(&create_body("absent", Some("absent")))).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error_code(&body), Some("automation_work_project_not_found"));
+
+        let (status, body) = send(&app, post(&create_body("bound", Some("fabro")))).await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        assert_eq!(body["work_project"], "fabro");
+    }
+
+    /// A replace that omits the binding preserves the stored one (a pause
+    /// must never unbind a firing automation), and a replace naming an
+    /// unregistered project is refused.
+    #[tokio::test]
+    async fn replace_keeps_the_stored_binding_and_refuses_an_unknown_one() {
+        let (_state, app) = app_with_projects(&["fabro"]).await;
+        let (status, created) = send(&app, post(&create_body("nightly", Some("fabro")))).await;
+        assert_eq!(status, StatusCode::CREATED, "{created}");
+        let revision = created["revision"].as_str().expect("revision").to_owned();
+
+        let (status, replaced) =
+            send(&app, put("nightly", Some(&revision), &replace_body(None))).await;
+        assert_eq!(status, StatusCode::OK, "{replaced}");
+        assert_eq!(replaced["work_project"], "fabro");
+        let revision = replaced["revision"].as_str().expect("revision").to_owned();
+
+        let (status, body) = send(
+            &app,
+            put("nightly", Some(&revision), &replace_body(Some("absent"))),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(error_code(&body), Some("automation_work_project_not_found"));
     }
 }

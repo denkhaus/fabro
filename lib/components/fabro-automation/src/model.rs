@@ -90,6 +90,13 @@ pub struct Automation {
     /// `effective_scheduled_overlap_policy`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_overlap:      Option<AutomationOverlapPolicy>,
+    /// The work project this automation's runs claim through (fabro-f1a9,
+    /// join-design review 2026-10-23): a reference, not a string match on
+    /// the target repository. `None` on legacy rows until an operator sets
+    /// it; the scheduler's binding gate treats a missing reference as a
+    /// dead binding and refuses to fire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_project:    Option<String>,
     pub triggers:        Vec<AutomationTrigger>,
 }
 
@@ -197,6 +204,7 @@ impl Automation {
             workflow: replace.workflow,
             workflow_source: replace.workflow_source,
             on_overlap: replace.on_overlap,
+            work_project: replace.work_project,
             triggers: replace.triggers,
         }
     }
@@ -363,6 +371,9 @@ pub struct AutomationDraft {
     pub workflow_source: Option<AutomationGitWorkflowSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_overlap:      Option<AutomationOverlapPolicy>,
+    /// The work project this automation's runs claim through (fabro-f1a9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_project:    Option<String>,
     pub triggers:        Vec<AutomationTrigger>,
 }
 
@@ -376,6 +387,7 @@ impl From<AutomationDraft> for (AutomationId, AutomationReplace) {
             workflow:        value.workflow,
             workflow_source: value.workflow_source,
             on_overlap:      value.on_overlap,
+            work_project:    value.work_project,
             triggers:        value.triggers,
         })
     }
@@ -395,6 +407,9 @@ pub struct AutomationReplace {
     pub workflow_source: Option<AutomationGitWorkflowSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub on_overlap:      Option<AutomationOverlapPolicy>,
+    /// The work project this automation's runs claim through (fabro-f1a9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_project:    Option<String>,
     pub triggers:        Vec<AutomationTrigger>,
 }
 
@@ -412,6 +427,10 @@ pub(crate) struct PersistedAutomation {
     workflow_source: Option<AutomationGitWorkflowSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     on_overlap:      Option<AutomationOverlapPolicy>,
+    /// Skipped when unset so the canonical bytes of a legacy row stay
+    /// byte-identical and its stored revision keeps matching.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    work_project:    Option<String>,
     #[serde(default)]
     triggers:        Vec<AutomationTrigger>,
 }
@@ -426,6 +445,7 @@ impl From<AutomationReplace> for PersistedAutomation {
             workflow:        value.workflow,
             workflow_source: value.workflow_source,
             on_overlap:      value.on_overlap,
+            work_project:    value.work_project,
             triggers:        value.triggers,
         }
     }
@@ -441,6 +461,7 @@ impl From<PersistedAutomation> for AutomationReplace {
             target:          value.target,
             workflow:        value.workflow,
             workflow_source: value.workflow_source,
+            work_project:    value.work_project,
             triggers:        value.triggers,
         }
     }
@@ -494,6 +515,10 @@ fn normalize_replace(
         .workflow_source
         .map(validate_workflow_source)
         .transpose()?;
+    value.work_project = value
+        .work_project
+        .map(|project| project.trim().to_string())
+        .filter(|project| !project.is_empty());
     validate_fields(&value, require_environment)?;
 
     let api_enabled = value
@@ -705,6 +730,7 @@ mod tests {
         workflow_source: Option<AutomationGitWorkflowSource>,
     ) -> AutomationReplace {
         AutomationReplace {
+            work_project: None,
             on_overlap: None,
             name: "Nightly".to_string(),
             description: None,
@@ -721,6 +747,7 @@ mod tests {
         use crate::{AutomationOverlapPolicy, AutomationRevision};
 
         let automation = |on_overlap: Option<AutomationOverlapPolicy>| Automation {
+            work_project: None,
             id: AutomationId::new("nightly").unwrap(),
             revision: AutomationRevision::from_bytes(b"nightly"),
             name: "Nightly".to_string(),
@@ -953,6 +980,7 @@ enabled = true
     fn enabled_schedule_triggers_returns_only_enabled_schedule_triggers() {
         let (automation, _) =
             Automation::from_replace(AutomationId::new("nightly").unwrap(), AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Nightly".to_string(),
                 description:     None,
@@ -1006,6 +1034,7 @@ enabled = true
     fn validation_rejects_invalid_inputs() {
         let cases = [
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            " ".to_string(),
                 description:     None,
@@ -1016,6 +1045,7 @@ enabled = true
                 triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Bad repo".to_string(),
                 description:     None,
@@ -1031,6 +1061,7 @@ enabled = true
                 triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Bad ref".to_string(),
                 description:     None,
@@ -1046,6 +1077,7 @@ enabled = true
                 triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Bad workflow".to_string(),
                 description:     None,
@@ -1056,6 +1088,7 @@ enabled = true
                 triggers:        vec![api_trigger("manual")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Duplicate trigger".to_string(),
                 description:     None,
@@ -1069,6 +1102,7 @@ enabled = true
                 ],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Two API triggers".to_string(),
                 description:     None,
@@ -1079,6 +1113,7 @@ enabled = true
                 triggers:        vec![api_trigger("one"), api_trigger("two")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Six field cron".to_string(),
                 description:     None,
@@ -1089,6 +1124,7 @@ enabled = true
                 triggers:        vec![schedule_trigger("nightly", "0 0 0 * * *")],
             },
             AutomationReplace {
+                work_project:    None,
                 on_overlap:      None,
                 name:            "Bad cron".to_string(),
                 description:     None,

@@ -8,6 +8,7 @@ import type {
   Environment,
   Run,
   RunProjection,
+  WorkProject,
   WorkflowSettings,
 } from "@qltysh/fabro-api-client";
 
@@ -27,6 +28,9 @@ export interface AutomationFormValues {
   name: string;
   description: string;
   environmentId: string;
+  /** Work project the runs claim through (fabro-f1a9). Required: the
+   * scheduler refuses a fire whose binding is missing or unregistered. */
+  workProject: string;
   targetRepository: string;
   targetBranch: string;
   targetTag: string;
@@ -50,6 +54,7 @@ export const EMPTY_AUTOMATION_FORM: AutomationFormValues = {
   name:                       "",
   description:                "",
   environmentId:   "",
+  workProject:                "",
   targetRepository:           "",
   targetBranch:               "main",
   targetTag:                  "",
@@ -83,6 +88,7 @@ export function automationToFormValues(automation: Automation): AutomationFormVa
     name:                       automation.name,
     description:                automation.description ?? "",
     environmentId:   automation.environment_id ?? "",
+    workProject:                automation.work_project ?? "",
     targetRepository:           target?.repo ?? "",
     targetBranch:               target?.branch ?? EMPTY_AUTOMATION_FORM.targetBranch,
     targetTag:                  target?.tag ?? "",
@@ -175,6 +181,7 @@ export function isFormValid(values: AutomationFormValues): boolean {
     values.id.trim() !== "" &&
     values.name.trim() !== "" &&
     values.environmentId.trim() !== "" &&
+    values.workProject.trim() !== "" &&
     values.targetRepository.trim() !== "" &&
     values.targetBranch.trim() !== "" &&
     isOptionalShaValid(values.targetSha) &&
@@ -296,6 +303,9 @@ interface AutomationFormFieldsProps {
   environments?: Environment[];
   environmentsLoading?: boolean;
   environmentsError?: boolean;
+  workProjects?: WorkProject[];
+  workProjectsLoading?: boolean;
+  workProjectsError?: boolean;
 }
 
 export function AutomationFormFields({
@@ -305,6 +315,9 @@ export function AutomationFormFields({
   environments = [],
   environmentsLoading = false,
   environmentsError = false,
+  workProjects = [],
+  workProjectsLoading = false,
+  workProjectsError = false,
 }: AutomationFormFieldsProps) {
   const slugTouchedRef = useRef(values.id.length > 0);
   const shaValid = isOptionalShaValid(values.targetSha);
@@ -314,6 +327,8 @@ export function AutomationFormFields({
     .sort((left, right) => left.id.localeCompare(right.id));
   const selectedEnvironmentMissing = values.environmentId !== ""
     && !compatibleEnvironments.some((environment) => environment.id === values.environmentId);
+  const selectedWorkProjectMissing = values.workProject !== ""
+    && !workProjects.some((project) => project.projectId === values.workProject);
 
   function patch(partial: Partial<AutomationFormValues>) {
     onChange({ ...values, ...partial });
@@ -433,6 +448,49 @@ export function AutomationFormFields({
       </Panel>
 
       <Panel title="Run target">
+        <Row
+          title={<Label required>Work project</Label>}
+          help="The work-item project this automation's runs claim through. The scheduler refuses to fire while the binding is missing or the project has no tracker wiring."
+        >
+          <div className="flex flex-col gap-1.5">
+            <select
+              name="work_project"
+              aria-label="Work project"
+              value={values.workProject}
+              onChange={(e) => patch({ workProject: e.target.value })}
+              className={INPUT_CLASS}
+            >
+              <option value="">
+                {workProjectsLoading ? "Loading work projects…" : "Select a work project…"}
+              </option>
+              {selectedWorkProjectMissing ? (
+                <option value={values.workProject} disabled>
+                  {values.workProject} (not registered)
+                </option>
+              ) : null}
+              {workProjects.map((project) => (
+                <option key={project.projectId} value={project.projectId}>
+                  {project.projectId} · {project.displayName}
+                </option>
+              ))}
+            </select>
+            {workProjectsError ? (
+              <p className="text-xs leading-relaxed text-coral">
+                Couldn&apos;t load work projects. Refresh the page and try again.
+              </p>
+            ) : !workProjectsLoading && workProjects.length === 0 ? (
+              <p className="text-xs leading-relaxed text-fg-muted">
+                No work projects are registered. Declare one under{" "}
+                <span className="font-mono">[work.projects.&lt;id&gt;]</span> in the server
+                settings before saving this automation.
+              </p>
+            ) : selectedWorkProjectMissing ? (
+              <p className="text-xs leading-relaxed text-coral">
+                This work project is not registered on the server. Choose another before saving.
+              </p>
+            ) : null}
+          </div>
+        </Row>
         <Row
           title={<Label required>Repository</Label>}
           help="GitHub repository whose workspace the run changes, in owner/repo form."

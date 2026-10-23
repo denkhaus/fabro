@@ -69,6 +69,7 @@ pub async fn backfill_environment_selectors(
                 target:          automation.target.clone(),
                 workflow:        automation.workflow.clone(),
                 workflow_source: automation.workflow_source.clone(),
+                work_project:    automation.work_project.clone(),
                 triggers:        automation.triggers.clone(),
             })
             .await?;

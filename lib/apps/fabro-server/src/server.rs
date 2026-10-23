@@ -50,7 +50,7 @@ pub use fabro_api::types::{
 use fabro_auth::SqlVaultCredentialSource;
 use fabro_automation::{self, AutomationStore};
 use fabro_config::daemon::ServerDaemon;
-use fabro_config::{LlmLayer, RunLayer, Storage, WorkflowSettingsBuilder};
+use fabro_config::{LlmLayer, RunLayer, Storage, WorkLayer, WorkflowSettingsBuilder};
 use fabro_db::DbPool;
 use fabro_environment::EnvironmentStore;
 use fabro_interview::{
@@ -114,7 +114,7 @@ use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use tokio::runtime::Builder as TokioRuntimeBuilder;
+use tokio::runtime::{Builder as TokioRuntimeBuilder, Handle};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore, broadcast, mpsc, oneshot};
 use tokio::task::spawn_blocking;
@@ -189,6 +189,9 @@ pub(crate) mod fork_staleness_supervisor;
 mod fork_staleness_supervisor_tests;
 #[cfg(test)]
 mod fork_window_gate_twin_tests;
+pub(crate) mod fork_work_registry;
+#[cfg(test)]
+mod fork_work_registry_tests;
 #[cfg(test)]
 mod fork_worker_exit_park_tests;
 mod handler;
@@ -1470,6 +1473,7 @@ pub(crate) struct ResolvedAppStateSettings {
     pub(crate) server_settings:       ServerSettings,
     pub(crate) manifest_run_defaults: RunLayer,
     pub(crate) llm_overlay:           LlmLayer,
+    pub(crate) work_overlay:          WorkLayer,
 }
 
 /// Add a concluded run's usage to the server's aggregate; a run that
@@ -1917,7 +1921,23 @@ impl AppState {
             server_settings,
             manifest_run_defaults,
             llm_overlay,
+            work_overlay,
         } = resolved_settings;
+        // A settings reload re-heals the declared work-project registry
+        // (fabro-f1a9): the same materializer the startup ran, spawned so
+        // the synchronous settings swap stays synchronous. A caller outside
+        // a runtime (tests, embedding) skips the heal; the startup
+        // materializer remains the contract.
+        if let Ok(handle) = Handle::try_current() {
+            let heal_store = Arc::clone(&self.stores.work);
+            handle.spawn(async move {
+                if let Err(error) =
+                    fork_work_registry::materialize(&heal_store, &work_overlay).await
+                {
+                    warn!(%error, "work registry heal after settings reload failed");
+                }
+            });
+        }
         let server_settings = Arc::new(server_settings);
         let manifest_run_defaults = Arc::new(manifest_run_defaults);
         let effective_web_url =

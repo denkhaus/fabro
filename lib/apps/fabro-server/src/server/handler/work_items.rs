@@ -107,7 +107,7 @@ async fn upsert_project(
         lane_labels:              request.lane_labels.into_iter().collect::<BTreeMap<_, _>>(),
         claim_label_prefix:       request
             .claim_label_prefix
-            .unwrap_or_else(|| "fabro:run:".to_string()),
+            .unwrap_or_else(|| fabro_work::DEFAULT_CLAIM_LABEL_PREFIX.to_owned()),
         claim_comment_enabled:    request.claim_comment_enabled.unwrap_or(false),
         backpressure_open_pr_cap: request.backpressure_open_pr_cap.unwrap_or(0),
     };

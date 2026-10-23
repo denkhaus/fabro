@@ -60,6 +60,7 @@ fn workflow_source(
 
 fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
     AutomationDraft {
+        work_project:    None,
         on_overlap:      None,
         id:              AutomationId::new(id).unwrap(),
         name:            "Nightly".to_string(),
@@ -81,6 +82,7 @@ fn draft(id: &str, api_enabled: bool) -> AutomationDraft {
 
 fn replacement(name: &str, expression: &str) -> AutomationReplace {
     AutomationReplace {
+        work_project:    None,
         on_overlap:      None,
         name:            name.to_string(),
         description:     None,
@@ -671,6 +673,7 @@ async fn failed_schedule_insert_rolls_back_parent_replace() {
     .await
     .unwrap();
     let replacement = AutomationReplace {
+        work_project:    None,
         on_overlap:      None,
         name:            "Should roll back".to_string(),
         description:     None,

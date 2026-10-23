@@ -110,6 +110,7 @@ fn parse_legacy_automation(
         target,
         workflow,
         workflow_source: None,
+        work_project: None,
         triggers: legacy.triggers,
     })
     .map_err(|source| AutomationStoreError::StoredValidation { id, source })

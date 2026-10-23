@@ -113,9 +113,13 @@ async fn gate_line(namespace: String) -> GateLine {
     // minute — this test drives the gate tick directly, never the planner.
     let automation = AutomationId::new("window-gate-twin").expect("id is valid");
     let trigger = AutomationTriggerId::new("tick").expect("trigger id is valid");
+    // fabro-f1a9: register the project the automation binds to, or the
+    // fire gate refuses every probe run.
+    super::automation_scheduler::tests::seed_work_project(state.as_ref()).await;
     state
         .automation_store()
         .create(AutomationDraft {
+            work_project:    Some("fabro".to_owned()),
             id:              automation.clone(),
             name:            "window-gate-twin".to_string(),
             description:     None,

@@ -96,6 +96,11 @@ export const queryKeys = {
     runs: (id: string, opts: { limit?: number; offset?: number } = {}) =>
       ["automations", "runs", id, opts.limit ?? null, opts.offset ?? null] as const,
   },
+  workProjects: {
+    /** fabro-f1a9: the server's work-project registry, for the automation
+     * form's binding picker. */
+    list: () => ["work-projects", "list"] as const,
+  },
   insights: {
     queries: () => ["insights", "queries"] as const,
     history: () => ["insights", "history"] as const,

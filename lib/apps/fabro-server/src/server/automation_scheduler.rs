@@ -513,6 +513,27 @@ pub(crate) async fn fire_scheduled_automation_run(
     due_at: DateTime<Utc>,
 ) {
     let automation_id = automation.id.clone();
+    // fabro-f1a9 binding gate: a fire against a missing or unconfigured
+    // work project would burn a run that dies at the claim stage (the
+    // overnight tracker-binding outage class). Refuse here — one line,
+    // nothing starts. The in-run tracker guard stays the backstop for
+    // manual/API fires and for a binding that dies between this check and
+    // the run's first claim.
+    if let Err(refusal) = super::fork_work_registry::binding_ready(
+        state.stores.work.as_ref(),
+        automation.work_project.as_deref(),
+    )
+    .await
+    {
+        warn!(
+            automation_id = %automation_id,
+            trigger_id = %trigger_id,
+            work_project = automation.work_project.as_deref().unwrap_or("<unset>"),
+            %refusal,
+            "Scheduled fire refused: work-project binding is not ready (fabro-f1a9)"
+        );
+        return;
+    }
     // fabro-09ea overlap guard: an effective `skip` policy suppresses the
     // fire while a previous run of THIS automation is still non-terminal —
     // running, queued, or blocked at a gate that may wait indefinitely
@@ -705,6 +726,7 @@ pub(crate) fn run_due_schedules_once<'a>(
     now: DateTime<Utc>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
     Box::pin(async move {
+        tests::seed_work_project(state.as_ref()).await;
         let automations = state
             .automation_store()
             .list()
@@ -786,6 +808,29 @@ pub(crate) mod tests {
         })
     }
 
+    /// fabro-f1a9: a scheduled fire consults the work-project binding first,
+    /// so a test world that expects runs registers its project and binds its
+    /// automations to it. Refusal cases live in `fork_work_registry_tests`.
+    pub(crate) async fn seed_work_project(state: &AppState) {
+        state
+            .stores
+            .work
+            .upsert_project(&fabro_work::WorkProject {
+                project_id:               "fabro".to_owned(),
+                display_name:             "Fabro".to_owned(),
+                tracker_provider:         "github".to_owned(),
+                tracker_repo:             "denkhaus/work".to_owned(),
+                target_repo:              Some("fabro-sh/fabro".to_owned()),
+                project_label:            "project:fabro".to_owned(),
+                lane_labels:              std::collections::BTreeMap::new(),
+                claim_label_prefix:       "fabro:run:".to_owned(),
+                claim_comment_enabled:    false,
+                backpressure_open_pr_cap: 0,
+            })
+            .await
+            .expect("test work project upserts");
+    }
+
     fn automation(id: &str, name: &str, triggers: Vec<AutomationTrigger>) -> Automation {
         Automation {
             on_overlap: None,
@@ -799,6 +844,7 @@ pub(crate) mod tests {
             target: target(),
             workflow_source: None,
             workflow: "workflow.fabro".to_string(),
+            work_project: Some("fabro".to_owned()),
             triggers,
         }
     }
@@ -830,9 +876,11 @@ pub(crate) mod tests {
         on_overlap: Option<fabro_automation::AutomationOverlapPolicy>,
         triggers: Vec<AutomationTrigger>,
     ) -> Automation {
+        seed_work_project(state).await;
         state
             .automation_store()
             .create(AutomationDraft {
+                work_project: Some("fabro".to_owned()),
                 on_overlap,
                 id: AutomationId::new(id).expect("test automation id should be valid"),
                 name: name.to_string(),
@@ -1134,6 +1182,7 @@ pub(crate) mod tests {
         let replaced = state
             .automation_store()
             .replace(&automation.id, &automation.revision, AutomationReplace {
+                work_project:    automation.work_project.clone(),
                 name:            automation.name.clone(),
                 description:     automation.description.clone(),
                 environment_id:  Some("toolchain".to_string()),
@@ -1652,9 +1701,11 @@ pub(crate) mod tests {
             breaker:           None,
             provider_window:   None,
         };
+        seed_work_project(state).await;
         state
             .automation_store()
             .create(fabro_automation::AutomationDraft {
+                work_project:    Some("fabro".to_owned()),
                 on_overlap:      None,
                 id:              AutomationId::new(id).expect("test automation id should parse"),
                 name:            id.to_string(),
@@ -1974,5 +2025,92 @@ pub(crate) mod tests {
             .len(),
             1
         );
+    }
+
+    /// fabro-f1a9 fire gate: a scheduled fire whose work-project binding is
+    /// missing, unknown, or unwired creates no run and never reaches the
+    /// materializer — the overnight outage class (a run burning against a
+    /// dead tracker binding) must be impossible. Binding the same
+    /// automation fires on the next tick, so the gate refuses only dead
+    /// bindings.
+    #[tokio::test]
+    async fn a_fire_with_a_dead_work_project_binding_creates_no_run() {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer.clone());
+        seed_work_project(state.as_ref()).await;
+        for (id, work_project) in [
+            ("unbound", None),
+            ("unknown", Some("absent".to_owned())),
+            ("unwired", Some("blank".to_owned())),
+        ] {
+            state
+                .automation_store()
+                .create(AutomationDraft {
+                    work_project,
+                    on_overlap: None,
+                    id: AutomationId::new(id).expect("test id is valid"),
+                    name: id.to_owned(),
+                    description: None,
+                    environment_id: Some("default".to_owned()),
+                    target: target(),
+                    workflow: "workflow.fabro".to_owned(),
+                    workflow_source: None,
+                    triggers: vec![schedule_trigger("schedule", "* * * * *", true)],
+                })
+                .await
+                .expect("test automation should be created");
+        }
+        state
+            .stores
+            .work
+            .upsert_project(&fabro_work::WorkProject {
+                project_id:               "blank".to_owned(),
+                display_name:             "Blank".to_owned(),
+                tracker_provider:         String::new(),
+                tracker_repo:             String::new(),
+                target_repo:              None,
+                project_label:            "project:blank".to_owned(),
+                lane_labels:              std::collections::BTreeMap::new(),
+                claim_label_prefix:       "fabro:run:".to_owned(),
+                claim_comment_enabled:    false,
+                backpressure_open_pr_cap: 0,
+            })
+            .await
+            .expect("blank project stores");
+
+        let mut planner = AutomationSchedulePlanner::default();
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert!(stored_runs(state.as_ref()).await.is_empty());
+        assert!(materializer.captured_inputs().is_empty());
+
+        // Positive control: the same schedule bound to the wired project
+        // fires on the next tick — the gate refuses dead bindings only.
+        let bound = state
+            .automation_store()
+            .get(&AutomationId::new("unbound").expect("id is valid"))
+            .await
+            .expect("automations load")
+            .expect("unbound automation exists");
+        state
+            .automation_store()
+            .replace(&bound.id, &bound.revision, AutomationReplace {
+                work_project:    Some("fabro".to_owned()),
+                name:            bound.name.clone(),
+                description:     bound.description.clone(),
+                environment_id:  bound.environment_id.clone(),
+                on_overlap:      bound.on_overlap,
+                target:          bound.target.clone(),
+                workflow:        bound.workflow.clone(),
+                workflow_source: bound.workflow_source.clone(),
+                triggers:        bound.triggers.clone(),
+            })
+            .await
+            .expect("binding the automation replaces it");
+        run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
+
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(materializer.captured_inputs().len(), 1);
     }
 }

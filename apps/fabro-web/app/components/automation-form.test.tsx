@@ -59,6 +59,7 @@ describe("automation workflow source form values", () => {
       id:                       "nightly",
       name:                     "Nightly",
       environmentId:            "daytona-smoke",
+      workProject:              "fabro",
       targetRepository:         "fabro-sh/app",
       targetBranch:             "main",
       workflow:                 "release",
@@ -69,6 +70,9 @@ describe("automation workflow source form values", () => {
     };
 
     expect(isFormValid(validBase)).toBe(true);
+    // fabro-f1a9: a run must name a work project; an unbound automation is
+    // refused by the API and never fires.
+    expect(isFormValid({ ...validBase, workProject: "" })).toBe(false);
     expect(isFormValid({ ...validBase, workflowSourceRepository: "" })).toBe(false);
     expect(isFormValid({ ...validBase, workflowSourceBranch: "" })).toBe(false);
     expect(isFormValid({ ...validBase, workflowSourceSha: "short" })).toBe(false);

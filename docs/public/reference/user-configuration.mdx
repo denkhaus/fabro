@@ -29,7 +29,7 @@ Files that omit `_version` are treated as version `1`. The legacy top-level `ver
 
 ## Who reads what
 
-`settings.toml` uses the same schema as `.fabro/project.toml` and `workflow.toml`, but each process only reads the fields it understands. The top-level schema is strictly namespaced — the only allowed domains are `[project]`, `[workflow]`, `[run]`, `[llm]`, `[cli]`, and `[server]`.
+`settings.toml` uses the same schema as `.fabro/project.toml` and `workflow.toml`, but each process only reads the fields it understands. The top-level schema is strictly namespaced — the only allowed domains are `[project]`, `[workflow]`, `[run]`, `[llm]`, `[cli]`, `[server]`, and `[work]`.
 
 | Scope | Examples |
 |---|---|
@@ -37,6 +37,7 @@ Files that omit `_version` are treated as version `1`. The legacy top-level `ver
 | Server-side run policy | `[run.model]`, `[run.environment]`, `[environments.<slug>]`, `[run.checkpoint]`, `[run.inputs]`, `[run.prepare]`, `[run.pull_request]`, `[run.integrations.github]`, `[run.hooks]`, `[run.agent.mcps]` |
 | Shared LLM catalog | `[llm]`, a lithos-llm catalog overlay: `[llm.providers.<id>]`, `[llm.providers.<id>.models.<id>]`, and the agent harness under `metadata.agent` |
 | Server-only | `[server.listen]`, `[server.api]`, `[server.web]`, `[server.auth]`, `[server.storage]`, `[server.artifacts]`, `[server.scheduler]`, `[server.logging]`, `[server.integrations]` |
+| Server-side work registry | `[work.projects.<id>]` |
 
 `[cli.*]` and `[server.*]` stanzas are owner-specific: they are only consumed from `~/.fabro/settings.toml` (plus process-local flags and env overrides). The same stanzas in `.fabro/project.toml` or `workflow.toml` remain schema-valid but runtime-inert.
 
@@ -409,4 +410,45 @@ tool_timeout = "90s"
 | `tool_timeout` | duration | `"60s"` | Max duration for a single MCP tool call. |
 
 See [MCP](/agents/mcp) for transport-specific examples.
+
+## `[work.projects.<id>]`
+
+The server's work-item project registry: the tracker a run claims work from.
+Every declared row is upserted at server start (and after a settings reload),
+so this section is the desired state of the registry's project *content*. A
+row that is declared but incomplete (missing `display_name`,
+`tracker_provider`, `tracker_repo`, or `project_label`) fails startup loudly
+instead of shipping a project that claims resolve against and die. A project
+stored in the registry but absent from the section is left untouched.
+
+Automations name the project their runs claim through (`work_project`); the
+scheduler refuses to fire while that binding is missing, unregistered, or
+unwired.
+
+```toml title="settings.toml"
+[work.projects.fabro]
+display_name = "Fabro"
+tracker_provider = "github"
+tracker_repo = "denkhaus/work"
+project_label = "project:fabro"
+target_repo = "fabro-sh/fabro"
+lane_labels = { loop = "lane:loop" }
+```
+
+| Key | Type / values | Default | Description |
+|---|---|---|---|
+| `display_name` | string | required | Human-readable project name. |
+| `tracker_provider` | string | required | Tracker provider id (`github` today). |
+| `tracker_repo` | string | required | Tracker repository as `owner/name`. |
+| `project_label` | string | required | Tracker label that marks the project's items. |
+| `target_repo` | string | None | Code repository the project's runs work on. Absent keeps the project explicit-only: runs must name it. |
+| `lane_labels` | table | `{}` | Lane name → tracker label. |
+| `claim_label_prefix` | string | `fabro:run:` | Prefix of the label a live claim writes. |
+| `claim_comment_enabled` | boolean | false | Also write a claim comment to the item. |
+| `backpressure_open_pr_cap` | integer | 0 | Open run PRs a lane tolerates before refusing grants (0 fires only when the lane is drained). |
+
+Apply the declared rows without restarting the server with
+`fabro projects upsert` (`--dry-run` prints them, `--config <path>` reads a
+different settings file).
+
 {/* /generated:options */}

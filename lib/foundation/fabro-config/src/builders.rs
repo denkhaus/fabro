@@ -231,6 +231,9 @@ pub struct ServerRuntimeSettings {
     pub manifest_run_settings:         std::result::Result<RunNamespace, SharedError>,
     /// Operator catalog overlay, applied above the built-in and policy layers.
     pub llm_overlay:                   LlmLayer,
+    /// The declared work-project registry (fabro-f1a9): upserted at server
+    /// start and on settings reload.
+    pub work_overlay:                  crate::WorkLayer,
 }
 
 pub fn load_server_runtime_settings(
@@ -286,6 +289,7 @@ fn resolve_server_runtime_settings(
     let manifest_run_defaults = layer.run.clone().unwrap_or_default();
     let manifest_environment_defaults = layer.environments.clone();
     let llm_overlay = llm_overlay_from_layer(&layer);
+    let work_overlay = layer.work.clone().unwrap_or_default();
     Ok(ServerRuntimeSettings {
         server_settings: ServerSettingsBuilder::from_layer(&layer)?,
         manifest_run_settings: RunSettingsBuilder::from_layer(&SettingsLayer {
@@ -297,6 +301,7 @@ fn resolve_server_runtime_settings(
         manifest_run_defaults,
         manifest_environment_defaults,
         llm_overlay,
+        work_overlay,
     })
 }
 

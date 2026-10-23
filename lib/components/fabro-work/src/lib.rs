@@ -11,8 +11,8 @@ mod store;
 mod tracker;
 
 pub use store::{
-    ClaimState, GrantOutcome, GrantRequest, WorkClaim, WorkClaimEvent, WorkOutboxEntry,
-    WorkProject, WorkStore,
+    ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, WorkClaim, WorkClaimEvent,
+    WorkOutboxEntry, WorkProject, WorkStore,
 };
 pub use tracker::{NullTracker, TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter};
 

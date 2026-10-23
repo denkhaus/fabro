@@ -62,5 +62,9 @@ export interface Automation {
      * Overlap policy for scheduled fires. Absent (untagged) resolves to `skip` at fire time. Create and replace default an omitted policy to an explicit `skip`, so definitions edited through the API keep a visible policy (fabro-2093).
      */
     'on_overlap'?: AutomationOverlapPolicy;
+    /**
+     * Work project the automation\'s runs claim through (fabro-f1a9). The scheduler checks the binding before firing: a missing or unconfigured project refuses the fire instead of burning a run against it. Null on definitions that predate the reference until an operator sets it.
+     */
+    'work_project'?: string | null;
     'triggers': Array<AutomationTrigger>;
 }

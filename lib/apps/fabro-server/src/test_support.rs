@@ -15,7 +15,7 @@ use axum::response::Response;
 use axum::{Router, middleware};
 use chrono::Duration as ChronoDuration;
 use fabro_config::user::default_storage_dir;
-use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, envfile};
+use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, WorkLayer, envfile};
 use fabro_db::DbPool;
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_static::EnvVars;
@@ -102,6 +102,8 @@ pub struct TestAppStateBuilder {
     default_environment_provider: Option<SandboxProviderKind>,
     env_lookup:                   EnvLookup,
     llm_overlay:                  LlmLayer,
+    work_overlay:                 WorkLayer,
+    work_projects:                Vec<fabro_work::WorkProject>,
     automation_materializer:      Option<TestAutomationRunMaterializer>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
     work_tracker:                 Option<Arc<dyn fabro_work::TrackerProvider>>,
@@ -127,6 +129,8 @@ impl Default for TestAppStateBuilder {
             default_environment_provider: Some(SandboxProviderKind::DOCKER),
             env_lookup:                   default_env_lookup(),
             llm_overlay:                  LlmLayer::default(),
+            work_overlay:                 WorkLayer::default(),
+            work_projects:                Vec::new(),
             automation_materializer:      None,
             automation_breaker_notifier:  None,
             work_tracker:                 None,
@@ -149,6 +153,17 @@ impl TestAppStateBuilder {
     ) -> Self {
         self.server_settings = server_settings;
         self.manifest_run_defaults = manifest_run_defaults;
+        self
+    }
+
+    /// Seed the work-project registry the way an operator's
+    /// `[work.projects.<id>]` section seeds it in production (fabro-f1a9).
+    /// An automation created through these apps binds to one of these ids.
+    pub fn work_projects<I>(mut self, projects: I) -> Self
+    where
+        I: IntoIterator<Item = fabro_work::WorkProject>,
+    {
+        self.work_projects.extend(projects);
         self
     }
 
@@ -316,17 +331,19 @@ impl TestAppStateBuilder {
             server::automation_dir_for_active_config(&active_config_path),
         )?;
         let preloaded_vault = test_secret_snapshot(db_pool.clone())?;
+        seed_test_work_projects(db_pool.clone(), std::mem::take(&mut self.work_projects))?;
         let automation_materializer_override = self.automation_materializer.map(|materializer| {
             materializer.into_materializer(fabro_workflow_version::WorkflowVersionStore::new(
                 store.blobs(),
             ))
         });
         build_app_state(AppStateConfig {
-            resolved_settings: resolved_runtime_settings_for_tests(
-                self.server_settings,
-                self.manifest_run_defaults,
-                self.llm_overlay,
-            ),
+            resolved_settings: ResolvedAppStateSettings {
+                server_settings:       self.server_settings,
+                manifest_run_defaults: self.manifest_run_defaults,
+                llm_overlay:           self.llm_overlay,
+                work_overlay:          std::mem::take(&mut self.work_overlay),
+            },
             execute_in_process: self.execute_in_process,
             max_concurrent_runs: self.max_concurrent_runs,
             store,
@@ -369,6 +386,53 @@ pub(crate) fn test_secret_snapshot(pool: DbPool) -> anyhow::Result<Vault> {
     })
     .join()
     .expect("test secret snapshot thread should not panic")
+}
+
+/// A fully wired test project: the shape an automation binds to
+/// (tracker provider, repository, and label are what the fire gate checks).
+pub fn test_work_project(project_id: &str) -> fabro_work::WorkProject {
+    fabro_work::WorkProject {
+        project_id:               project_id.to_owned(),
+        display_name:             project_id.to_owned(),
+        tracker_provider:         "github".to_owned(),
+        tracker_repo:             "denkhaus/work".to_owned(),
+        target_repo:              None,
+        project_label:            format!("project:{project_id}"),
+        lane_labels:              std::collections::BTreeMap::new(),
+        claim_label_prefix:       fabro_work::DEFAULT_CLAIM_LABEL_PREFIX.to_owned(),
+        claim_comment_enabled:    false,
+        backpressure_open_pr_cap: 0,
+    }
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "sync test builders may run inside Tokio; a dedicated thread avoids a nested runtime"
+)]
+fn seed_test_work_projects(
+    pool: DbPool,
+    projects: Vec<fabro_work::WorkProject>,
+) -> anyhow::Result<()> {
+    if projects.is_empty() {
+        return Ok(());
+    }
+    std::thread::spawn(move || {
+        let runtime = TokioRuntimeBuilder::new_current_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(async move {
+            let store = fabro_work::WorkStore::new(pool);
+            for project in projects {
+                store
+                    .upsert_project(&project)
+                    .await
+                    .map_err(anyhow::Error::new)?;
+            }
+            anyhow::Ok(())
+        })
+    })
+    .join()
+    .expect("work project seed thread should not panic")
 }
 
 /// Merges `overlay` into `base` the way lithos layers merge: tables merge
@@ -487,6 +551,8 @@ fn ready_test_app_state_builder() -> TestAppStateBuilder {
     TestAppStateBuilder::new().vault_entries([(EnvVars::OPENAI_API_KEY, TEST_OPENAI_API_KEY)])
 }
 
+/// Only the in-crate server tests build a resolved settings bundle by hand.
+#[cfg(test)]
 pub(crate) fn resolved_runtime_settings_for_tests(
     server_settings: ServerSettings,
     manifest_run_defaults: RunLayer,
@@ -496,6 +562,7 @@ pub(crate) fn resolved_runtime_settings_for_tests(
         server_settings,
         manifest_run_defaults,
         llm_overlay,
+        work_overlay: WorkLayer::default(),
     }
 }
 

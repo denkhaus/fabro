@@ -47,5 +47,9 @@ export interface CreateAutomationRequest {
      * Overlap policy for scheduled fires. Omitted defaults to an explicit `skip`, so a replace that does not carry the field never silently untags the definition (fabro-2093).
      */
     'on_overlap'?: AutomationOverlapPolicy;
+    /**
+     * Work project the automation\'s runs claim through (fabro-f1a9). The named project must exist in the work-project registry; the scheduler refuses to fire while the binding is dead.
+     */
+    'work_project': string;
     'triggers': Array<AutomationTrigger>;
 }

@@ -14,6 +14,7 @@ pub(crate) mod model;
 pub(crate) mod parent;
 pub(crate) mod pr;
 pub(crate) mod preflight;
+pub(crate) mod projects;
 pub(crate) mod provider;
 pub(crate) mod render_graph;
 pub(crate) mod repo;

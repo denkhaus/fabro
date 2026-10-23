@@ -42,6 +42,7 @@ import type {
   VncPreviewResponse,
   WorkflowDetailResponse,
   WorkflowSettings,
+  WorkProjectListResponse,
 } from "@qltysh/fabro-api-client";
 
 import {
@@ -50,6 +51,7 @@ import {
   apiResponse,
   authApi,
   automationsApi,
+  workItemsApi,
   environmentsApi,
   fetchAllPages,
   generatedAxios,
@@ -456,6 +458,18 @@ export function useAutomationRuns(id: string | undefined, opts: AutomationRunsPa
     id ? queryKeys.automations.runs(id, opts) : null,
     () => apiNullableData(() => automationsApi.listAutomationRuns(id!, opts.limit, opts.offset)),
     { keepPreviousData: true },
+  );
+}
+
+/**
+ * fabro-f1a9: the server's work-project registry. The automation form's
+ * picker only offers registered projects — a save naming an unregistered
+ * one is refused by the API, so the picker and the server agree.
+ */
+export function useWorkProjects() {
+  return useSWR<WorkProjectListResponse>(
+    queryKeys.workProjects.list(),
+    () => apiData(() => workItemsApi.listWorkProjects()),
   );
 }
 

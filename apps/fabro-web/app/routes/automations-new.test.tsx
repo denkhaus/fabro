@@ -14,6 +14,7 @@ let currentRunState: any = null;
 let currentRunStateLoading = false;
 let currentRunSettings: any = null;
 let currentEnvironments: any[] = [];
+let currentWorkProjects: any[] = [];
 let currentEnvironmentsError: unknown = null;
 const queryCalls: Array<{ hook: string; id: string | undefined }> = [];
 const mountedRenderers: TestRenderer.ReactTestRenderer[] = [];
@@ -51,6 +52,11 @@ mock.module("@headlessui/react", () => ({
 const realQueries = await import("../lib/queries");
 mock.module("../lib/queries", () => ({
   ...realQueries,
+  useWorkProjects: () => ({
+    data:      { data: currentWorkProjects, meta: { total: currentWorkProjects.length } },
+    error:     null,
+    isLoading: false,
+  }),
   useEnvironments: () => ({
     data:      { data: currentEnvironments, meta: { total: currentEnvironments.length } },
     error:     currentEnvironmentsError,
@@ -267,6 +273,10 @@ beforeEach(() => {
     { id: "local", provider: "local" },
   ];
   currentEnvironmentsError = null;
+  currentWorkProjects = [
+    { projectId: "fabro", displayName: "Fabro" },
+    { projectId: "docs", displayName: "Docs" },
+  ];
   queryCalls.length = 0;
   createAutomationMock.mockClear();
   swrMutateMock.mockClear();
@@ -329,6 +339,7 @@ describe("AutomationsNew", () => {
     changeField(renderer, "Run target repository", "fabro-sh/fabro");
     changeField(renderer, "Workflow slug", "hello");
     changeField(renderer, "Automation environment", "daytona-smoke");
+    changeField(renderer, "Work project", "fabro");
 
     await act(async () => {
       await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
@@ -337,6 +348,7 @@ describe("AutomationsNew", () => {
     expect(createAutomationMock).toHaveBeenCalledTimes(1);
     expect(createAutomationMock.mock.calls[0]?.[0]).toMatchObject({
       environment_id: "daytona-smoke",
+      work_project:   "fabro",
     });
   });
 
@@ -433,6 +445,7 @@ describe("AutomationsNew", () => {
     changeField(renderer, "Automation name", "Nightly");
     changeField(renderer, "Run target repository", "fabro-sh/app");
     changeField(renderer, "Automation environment", "daytona-smoke");
+    changeField(renderer, "Work project", "fabro");
     changeField(renderer, "Workflow slug", "release");
     act(() => {
       byLabel(renderer, "Use a remote workflow").props.onChange(true);

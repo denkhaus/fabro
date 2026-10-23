@@ -1692,6 +1692,26 @@ impl Client {
         Ok(response.into_inner().data)
     }
 
+    /// Create or replace a work project's tracker configuration
+    /// (fabro-f1a9: the settings-declared registry's runbook hammer).
+    pub async fn upsert_work_project(
+        &self,
+        project_id: &str,
+        request: types::WorkProjectUpsertRequest,
+    ) -> Result<types::WorkProject> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .upsert_work_project()
+                    .project_id(project_id.to_string())
+                    .body(request)
+                    .send()
+                    .await
+            })
+            .await?;
+        convert_type(response.into_inner())
+    }
+
     /// The atomic next-item grant: the server picks the highest-priority
     /// free item of the project's lane and grants it to `run_id`.
     pub async fn claim_next_work_item(

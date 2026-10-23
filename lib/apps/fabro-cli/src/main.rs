@@ -404,6 +404,9 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             Commands::Automations(ns) => {
                 commands::automations::dispatch(ns, &base_ctx).await?;
             }
+            Commands::Projects(ns) => {
+                commands::projects::dispatch(ns, &base_ctx).await?;
+            }
             Commands::Variable(ns) => {
                 commands::variable::dispatch(ns, &base_ctx).await?;
             }

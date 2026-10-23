@@ -16,6 +16,7 @@ use super::maps::MergeMap;
 use super::project::ProjectLayer;
 use super::run::RunLayer;
 use super::server::ServerLayer;
+use super::work::WorkLayer;
 use super::workflow::WorkflowLayer;
 use crate::parse::{ParseError, parse_settings};
 
@@ -38,6 +39,8 @@ pub struct SettingsLayer {
     pub server:       Option<ServerLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm:          Option<LlmLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work:         Option<WorkLayer>,
 }
 
 impl FromStr for SettingsLayer {

@@ -1500,6 +1500,8 @@ pub(crate) enum Commands {
     /// Manage server automations (alias: auto)
     #[command(alias = "auto")]
     Automations(AutomationsNamespace),
+    /// Manage the server's work-project registry
+    Projects(ProjectsNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1621,6 +1623,9 @@ impl Commands {
                 EnvCommand::Show(_) => "env show",
                 EnvCommand::Update(_) => "env update",
                 EnvCommand::PinToolchain(_) => "env pin-toolchain",
+            },
+            Self::Projects(ns) => match &ns.command {
+                ProjectsCommand::Upsert(_) => "projects upsert",
             },
             Self::Automations(ns) => match &ns.command {
                 AutomationsCommand::List(_) => "automations list",
@@ -2109,6 +2114,33 @@ pub(crate) enum AutomationsCommand {
     Fire(AutomationsFireArgs),
     /// Monitor automations for fire drift
     Status(AutomationsStatusArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct ProjectsNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: ProjectsCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ProjectsCommand {
+    /// Upsert every `[work.projects.<id>]` declared in settings
+    Upsert(ProjectsUpsertArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct ProjectsUpsertArgs {
+    /// Settings file to read `[work.projects.<id>]` from
+    /// (default: ~/.fabro/settings.toml)
+    #[arg(long, value_name = "PATH")]
+    pub(crate) config: Option<PathBuf>,
+
+    /// Print the declared projects without writing them
+    #[arg(long)]
+    pub(crate) dry_run: bool,
 }
 
 #[derive(Args)]

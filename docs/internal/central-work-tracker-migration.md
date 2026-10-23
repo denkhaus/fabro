@@ -366,6 +366,25 @@ in the 2026-10-21 judgment log). Chosen path and rejected alternatives:
 
 ## Phase 6 — Verification and re-arm
 
+**Binding preconditions (fabro-f1a9, 2026-10-24)**
+
+The 2026-10-23 overnight outage fired scheduled runs against dead tracker
+bindings. The binding is now a declared, validated reference instead of an
+implicit convention:
+
+- [x] `[work.projects.<id>]` settings materialize the registry at server
+      start and on settings reload; a half-declared row fails the boot
+      instead of shipping a project claims die on.
+- [x] `work_project` is required when creating an automation and is
+      validated against the registry (exists and carries tracker wiring).
+      A replace that omits the field keeps the stored binding, so pausing
+      a schedule never unbinds it.
+- [x] The scheduler refuses to fire while the binding is missing,
+      unknown, or unwired: one WARN, no run, nothing to clean up.
+- [x] `fabro projects upsert` applies the declared rows without a restart.
+- [ ] Each of the five live automations names its project (manual set
+      after the fork.24 deploy; the scheduler refuses them until then).
+
 **Deterministic tests**
 
 - [ ] Two concurrent grants for one item: exactly one wins.

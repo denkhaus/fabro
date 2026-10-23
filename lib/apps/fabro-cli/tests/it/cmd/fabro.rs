@@ -51,6 +51,7 @@ fn help() {
       seeds        Operate on the repository's seeds issue tracker (.seeds/, sd-compatible)
       env          Manage server environments
       automations  Manage server automations (alias: auto)
+      projects     Manage the server's work-project registry
       variable     Manage server-owned variables
       settings     Inspect effective settings
       workflow     Workflow operations

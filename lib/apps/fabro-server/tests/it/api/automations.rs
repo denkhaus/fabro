@@ -7,6 +7,7 @@ use fabro_config::Storage;
 use fabro_server::server::build_router;
 use fabro_server::test_support::{
     TestAppStateBuilder, TestAutomationRunMaterializer, build_test_router, test_auth_mode,
+    test_work_project,
 };
 use fabro_static::EnvVars;
 use fabro_types::GitRunTarget;
@@ -28,6 +29,7 @@ fn automation_body(id: &str, name: &str) -> Value {
             "branch": "main"
         },
         "workflow": "release",
+        "work_project": "fabro",
         "triggers": [
             {
                 "type": "api",
@@ -73,6 +75,7 @@ fn automation_app() -> (axum::Router, tempfile::TempDir, PathBuf) {
     let state = TestAppStateBuilder::new()
         .active_config_path(active_config_path)
         .vault_path(vault_path)
+        .work_projects([test_work_project("fabro")])
         .build();
     (build_test_router(state), temp_dir, sqlite_path)
 }
@@ -97,6 +100,7 @@ fn automation_app_with_materializer(
         .active_config_path(active_config_path)
         .vault_path(vault_path)
         .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+        .work_projects([test_work_project("fabro")])
         .automation_materializer(materializer)
         .build();
     (build_test_router(state), temp_dir, sqlite_path)
@@ -345,6 +349,7 @@ async fn automation_persists_across_app_rebuild() {
     let state = TestAppStateBuilder::new()
         .active_config_path(active_config_path.clone())
         .vault_path(vault_path.clone())
+        .work_projects([test_work_project("fabro")])
         .build();
     let app = build_test_router(state);
     let created = create_automation(&app, "nightly", "Nightly").await;

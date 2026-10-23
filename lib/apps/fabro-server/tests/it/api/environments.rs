@@ -6,7 +6,7 @@ use fabro_config::{RunEnvironmentLayer, RunLayer};
 use fabro_server::server::build_router;
 use fabro_server::test_support::{
     TestAppStateBuilder, build_test_router, default_test_server_settings, test_auth_mode,
-    test_environment_from_storage_dir,
+    test_environment_from_storage_dir, test_work_project,
 };
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -53,6 +53,7 @@ fn environment_app() -> (axum::Router, tempfile::TempDir, PathBuf) {
     let state = TestAppStateBuilder::new()
         .active_config_path(active_config_path)
         .vault_path(vault_path)
+        .work_projects([test_work_project("fabro")])
         .build();
     (build_test_router(state), temp_dir, environment_dir)
 }
@@ -710,6 +711,7 @@ async fn delete_environment_rejects_an_environment_used_by_an_automation() {
             "branch": "main"
         },
         "workflow": "release",
+        "work_project": "fabro",
         "triggers": [{ "type": "api", "id": "manual", "enabled": true }]
     });
     let response = app

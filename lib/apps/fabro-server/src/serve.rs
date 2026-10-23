@@ -638,6 +638,7 @@ where
         server_settings:       runtime_settings.server_settings,
         manifest_run_defaults: runtime_settings.manifest_run_defaults,
         llm_overlay:           runtime_settings.llm_overlay,
+        work_overlay:          runtime_settings.work_overlay,
     };
     let resolved_server_settings = resolved_app_settings.server_settings.server.clone();
     validate_startup_configuration(&resolved_server_settings)?;
@@ -729,6 +730,15 @@ where
     let env_lookup: EnvLookup = Arc::new(process_env_var);
     resolve_canonical_origin(&resolved_server_settings, &env_lookup).map_err(anyhow::Error::msg)?;
     let shutdown = CancellationToken::new();
+    // fabro-f1a9: heal the declared work-project registry before anything
+    // reads it — every `[work.projects.<id>]` row upserts, a half-declared
+    // row fails loudly here instead of burning runs against a dead binding.
+    server::fork_work_registry::materialize(
+        &fabro_work::WorkStore::new(db_pool.clone()),
+        &resolved_app_settings.work_overlay,
+    )
+    .await
+    .map_err(anyhow::Error::msg)?;
     let state = build_app_state(AppStateConfig {
         resolved_settings: resolved_app_settings,
         execute_in_process: false,
@@ -838,6 +848,7 @@ where
                                 server_settings:       resolved.server_settings,
                                 manifest_run_defaults: resolved.manifest_run_defaults,
                                 llm_overlay:           resolved.llm_overlay,
+                                work_overlay:          resolved.work_overlay,
                             }
                         });
                         match resolved {
@@ -1222,6 +1233,7 @@ mod tests {
             manifest_run_defaults: manifest_run_defaults(source),
             server_settings:       server_settings(source),
             llm_overlay:           fabro_config::LlmLayer::default(),
+            work_overlay:          fabro_config::WorkLayer::default(),
         }
     }
 

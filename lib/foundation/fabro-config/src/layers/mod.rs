@@ -9,6 +9,7 @@ mod run;
 mod server;
 mod settings;
 mod splice_array;
+mod work;
 mod workflow;
 
 pub use cli::{
@@ -41,4 +42,5 @@ pub use server::{
     ServerSchedulerLayer, ServerStorageLayer, ServerWebLayer, SlackIntegrationLayer,
 };
 pub use settings::SettingsLayer;
+pub use work::{WorkLayer, WorkProjectLayer};
 pub use workflow::WorkflowLayer;

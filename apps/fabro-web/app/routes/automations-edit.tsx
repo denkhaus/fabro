@@ -5,7 +5,7 @@ import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import type { Automation, Environment } from "@qltysh/fabro-api-client";
 
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
-import { useAutomation, useEnvironments } from "../lib/queries";
+import { useAutomation, useEnvironments, useWorkProjects } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import {
   AutomationFormFields,
@@ -90,10 +90,16 @@ function EditAutomationForm({
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const workProjectsQuery = useWorkProjects();
+  const workProjects = workProjectsQuery.data?.data;
+  const workProjectsLoading = workProjectsQuery.isLoading && !workProjectsQuery.data;
+  const workProjectsError = Boolean(workProjectsQuery.error);
 
   const canSubmit = isFormValid(values)
     && !environmentsLoading
     && !environmentsError
+    && !workProjectsLoading
+    && !workProjectsError
     && !submitting;
 
   async function onSubmit(event: React.FormEvent) {
@@ -108,6 +114,7 @@ function EditAutomationForm({
           name:        trimmedName,
           description: values.description.trim() || null,
           environment_id: values.environmentId.trim(),
+          work_project: values.workProject.trim(),
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
           workflow_source: workflowSourceFromFormValues(values),
@@ -138,6 +145,9 @@ function EditAutomationForm({
         environments={environments}
         environmentsLoading={environmentsLoading}
         environmentsError={environmentsError}
+        workProjects={workProjects}
+        workProjectsLoading={workProjectsLoading}
+        workProjectsError={workProjectsError}
       />
 
       {error ? <ErrorMessage message={error} /> : null}

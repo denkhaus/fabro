@@ -6,7 +6,7 @@ import type { Environment } from "@qltysh/fabro-api-client";
 
 import { ApiError, apiData, automationsApi } from "../lib/api-client";
 import { queryKeys } from "../lib/query-keys";
-import { useEnvironments, useRun, useRunSettings, useRunState } from "../lib/queries";
+import { useEnvironments, useRun, useRunSettings, useRunState, useWorkProjects } from "../lib/queries";
 import {
   AutomationFormFields,
   EMPTY_AUTOMATION_FORM,
@@ -117,10 +117,16 @@ function AutomationCreateForm({
   const [values, setValues] = useState<AutomationFormValues>(initialValues);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const workProjectsQuery = useWorkProjects();
+  const workProjects = workProjectsQuery.data?.data;
+  const workProjectsLoading = workProjectsQuery.isLoading && !workProjectsQuery.data;
+  const workProjectsError = Boolean(workProjectsQuery.error);
 
   const canSubmit = isFormValid(values)
     && !environmentsLoading
     && !environmentsError
+    && !workProjectsLoading
+    && !workProjectsError
     && !submitting;
 
   async function onSubmit(event: React.FormEvent) {
@@ -136,6 +142,7 @@ function AutomationCreateForm({
           name:        trimmedName,
           description: values.description.trim() || null,
           environment_id: values.environmentId.trim(),
+          work_project: values.workProject.trim(),
           target:      targetFromFormValues(values),
           workflow:    values.workflow.trim(),
           workflow_source: workflowSourceFromFormValues(values),
@@ -165,6 +172,9 @@ function AutomationCreateForm({
         environments={environments}
         environmentsLoading={environmentsLoading}
         environmentsError={environmentsError}
+        workProjects={workProjects}
+        workProjectsLoading={workProjectsLoading}
+        workProjectsError={workProjectsError}
       />
 
       {sourceError ? <ErrorMessage message={sourceError} /> : null}
