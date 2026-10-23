@@ -255,22 +255,46 @@ def stdin-seed-id []: nothing -> string {
     $seed_id
 }
 
-# Resolve the claimed seed's spec by id; exit non-zero when the tracker
-# does not know it. Returns the issue record (id, title, description, ...).
-def claimed-seed []: nothing -> any {
-    let seed_id = (stdin-seed-id)
-    let res = (do { seeds show $seed_id --format json } | complete)
-    if $res.exit_code != 0 {
-        print -e $"evidence: seeds show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
-        exit 1
+# Resolve the claimed item's spec. Two modes (ADR-0032 phase 3, fork 7):
+#   work-item (develop): stdin is the granted-item packet
+#   {itemKey,title,body} the planner forwarded from its tool result —
+#   pure parse, no tracker CLI (the tracker lives behind the server; a
+#   host script cannot read it). A malformed packet hard-fails: a silent
+#   fallback would reintroduce the wrong-item capture class.
+#   seeds (loop): stdin is the seed id; `seeds show` resolves it.
+def claimed-seed [work_item: bool]: nothing -> any {
+    if $work_item {
+        let raw = (cat | str join | str trim)
+        if ($raw | is-empty) {
+            print -e "evidence: stdin carried no granted-item packet (current_item_json missing — planner context_updates drop)"
+            exit 1
+        }
+        let pkt = (try { $raw | from json } catch { null })
+        if not ($pkt | describe | str starts-with "record") {
+            print -e $"evidence: granted-item packet is not a JSON object: ($raw | str substring 0..120)"
+            exit 1
+        }
+        let key = ($pkt | get -o itemKey | default "" | str trim)
+        if ($key | is-empty) {
+            print -e "evidence: granted-item packet carries no itemKey"
+            exit 1
+        }
+        {id: $key, title: ($pkt | get -o title | default ""), description: ($pkt | get -o body | default "")}
+    } else {
+        let seed_id = (stdin-seed-id)
+        let res = (do { seeds show $seed_id --format json } | complete)
+        if $res.exit_code != 0 {
+            print -e $"evidence: seeds show ($seed_id) failed — seed not resolvable in tracker: ($res.stderr | str trim)"
+            exit 1
+        }
+        let parsed = (do -i { $res.stdout | from json })
+        let issue = ($parsed | get -o issue | default null)
+        if $issue == null or (($issue | get -o id | default '') != $seed_id) {
+            print -e $"evidence: seeds show \($seed_id\) returned no matching seed record"
+            exit 1
+        }
+        $issue
     }
-    let parsed = (do -i { $res.stdout | from json })
-    let issue = ($parsed | get -o issue | default null)
-    if $issue == null or (($issue | get -o id | default '') != $seed_id) {
-        print -e $"evidence: seeds show \($seed_id\) returned no matching seed record"
-        exit 1
-    }
-    $issue
 }
 
 # The seed's status as recorded in the tracker file at a given commit, or
@@ -721,7 +745,7 @@ def classify-rows [rows: list, lane: string, spec_paths: list<string>]: nothing 
 # reviewer scope IS the loop assets; everything else is out-of-lane and
 # surfaces in the anomaly section for adjudication). Passed by the
 # calling graph's script line; deterministic via the run's workflow spec.
-def main [--lane: string = "product"]: nothing -> nothing {
+def main [--lane: string = "product", --work-item]: nothing -> nothing {
     let base = (run-base)
     let no_base_note = (if not $base.grounded {
         "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
@@ -737,7 +761,7 @@ def main [--lane: string = "product"]: nothing -> nothing {
     # mandates, and spec-named files are seed work in EVERY lane
     # (fabro-d76c) — a spec that names a loop-path file (a develop
     # workflow prompt, say) must not see it flagged as anomaly churn.
-    let wip = (claimed-seed)
+    let wip = (claimed-seed $work_item)
     let split = (classify-rows $rows $lane (spec-named-paths $wip))
     let seed_rows = $split.seed
     let churn_rows = $split.churn
@@ -747,10 +771,13 @@ def main [--lane: string = "product"]: nothing -> nothing {
 
     # Diff anchor: the commit where this seed was claimed. Only the diff
     # scope changes — numstat rows, integrity counts, and the file list
-    # above stay run-scoped per spec (they are small).
-    let claim = (seed-claim-base (if $wip == null { null } else { $wip.id }) $base)
+    # above stay run-scoped per spec (they are small). ADR-0032 phase 3:
+    # work-item claims are server-side — no tracker-file claim transition
+    # exists to anchor on, so the work-item mode diffs against the run
+    # base directly (fallback flagged in the header, never silent).
+    let claim = (seed-claim-base (if $work_item { null } else if $wip == null { null } else { $wip.id }) $base)
     let diff_desc = (if $claim.fallback {
-        $"($claim.short) (NO SEED-CLAIM BASE — no claim transition found in tracker history; diffing against run base)"
+        ($claim.short + " (NO ITEM-CLAIM BASE — claims are server-side in work-item mode, or no claim transition found in tracker history; diffing against run base)")
     } else {
         $claim.short
     })

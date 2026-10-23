@@ -7,6 +7,7 @@
 #   nu .fabro/workflows/develop/scripts/closeout-smoke.nu
 
 const CLOSEOUT = "closeout.nu"
+const SCRIPTS_DIR = (path self | path dirname)
 source $CLOSEOUT
 
 def fail [what: string]: nothing -> nothing {
@@ -330,7 +331,38 @@ if (exemption-seed-labels) != ["ops" "residual"] {
     fail $"exemption-seed-labels wrong: (exemption-seed-labels | to json -r)"
 }
 
-print "closeout-smoke: ok — reviewer-journal, deferred-action and exemption-arm sweep logic verified"
+# ADR-0032 phase 3 plan-only mode pin: --work-item --plan-only derives
+# the filing plan mechanically — a valid invocation prints ONE JSON plan
+# naming the item key (subprocess run, read-only journal read), the
+# missing --item-key arm is a usage error (exit 2), and the mode without
+# --plan-only refuses (never a half-close). Positive AND negative arms,
+# per the edited-script dry-run rule.
+let po_ok = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --plan-only --item-key "denkhaus/work#1" --run-id "01SMOKE0000000000000000000" } | complete)
+if $po_ok.exit_code != 0 {
+    fail $"closeout --work-item --plan-only positive run failed: ($po_ok.stderr | str substring 0..200)"
+}
+let po_plan = (try { $po_ok.stdout | from json } catch { null })
+if not ($po_plan | describe | str starts-with "record") {
+    fail "closeout plan-only must print ONE JSON plan object"
+}
+if ($po_plan | get -o itemKey | default "") != "denkhaus/work#1" {
+    fail $"closeout plan must name the item key: ($po_ok.stdout | str substring 0..160)"
+}
+for arm in ["findings" "deferred" "exemptions"] {
+    if (($po_plan | get -o $arm | default null) == null) {
+        fail $"closeout plan missing the ($arm) array"
+    }
+}
+let po_nokey = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --plan-only } | complete)
+if $po_nokey.exit_code != 2 {
+    fail "closeout --plan-only without --item-key must be a usage error (exit 2)"
+}
+let po_noplan = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --item-key "denkhaus/work#1" } | complete)
+if $po_noplan.exit_code != 2 {
+    fail "closeout --work-item without --plan-only must refuse (exit 2) — the close is the agent's tool call"
+}
+
+print "closeout-smoke: ok — reviewer-journal, deferred-action and exemption-arm sweep logic, plan-only work-item arms verified"
 
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after
