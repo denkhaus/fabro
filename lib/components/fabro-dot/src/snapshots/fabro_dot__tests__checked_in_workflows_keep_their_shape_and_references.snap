@@ -47,13 +47,13 @@ expression: report
   file:prompt:prompts/product.md@product
 .fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
   goal-inline
-.fabro/workflows/develop/workflow.fabro: Develop nodes=13 edges=29
+.fabro/workflows/develop/workflow.fabro: Develop nodes=10 edges=25
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner
   file:prompt:prompts/implementer.md@implementer
-  file:output_schema:schemas/gate-known-bug-hits.schema.json@gatebounce
   file:prompt:prompts/reviewer.md@reviewer
+  file:prompt:prompts/closeout.md@closeout
 .fabro/workflows/gh-list/workflow.fabro: GhList nodes=4 edges=3
   goal-inline
 .fabro/workflows/gh-triage/workflow.fabro: GhTriage nodes=3 edges=2
