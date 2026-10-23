@@ -9,6 +9,17 @@
 # locked engine package missing from PINS REDs, and a PINS entry that the
 # lock no longer carries REDs.
 #
+# Bump 2026-10-23 (petri 13e4e6627693 -> 2dedbc295a1f + pebble
+# 5897c0635698 -> 59f5699de785, fabro-d4f2 + fabro-c98c, sprint 50 part 2):
+# petri — a plain interrupt settles the attempt after a 60s grace with the
+# terminal class "interrupted" (InterruptGrace capability overrides; both
+# backends), so an interrupted turn can no longer wedge a run in running
+# forever (incident 01M59MG9XS2A). pebble — the openai-wire [TOOL ERROR]
+# wrap rides the model service's request path, covering mid-session tool
+# failures (the mimo class the build-time render missed; zai runs the
+# OpenAi profile kind). Both user-grilled 2026-10-20 (d4f2 design GO).
+# Patching our forks is expected; the rev move is recorded here per
+# ADR-0027 decision 2/3.
 # Bump 2026-10-17b (petri 78c524bda565 -> 13e4e6627693): retryability by
 # failure kind (fabro-95d4, user decision) — retry_requested only for
 # rate_limit/network/timeout (same context re-sendable); 5xx keeps
@@ -51,24 +62,24 @@ const PINS = {
     # 2026-10-19 deliberate bump 208f391 -> 5897c06 (fabro-9c79 + fabro-bb27:
     # consecutive tool-error budget + openai-wire [TOOL ERROR] wrap; mimo
     # incident 01M59MG9XS2A). Patch of our own fork per ADR-0027.
-    "pebble-agent": ["5897c0635698"]
-    "pebble-cli-core": ["5897c0635698"]
-    "pebble-coding-agent": ["5897c0635698"]
-    "petri-attractor-steps": ["13e4e6627693"]
-    "petri-driver": ["13e4e6627693"]
-    "petri-engine": ["13e4e6627693"]
-    "petri-execution": ["13e4e6627693"]
-    "petri-executor": ["13e4e6627693"]
-    "petri-executor-sandbox": ["13e4e6627693"]
-    "petri-frontend": ["13e4e6627693"]
-    "petri-frontend-attractor": ["13e4e6627693"]
-    "petri-frontend-fabro": ["13e4e6627693"]
-    "petri-frontend-native": ["13e4e6627693"]
-    "petri-ir": ["13e4e6627693"]
-    "petri-runtime": ["13e4e6627693"]
-    "petri-steps": ["13e4e6627693"]
-    "petri-store": ["13e4e6627693"]
-    "petri-testkit": ["13e4e6627693"]
+    "pebble-agent": ["59f5699de785"]
+    "pebble-cli-core": ["59f5699de785"]
+    "pebble-coding-agent": ["59f5699de785"]
+    "petri-attractor-steps": ["2dedbc295a1f"]
+    "petri-driver": ["2dedbc295a1f"]
+    "petri-engine": ["2dedbc295a1f"]
+    "petri-execution": ["2dedbc295a1f"]
+    "petri-executor": ["2dedbc295a1f"]
+    "petri-executor-sandbox": ["2dedbc295a1f"]
+    "petri-frontend": ["2dedbc295a1f"]
+    "petri-frontend-attractor": ["2dedbc295a1f"]
+    "petri-frontend-fabro": ["2dedbc295a1f"]
+    "petri-frontend-native": ["2dedbc295a1f"]
+    "petri-ir": ["2dedbc295a1f"]
+    "petri-runtime": ["2dedbc295a1f"]
+    "petri-steps": ["2dedbc295a1f"]
+    "petri-store": ["2dedbc295a1f"]
+    "petri-testkit": ["2dedbc295a1f"]
     "sandbox-driver": ["90b0d8257671"]
     "sandbox-driver-daytona": ["236196ed134d"]
     "sandbox-driver-daytona-config": ["90b0d8257671"]
