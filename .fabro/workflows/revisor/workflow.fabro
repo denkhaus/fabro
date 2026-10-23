@@ -26,8 +26,10 @@ digraph Revisor {
     // explicit intent environment id, and the intent's selection outranks
     // any [run.environment] pin, so workflow.toml cannot redirect a
     // flag-less fire) and burns a pass before the first stage that needs
-    // the toolchain: the revisor's nu/seeds calls live INSIDE the agent
-    // stages (analyze/file shell out to nu and seeds) and in the
+    // the toolchain: the revisor's nu calls live INSIDE the agent stages
+    // (analyze/file shell out to nu -- the lint and overflow-ledger
+    // scripts -- and file additionally to git via shell; work-item
+    // filing is engine-mediated fabro tools, not a shell-out) and in the
     // sandbox-side stage-journal hook, so the failure surfaces late and
     // cryptically ("nu: command not found", or a soft exit after wasted
     // model tokens). POSIX sh, NOT nu: the failure mode it guards is a
