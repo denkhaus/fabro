@@ -1,0 +1,42 @@
+//! Test doubles and environment contract checks for code that embeds pebble.
+//!
+//! These are the doubles pebble's own tests run against, published so an
+//! application can drive its tools and middleware without a real machine
+//! underneath. Enable the `test-util` feature to reach them:
+//!
+//! ```toml
+//! [dev-dependencies]
+//! pebble = { version = "0.1", features = ["test-util"] }
+//! ```
+//!
+//! There are two of them. [`MockEnvironment`] stands in for the machine a
+//! session works on, and [`ScriptedProvider`] stands in for the model it talks
+//! to — registered on a real [`Client`](lithos_llm::Client), so everything
+//! between the session and the provider is the code that runs in production.
+//!
+//! [`RoutedProvider`] is a [`ScriptedProvider`] per session, for a test of a
+//! session tree whose parent and children would otherwise race one script.
+//!
+//! [`DenyTool`] and [`FixedPermission`] are the two permission policies a
+//! test of tool middleware usually needs.
+//!
+//! [`EnvironmentContract`] checks an application's environment implementation
+//! against the file, search, and command behavior coding tools require.
+
+mod environment_contract;
+mod policy;
+mod routed;
+mod scripted;
+
+pub use self::environment_contract::{EnvironmentContract, EnvironmentContractError};
+pub use self::policy::{DenyTool, FixedPermission};
+pub use self::routed::{RoutedProvider, routed_client};
+pub use self::scripted::{
+    ScriptedCall, ScriptedCompletion, ScriptedFailure, ScriptedItem, ScriptedProvider,
+    TEST_CATALOG, client_from, custom_tool_call_response, events_for, message_text,
+    multi_tool_call_response, reasoning_delta_events, reasoning_response,
+    responses_reasoning_response, scripted_client, scripted_client_builder, test_catalog,
+    text_delta_events, text_response, tool_call_events, tool_call_response, with_cost,
+    with_finish_reason, with_input_tokens, with_usage,
+};
+pub use crate::environment::mock::{MockEnvironment, MutableMockEnvironment};

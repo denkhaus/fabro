@@ -225,12 +225,18 @@ stores it belongs to; reach them by phase need:
   SAME change (a fabro lock still at the pre-fix petri rev nearly shipped a
   half fix and probe-15 red). Patch BOTH crates of a multi-crate fork repo
   (pebble-coding-agent AND pebble-agent) - a single entry splits shared
-  traits into two copies and fails unification. DEPS ARE FINISHED ONLY
-  WHEN COMMITTED AND PUSHED (fabro-e71b park, 2026-10-07): fork-dep
-  work left uncommitted or unpushed at session end strands every other
-  machine that needs it - machine 1 had to park the e71b takeover
-  because machine 2's petri changes never left the local tree. See the
-  dependency-finish standing rule.
+  traits into two copies and fails unification. SINCE ADR-0034
+  (2026-10-24) petri and pebble are VENDORED in-tree: the fix lives in
+  `vendor/<name>`, the `[patch]` block resolves it by path, and there is
+  no lock rev to bump - the vendor tree IS the pin (`vendor/PINS.toml`,
+  `just vendor-pins`), and the tree is exported to the fork branch in the
+  same change. The branch-pin/lock-bump half of this rule still governs
+  the remaining git deps (lithos-llm, sandbox-driver, twins).
+  DEPS ARE FINISHED ONLY WHEN COMMITTED AND PUSHED (fabro-e71b park,
+  2026-10-07): fork-dep work left uncommitted or unpushed at session end
+  strands every other machine that needs it - machine 1 had to park the
+  e71b takeover because machine 2's petri changes never left the local
+  tree. See the dependency-finish standing rule.
 - Rust work (when directly assigned): mechanical gate — read SKILL.md AND
   the guideline pages covering the diff in the SAME turn, before the first
   Rust edit cell; name the pages in the cycle report.
@@ -747,24 +753,30 @@ stores it belongs to; reach them by phase need:
   condition (ADR-0027): the engine structurally blocks a change we cannot
   make in the fork.
 - Dependency finish (user directive 2026-10-07, fabro-e71b park): a
-  session that lands work in a fork-dep checkout (petri, pebble, ...)
-  FINISHES it before it ends — commit AND push the fork repo, bump this
-  workspace's lock in the same change (fork wiring above), and name the
-  pushed shas in the handoff/close note. Uncommitted or unpushed
-  fork-dep changes park the next machine: machine 1 could not take over
-  fabro-e71b because machine 2's petri changes sat uncommitted at
-  session end ("fork tree unreachable" — the lock pin itself was fine).
-  Session-close check for EVERY fork dep touched: `git -C <repo>
-  status -sb` clean AND `git -C <repo> log @{u}..HEAD` empty; if a push
-  is impossible (credentials, network), the handoff seed names repo,
-  branch, and local state EXPLICITLY — dependency work never ends
-  silently unfinished. Upstream merges stay FROZEN, and since ADR-0027
-  (2026-10-09) the DEPENDENCY BUMPS are frozen too: petri/pebble/
-  lithos-llm/sandbox-driver/twins are pinned by lock revs, and
-  `.fabro/scripts/dep-pins-fixtures.nu` (registered in battery-runner)
-  REDs when a locked rev moves. A dep bump is a deliberate decision:
-  reason + edit that list in the same change. Patching our forks stays
-  allowed and expected.
+  session that lands work in a fork dep FINISHES it before it ends, and
+  since ADR-0034 (2026-10-24) the two engine forks are IN-TREE:
+  petri/pebble live at `vendor/petri` and `vendor/pebble` (snapshots,
+  path patches, provenance in `vendor/PINS.toml`). The finish rule
+  becomes: the vendored edit and the consuming change are ONE commit,
+  and the tree is EXPORTED to the fork branch in the same change
+  (`just vendor export <name> --message '…'`), so history and the
+  upstream-PR vehicle stay alive; if an export is impossible
+  (credentials, network), the handoff seed names fork, branch and local
+  state EXPLICITLY — dependency work never ends silently unfinished.
+  Session-close check for every vendored change: `just vendor status`
+  clean (tree matches PINS, fork branch carries the sha) and
+  `just vendor-pins` green (registered in battery-runner). Uncommitted
+  or unexported engine changes park the next machine exactly like the
+  old external checkouts did (machine 1 could not take over fabro-e71b
+  because machine 2's petri changes sat uncommitted at session end).
+  Upstream merges stay FROZEN, and since ADR-0027 (2026-10-09) the
+  DEPENDENCY BUMPS are frozen too: lithos-llm/sandbox-driver/twins are
+  pinned by lock revs and `.fabro/scripts/dep-pins-fixtures.nu` REDs
+  when a locked rev moves; petri/pebble are pinned by the vendor
+  snapshot and `scripts/vendor-pins-fixtures.nu` REDs when the tree
+  drifts from PINS or a patched crate resolves from git again. A dep
+  bump is a deliberate decision: reason + the pin edit in the same
+  change. Patching our forks stays allowed and expected.
 - Fork-feature presence pinning: every durable fork feature lives in a
   fork-only source file wired through minimal one-line seams, with a
   presence test in a fork-only test file plus a touchpoints row —

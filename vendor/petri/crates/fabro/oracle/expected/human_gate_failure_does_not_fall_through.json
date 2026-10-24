@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "fabro_commit": "05ebd0fd1beec214b558f4b478e36bd08b507dc7",
+  "harness": {
+    "source": "fabro binary through the CLI and server API; see crates/fabro/oracle/harness/",
+    "realization": {
+      "gate": "human",
+      "yes": "agent",
+      "no": "agent"
+    }
+  },
+  "fabro": {
+    "status": "failed",
+    "path": [
+      {
+        "node": "start",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "gate",
+        "outcome": "failed"
+      }
+    ],
+    "context": {},
+    "executions": 1
+  }
+}

@@ -1,0 +1,3271 @@
+//! The ready-to-run coding-agent facade.
+
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::{Arc, PoisonError, RwLock};
+use std::time::Duration;
+
+use lithos_llm::Client;
+use lithos_llm::catalog::MetadataError;
+use lithos_llm::resolver::ModelSelectionError;
+use lithos_llm::types::{
+    ContentPart, Error as LlmError, ReasoningEffort, RequestBuildError, Speed,
+};
+use pebble_agent::{
+    AgentControlHandle, AgentPendingInput, CompletionLease, QueueOutcome, ToolMiddleware,
+    UserMessage,
+};
+use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
+
+use crate::SessionScope;
+use crate::compaction::{
+    CompactionAccount, CompactionControl, CompactionOptions, CompactionOutcome,
+};
+use crate::config::{CodingAgentOptions, CodingAgentOptionsError};
+use crate::environment::Environment;
+use crate::error::{Error, ErrorData, InterruptReason};
+use crate::event::{EventCapacity, EventSink, EventSinkTimeout};
+use crate::extensions::{CompactionPolicy, ContextPolicy};
+use crate::history::History;
+use crate::human_input::HumanInputProvider;
+#[cfg(feature = "mcp")]
+use crate::mcp::{McpServer, McpServers, PortRoutes};
+use crate::prompt_transform::SystemPromptTransform;
+use crate::record::{SessionRecord, StoredMessage};
+use crate::redact::Redactor;
+use crate::runtime::{
+    CodingRuntime, CodingRuntimeBuilder, InterruptReasonHandle, StateMachine, WarmState,
+    actor_from_attribution, input_message, steering_message,
+};
+use crate::search::seam::SearchProvider;
+use crate::subagent::SubagentOptions;
+use crate::tool::{RegisteredTool, ToolEnvProvider, ToolRegistrationError};
+use crate::types::{
+    Actor, AgentProfileKind, CodingAgentEvent, CodingAgentState, CodingEvent,
+    ContextWindowSnapshot, FailoverContinuation, FailoverStop, InputContent, InputSource,
+    McpServerStatus, MemoryFileSummary, Message, PermissionLevel, SkillSummary, ToolSummary, Usage,
+};
+
+/// A route a prompt continues on when its model fails for a reason another
+/// route might not share.
+///
+/// A route is a `provider/model` selector the client's catalog resolves, plus
+/// the request controls that route takes. It states its controls in full:
+/// `None` for one of them asks for the provider's default, as it does on
+/// [`CodingAgentOptions`]. Everything else about the session — its tools,
+/// its environment, its event sink, its middleware — is the same on every
+/// route.
+///
+/// ```
+/// use lithos_llm::types::ReasoningEffort;
+/// use pebble_coding_agent::FallbackRoute;
+///
+/// let route = FallbackRoute::new("openai/gpt-5.6")
+///     .with_reasoning_effort(Some(ReasoningEffort::High))
+///     .with_max_tokens(Some(16_000));
+/// assert_eq!(route.selector(), "openai/gpt-5.6");
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FallbackRoute {
+    selector:         String,
+    reasoning_effort: Option<ReasoningEffort>,
+    speed:            Option<Speed>,
+    max_tokens:       Option<i64>,
+}
+
+impl FallbackRoute {
+    /// A route to `selector`, with every control at the provider's default.
+    pub fn new(selector: impl Into<String>) -> Self {
+        Self {
+            selector:         selector.into(),
+            reasoning_effort: None,
+            speed:            None,
+            max_tokens:       None,
+        }
+    }
+
+    /// Sets how hard the model on this route is asked to think.
+    #[must_use]
+    pub const fn with_reasoning_effort(mut self, effort: Option<ReasoningEffort>) -> Self {
+        self.reasoning_effort = effort;
+        self
+    }
+
+    /// Sets which latency or cost tier this route asks for.
+    #[must_use]
+    pub const fn with_speed(mut self, speed: Option<Speed>) -> Self {
+        self.speed = speed;
+        self
+    }
+
+    /// Sets the most tokens the model on this route may produce per turn.
+    #[must_use]
+    pub const fn with_max_tokens(mut self, max_tokens: Option<i64>) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
+    /// The `provider/model` selector the client resolves.
+    #[must_use]
+    pub fn selector(&self) -> &str {
+        &self.selector
+    }
+
+    /// How hard the model on this route is asked to think.
+    #[must_use]
+    pub const fn reasoning_effort(&self) -> Option<ReasoningEffort> {
+        self.reasoning_effort
+    }
+
+    /// Which latency or cost tier this route asks for.
+    #[must_use]
+    pub const fn speed(&self) -> Option<Speed> {
+        self.speed
+    }
+
+    /// The most tokens the model on this route may produce per turn.
+    #[must_use]
+    pub const fn max_tokens(&self) -> Option<i64> {
+        self.max_tokens
+    }
+}
+
+/// The routes an agent has left to fail over to, and what it rebuilds itself
+/// from when it does.
+struct FallbackChain {
+    routes: Vec<FallbackRoute>,
+    /// How many routes have been taken. The next candidate is `routes[taken]`.
+    taken:  usize,
+    /// The builder the agent was built from, so a replacement runtime binds
+    /// the same environment, tools, sink, and middleware.
+    recipe: CodingRuntimeBuilder,
+}
+
+impl FallbackChain {
+    fn next_route(&mut self) -> Option<FallbackRoute> {
+        let route = self.routes.get(self.taken)?.clone();
+        self.taken += 1;
+        Some(route)
+    }
+
+    fn remaining(&self) -> &[FallbackRoute] {
+        &self.routes[self.taken.min(self.routes.len())..]
+    }
+
+    /// How many routes have been taken, as the events count attempts.
+    fn attempt(&self) -> u32 {
+        u32::try_from(self.taken).unwrap_or(u32::MAX)
+    }
+
+    /// Where the plan stands for the runtime on the route taken last.
+    fn outlook(&self) -> FailoverOutlook {
+        FailoverOutlook {
+            attempt:     self.attempt(),
+            routes_left: self.remaining().len(),
+        }
+    }
+}
+
+/// Where an agent's fallback plan stands, as told to the runtime it applies
+/// to: how many routes the prompt has moved through to reach it and how many
+/// are left. A runtime with an outlook publishes
+/// [`RouteFailoverStopped`](CodingEvent::RouteFailoverStopped) when a model
+/// failure ends its prompt without a move; the agent's own decision,
+/// [`CodingAgent::route_to_fail_over_to`], reads the same facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FailoverOutlook {
+    /// How many fallback routes the prompt had moved through: `0` on the
+    /// route it started on.
+    pub(crate) attempt:     u32,
+    /// How many routes are left to move to.
+    pub(crate) routes_left: usize,
+}
+
+impl FailoverOutlook {
+    /// Why `error` ends the prompt on its route, when it does: a model failure
+    /// that does not qualify for failover, or one that does with no route left.
+    /// `None` for a failure the agent moves on, and for one that is not the
+    /// model's, which fallback routes never absorb.
+    pub(crate) fn stop_for(self, error: &Error) -> Option<FailoverStop> {
+        let failure = error.llm_source()?;
+        if !failure.failover_eligible() {
+            return Some(FailoverStop::Ineligible);
+        }
+        (self.routes_left == 0).then_some(FailoverStop::Exhausted)
+    }
+}
+
+/// What one prompt accumulated across every route it ran on.
+#[derive(Default)]
+struct RouteTotals {
+    usage:             Usage,
+    timing:            PromptTiming,
+    files_touched:     Vec<String>,
+    last_file_touched: Option<String>,
+    compactions:       Vec<CompactionAccount>,
+    /// The assistant turns and tool results the prompt committed, on every
+    /// route so far.
+    committed_turns:   u64,
+}
+
+impl RouteTotals {
+    /// Adds what `runtime`'s last prompt spent, compacted, and touched.
+    fn absorb(&mut self, runtime: &CodingRuntime) {
+        self.committed_turns = self
+            .committed_turns
+            .saturating_add(runtime.last_prompt_committed_turns());
+        self.usage = self.usage.saturating_add(runtime.last_prompt_usage());
+        let timing = runtime.last_prompt_timing();
+        self.timing.inference = self.timing.inference.saturating_add(timing.inference);
+        self.timing.tool = self.timing.tool.saturating_add(timing.tool);
+        self.compactions.extend(runtime.last_prompt_compactions());
+        let (touched, last) = runtime.last_prompt_files();
+        for path in touched {
+            if !self.files_touched.contains(&path) {
+                self.files_touched.push(path);
+            }
+        }
+        if last.is_some() {
+            self.last_file_touched = last;
+        }
+    }
+}
+
+/// How the route a failover resumes `record` on will carry the prompt on.
+///
+/// Read from what the model will be asked on: the record's last turn that is
+/// not injected steering or system text. Tool results, or an assistant turn,
+/// mean the turn continues from there, whichever route committed them and
+/// even when the prompt itself began from a record left mid-turn. A user
+/// turn is the prompt asked again, unless the prompt has already committed
+/// output on some route, in which case it is a follow-up the conversation
+/// continues past.
+fn continuation_of(record: &SessionRecord, committed_output: bool) -> FailoverContinuation {
+    if committed_output {
+        return FailoverContinuation::ContinueTurn;
+    }
+    let unanswered = record.messages.iter().rev().find(|message| {
+        !matches!(
+            message,
+            StoredMessage::Steering { .. } | StoredMessage::System { .. }
+        )
+    });
+    match unanswered {
+        Some(StoredMessage::ToolResults { .. } | StoredMessage::Assistant { .. }) => {
+            FailoverContinuation::ContinueTurn
+        }
+        _ => FailoverContinuation::ReplayPrompt,
+    }
+}
+
+/// A duration in whole milliseconds, as the events carry time.
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Why a coding agent is being shut down.
+///
+/// Recorded for the application's benefit; it never reaches the event stream,
+/// which reports the end of a session the same way whatever ended it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ShutdownReason {
+    /// The work finished.
+    Completed,
+    /// Someone cancelled the prompt.
+    Cancelled,
+    /// The prompt failed.
+    Error,
+}
+
+/// Where one prompt spent its time.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PromptTiming {
+    /// Time spent waiting on the model.
+    pub inference: Duration,
+    /// Time spent running tools.
+    pub tool:      Duration,
+}
+
+/// A coding agent could not be built.
+///
+/// Every variant names something the application chose: a missing dependency, a
+/// selector that resolves to nothing, or a model whose catalog entry does not
+/// say which harness it expects.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CodingAgentBuildError {
+    /// Tool names and identities must be unambiguous.
+    #[error("registering coding tools")]
+    ToolRegistration(#[from] ToolRegistrationError),
+
+    /// An option is outside its supported range.
+    #[error("invalid coding agent options")]
+    InvalidOptions {
+        /// The invalid option and its value.
+        #[source]
+        source: CodingAgentOptionsError,
+    },
+
+    /// Resource discovery or system-prompt construction failed.
+    #[error("initializing the coding agent")]
+    Initialization {
+        /// The initialization failure.
+        #[source]
+        source: Box<Error>,
+    },
+
+    /// No model selector was given.
+    #[error("a coding agent needs a model selector")]
+    MissingModel,
+
+    /// No environment was given, so the tools would have nowhere to act.
+    #[error("a coding agent needs an environment for its tools to act through")]
+    MissingEnvironment,
+
+    /// The selector names no model the client can reach.
+    #[error("resolving model selector `{selector}`")]
+    ModelSelection {
+        /// The selector the application gave.
+        selector: String,
+        /// What the client's resolver said.
+        #[source]
+        source:   ModelSelectionError,
+    },
+
+    /// The request pebble resolves the selector with could not be built, which
+    /// an empty or blank selector runs into.
+    #[error("building a request for model selector `{selector}`")]
+    Selector {
+        /// The selector the application gave.
+        selector: String,
+        /// What request building said.
+        #[source]
+        source:   RequestBuildError,
+    },
+
+    /// Neither the model nor its provider says which harness the model expects.
+    #[error(
+        "model {model} names no agent profile: neither it nor its provider carries \
+         `metadata.agent.profile`"
+    )]
+    MissingProfileMetadata {
+        /// The model that was resolved.
+        model: String,
+    },
+
+    /// The `agent` metadata is present but not shaped as pebble reads it.
+    #[error("reading the `agent` catalog metadata for model {model}")]
+    InvalidProfileMetadata {
+        /// The model that was resolved.
+        model:  String,
+        /// What reading the namespace said.
+        #[source]
+        source: MetadataError,
+    },
+
+    /// The catalog names a harness pebble does not know.
+    #[error("model {model} names agent profile `{profile}`, which pebble does not know")]
+    UnknownProfile {
+        /// The model that was resolved.
+        model:   String,
+        /// The identifier the catalog carried.
+        profile: String,
+    },
+
+    /// The stored record's format version is one this build does not read.
+    #[error(
+        "session record format version {version} is not supported (this build requires {supported})"
+    )]
+    UnsupportedRecord {
+        /// The version the record declares.
+        version:   u32,
+        /// The format this build requires.
+        supported: u32,
+    },
+
+    /// Resume was asked to restore the recorded model, and the record names
+    /// no provider or no model to restore.
+    #[error("session record {session_id} names no provider and model to resume on")]
+    RecordedRouteMissing {
+        /// The session the record describes.
+        session_id: String,
+    },
+
+    /// The exact route the record names is not one this client can reach, so
+    /// the session is not resumed on a different one.
+    #[error("resolving the recorded route {provider}/{model}")]
+    RecordedRouteUnavailable {
+        /// The provider the record names.
+        provider: String,
+        /// The model the record names.
+        model:    String,
+        /// What the client's resolver said.
+        #[source]
+        source:   ModelSelectionError,
+    },
+
+    /// The recorded route resolved to a different provider or model, which a
+    /// resume on the recorded model never accepts.
+    #[error("the recorded route {recorded} resolved to {resolved}, which is a different model")]
+    RecordedRouteMismatch {
+        /// The `provider/model` pair the record names.
+        recorded: String,
+        /// The `provider/model` pair the client resolved.
+        resolved: String,
+    },
+
+    /// A model was set on a builder that resumes a session, and the resume
+    /// mode already decides the model.
+    #[error("a resumed agent takes its model from the resume mode, not from the builder")]
+    ModelConflictsWithResume,
+}
+
+/// Which model a resumed session runs on.
+///
+/// Resume never infers this from how the builder was called. The recorded
+/// route is restored exactly or the caller names a replacement, and the choice
+/// is visible where the agent is resumed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ResumeMode {
+    /// Restore the exact `provider/model` route the record names. A record
+    /// that names none, or names a route this client cannot reach, is refused
+    /// rather than resumed on a different model.
+    RecordedModel,
+    /// Keep the conversation but run it on `selector`, which the client's
+    /// catalog resolves. This is the failover path, and the new route is what
+    /// the next record stores.
+    UseModel(String),
+}
+
+/// A warm, in-memory handoff from one live coding agent to its successor.
+///
+/// Where a [`SessionRecord`] is the minimal durable form and a session
+/// resumed from one re-initializes — probing the environment, loading memory
+/// and skills, rebuilding the system prompt — an export also carries that
+/// derived state, so the successor skips initialization. The successor is
+/// built on the exported route: the system prompt names the model, so a
+/// change of model goes through [`CodingAgent::resume`] instead.
+///
+/// Taking an export does not consume or close the agent it came from. The
+/// application shuts the predecessor down when it is done with it.
+#[derive(Clone, Debug)]
+pub struct CodingAgentExport {
+    inner: WarmState,
+}
+
+impl CodingAgentExport {
+    /// The durable record inside the export, for storing beside it.
+    #[must_use]
+    pub const fn record(&self) -> &SessionRecord {
+        &self.inner.record
+    }
+
+    /// Advances the successor past events committed after this export was
+    /// taken.
+    ///
+    /// Use the durable log's last sequence after closing the predecessor, or
+    /// after a failed replacement wrote events. This preserves the exported
+    /// conversation and derived state. A smaller cursor never moves it back.
+    pub fn advance_event_cursor(&mut self, committed_seq: u64) {
+        self.inner.record.advance_event_cursor(committed_seq);
+    }
+}
+
+/// The outcome and observed accounting of one prompt, including failed prompts.
+///
+/// Usage covers this session's accepted main-model responses, queued
+/// follow-ups, and the summary call of each compaction the prompt performed.
+/// It excludes descendants and model calls inside tools. An unfinished
+/// response may provide no usage. Cost sums known costs; `Some` does not
+/// certify that every charge was observed.
+///
+/// Accounting remains available if the event sink fails. It does not prove
+/// those events were saved. Dropping a prompt future cannot return a report.
+#[derive(Debug)]
+#[must_use = "inspect the prompt result even when only recording accounting"]
+pub struct PromptReport {
+    /// The final output or the original typed failure.
+    pub result:            Result<PromptOutput, Error>,
+    /// What this invocation used and, where every response that used tokens
+    /// was priced, what it cost. `usage.cost` is `None` when a response had
+    /// no price, never a subtotal.
+    pub usage:             Usage,
+    /// Time spent in inference and tool execution, including failed work.
+    pub timing:            PromptTiming,
+    /// Every file this prompt wrote or edited, sorted, each once: this
+    /// session's successful `write_file`, `edit_file`, and `apply_patch`
+    /// calls and those of the children it ran. A patch's paths come from the
+    /// parsed patch; a moved file is recorded at its destination. Deletions
+    /// are not recorded.
+    pub files_touched:     Vec<String>,
+    /// The path written or edited most recently, when any was.
+    pub last_file_touched: Option<String>,
+    /// The `provider/model` the prompt ended on. After a failover this is the
+    /// fallback route, not the route the prompt started on.
+    pub route:             String,
+    /// Every compaction this prompt performed, in order, with the summary
+    /// call's usage and cost. A breakdown of `usage`, which already includes
+    /// those calls, not an addition to it. This
+    /// session's own: a child's compactions are not listed, and a manual
+    /// `compact` between prompts belongs to no prompt.
+    pub compactions:       Vec<CompactionAccount>,
+}
+
+/// The final output of a successful prompt.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PromptOutput {
+    /// The final readable assistant text, when present.
+    pub text:          Option<String>,
+    /// The final committed assistant message.
+    pub final_message: Option<Message>,
+}
+
+/// An owned view of a coding agent at one committed event boundary.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CodingAgentSnapshot {
+    session:             SessionScope,
+    state:               CodingAgentState,
+    provider:            String,
+    model:               String,
+    profile:             AgentProfileKind,
+    history:             History,
+    pending_input:       PendingInput,
+    memory:              Vec<MemoryFileSummary>,
+    skills:              Vec<SkillSummary>,
+    tools:               Vec<ToolSummary>,
+    mcp_servers:         Vec<McpServerStatus>,
+    context_window:      Option<ContextWindowSnapshot>,
+    committed_event_seq: u64,
+}
+
+impl CodingAgentSnapshot {
+    /// The identity and ancestry captured by this snapshot.
+    #[must_use]
+    pub const fn session(&self) -> &SessionScope {
+        &self.session
+    }
+
+    /// The durable session identifier.
+    #[must_use]
+    pub fn session_id(&self) -> &str {
+        self.session.session_id().as_str()
+    }
+
+    /// The root event-stream identifier.
+    #[must_use]
+    pub fn stream_id(&self) -> &str {
+        self.session.root_session_id().as_str()
+    }
+
+    /// What the session was doing when captured.
+    #[must_use]
+    pub const fn state(&self) -> CodingAgentState {
+        self.state
+    }
+
+    /// The resolved provider identifier.
+    #[must_use]
+    pub fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// The resolved model identifier.
+    #[must_use]
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// The coding harness selected for the model.
+    #[must_use]
+    pub const fn profile(&self) -> AgentProfileKind {
+        self.profile
+    }
+
+    /// The committed conversation.
+    #[must_use]
+    pub const fn history(&self) -> &History {
+        &self.history
+    }
+
+    /// Input waiting outside the committed conversation.
+    #[must_use]
+    pub const fn pending_input(&self) -> &PendingInput {
+        &self.pending_input
+    }
+
+    /// Memory files loaded into the system prompt.
+    #[must_use]
+    pub fn memory(&self) -> &[MemoryFileSummary] {
+        &self.memory
+    }
+
+    /// Skills available to the session.
+    #[must_use]
+    pub fn skills(&self) -> &[SkillSummary] {
+        &self.skills
+    }
+
+    /// Tools registered for the session, ordered by name.
+    #[must_use]
+    pub fn tools(&self) -> &[ToolSummary] {
+        &self.tools
+    }
+
+    /// What became of each MCP server the application configured, in
+    /// configuration order: its tools when it started, the reason when it
+    /// did not. Empty when none was configured.
+    #[must_use]
+    pub fn mcp_servers(&self) -> &[McpServerStatus] {
+        &self.mcp_servers
+    }
+
+    /// The latest context-window measurement.
+    #[must_use]
+    pub const fn context_window(&self) -> Option<&ContextWindowSnapshot> {
+        self.context_window.as_ref()
+    }
+
+    /// The last event committed before this snapshot was returned.
+    #[must_use]
+    pub const fn committed_event_seq(&self) -> u64 {
+        self.committed_event_seq
+    }
+}
+
+/// A coherent starting point for a live coding-agent projection.
+pub struct CodingAgentObservation {
+    snapshot: CodingAgentSnapshot,
+    events:   broadcast::Receiver<CodingAgentEvent>,
+}
+
+impl CodingAgentObservation {
+    /// The complete state at the observation boundary.
+    #[must_use]
+    pub const fn snapshot(&self) -> &CodingAgentSnapshot {
+        &self.snapshot
+    }
+
+    /// Consumes the observation into its snapshot and live event receiver.
+    #[must_use]
+    pub fn into_parts(self) -> (CodingAgentSnapshot, broadcast::Receiver<CodingAgentEvent>) {
+        (self.snapshot, self.events)
+    }
+}
+
+impl fmt::Debug for CodingAgentObservation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CodingAgentObservation")
+            .field("snapshot", &self.snapshot)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What a builder resumes from, when it resumes at all.
+enum ResumeSource {
+    Record(Box<SessionRecord>, ResumeMode),
+    Export(Box<WarmState>),
+}
+
+/// Builds an initialized [`CodingAgent`].
+#[must_use = "a builder does nothing until `build().await` is called"]
+pub struct CodingAgentBuilder {
+    inner:           CodingRuntimeBuilder,
+    resume:          Option<ResumeSource>,
+    fallback_routes: Vec<FallbackRoute>,
+    #[cfg(feature = "mcp")]
+    mcp_servers:     Vec<McpServer>,
+    #[cfg(feature = "mcp")]
+    port_routes:     Option<Arc<dyn PortRoutes>>,
+}
+
+impl CodingAgentBuilder {
+    fn new(client: Client, environment: Arc<dyn Environment>) -> Self {
+        Self {
+            inner: CodingRuntime::builder(client).environment(environment),
+            resume: None,
+            fallback_routes: Vec::new(),
+            #[cfg(feature = "mcp")]
+            mcp_servers: Vec::new(),
+            #[cfg(feature = "mcp")]
+            port_routes: None,
+        }
+    }
+
+    /// Names the MCP servers whose tools the agent gets, in the order they
+    /// start.
+    ///
+    /// The servers start while the agent is built, before its first prompt,
+    /// and every tool they advertise is registered under
+    /// `mcp__{server}__{tool}` with
+    /// [`ToolSource::Mcp`](crate::tools::ToolSource::Mcp) as its source.
+    /// Each server's outcome is on the stream once the agent
+    /// is up: [`McpServerReady`](CodingEvent::McpServerReady) with its tools,
+    /// or [`McpServerFailed`](CodingEvent::McpServerFailed) with the reason,
+    /// after which the agent runs without that server's tools. The servers
+    /// close when the agent [shuts down](CodingAgent::shutdown), after its
+    /// last tool call. A successor built from this agent's
+    /// [`export`](CodingAgent::export) starts servers of its own; give it the
+    /// same list and its tools keep their names.
+    #[cfg(feature = "mcp")]
+    pub fn mcp_servers(mut self, servers: impl IntoIterator<Item = McpServer>) -> Self {
+        self.mcp_servers = servers.into_iter().collect();
+        self
+    }
+
+    /// Names the route from the application to a port inside its
+    /// environment, for servers placed in the environment
+    /// ([`McpPlacement::Environment`](crate::mcp::McpPlacement::Environment)).
+    ///
+    /// The application implements [`PortRoutes`] over its sandbox — fabro
+    /// over its run sandbox's preview-URL facet, petri over its execution
+    /// environment's `preview_url` — answering with the URL and headers that
+    /// reach a port from where the application runs. Without one, an
+    /// environment-hosted server is reached on the loopback address. Pebble
+    /// asks for the route once per server and releases every route it opened,
+    /// when the server fails to start and when the agent shuts down; a route
+    /// the application reports as
+    /// [`Unsupported`](crate::mcp::PortRouteError::Unsupported) fails the
+    /// server as having no route to its port.
+    #[cfg(feature = "mcp")]
+    pub fn port_routes(mut self, routes: Arc<dyn PortRoutes>) -> Self {
+        self.port_routes = Some(routes);
+        self
+    }
+
+    /// Names the routes a prompt continues on when its model fails, in order.
+    ///
+    /// When a prompt ends with a model error the client would not retry on the
+    /// same route and another route might not share — the error's
+    /// [`failover_eligible`](lithos_llm::types::Error::failover_eligible) — the
+    /// agent takes its own record, closes its session, resumes the record on
+    /// the next route with [`ResumeMode::UseModel`] and that route's controls,
+    /// requeues the steering and follow-ups the failed session still held, and
+    /// continues the prompt as
+    /// [`continue_prompt`](CodingAgent::continue_prompt) would: on the
+    /// history as it stands, so no tool effect repeats. The stream carries
+    /// [`RouteFailover`](CodingEvent::RouteFailover) from the new route,
+    /// and the report names the route the prompt ended on.
+    ///
+    /// The list is the whole plan, fixed here: a route's own fallbacks, if the
+    /// application knows of any, are not consulted. A route that cannot be
+    /// built ends the prompt with [`Error::FallbackRoute`]. Once the list is
+    /// spent, a model error ends the prompt as it would without one. A prompt
+    /// that was cancelled never moves. Children built by this agent run on its
+    /// current route and do not fail over on their own.
+    pub fn fallback_routes(mut self, routes: impl IntoIterator<Item = FallbackRoute>) -> Self {
+        self.fallback_routes = routes.into_iter().collect();
+        self
+    }
+
+    /// Names the model through the client's catalog.
+    ///
+    /// A builder that resumes a session takes its model from the resume mode
+    /// instead, and refuses one set here.
+    pub fn model(mut self, model: impl Into<String>) -> Self {
+        self.inner = self.inner.model(model);
+        self
+    }
+
+    /// Adds tools on top of the selected coding profile.
+    /// Duplicate visible names or stable identities are build errors. Use
+    /// [`replace_tool`](Self::replace_tool) for an intentional replacement.
+    pub fn tools(mut self, tools: impl IntoIterator<Item = RegisteredTool>) -> Self {
+        self.inner = self.inner.tools(tools);
+        self
+    }
+
+    /// Replaces a tool by its stable identity, such as `read_file`.
+    ///
+    /// The replacement keeps the registered model-visible name and identity.
+    /// Its definition, executor, source, and inheritance policy come from
+    /// `tool`. An unknown identity is a build error. Later replacements of
+    /// the same identity take precedence.
+    pub fn replace_tool(mut self, id: impl Into<String>, tool: RegisteredTool) -> Self {
+        self.inner = self.inner.replace_tool(id, tool);
+        self
+    }
+
+    /// Installs the built-in permission policy and records its level together.
+    ///
+    /// The last call selects the level, regardless of where `options` is set.
+    /// The policy runs inside application middleware and is inherited by
+    /// subagents. Calls requiring approval are hidden and denied. To request
+    /// approval or use a custom policy, install
+    /// [`PermissionMiddleware`](crate::tools::PermissionMiddleware) through
+    /// [`tool_middleware`](Self::tool_middleware) instead.
+    pub fn permission_level(mut self, level: PermissionLevel) -> Self {
+        self.inner = self.inner.permission_level(level);
+        self
+    }
+
+    /// Adds one tool middleware to this agent and its descendants.
+    ///
+    /// Middleware runs in installation order around tool calls. The first
+    /// middleware added here is the outermost application layer.
+    pub fn tool_middleware(mut self, middleware: Arc<dyn ToolMiddleware>) -> Self {
+        self.inner = self.inner.tool_middleware(middleware);
+        self
+    }
+
+    /// Sets where the root session asks a person a question.
+    pub fn human_input(mut self, provider: Arc<dyn HumanInputProvider>) -> Self {
+        self.inner = self.inner.human_input(provider);
+        self
+    }
+
+    /// Sets where per-round tool environment variables come from.
+    pub fn tool_env_provider(mut self, provider: Arc<dyn ToolEnvProvider>) -> Self {
+        self.inner = self.inner.tool_env_provider(provider);
+        self
+    }
+
+    /// Sets fixed extra environment variables for tool calls.
+    pub fn tool_env(mut self, env: HashMap<String, String>) -> Self {
+        self.inner = self.inner.tool_env(env);
+        self
+    }
+
+    /// Sets the redactor used for event-visible process output.
+    pub fn redactor(mut self, redactor: Arc<dyn Redactor>) -> Self {
+        self.inner = self.inner.redactor(redactor);
+        self
+    }
+
+    /// Selects the model used to summarize fetched web pages.
+    pub fn web_fetch_summarizer(mut self, model: impl Into<String>) -> Self {
+        self.inner = self.inner.web_fetch_summarizer(model);
+        self
+    }
+
+    /// Sets the provider behind the profile's web-search tool.
+    pub fn search_provider(mut self, provider: Arc<dyn SearchProvider>) -> Self {
+        self.inner = self.inner.search_provider(provider);
+        self
+    }
+
+    /// Lets the application adjust the system prompt the selected profile
+    /// writes: use it, add to it, or replace it.
+    ///
+    /// The tools, their names, and the runtime behavior around them are the
+    /// profile's whatever the transform answers. It applies to this agent only,
+    /// not to the subagents it spawns.
+    pub fn system_prompt_transform(mut self, transform: Arc<dyn SystemPromptTransform>) -> Self {
+        self.inner = self.inner.system_prompt_transform(transform);
+        self
+    }
+
+    /// Replaces coding-agent policy.
+    ///
+    /// Runtime service hooks are configured separately from these stored
+    /// options.
+    pub fn options(mut self, options: CodingAgentOptions) -> Self {
+        self.inner = self.inner.options(options);
+        self
+    }
+
+    /// Prepares an ephemeral context view before each model request.
+    /// Inherited by subagents with their session identity; reinstall on resume.
+    pub fn context_policy(mut self, policy: Arc<dyn ContextPolicy>) -> Self {
+        self.inner = self.inner.context_policy(policy);
+        self
+    }
+
+    /// Supplies summary generation for manual and automatic compaction.
+    ///
+    /// Pebble still chooses a safe cut, validates the summary, and records the
+    /// outcome. Inherited by subagents; reinstall the service when resuming.
+    pub fn compaction_policy(mut self, policy: Arc<dyn CompactionPolicy>) -> Self {
+        self.inner = self.inner.compaction_policy(policy);
+        self
+    }
+
+    /// Records the whole session tree's ordered event stream durably.
+    ///
+    /// The sink receives every event before live subscribers do. A refusal
+    /// closes the tree and fails the operation that observed it.
+    pub fn event_sink(mut self, sink: Arc<dyn EventSink>) -> Self {
+        self.inner = self.inner.event_sink(sink);
+        self
+    }
+
+    /// Sets the pending event queue and each live subscription's capacity.
+    ///
+    /// Filling the producer queue is fatal to the stream. A live subscriber
+    /// that falls behind instead receives `RecvError::Lagged`.
+    pub fn event_capacity(mut self, capacity: impl Into<EventCapacity>) -> Self {
+        self.inner = self.inner.event_capacity(capacity);
+        self
+    }
+
+    /// Sets the longest one call to the durable event sink may take.
+    ///
+    /// Exceeding this limit stops the stream and closes the session tree.
+    pub fn event_sink_timeout(mut self, timeout: impl Into<EventSinkTimeout>) -> Self {
+        self.inner = self.inner.event_sink_timeout(timeout);
+        self
+    }
+
+    /// Configures the subagents this agent may spawn.
+    ///
+    /// Pebble builds the children itself. A child acts through this agent's
+    /// environment, runs on its model under the same tool middleware,
+    /// writes events to this tree's shared stream, and inherits only the
+    /// application tools marked
+    /// [`allow_in_subagents`](RegisteredTool::allow_in_subagents) — never one
+    /// that [`requires_human_input`](RegisteredTool::requires_human_input).
+    /// Without this call, or with [`SubagentOptions::disabled`], no subagent
+    /// tools are advertised.
+    pub fn subagents(mut self, options: SubagentOptions) -> Self {
+        self.inner = self.inner.subagents(options);
+        self
+    }
+
+    /// Builds and initializes the coding agent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when required configuration is absent, model metadata
+    /// does not select a supported coding profile, or resource initialization
+    /// fails.
+    pub async fn build(
+        #[cfg_attr(
+            not(feature = "mcp"),
+            expect(unused_mut, reason = "only the MCP servers add tools to the builder")
+        )]
+        mut self,
+    ) -> Result<CodingAgent, CodingAgentBuildError> {
+        if self.resume.is_some() && self.inner.has_model() {
+            return Err(CodingAgentBuildError::ModelConflictsWithResume);
+        }
+        // The servers start first, so their tools are in the registry every
+        // runtime built from here — the first and any failover replacement —
+        // is given.
+        #[cfg(feature = "mcp")]
+        let mcp = if self.mcp_servers.is_empty() {
+            None
+        } else {
+            let environment = self
+                .inner
+                .environment_ref()
+                .ok_or(CodingAgentBuildError::MissingEnvironment)?;
+            let servers =
+                McpServers::start(&self.mcp_servers, environment, self.port_routes.as_ref()).await;
+            self.inner = self.inner.tools(servers.tools());
+            Some(servers)
+        };
+        // Cloned before the build consumes the builder, so a replacement
+        // runtime is built from exactly what this one was.
+        // Boxed: the recipe is a whole builder, and an agent lives inside its
+        // application's futures.
+        let fallback = (!self.fallback_routes.is_empty()).then(|| {
+            Box::new(FallbackChain {
+                routes: self.fallback_routes,
+                taken:  0,
+                recipe: self.inner.clone(),
+            })
+        });
+        let mut inner = match Self::build_runtime(self.resume, self.inner).await {
+            Ok(inner) => inner,
+            Err(error) => {
+                // The servers were started for an agent that will not exist:
+                // closed as the agent's own shutdown would close them, so no
+                // process or route outlives the failed build.
+                #[cfg(feature = "mcp")]
+                if let Some(mut servers) = mcp {
+                    servers.shutdown().await;
+                }
+                return Err(error);
+            }
+        };
+        if let Some(chain) = &fallback {
+            inner.set_failover_outlook(Some(chain.outlook()));
+        }
+        let control = CodingControl::new(&inner);
+        // The live channel is captured while its pump runs: a session that
+        // closes itself on a credential failure has joined its pump before
+        // the failover can look, and every replacement publishes here so a
+        // subscriber taken now keeps receiving.
+        let fallback = fallback.map(|mut chain| {
+            if let Some(published) = inner.published_sender() {
+                chain.recipe = chain.recipe.continue_publishing_on(published);
+            }
+            chain
+        });
+        // What became of each server, now that there is a stream to say it on.
+        #[cfg(feature = "mcp")]
+        if let Some(servers) = &mcp {
+            for outcome in servers.outcomes() {
+                inner.emit(outcome.to_event());
+            }
+        }
+        Ok(CodingAgent {
+            inner,
+            control,
+            fallback,
+            #[cfg(feature = "mcp")]
+            mcp,
+        })
+    }
+
+    /// Builds and initializes the runtime, fresh or from `resume`. A runtime
+    /// whose initialization fails is shut down before the error is returned.
+    async fn build_runtime(
+        resume: Option<ResumeSource>,
+        inner: CodingRuntimeBuilder,
+    ) -> Result<CodingRuntime, CodingAgentBuildError> {
+        let (mut runtime, started) = match resume {
+            Some(ResumeSource::Record(record, mode)) => {
+                let mut runtime = CodingRuntime::from_record(*record, &mode, inner)?;
+                let started = runtime.initialize().await;
+                (runtime, started)
+            }
+            Some(ResumeSource::Export(state)) => {
+                let mut runtime = CodingRuntime::from_warm_state(*state, inner)?;
+                let started = runtime.start_from_warm_state().await;
+                (runtime, started)
+            }
+            None => {
+                let mut runtime = inner.build()?;
+                let started = runtime.initialize().await;
+                (runtime, started)
+            }
+        };
+        if let Err(source) = started {
+            let _ = runtime.shutdown(ShutdownReason::Error).await;
+            return Err(CodingAgentBuildError::Initialization {
+                source: Box::new(source),
+            });
+        }
+        Ok(runtime)
+    }
+}
+
+/// What a control handle reaches: generic agent control and terminal
+/// cancellation.
+///
+/// Whether a prompt is running and whether the agent is closed are read from
+/// the session's own control rather than tracked again here.
+struct CodingControl {
+    /// The runtime the handle reaches, and the holds the handles keep on it.
+    /// Replaced when a failover rebuilds the runtime, so a handle taken
+    /// before the prompt keeps working after it and a hold taken before it
+    /// keeps holding. One lock covers both, so a hold is never taken on a
+    /// runtime that is being replaced.
+    target: RwLock<ControlTarget>,
+}
+
+/// One runtime's control surface, and the holds the handles keep on it.
+struct ControlTarget {
+    runtime: RuntimeHandles,
+    /// One completion lease on `runtime.session` per live [`SteeringLease`].
+    ///
+    /// A hold belongs to the conversation, not to the runtime that happens to
+    /// run it: `retarget` takes each one again on the replacement, and a
+    /// lease's drop releases whichever runtime the handles reach then.
+    holds:   Vec<CompletionLease>,
+}
+
+/// One runtime's cheap control handles, every one of them shared with the
+/// runtime they came from.
+#[derive(Clone)]
+struct RuntimeHandles {
+    session:          AgentControlHandle,
+    cancel:           CancellationToken,
+    interrupt_reason: InterruptReasonHandle,
+    state:            StateMachine,
+    compaction:       CompactionControl,
+}
+
+/// Input submitted through a coding agent's main prompt operation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CodingInput {
+    content: InputContent,
+    source:  InputSource,
+}
+
+impl CodingInput {
+    /// Creates input from provider-neutral content parts.
+    #[must_use]
+    pub fn new(content: impl IntoIterator<Item = ContentPart>) -> Self {
+        Self {
+            content: InputContent::new(content),
+            source:  InputSource::Prompt,
+        }
+    }
+
+    /// Creates plain text input.
+    #[must_use]
+    pub fn text(text: impl Into<String>) -> Self {
+        Self {
+            content: InputContent::text(text),
+            source:  InputSource::Prompt,
+        }
+    }
+
+    /// Records where this input came from.
+    #[must_use]
+    pub const fn with_source(mut self, source: InputSource) -> Self {
+        self.source = source;
+        self
+    }
+
+    /// The ordered content sent to the model.
+    #[must_use]
+    pub const fn content(&self) -> &InputContent {
+        &self.content
+    }
+
+    /// Where this input came from.
+    #[must_use]
+    pub const fn source(&self) -> InputSource {
+        self.source
+    }
+}
+
+impl From<&str> for CodingInput {
+    fn from(text: &str) -> Self {
+        Self::text(text)
+    }
+}
+
+impl From<String> for CodingInput {
+    fn from(text: String) -> Self {
+        Self::text(text)
+    }
+}
+
+impl From<&String> for CodingInput {
+    fn from(text: &String) -> Self {
+        Self::text(text)
+    }
+}
+
+impl From<InputContent> for CodingInput {
+    fn from(content: InputContent) -> Self {
+        Self {
+            content,
+            source: InputSource::Prompt,
+        }
+    }
+}
+
+impl From<Vec<ContentPart>> for CodingInput {
+    fn from(content: Vec<ContentPart>) -> Self {
+        Self::new(content)
+    }
+}
+
+impl CodingControl {
+    fn new(session: &CodingRuntime) -> Arc<Self> {
+        Arc::new(Self {
+            target: RwLock::new(ControlTarget {
+                runtime: RuntimeHandles::of(session),
+                holds:   Vec::new(),
+            }),
+        })
+    }
+
+    /// Points every handle at `session` from now on, and moves every hold the
+    /// handles keep onto it.
+    ///
+    /// The leases on the runtime being replaced drop here. It is closed, and
+    /// nothing reads its count again.
+    fn retarget(&self, session: &CodingRuntime) {
+        let mut target = self.target.write().unwrap_or_else(PoisonError::into_inner);
+        let runtime = RuntimeHandles::of(session);
+        target.holds = (0..target.holds.len())
+            .map(|_| runtime.session.hold_completion())
+            .collect();
+        target.runtime = runtime;
+    }
+
+    /// The runtime the handle reaches right now.
+    fn target(&self) -> RuntimeHandles {
+        self.target
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .runtime
+            .clone()
+    }
+
+    /// Holds natural completion open on the runtime the handles reach, and on
+    /// every runtime that replaces it, until
+    /// [`release_hold`](Self::release_hold).
+    fn hold(&self) {
+        let mut target = self.target.write().unwrap_or_else(PoisonError::into_inner);
+        let lease = target.runtime.session.hold_completion();
+        target.holds.push(lease);
+    }
+
+    /// Releases one hold taken with [`hold`](Self::hold) from the runtime the
+    /// handles reach now.
+    fn release_hold(&self) {
+        let lease = self
+            .target
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .holds
+            .pop();
+        // Dropped outside the lock: the last lease wakes the runtime's parked
+        // prompt, which needs nothing from here.
+        drop(lease);
+    }
+}
+
+/// A hold that keeps natural completion open for steering.
+///
+/// Taken through [`CodingAgentControlHandle::hold_open_for_steering`]. The
+/// hold follows the conversation: after a route failover it holds the
+/// replacement runtime, and dropping it releases whichever runtime the handle
+/// reaches then.
+#[must_use = "the lease parks completion only while it is held"]
+pub struct SteeringLease {
+    control: Arc<CodingControl>,
+}
+
+impl SteeringLease {
+    fn acquire(control: Arc<CodingControl>) -> Self {
+        control.hold();
+        Self { control }
+    }
+}
+
+impl Drop for SteeringLease {
+    fn drop(&mut self) {
+        self.control.release_hold();
+    }
+}
+
+impl fmt::Debug for SteeringLease {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SteeringLease")
+            .finish_non_exhaustive()
+    }
+}
+
+impl RuntimeHandles {
+    fn of(session: &CodingRuntime) -> Self {
+        Self {
+            session:          session.control_handle(),
+            cancel:           session.cancel_token(),
+            interrupt_reason: session.interrupt_reason_handle(),
+            state:            session.state_machine(),
+            compaction:       session.compaction_control(),
+        }
+    }
+}
+
+/// Out-of-band input for a coding agent: what to say, and who said it.
+///
+/// Steering reaches the model as its own turn at the next round boundary and
+/// publishes [`SteeringInjected`](crate::events::CodingEvent::SteeringInjected)
+/// with the same author. A follow-up runs as ordinary user input once the
+/// current prompt reaches an answer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SteeringMessage {
+    content: InputContent,
+    actor:   Option<Actor>,
+}
+
+impl SteeringMessage {
+    /// A message with no named author.
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            content: InputContent::text(text),
+            actor:   None,
+        }
+    }
+
+    /// A message with provider-neutral content and no named author.
+    #[must_use]
+    pub fn from_content(content: impl IntoIterator<Item = ContentPart>) -> Self {
+        Self {
+            content: InputContent::new(content),
+            actor:   None,
+        }
+    }
+
+    /// Names who wrote the message.
+    #[must_use]
+    pub fn with_actor(mut self, actor: Actor) -> Self {
+        self.actor = Some(actor);
+        self
+    }
+
+    /// What the message says.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        self.content.text_content()
+    }
+
+    /// The ordered content sent to the model.
+    #[must_use]
+    pub const fn content(&self) -> &InputContent {
+        &self.content
+    }
+
+    /// Who wrote it, when the application said.
+    #[must_use]
+    pub const fn actor(&self) -> Option<&Actor> {
+        self.actor.as_ref()
+    }
+
+    /// The message the generic agent evicted from its queue, read back as it
+    /// was given.
+    fn from_user_message(message: &UserMessage) -> Self {
+        Self {
+            content: InputContent::from(message.content()),
+            actor:   actor_from_attribution(message.attribution()),
+        }
+    }
+}
+
+/// Input waiting outside the committed conversation.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PendingInput {
+    steering:   Vec<SteeringMessage>,
+    follow_ups: Vec<SteeringMessage>,
+}
+
+impl PendingInput {
+    fn from_agent(input: AgentPendingInput) -> Self {
+        let (steering, follow_ups) = input.into_parts();
+        Self {
+            steering:   steering
+                .iter()
+                .map(SteeringMessage::from_user_message)
+                .collect(),
+            follow_ups: follow_ups
+                .iter()
+                .map(SteeringMessage::from_user_message)
+                .collect(),
+        }
+    }
+
+    /// Steering waiting for the next turn boundary, oldest first.
+    #[must_use]
+    pub fn steering(&self) -> &[SteeringMessage] {
+        &self.steering
+    }
+
+    /// Follow-up input waiting for a natural answer, oldest first.
+    #[must_use]
+    pub fn follow_ups(&self) -> &[SteeringMessage] {
+        &self.follow_ups
+    }
+
+    /// Whether neither queue contains input.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.steering.is_empty() && self.follow_ups.is_empty()
+    }
+
+    /// Consumes the snapshot and returns both queues, oldest first.
+    #[must_use]
+    pub fn into_parts(self) -> (Vec<SteeringMessage>, Vec<SteeringMessage>) {
+        (self.steering, self.follow_ups)
+    }
+}
+
+impl From<&str> for SteeringMessage {
+    fn from(text: &str) -> Self {
+        Self::new(text)
+    }
+}
+
+impl From<String> for SteeringMessage {
+    fn from(text: String) -> Self {
+        Self::new(text)
+    }
+}
+
+impl From<Vec<ContentPart>> for SteeringMessage {
+    fn from(content: Vec<ContentPart>) -> Self {
+        Self::from_content(content)
+    }
+}
+
+/// What the control handle did with one message.
+#[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
+pub enum SteeringOutcome {
+    /// The message is queued.
+    Accepted,
+    /// The message is queued, and the queue was full: this older message was
+    /// dropped to make room and the agent will never see it. The application
+    /// decides whether that is worth reporting.
+    Evicted(SteeringMessage),
+    /// The agent is closed and nothing was queued.
+    Closed,
+}
+
+impl SteeringOutcome {
+    /// Whether the message was queued, with or without an eviction.
+    #[must_use]
+    pub const fn is_accepted(&self) -> bool {
+        matches!(self, Self::Accepted | Self::Evicted(_))
+    }
+
+    fn from_queue(outcome: QueueOutcome) -> Self {
+        match outcome {
+            QueueOutcome::Queued => Self::Accepted,
+            QueueOutcome::Evicted(message) => {
+                Self::Evicted(SteeringMessage::from_user_message(&message))
+            }
+            // The generic agent's outcome may grow; anything else means the
+            // message was not queued.
+            QueueOutcome::Closed | _ => Self::Closed,
+        }
+    }
+}
+
+/// A read-only view of a coding agent's control state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ControlSnapshot {
+    running:            bool,
+    closed:             bool,
+    parked:             bool,
+    compacting:         bool,
+    pending_steering:   usize,
+    pending_follow_ups: usize,
+}
+
+impl ControlSnapshot {
+    /// Whether a prompt is running.
+    #[must_use]
+    pub const fn is_running(&self) -> bool {
+        self.running
+    }
+
+    /// Whether the agent is permanently closed.
+    #[must_use]
+    pub const fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    /// Whether the prompt is parked after an interrupt, waiting for a steer.
+    ///
+    /// Never `true` while [`pending_steering`](Self::pending_steering) is
+    /// above zero: queued steering is what a park waits for.
+    #[must_use]
+    pub const fn is_parked(&self) -> bool {
+        self.parked
+    }
+
+    /// Whether conversation history is being compacted.
+    #[must_use]
+    pub const fn is_compacting(&self) -> bool {
+        self.compacting
+    }
+
+    /// Steering messages queued for the next round boundary.
+    #[must_use]
+    pub const fn pending_steering(&self) -> usize {
+        self.pending_steering
+    }
+
+    /// Follow-ups queued to run after the current answer.
+    #[must_use]
+    pub const fn pending_follow_ups(&self) -> usize {
+        self.pending_follow_ups
+    }
+}
+
+/// Controls a coding agent while another task awaits its prompt.
+///
+/// Cloning is cheap. Every clone steers, follows up, aborts, and observes the
+/// same agent. Every operation is safe to call from any task at any time,
+/// including from several handles at once. The generic control state updates
+/// each queue and interrupt generation under one lock.
+#[derive(Clone)]
+pub struct CodingAgentControlHandle {
+    control: Arc<CodingControl>,
+}
+
+impl CodingAgentControlHandle {
+    fn new(control: Arc<CodingControl>) -> Self {
+        Self { control }
+    }
+
+    /// How many steering messages wait for a round boundary before the oldest
+    /// is dropped.
+    ///
+    /// Pebble owns the bound and the rule: a full queue evicts its oldest
+    /// message, and the outcome carries what was evicted so the application
+    /// can report it.
+    pub const STEERING_QUEUE_CAPACITY: usize = 64;
+
+    /// How many follow-up messages wait for a natural answer before the oldest
+    /// is dropped.
+    pub const FOLLOW_UP_QUEUE_CAPACITY: usize = 64;
+
+    /// Queues steering for the next round boundary without interrupting the
+    /// round in progress.
+    ///
+    /// The model finishes what it is doing and reads the message before its
+    /// next turn. Steering queued while idle opens the next prompt.
+    pub fn queue_steering(&self, message: impl Into<SteeringMessage>) -> SteeringOutcome {
+        if self.is_closed() {
+            return SteeringOutcome::Closed;
+        }
+        let message = message.into();
+        SteeringOutcome::from_queue(self.control.target().session.enqueue_steering_bounded(
+            steering_message(message.content, message.actor),
+            Self::STEERING_QUEUE_CAPACITY,
+        ))
+    }
+
+    /// Interrupts the round in progress and queues `message` as what replaces
+    /// it, in one step.
+    ///
+    /// The interrupt and the enqueue happen under one lock, so the prompt can
+    /// never observe the interrupt with an empty queue and park when the steer
+    /// was already on its way. While no prompt is running this only queues, and
+    /// the message opens the next prompt.
+    pub fn steer_now(&self, message: impl Into<SteeringMessage>) -> SteeringOutcome {
+        if self.is_closed() {
+            return SteeringOutcome::Closed;
+        }
+        let message = message.into();
+        SteeringOutcome::from_queue(self.control.target().session.steer_bounded(
+            steering_message(message.content, message.actor),
+            Self::STEERING_QUEUE_CAPACITY,
+        ))
+    }
+
+    /// Interrupts the round in progress without saying what comes next.
+    ///
+    /// The prompt abandons its round, publishes one
+    /// [`RoundInterrupted`](crate::events::CodingEvent::RoundInterrupted), and
+    /// parks at the next boundary until a steer arrives or the prompt is
+    /// cancelled. With steering already queued the prompt does not park: the
+    /// queued message opens the next round, so a steer followed by an
+    /// interrupt needs no second gesture. Returns whether a prompt was running
+    /// to interrupt.
+    pub fn interrupt(&self) -> bool {
+        if !self.is_running() || self.is_closed() {
+            return false;
+        }
+        self.control.target().session.interrupt()
+    }
+
+    /// Holds natural completion open while an external steering source is
+    /// attached.
+    ///
+    /// While the returned [`SteeringLease`] is alive, a prompt that reaches a
+    /// plain answer parks rather than completing, so a steer the source is
+    /// about to send cannot lose the completion close-door race. Dropping the
+    /// final lease wakes a parked prompt and lets it complete. This is the
+    /// supported replacement for reaching into the drain, park, and generation
+    /// protocol directly.
+    ///
+    /// The lease follows the conversation across a route failover: it holds
+    /// whichever runtime the handle reaches, and its drop releases that one.
+    pub fn hold_open_for_steering(&self) -> SteeringLease {
+        SteeringLease::acquire(Arc::clone(&self.control))
+    }
+
+    /// Queues input to run as its own user turn once the current prompt
+    /// reaches an answer.
+    ///
+    /// A follow-up is ordinary input, not steering, and does not interrupt.
+    /// The author is not recorded on the turn it becomes. A full queue evicts
+    /// its oldest message and returns it.
+    pub fn queue_follow_up(&self, message: impl Into<SteeringMessage>) -> SteeringOutcome {
+        if self.is_closed() {
+            return SteeringOutcome::Closed;
+        }
+        let message = message.into();
+        SteeringOutcome::from_queue(self.control.target().session.follow_up_bounded(
+            input_message(message.content, InputSource::FollowUp),
+            Self::FOLLOW_UP_QUEUE_CAPACITY,
+        ))
+    }
+
+    /// Aborts the active prompt and leaves the agent ready for another.
+    ///
+    /// The loop unwinds through its cancellation checkpoints and keeps tool
+    /// calls paired with results. Returns whether a prompt was running.
+    pub fn abort(&self) -> bool {
+        let target = self.control.target();
+        if self.is_closed() || !target.session.abort() {
+            return false;
+        }
+        target.interrupt_reason.record(InterruptReason::Cancelled);
+        true
+    }
+
+    /// Permanently closes the agent from an out-of-band handle.
+    ///
+    /// Active work is cancelled immediately. The task that owns the
+    /// [`CodingAgent`] must still call [`CodingAgent::shutdown`] to publish the
+    /// terminal event and join owned tasks.
+    pub fn close(&self) -> bool {
+        let target = self.control.target();
+        if !target.session.close() {
+            return false;
+        }
+        target.interrupt_reason.record(InterruptReason::Cancelled);
+        target.state.transition(CodingAgentState::Closed);
+        target.cancel.cancel();
+        true
+    }
+
+    /// Cancels the compaction currently in progress.
+    ///
+    /// Cancelling automatic compaction leaves the surrounding prompt running.
+    /// Cancelling manual compaction ends that operation with
+    /// [`Error::Interrupted`] and leaves the agent reusable.
+    pub fn cancel_compaction(&self) -> bool {
+        self.control.target().compaction.cancel()
+    }
+
+    /// Waits until no prompt or compaction is running.
+    pub async fn wait_for_idle(&self) {
+        loop {
+            let target = self.control.target();
+            target.session.wait_for_idle().await;
+            target.compaction.wait_for_idle().await;
+            if !self.is_running() && !self.is_compacting() {
+                return;
+            }
+        }
+    }
+
+    /// Whether a prompt is running.
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.control.target().session.is_running()
+    }
+
+    /// Whether the agent is permanently closed.
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        let target = self.control.target();
+        target.session.is_closed() || target.cancel.is_cancelled()
+    }
+
+    /// Whether conversation history is being compacted.
+    #[must_use]
+    pub fn is_compacting(&self) -> bool {
+        self.control.target().compaction.is_active()
+    }
+
+    /// A read-only view of the agent's state and queued input.
+    #[must_use]
+    pub fn snapshot(&self) -> ControlSnapshot {
+        let snapshot = self.control.target().session.snapshot();
+        ControlSnapshot {
+            running:            snapshot.is_running(),
+            closed:             self.is_closed(),
+            parked:             snapshot.is_paused(),
+            compacting:         self.is_compacting(),
+            pending_steering:   snapshot.pending_steering(),
+            pending_follow_ups: snapshot.pending_follow_ups(),
+        }
+    }
+
+    /// Clones the input currently waiting in both queues.
+    #[must_use]
+    pub fn pending_input(&self) -> PendingInput {
+        PendingInput::from_agent(self.control.target().session.pending_input())
+    }
+
+    /// Removes and returns the input currently waiting in both queues.
+    ///
+    /// If a steer already interrupted the active round, removing it can leave
+    /// the prompt parked at its next boundary. Abort the prompt first when the
+    /// application is restoring queued input to an editor.
+    pub fn take_pending_input(&self) -> PendingInput {
+        PendingInput::from_agent(self.control.target().session.take_pending_input())
+    }
+}
+
+impl fmt::Debug for CodingAgentControlHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("CodingAgentControlHandle")
+            .field("running", &self.is_running())
+            .field("closed", &self.is_closed())
+            .finish()
+    }
+}
+
+/// A ready coding-agent conversation.
+///
+/// This type owns coding profiles, resources, tools, environment access,
+/// compaction policy, and subagents. Use [`pebble_agent::Agent`] directly when
+/// those coding-specific facilities are not needed.
+#[must_use = "call `shutdown` to stop the agent and join what it owns"]
+pub struct CodingAgent {
+    inner:    CodingRuntime,
+    control:  Arc<CodingControl>,
+    /// The routes left to fail over to, when the builder named any.
+    fallback: Option<Box<FallbackChain>>,
+    /// The MCP servers this agent started, closed after it.
+    #[cfg(feature = "mcp")]
+    mcp:      Option<McpServers>,
+}
+
+impl CodingAgent {
+    /// Starts a builder with the model client and tool environment.
+    pub fn builder(client: Client, environment: Arc<dyn Environment>) -> CodingAgentBuilder {
+        CodingAgentBuilder::new(client, environment)
+    }
+
+    /// Starts a builder that resumes a stored session on the model `mode`
+    /// names.
+    ///
+    /// The record supplies the identity, the conversation, and where the event
+    /// stream had got to; the builder supplies everything a record cannot hold
+    /// and must not also name a model. The resumed agent initializes again —
+    /// probing the environment and rebuilding its system prompt — so a
+    /// [`ResumeMode::UseModel`] failover gets a prompt written for the model it
+    /// runs on.
+    ///
+    /// If the event sink and record were not saved in one transaction, first
+    /// reconcile the record with
+    /// [`SessionRecord::advance_event_cursor`](crate::state::SessionRecord::advance_event_cursor).
+    ///
+    /// ```no_run
+    /// use pebble_coding_agent::{CodingAgent, ResumeMode};
+    /// # use std::sync::Arc;
+    /// # async fn example(
+    /// #     client: lithos_llm::Client,
+    /// #     environment: Arc<dyn pebble_coding_agent::environment::Environment>,
+    /// #     record: pebble_coding_agent::state::SessionRecord,
+    /// # ) -> Result<(), Box<dyn std::error::Error>> {
+    /// let same = CodingAgent::resume(
+    ///     client.clone(),
+    ///     Arc::clone(&environment),
+    ///     record.clone(),
+    ///     ResumeMode::RecordedModel,
+    /// )
+    /// .build()
+    /// .await?;
+    ///
+    /// let fallback = CodingAgent::resume(
+    ///     client,
+    ///     environment,
+    ///     record,
+    ///     ResumeMode::UseModel("openai/gpt-fallback".into()),
+    /// )
+    /// .build()
+    /// .await?;
+    /// # let _ = (same, fallback);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn resume(
+        client: Client,
+        environment: Arc<dyn Environment>,
+        record: SessionRecord,
+        mode: ResumeMode,
+    ) -> CodingAgentBuilder {
+        let mut builder = CodingAgentBuilder::new(client, environment);
+        builder.resume = Some(ResumeSource::Record(Box::new(record), mode));
+        builder
+    }
+
+    /// Starts a builder that continues a live agent from its
+    /// [`export`](Self::export), without initializing again.
+    ///
+    /// This is the handoff between two agents in one process: the successor
+    /// keeps the identity, the conversation, the system prompt, and the
+    /// discovered skills, and binds whatever services the builder gives it —
+    /// a different human-input provider or different tool middleware for its
+    /// own life. It runs on the exported route; a change of model goes
+    /// through [`resume`](Self::resume). The successor uses a new event
+    /// pump but keeps the stream identity and continues numbering from the
+    /// export.
+    pub fn resume_from_export(
+        client: Client,
+        environment: Arc<dyn Environment>,
+        export: CodingAgentExport,
+    ) -> CodingAgentBuilder {
+        let mut builder = CodingAgentBuilder::new(client, environment);
+        builder.resume = Some(ResumeSource::Export(Box::new(export.inner)));
+        builder
+    }
+
+    /// Processes one user prompt and every queued follow-up to completion.
+    ///
+    /// Dropping the future after work starts closes the agent and cancels
+    /// active work. Call `shutdown` to finish joining tasks and flushing
+    /// events. Use token cancellation to keep the agent reusable.
+    ///
+    /// # Errors
+    ///
+    /// The report contains [`Error::SessionClosed`] after shutdown,
+    /// [`Error::Interrupted`] after cancellation or timeout, and the
+    /// applicable model, tool, compaction, or event failure otherwise.
+    pub async fn prompt(&mut self, input: impl Into<CodingInput>) -> PromptReport {
+        self.prompt_inner(input, None).await
+    }
+
+    /// Processes one user prompt until it completes or `cancel` fires.
+    ///
+    /// Cancelling ends this prompt alone. The loop unwinds through its
+    /// checkpoints, so every tool call the model made still gets its result and
+    /// history stays paired: a running call is cancelled through its token and
+    /// keeps the result it returns, and a call that has not started yet — the
+    /// cancellation landed while the assistant turn was being committed or
+    /// compacted — is answered `Cancelled` without running. The prompt returns
+    /// [`Error::Interrupted`] and the agent returns to
+    /// [`Idle`](CodingAgentState::Idle), ready for the next prompt. Only
+    /// [`shutdown`](Self::shutdown) or
+    /// [`close`](CodingAgentControlHandle::close) closes the agent.
+    ///
+    /// # Errors
+    ///
+    /// As [`prompt`](Self::prompt), including its future-drop contract.
+    pub async fn prompt_with_cancellation(
+        &mut self,
+        input: impl Into<CodingInput>,
+        cancel: &CancellationToken,
+    ) -> PromptReport {
+        self.prompt_inner(input, Some(cancel)).await
+    }
+
+    /// Continues the prompt the conversation left unfinished, without new
+    /// input.
+    ///
+    /// A prompt is unfinished when the history ends with input the model has
+    /// not answered: the prompt itself, or the results of the tool calls the
+    /// model asked for. That is what a record holds when a model call failed
+    /// after tool effects were committed, and what an agent resumed from that
+    /// record, on the same model or on another through
+    /// [`ResumeMode::UseModel`], carries on from here: the model is asked
+    /// again on the history as it stands, nothing is committed before that
+    /// call, no tool effect is repeated, and the prompt then runs to
+    /// completion as [`prompt`](Self::prompt) would. The report is the same
+    /// report `prompt` gives.
+    ///
+    /// A resumed agent loads memory, discovers skills, and builds its system
+    /// prompt for the model it runs on before this call, so a handoff to
+    /// another model asks that model with a prompt written for it.
+    ///
+    /// Dropping the future after work starts closes the agent, as with
+    /// `prompt`.
+    ///
+    /// # Errors
+    ///
+    /// The report contains [`Error::Agent`] carrying
+    /// [`AgentError::NothingToContinue`](pebble_agent::AgentError::NothingToContinue)
+    /// when the history is empty or ends with the model's own turn, and
+    /// otherwise the failures `prompt` reports.
+    pub async fn continue_prompt(&mut self) -> PromptReport {
+        self.continue_inner(None).await
+    }
+
+    /// Continues the unfinished prompt until it completes or `cancel` fires.
+    ///
+    /// # Errors
+    ///
+    /// As [`continue_prompt`](Self::continue_prompt), with the cancellation
+    /// contract of
+    /// [`prompt_with_cancellation`](Self::prompt_with_cancellation).
+    pub async fn continue_prompt_with_cancellation(
+        &mut self,
+        cancel: &CancellationToken,
+    ) -> PromptReport {
+        self.continue_inner(Some(cancel)).await
+    }
+
+    /// Replaces older conversation turns with a model-generated summary.
+    ///
+    /// Dropping this future after compaction starts closes the agent. Call
+    /// `shutdown` to finish cleanup. Token cancellation keeps it reusable.
+    ///
+    /// This operation requires an idle agent. Use
+    /// [`compact_with_cancellation`](Self::compact_with_cancellation) with a
+    /// caller token, or [`CodingAgentControlHandle::cancel_compaction`] from
+    /// another task to stop it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidState`] while a prompt is active,
+    /// [`Error::Interrupted`] when cancelled, and the applicable model,
+    /// compaction, or event-stream error otherwise.
+    pub async fn compact(
+        &mut self,
+        options: CompactionOptions,
+    ) -> Result<CompactionOutcome, Error> {
+        self.inner.compact(options, None).await
+    }
+
+    /// Replaces older turns unless `cancel` fires first.
+    ///
+    /// Cancellation leaves history unchanged and the agent reusable.
+    ///
+    /// # Errors
+    ///
+    /// As [`compact`](Self::compact).
+    pub async fn compact_with_cancellation(
+        &mut self,
+        options: CompactionOptions,
+        cancel: &CancellationToken,
+    ) -> Result<CompactionOutcome, Error> {
+        self.inner.compact(options, Some(cancel)).await
+    }
+
+    async fn prompt_inner(
+        &mut self,
+        input: impl Into<CodingInput>,
+        cancel: Option<&CancellationToken>,
+    ) -> PromptReport {
+        let result = self.inner.prompt_with_cancellation(input, cancel).await;
+        self.finish_prompt(result, cancel).await
+    }
+
+    async fn continue_inner(&mut self, cancel: Option<&CancellationToken>) -> PromptReport {
+        let result = self.inner.continue_prompt(cancel).await;
+        self.finish_prompt(result, cancel).await
+    }
+
+    /// Ends a prompt that came back with `result`, following the fallback
+    /// routes while the result is a model failure they can absorb.
+    ///
+    /// Accounting spans every route the prompt ran on: what the failed
+    /// session spent is in the report beside what the one that answered
+    /// spent.
+    async fn finish_prompt(
+        &mut self,
+        mut result: Result<Option<String>, Error>,
+        cancel: Option<&CancellationToken>,
+    ) -> PromptReport {
+        let mut totals = RouteTotals::default();
+        loop {
+            totals.absorb(&self.inner);
+            let Err(error) = &result else {
+                break;
+            };
+            let Some(route) = self.route_to_fail_over_to(error, cancel) else {
+                break;
+            };
+            let committed_output = totals.committed_turns > 0;
+            match self.fail_over(&route, error, committed_output).await {
+                Ok(()) => result = self.inner.continue_prompt(cancel).await,
+                Err(build_error) => {
+                    result = Err(build_error);
+                    break;
+                }
+            }
+        }
+        self.report(result, totals)
+    }
+
+    /// The next fallback route, when `error` is a model failure worth moving
+    /// for and the prompt was not cancelled.
+    ///
+    /// The runtime reads the same facts through its [`FailoverOutlook`] to
+    /// say, before the prompt ends, when there is no move to make.
+    fn route_to_fail_over_to(
+        &mut self,
+        error: &Error,
+        cancel: Option<&CancellationToken>,
+    ) -> Option<FallbackRoute> {
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return None;
+        }
+        if !error.llm_source().is_some_and(LlmError::failover_eligible) {
+            return None;
+        }
+        self.fallback.as_mut()?.next_route()
+    }
+
+    /// Moves the conversation to `route`: closes the failed session, resumes
+    /// its record on the route with the route's controls, points every control
+    /// handle at the replacement with every hold the handles keep, and
+    /// requeues the input the failed session still held.
+    ///
+    /// `committed_output` says whether the prompt has committed an assistant
+    /// turn or a tool result on any route so far; with the record it decides
+    /// how the failover is described.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::FallbackRoute`] when the route cannot be built or
+    /// initialized. The failed session is closed either way.
+    async fn fail_over(
+        &mut self,
+        route: &FallbackRoute,
+        error: &Error,
+        committed_output: bool,
+    ) -> Result<(), Error> {
+        let from = self.inner.route();
+        let failed_error = ErrorData::from(error);
+        // The failed route's account of this prompt, read before its session
+        // closes.
+        let usage = self.inner.last_prompt_usage();
+        let timing = self.inner.last_prompt_timing();
+        // Taken before the session closes: the queues belong to the prompt,
+        // not to the runtime that happened to hold them.
+        let pending = self.control.target().session.take_pending_input();
+        let mut record = self.inner.to_record();
+        let continuation = continuation_of(&record, committed_output);
+        let _ = self.inner.shutdown(ShutdownReason::Error).await;
+        // The close is in the stream now; the replacement numbers past it.
+        record.advance_event_cursor(self.inner.committed_event_seq());
+
+        let chain = self
+            .fallback
+            .as_ref()
+            .expect("a route was taken from the chain");
+        let attempt = chain.attempt();
+        let outlook = chain.outlook();
+        let recipe = chain.recipe.clone().with_route_controls(
+            route.reasoning_effort,
+            route.speed,
+            route.max_tokens,
+        );
+        let unavailable = |source: CodingAgentBuildError| Error::FallbackRoute {
+            route:  route.selector.clone(),
+            source: Box::new(source),
+        };
+        let mut inner = CodingRuntime::from_record(
+            record,
+            &ResumeMode::UseModel(route.selector.clone()),
+            recipe,
+        )
+        .map_err(unavailable)?;
+        if let Err(source) = inner.initialize().await {
+            let _ = inner.shutdown(ShutdownReason::Error).await;
+            return Err(unavailable(CodingAgentBuildError::Initialization {
+                source: Box::new(source),
+            }));
+        }
+        inner.set_failover_outlook(Some(outlook));
+        inner.emit(CodingEvent::RouteFailover {
+            from,
+            to: inner.route(),
+            attempt,
+            error: failed_error,
+            usage,
+            inference_ms: millis(timing.inference),
+            tool_ms: millis(timing.tool),
+            continuation,
+        });
+        self.inner = inner;
+        self.control.retarget(&self.inner);
+        let handle = self.inner.control_handle();
+        let (steering, follow_ups) = pending.into_parts();
+        for message in steering {
+            handle.enqueue_steering_bounded(
+                message,
+                CodingAgentControlHandle::STEERING_QUEUE_CAPACITY,
+            );
+        }
+        for message in follow_ups {
+            handle.follow_up_bounded(message, CodingAgentControlHandle::FOLLOW_UP_QUEUE_CAPACITY);
+        }
+        Ok(())
+    }
+
+    /// The report of a prompt that ended with `result` having spent `totals`.
+    fn report(&self, result: Result<Option<String>, Error>, totals: RouteTotals) -> PromptReport {
+        let mut files_touched = totals.files_touched;
+        files_touched.sort();
+        PromptReport {
+            result: result.map(|text| PromptOutput {
+                text,
+                final_message: self.inner.final_assistant_message(),
+            }),
+            usage: totals.usage,
+            timing: totals.timing,
+            files_touched,
+            last_file_touched: totals.last_file_touched,
+            route: self.inner.route(),
+            compactions: totals.compactions,
+        }
+    }
+
+    /// What became of each configured MCP server, for the snapshot.
+    #[cfg(feature = "mcp")]
+    fn mcp_statuses(&self) -> Vec<McpServerStatus> {
+        self.mcp
+            .as_ref()
+            .map(McpServers::statuses)
+            .unwrap_or_default()
+    }
+
+    /// What became of each configured MCP server, for the snapshot: nothing
+    /// without the feature.
+    #[cfg(not(feature = "mcp"))]
+    #[expect(clippy::unused_self, reason = "the feature-gated twin reads the agent")]
+    fn mcp_statuses(&self) -> Vec<McpServerStatus> {
+        Vec::new()
+    }
+
+    /// The fallback routes this agent has not moved to yet, in order.
+    ///
+    /// Empty when the builder named none or every one has been taken. A
+    /// successor built from this agent's [`export`](Self::export) starts with
+    /// no routes of its own; hand it these to keep the plan going.
+    #[must_use]
+    pub fn remaining_fallback_routes(&self) -> &[FallbackRoute] {
+        self.fallback
+            .as_deref()
+            .map_or(&[], FallbackChain::remaining)
+    }
+
+    /// Watches events published after this call.
+    ///
+    /// This path is bounded and can lag. Use an [`EventSink`] for a complete
+    /// record. The receiver ends after [`shutdown`](Self::shutdown) returns,
+    /// even while this agent value is still alive.
+    #[must_use]
+    pub fn subscribe(&self) -> broadcast::Receiver<CodingAgentEvent> {
+        self.inner.subscribe()
+    }
+
+    /// Captures the state currently available to an application view.
+    ///
+    /// Use [`observe`](Self::observe) when the snapshot and a live event
+    /// receiver must share one committed boundary.
+    #[must_use]
+    pub fn snapshot(&self) -> CodingAgentSnapshot {
+        self.snapshot_at(self.committed_event_seq())
+    }
+
+    /// Starts a coherent live observation of this agent.
+    ///
+    /// The receiver is installed before the event pipeline is flushed. The
+    /// returned snapshot then records that flush's committed sequence. A
+    /// consumer starts with the snapshot, discards queued events at or below
+    /// its sequence, and applies later events in order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an event-stream error when the durability barrier fails. As
+    /// with [`flush_events`](Self::flush_events), such a failure closes the
+    /// agent.
+    pub async fn observe(&mut self) -> Result<CodingAgentObservation, Error> {
+        let events = self.subscribe();
+        let committed_event_seq = self.flush_events().await?;
+        Ok(CodingAgentObservation {
+            snapshot: self.snapshot_at(committed_event_seq),
+            events,
+        })
+    }
+
+    fn snapshot_at(&self, committed_event_seq: u64) -> CodingAgentSnapshot {
+        CodingAgentSnapshot {
+            session: self.inner.session().clone(),
+            state: self.inner.state(),
+            provider: self.inner.provider().to_owned(),
+            model: self.inner.model().to_owned(),
+            profile: self.inner.profile_kind(),
+            history: self.inner.history(),
+            pending_input: self.control_handle().pending_input(),
+            memory: self.inner.memory_summaries().to_vec(),
+            skills: self.inner.skill_summaries(),
+            tools: self.inner.tool_summaries(),
+            mcp_servers: self.mcp_statuses(),
+            context_window: self.inner.context_window(),
+            committed_event_seq,
+        }
+    }
+
+    /// Waits until every event currently queued has reached the durable sink.
+    ///
+    /// The returned value is the highest committed sequence number at this
+    /// barrier. A sink failure closes the agent and is returned here.
+    pub async fn flush_events(&mut self) -> Result<u64, Error> {
+        match self.inner.flush_events().await {
+            Ok(seq) => Ok(seq),
+            Err(error) => {
+                // This is a public operation boundary. Finish the close that
+                // the failed pipeline began before returning.
+                let _ = self.inner.shutdown(ShutdownReason::Error).await;
+                Err(error)
+            }
+        }
+    }
+
+    /// The highest event sequence committed by the event pipeline.
+    ///
+    /// With a durable sink, commitment means the sink accepted the event. This
+    /// is a committed cursor, not the number most recently queued.
+    #[must_use]
+    pub fn committed_event_seq(&self) -> u64 {
+        self.inner.committed_event_seq()
+    }
+
+    /// Returns a handle that can steer, follow up, abort, or await a prompt.
+    #[must_use]
+    pub fn control_handle(&self) -> CodingAgentControlHandle {
+        CodingAgentControlHandle::new(Arc::clone(&self.control))
+    }
+
+    /// Interrupts the current round and queues `message` as what replaces it.
+    pub fn steer_now(&self, message: impl Into<SteeringMessage>) -> SteeringOutcome {
+        self.control_handle().steer_now(message)
+    }
+
+    /// Queues input to run after the current prompt reaches an answer.
+    pub fn queue_follow_up(&self, message: impl Into<SteeringMessage>) -> SteeringOutcome {
+        self.control_handle().queue_follow_up(message)
+    }
+
+    /// Aborts the active prompt and leaves this agent ready for another.
+    pub fn abort(&self) -> bool {
+        self.control_handle().abort()
+    }
+
+    /// Permanently closes the agent from a shared handle.
+    ///
+    /// Call [`shutdown`](Self::shutdown) afterwards to join owned tasks.
+    pub fn close(&self) -> bool {
+        self.control_handle().close()
+    }
+
+    /// Waits until no prompt or compaction is running.
+    pub async fn wait_for_idle(&self) {
+        self.control_handle().wait_for_idle().await;
+    }
+
+    /// Changes the reasoning effort used by later model turns.
+    pub fn set_reasoning_effort(&mut self, effort: Option<ReasoningEffort>) {
+        self.inner.set_reasoning_effort(effort);
+    }
+
+    /// Changes the speed tier used by later model turns.
+    pub fn set_speed(&mut self, speed: Option<Speed>) {
+        self.inner.set_speed(speed);
+    }
+
+    /// The acting session and the root shared by its tree.
+    #[must_use]
+    pub const fn session(&self) -> &SessionScope {
+        self.inner.session()
+    }
+
+    /// The session identifier as text for display and storage.
+    #[must_use]
+    pub fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    /// The resolved provider identifier.
+    #[must_use]
+    pub fn provider(&self) -> &str {
+        self.inner.provider()
+    }
+
+    /// The resolved model identifier.
+    #[must_use]
+    pub fn model(&self) -> &str {
+        self.inner.model()
+    }
+
+    /// The current agent state.
+    #[must_use]
+    pub fn state(&self) -> CodingAgentState {
+        self.inner.state()
+    }
+
+    /// A snapshot of the committed coding-agent conversation.
+    #[must_use]
+    pub fn history(&self) -> History {
+        self.inner.history()
+    }
+
+    /// Captures the durable session state.
+    ///
+    /// Take records between prompts, after the prompt's event barrier has
+    /// committed the same conversation. Restore one with
+    /// [`CodingAgent::resume`].
+    #[must_use]
+    pub fn to_record(&self) -> SessionRecord {
+        self.inner.to_record()
+    }
+
+    /// Captures everything a successor in the same process needs to carry on
+    /// without initializing again.
+    ///
+    /// Taking an export leaves this agent as it was. Continue from it with
+    /// [`CodingAgent::resume_from_export`].
+    #[must_use]
+    pub fn export(&self) -> CodingAgentExport {
+        CodingAgentExport {
+            inner: self.inner.warm_state(),
+        }
+    }
+
+    /// Closes the agent and hands back what a successor continues from.
+    ///
+    /// The export is taken after the close, so its event cursor is past every
+    /// event this agent committed, the close included, and a successor built
+    /// with [`resume_from_export`](Self::resume_from_export) numbers its
+    /// events above them on the same stream. This replaces taking an
+    /// [`export`](Self::export) before [`shutdown`](Self::shutdown) and
+    /// advancing its cursor by hand afterwards.
+    ///
+    /// # Errors
+    ///
+    /// As [`shutdown`](Self::shutdown). The agent is closed either way.
+    pub async fn export_for_reuse(
+        &mut self,
+        reason: ShutdownReason,
+    ) -> Result<CodingAgentExport, Error> {
+        self.shutdown(reason).await?;
+        Ok(self.export())
+    }
+
+    /// Closes the agent and joins its owned tasks.
+    ///
+    /// If this future is dropped, call `shutdown` again to finish cleanup.
+    /// The terminal event is emitted once.
+    pub async fn shutdown(&mut self, reason: ShutdownReason) -> Result<bool, Error> {
+        let result = self.inner.shutdown(reason).await;
+        // The chain's hold on the live channel ends with the agent, so a
+        // subscriber sees the stream end as it would without fallback routes.
+        self.fallback = None;
+        // The servers outlive the agent's last tool call and nothing else.
+        #[cfg(feature = "mcp")]
+        if let Some(mut servers) = self.mcp.take() {
+            servers.shutdown().await;
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::result::Result as StdResult;
+
+    use async_trait::async_trait;
+    use lithos_llm::types::{ImageContent, MediaSource, Role, ToolDefinition};
+    use serde_json::json;
+    use tokio::sync::Notify;
+    use tokio::time::timeout;
+
+    use super::*;
+    use crate::compaction::CompactionReason;
+    use crate::error::ErrorKind;
+    use crate::event::EventSinkError;
+    use crate::runtime::testing::{blocking_tool, drained, wait_for_event};
+    use crate::test_support::{
+        MockEnvironment, ScriptedCall, ScriptedCompletion, ScriptedProvider, client_from,
+        message_text, scripted_client, text_delta_events, text_response, tool_call_response,
+    };
+    use crate::types::{CodingAgentEvent, CodingEvent, ContextWindowStaleness, ToolSource};
+
+    /// How long a test waits for a prompt another task has to unblock.
+    const PATIENCE: Duration = Duration::from_secs(5);
+
+    /// A tool that says when it starts and waits for the test to let it finish.
+    fn checkpoint_tool(reached: Arc<Notify>, release: Arc<Notify>) -> RegisteredTool {
+        RegisteredTool::new(
+            ToolDefinition::function(
+                "checkpoint",
+                "Waits for the test",
+                json!({"type": "object"}),
+            ),
+            Arc::new(move |_arguments, _context| {
+                let reached = Arc::clone(&reached);
+                let release = Arc::clone(&release);
+                Box::pin(async move {
+                    reached.notify_one();
+                    release.notified().await;
+                    Ok("ready".to_owned())
+                })
+            }),
+        )
+        .with_source(ToolSource::Native)
+    }
+
+    async fn agent_with(
+        calls: Vec<ScriptedCall>,
+        tools: impl IntoIterator<Item = RegisteredTool>,
+    ) -> CodingAgent {
+        let (client, _provider) = scripted_client(calls);
+        CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/model")
+            .tools(tools)
+            .build()
+            .await
+            .expect("the coding agent builds and initializes")
+    }
+
+    fn steering_texts(agent: &CodingAgent) -> Vec<String> {
+        agent
+            .history()
+            .turns()
+            .iter()
+            .filter_map(|turn| match turn {
+                Message::Steering { content, .. } => Some(content.text_content().to_owned()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn permission_level_records_and_enforces_the_last_selection() {
+        for level in [PermissionLevel::ReadOnly, PermissionLevel::ReadWrite] {
+            let (client, provider) = scripted_client(vec![
+                ScriptedCall::response(tool_call_response(
+                    "write_file",
+                    "write",
+                    json!({"file_path": "/home/test/new.txt", "content": "hello"}),
+                )),
+                ScriptedCall::response(text_response("done")),
+            ]);
+            let environment = Arc::new(MockEnvironment::linux());
+            let mut agent = CodingAgent::builder(client, environment.clone())
+                .model("test/model")
+                .permission_level(PermissionLevel::ReadOnly)
+                .permission_level(level)
+                .options(
+                    CodingAgentOptions::default()
+                        .with_recorded_permission_level(PermissionLevel::Full),
+                )
+                .build()
+                .await
+                .expect("builds");
+            assert_eq!(agent.inner.permission_level(), Some(level));
+            agent
+                .prompt("write the file")
+                .await
+                .result
+                .expect("answers");
+            let allowed = level == PermissionLevel::ReadWrite;
+            assert_eq!(
+                provider.requests()[0]
+                    .tools()
+                    .iter()
+                    .any(|tool| tool.name == "write_file"),
+                allowed
+            );
+            assert_eq!(
+                !environment
+                    .written_files
+                    .lock()
+                    .expect("healthy lock")
+                    .is_empty(),
+                allowed
+            );
+            assert!(agent.history().turns().iter().any(|turn| matches!(turn,
+                Message::ToolResults { results, .. } if results.iter().any(|result| result.tool_call_id == "write" && result.is_error != allowed)
+            )));
+            agent
+                .shutdown(ShutdownReason::Completed)
+                .await
+                .expect("shutdown");
+        }
+    }
+
+    #[tokio::test]
+    async fn build_returns_a_ready_session_and_prompt_returns_an_outcome() {
+        let (client, _provider) =
+            scripted_client(vec![ScriptedCall::response(text_response("done"))]);
+        let environment = Arc::new(MockEnvironment::linux());
+        let mut session = CodingAgent::builder(client, environment)
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds and initializes");
+
+        let report = session.prompt("work").await;
+        assert_eq!(report.usage, session.inner.last_prompt_usage());
+        let outcome = report.result.expect("the prompt succeeds");
+
+        assert_eq!(outcome.text.as_deref(), Some("done"));
+        assert!(outcome.final_message.is_some());
+        session
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the session shuts down");
+    }
+
+    #[tokio::test]
+    async fn rich_input_reaches_events_history_and_the_model() {
+        let (client, provider) =
+            scripted_client(vec![ScriptedCall::response(text_response("done"))]);
+        let mut agent = CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/vision")
+            .build()
+            .await
+            .expect("the coding agent builds");
+        let mut events = agent.subscribe();
+        let parts = vec![
+            ContentPart::Text {
+                text: "describe this image".into(),
+            },
+            ContentPart::Image(ImageContent::new(MediaSource::url_with_media_type(
+                "https://example.test/image.png",
+                "image/png",
+            ))),
+        ];
+        let expected = InputContent::new(parts.clone());
+
+        agent
+            .prompt(CodingInput::new(parts.clone()).with_source(InputSource::External))
+            .await
+            .result
+            .expect("the rich prompt succeeds");
+
+        let requests = provider.requests();
+        let user = requests[0]
+            .messages()
+            .iter()
+            .find(|message| message.role() == Role::User)
+            .expect("the request has user input");
+        assert_eq!(user.content(), parts);
+        assert!(matches!(
+            agent.history().turns().first(),
+            Some(Message::User { content, .. }) if content == &expected
+        ));
+        assert!(drained(&mut events).await.iter().any(|event| matches!(
+            event,
+            CodingEvent::UserInput {
+                text,
+                content: Some(content),
+                source: InputSource::External,
+            } if text == "describe this image" && content == &expected
+        )));
+        assert_eq!(
+            agent
+                .snapshot()
+                .context_window()
+                .expect("the completed prompt was measured")
+                .staleness,
+            ContextWindowStaleness::Stored
+        );
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn observe_returns_a_snapshot_before_later_events() {
+        let (client, _provider) =
+            scripted_client(vec![ScriptedCall::response(text_response("done"))]);
+        let mut agent = CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds");
+
+        let observation = agent.observe().await.expect("observation starts");
+        let (snapshot, mut events) = observation.into_parts();
+        assert_eq!(snapshot.session_id(), agent.id());
+        assert_eq!(snapshot.model(), "model");
+        assert_eq!(snapshot.state(), CodingAgentState::Idle);
+        assert!(snapshot.history().is_empty());
+        assert!(snapshot.pending_input().is_empty());
+        assert!(!snapshot.tools().is_empty());
+        assert_eq!(snapshot.committed_event_seq(), agent.committed_event_seq());
+
+        agent
+            .prompt("work")
+            .await
+            .result
+            .expect("the prompt succeeds");
+        let first_later = timeout(PATIENCE, events.recv())
+            .await
+            .expect("a later event arrives")
+            .expect("the event stream stays open");
+        assert!(first_later.seq > snapshot.committed_event_seq());
+        assert!(matches!(first_later.event, CodingEvent::UserInput { .. }));
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    struct RefusingSink;
+
+    #[async_trait]
+    impl EventSink for RefusingSink {
+        async fn record(&self, _event: &CodingAgentEvent) -> StdResult<(), EventSinkError> {
+            Err(EventSinkError::new("the event store is unavailable"))
+        }
+    }
+
+    #[tokio::test]
+    async fn build_waits_for_initialization_events_to_be_recorded() {
+        let (client, _provider) = scripted_client(Vec::new());
+        let result = CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/model")
+            .event_sink(Arc::new(RefusingSink))
+            .build()
+            .await;
+
+        let Err(CodingAgentBuildError::Initialization { source }) = result else {
+            panic!("a sink failure during initialization must fail the build");
+        };
+        assert_eq!(source.kind(), ErrorKind::EventStream);
+    }
+
+    #[tokio::test]
+    async fn control_handle_aborts_only_the_active_prompt() {
+        let (client, provider) = scripted_client(vec![
+            ScriptedCall::PendingOpen,
+            ScriptedCall::response(text_response("done")),
+        ]);
+        let environment = Arc::new(MockEnvironment::linux());
+        let mut session = CodingAgent::builder(client, environment)
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds and initializes");
+        let control = session.control_handle();
+
+        let prompting = session.prompt("work");
+        let controlling = async {
+            provider.wait_for_call().await;
+            assert!(control.is_running());
+            assert!(control.abort());
+            control.wait_for_idle().await;
+            assert!(!control.is_running());
+            assert!(!control.is_closed());
+        };
+        let (result, ()) = tokio::join!(prompting, controlling);
+
+        assert!(matches!(
+            result.result,
+            Err(Error::Interrupted(InterruptReason::Cancelled))
+        ));
+        assert_eq!(session.state(), CodingAgentState::Idle);
+        assert_eq!(
+            session
+                .prompt("try again")
+                .await
+                .result
+                .expect("the agent remains reusable")
+                .text
+                .as_deref(),
+            Some("done")
+        );
+        session
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_coding_agent_resumes_from_its_durable_record() {
+        let (client, _provider) =
+            scripted_client(vec![ScriptedCall::response(text_response("first"))]);
+        let environment = Arc::new(MockEnvironment::linux());
+        let mut agent = CodingAgent::builder(client, environment)
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds");
+        agent
+            .prompt("start")
+            .await
+            .result
+            .expect("the first prompt succeeds");
+        let record = agent.to_record();
+        let original_id = agent.id().to_owned();
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the first agent shuts down");
+
+        let (client, _provider) =
+            scripted_client(vec![ScriptedCall::response(text_response("second"))]);
+        let environment = Arc::new(MockEnvironment::linux());
+        let mut resumed =
+            CodingAgent::resume(client, environment, record, ResumeMode::RecordedModel)
+                .build()
+                .await
+                .expect("the durable record resumes");
+
+        assert_eq!(resumed.id(), original_id);
+        assert!(!resumed.history().is_empty());
+        assert_eq!(
+            resumed
+                .prompt("continue")
+                .await
+                .result
+                .expect("the resumed prompt succeeds")
+                .text
+                .as_deref(),
+            Some("second")
+        );
+        resumed
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the resumed agent shuts down");
+    }
+
+    // --- Steering ---
+
+    #[tokio::test]
+    async fn two_handles_steering_at_once_both_land() {
+        let reached = Arc::new(Notify::new());
+        let release = Arc::new(Notify::new());
+        let mut agent = agent_with(
+            vec![
+                ScriptedCall::response(tool_call_response("checkpoint", "call_1", json!({}))),
+                ScriptedCall::response(text_response("done")),
+            ],
+            [checkpoint_tool(Arc::clone(&reached), Arc::clone(&release))],
+        )
+        .await;
+        let first = agent.control_handle();
+        let second = agent.control_handle();
+
+        let steering = tokio::spawn(async move {
+            reached.notified().await;
+            // Two steers from two handles with nothing between them. Both must
+            // be queued: the queue and the interrupt ledger share one lock.
+            let (one, two) =
+                tokio::join!(async { first.steer_now("from the first handle") }, async {
+                    second.steer_now(
+                        SteeringMessage::new("from the second handle").with_actor(Actor::System),
+                    )
+                },);
+            assert!(one.is_accepted());
+            assert!(two.is_accepted());
+            release.notify_one();
+        });
+
+        let outcome = timeout(PATIENCE, agent.prompt("start"))
+            .await
+            .expect("the prompt finishes")
+            .result
+            .expect("the prompt succeeds");
+        steering.await.expect("the steering task finishes");
+
+        assert_eq!(outcome.text.as_deref(), Some("done"));
+        let mut texts = steering_texts(&agent);
+        texts.sort_unstable();
+        assert_eq!(texts, ["from the first handle", "from the second handle"]);
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn pending_input_can_be_inspected_and_taken() {
+        let mut agent = agent_with(Vec::new(), []).await;
+        let control = agent.control_handle();
+        let actor = Actor::User {
+            id:           Some("u_1".into()),
+            display_name: Some("Ada".into()),
+        };
+
+        assert!(
+            control
+                .queue_steering(SteeringMessage::new("steer").with_actor(actor.clone()))
+                .is_accepted()
+        );
+        assert!(control.queue_follow_up("follow up").is_accepted());
+
+        let pending = control.pending_input();
+        assert_eq!(pending.steering()[0].text(), "steer");
+        assert_eq!(pending.steering()[0].actor(), Some(&actor));
+        assert_eq!(pending.follow_ups()[0].text(), "follow up");
+        assert_eq!(control.snapshot().pending_steering(), 1);
+        assert_eq!(control.snapshot().pending_follow_ups(), 1);
+
+        let taken = control.take_pending_input();
+        assert_eq!(taken, pending);
+        assert!(control.pending_input().is_empty());
+        assert_eq!(control.snapshot().pending_steering(), 0);
+        assert_eq!(control.snapshot().pending_follow_ups(), 0);
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_full_steering_queue_evicts_the_oldest_and_reports_it() {
+        let mut agent = agent_with(vec![ScriptedCall::response(text_response("done"))], []).await;
+        let control = agent.control_handle();
+        let capacity = CodingAgentControlHandle::STEERING_QUEUE_CAPACITY;
+
+        for index in 0..capacity {
+            assert_eq!(
+                control.queue_steering(format!("steer {index}")),
+                SteeringOutcome::Accepted
+            );
+        }
+        let outcome =
+            control.queue_steering(SteeringMessage::new("one too many").with_actor(Actor::System));
+
+        assert_eq!(
+            outcome,
+            SteeringOutcome::Evicted(SteeringMessage::new("steer 0")),
+            "the oldest message makes room and comes back to the caller"
+        );
+        assert!(outcome.is_accepted());
+        let snapshot = control.snapshot();
+        assert_eq!(snapshot.pending_steering(), capacity);
+        assert!(!snapshot.is_running());
+        assert!(!snapshot.is_parked());
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_full_follow_up_queue_evicts_the_oldest_and_reports_it() {
+        let mut agent = agent_with(vec![ScriptedCall::response(text_response("done"))], []).await;
+        let control = agent.control_handle();
+        let capacity = CodingAgentControlHandle::FOLLOW_UP_QUEUE_CAPACITY;
+        for index in 0..capacity {
+            assert_eq!(
+                control.queue_follow_up(format!("follow up {index}")),
+                SteeringOutcome::Accepted
+            );
+        }
+
+        let outcome = control.queue_follow_up("one too many");
+
+        assert_eq!(
+            outcome,
+            SteeringOutcome::Evicted(SteeringMessage::new("follow up 0"))
+        );
+        assert_eq!(control.snapshot().pending_follow_ups(), capacity);
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn an_interrupt_from_the_handle_is_announced_exactly_once() {
+        let mut agent = agent_with(
+            vec![
+                ScriptedCall::EventsThenPending(text_delta_events("a long answer that")),
+                ScriptedCall::response(text_response("DONE")),
+            ],
+            [],
+        )
+        .await;
+        let control = agent.control_handle();
+        let mut watched = agent.subscribe();
+        let mut recorded = agent.subscribe();
+
+        let controller = tokio::spawn(async move {
+            wait_for_event(&mut watched, |event| {
+                matches!(event, CodingEvent::TextDelta { .. })
+            })
+            .await;
+            assert!(control.interrupt(), "a prompt was running to interrupt");
+            wait_for_event(&mut watched, |event| {
+                matches!(event, CodingEvent::RoundInterrupted { .. })
+            })
+            .await;
+            assert!(control.snapshot().is_parked(), "a bare interrupt parks");
+            assert_eq!(
+                control.queue_steering("say DONE"),
+                SteeringOutcome::Accepted
+            );
+        });
+
+        let outcome = timeout(PATIENCE, agent.prompt("describe everything"))
+            .await
+            .expect("the interrupt unblocks the hanging stream")
+            .result
+            .expect("the prompt succeeds");
+        controller.await.expect("the controller finishes");
+
+        assert_eq!(outcome.text.as_deref(), Some("DONE"));
+        let published = drained(&mut recorded).await;
+        assert_eq!(
+            published
+                .iter()
+                .filter(|event| matches!(event, CodingEvent::RoundInterrupted { .. }))
+                .count(),
+            1,
+            "one gesture is announced once"
+        );
+        assert!(!agent.control_handle().snapshot().is_parked());
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn an_interrupt_with_steering_queued_never_reports_a_parked_snapshot() {
+        let mut agent = agent_with(
+            vec![
+                ScriptedCall::response(tool_call_response("slow_tool", "call_1", json!({}))),
+                ScriptedCall::response(text_response("steered")),
+            ],
+            [blocking_tool("slow_tool")],
+        )
+        .await;
+        let control = agent.control_handle();
+        let mut watched = agent.subscribe();
+        let mut recorded = agent.subscribe();
+
+        let controller = tokio::spawn(async move {
+            wait_for_event(&mut watched, |event| {
+                matches!(event, CodingEvent::ToolCallStarted { .. })
+            })
+            .await;
+            assert_eq!(
+                control.queue_steering("change course"),
+                SteeringOutcome::Accepted
+            );
+            assert!(control.interrupt(), "a prompt was running to interrupt");
+            let snapshot = control.snapshot();
+            assert!(
+                !snapshot.is_parked(),
+                "queued steering keeps the prompt from parking: {snapshot:?}"
+            );
+            assert_eq!(snapshot.pending_steering(), 1);
+        });
+
+        let outcome = timeout(PATIENCE, agent.prompt("start"))
+            .await
+            .expect("the queued steer resumes the prompt without a second gesture")
+            .result
+            .expect("the prompt succeeds");
+        controller.await.expect("the controller finishes");
+
+        assert_eq!(outcome.text.as_deref(), Some("steered"));
+        assert_eq!(steering_texts(&agent), ["change course"]);
+        let published = drained(&mut recorded).await;
+        assert_eq!(
+            published
+                .iter()
+                .filter(|event| matches!(event, CodingEvent::RoundInterrupted { .. }))
+                .count(),
+            1,
+            "one gesture is announced once"
+        );
+        assert!(!agent.control_handle().snapshot().is_parked());
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_follow_up_runs_after_the_answer() {
+        let mut agent = agent_with(
+            vec![
+                ScriptedCall::response(text_response("first")),
+                ScriptedCall::response(text_response("second")),
+            ],
+            [],
+        )
+        .await;
+        let control = agent.control_handle();
+        let mut events = agent.subscribe();
+        assert_eq!(
+            control.queue_follow_up("and then this"),
+            SteeringOutcome::Accepted
+        );
+        assert_eq!(control.snapshot().pending_follow_ups(), 1);
+
+        let outcome = agent
+            .prompt("start")
+            .await
+            .result
+            .expect("the prompt succeeds");
+
+        assert_eq!(outcome.text.as_deref(), Some("second"));
+        assert_eq!(control.snapshot().pending_follow_ups(), 0);
+        assert!(matches!(
+            agent.history().turns(),
+            [
+                Message::User { .. },
+                Message::Assistant { .. },
+                Message::User { content, .. },
+                Message::Assistant { .. },
+            ] if content == "and then this"
+        ));
+        let sources: Vec<_> = drained(&mut events)
+            .await
+            .iter()
+            .filter_map(|event| match event {
+                CodingEvent::UserInput { source, .. } => Some(*source),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(sources, vec![InputSource::Prompt, InputSource::FollowUp]);
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    // --- Compaction ---
+
+    #[tokio::test]
+    async fn manual_compaction_returns_and_stores_structured_metadata() {
+        let provider = ScriptedProvider::new(vec![
+            ScriptedCall::response(text_response("first answer")),
+            ScriptedCall::response(text_response("second answer")),
+        ])
+        .completing(vec![ScriptedCompletion::response(text_response(
+            "Work completed and work remaining.",
+        ))]);
+        let (client, provider) = client_from(provider);
+        let mut agent = CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds");
+        agent
+            .prompt("first task")
+            .await
+            .result
+            .expect("first prompt succeeds");
+        agent
+            .prompt("second task")
+            .await
+            .result
+            .expect("second prompt succeeds");
+        let history_before_cancel = agent.history();
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        assert!(matches!(
+            agent
+                .compact_with_cancellation(CompactionOptions::new().preserve_turns(1), &cancelled,)
+                .await,
+            Err(Error::Interrupted(InterruptReason::Cancelled))
+        ));
+        assert_eq!(provider.completion_count(), 0);
+        assert_eq!(agent.history(), history_before_cancel);
+        let mut events = agent.subscribe();
+
+        let outcome = agent
+            .compact(
+                CompactionOptions::new()
+                    .preserve_turns(1)
+                    .instructions("Keep the failing test name."),
+            )
+            .await
+            .expect("manual compaction succeeds");
+        let CompactionOutcome::Compacted(result) = outcome else {
+            panic!("there was history to compact");
+        };
+
+        assert_eq!(result.reason(), CompactionReason::Manual);
+        assert!(result.original_turn_count() >= 4);
+        assert!(result.summary().contains("Work completed"));
+        assert!(agent.history().turns().iter().any(|turn| matches!(
+            turn,
+            Message::Compaction {
+                reason: CompactionReason::Manual,
+                original_turn_count,
+                ..
+            } if *original_turn_count == result.original_turn_count()
+        )));
+        let requests = provider.completion_requests();
+        let system = requests[0]
+            .messages()
+            .iter()
+            .find(|message| message.role() == Role::System)
+            .expect("the summary has system instructions");
+        assert!(message_text(system).contains("Keep the failing test name."));
+        let published = drained(&mut events).await;
+        assert!(
+            published
+                .iter()
+                .any(|event| matches!(event, CodingEvent::CompactionStarted {
+                    reason: CompactionReason::Manual,
+                    ..
+                }))
+        );
+        assert!(
+            published
+                .iter()
+                .any(|event| matches!(event, CodingEvent::CompactionCompleted {
+                    reason: CompactionReason::Manual,
+                    ..
+                }))
+        );
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_control_handle_cancels_manual_compaction() {
+        let provider = ScriptedProvider::new(vec![
+            ScriptedCall::response(text_response("first answer")),
+            ScriptedCall::response(text_response("second answer")),
+        ])
+        .completing(vec![ScriptedCompletion::Pending]);
+        let (client, _provider) = client_from(provider);
+        let mut agent = CodingAgent::builder(client, Arc::new(MockEnvironment::linux()))
+            .model("test/model")
+            .build()
+            .await
+            .expect("the coding agent builds");
+        agent
+            .prompt("first task")
+            .await
+            .result
+            .expect("first prompt succeeds");
+        agent
+            .prompt("second task")
+            .await
+            .result
+            .expect("second prompt succeeds");
+        let history_before = agent.history();
+        let control = agent.control_handle();
+        let mut events = agent.subscribe();
+
+        let controller = async {
+            wait_for_event(&mut events, |event| {
+                matches!(event, CodingEvent::CompactionStarted { .. })
+            })
+            .await;
+            assert!(control.is_compacting());
+            assert!(control.cancel_compaction());
+            wait_for_event(&mut events, |event| {
+                matches!(event, CodingEvent::CompactionCancelled {
+                    reason: CompactionReason::Manual,
+                })
+            })
+            .await;
+            control.wait_for_idle().await;
+            assert!(!control.is_compacting());
+        };
+        let (result, ()) = tokio::join!(
+            agent.compact(CompactionOptions::new().preserve_turns(1)),
+            controller
+        );
+
+        assert!(matches!(
+            result,
+            Err(Error::Interrupted(InterruptReason::Cancelled))
+        ));
+        assert_eq!(agent.state(), CodingAgentState::Idle);
+        assert_eq!(agent.history(), history_before);
+        assert_eq!(
+            agent
+                .prompt("try again")
+                .await
+                .result
+                .expect("the agent remains reusable")
+                .text
+                .as_deref(),
+            Some("second answer")
+        );
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    // --- Cancelling ---
+
+    #[tokio::test]
+    async fn cancelling_a_prompt_leaves_the_agent_idle_and_reusable() {
+        let mut agent = agent_with(
+            vec![
+                ScriptedCall::response(tool_call_response("slow_tool", "call_1", json!({}))),
+                ScriptedCall::response(text_response("second prompt done")),
+            ],
+            [blocking_tool("slow_tool")],
+        )
+        .await;
+        let control = agent.control_handle();
+        let mut watched = agent.subscribe();
+        let cancel = CancellationToken::new();
+        let canceller = cancel.clone();
+
+        let controller = tokio::spawn(async move {
+            wait_for_event(&mut watched, |event| {
+                matches!(event, CodingEvent::ToolCallStarted { .. })
+            })
+            .await;
+            canceller.cancel();
+        });
+
+        let error = timeout(PATIENCE, agent.prompt_with_cancellation("start", &cancel))
+            .await
+            .expect("cancellation unblocks the tool")
+            .result
+            .expect_err("the prompt was cancelled");
+        controller.await.expect("the controller finishes");
+
+        assert!(
+            matches!(error, Error::Interrupted(InterruptReason::Cancelled)),
+            "{error:?}"
+        );
+        assert_eq!(agent.state(), CodingAgentState::Idle);
+        assert!(
+            !control.is_closed(),
+            "only close or shutdown closes the agent"
+        );
+        assert!(!control.is_running());
+        assert!(
+            matches!(
+                agent.history().turns().last(),
+                Some(Message::ToolResults { results, .. })
+                    if results.len() == 1 && results[0].tool_call_id == "call_1"
+            ),
+            "the cancelled call still has its result: {:?}",
+            agent.history().turns()
+        );
+
+        let outcome = timeout(PATIENCE, agent.prompt("again"))
+            .await
+            .expect("the next prompt runs")
+            .result
+            .expect("the next prompt succeeds");
+        assert_eq!(outcome.text.as_deref(), Some("second prompt done"));
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+    }
+
+    #[tokio::test]
+    async fn a_closed_agent_refuses_control_input() {
+        let mut agent = agent_with(vec![ScriptedCall::response(text_response("done"))], []).await;
+        let control = agent.control_handle();
+        agent
+            .shutdown(ShutdownReason::Completed)
+            .await
+            .expect("the agent shuts down");
+
+        assert_eq!(control.queue_steering("late"), SteeringOutcome::Closed);
+        assert_eq!(control.steer_now("late"), SteeringOutcome::Closed);
+        assert_eq!(control.queue_follow_up("late"), SteeringOutcome::Closed);
+        assert!(!control.interrupt());
+        assert!(!control.abort());
+        let snapshot = control.snapshot();
+        assert!(snapshot.is_closed());
+        assert_eq!(snapshot.pending_steering(), 0);
+    }
+
+    #[tokio::test]
+    async fn close_is_the_terminal_control_gesture() {
+        let mut agent = agent_with(Vec::new(), []).await;
+        let control = agent.control_handle();
+
+        assert!(control.close());
+        assert!(!control.close());
+        assert!(control.is_closed());
+        assert_eq!(agent.state(), CodingAgentState::Closed);
+        assert!(matches!(
+            agent.prompt("late").await.result,
+            Err(Error::SessionClosed)
+        ));
+        assert!(
+            agent
+                .shutdown(ShutdownReason::Cancelled)
+                .await
+                .expect("the terminal event is published")
+        );
+    }
+}

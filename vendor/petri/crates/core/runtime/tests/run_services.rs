@@ -1,0 +1,71 @@
+//! The per-run service seam: a provisioner runs once per driver with the run
+//! directory, its capability reaches the run's steps, and its guard — the
+//! running service — is torn down when the run is over. The default teardown
+//! is drop, so "the service dies with the run" is structural, not a callback
+//! anyone can forget.
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::{env, fs, process};
+
+use runtime::driver::RunGuard;
+use runtime::ir::{GraphBuilder, RunStatus, Scope, ScopeId};
+use runtime::{RunOptions, Runtime};
+
+/// The capability a provisioned service hands the run.
+struct ProbeCap;
+
+/// The "service": alive until the driver tears it down. The default
+/// [`RunGuard::teardown`] drops, which is what the flag observes.
+struct ProbeGuard(Arc<AtomicBool>);
+
+impl RunGuard for ProbeGuard {}
+
+impl Drop for ProbeGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+#[tokio::test]
+async fn provision_runs_per_driver_and_the_guard_dies_with_the_run() {
+    let dir = env::temp_dir().join(format!("petri-run-services-{}", process::id()));
+    let _ = fs::remove_dir_all(&dir);
+
+    let provisions = Arc::new(AtomicUsize::new(0));
+    let dropped = Arc::new(AtomicBool::new(false));
+    let seen_dir = dir.clone();
+    let counter = provisions.clone();
+    let flag = dropped.clone();
+
+    let rt = Runtime::standard()
+        .options(RunOptions::new(&dir))
+        .run_services(move |run_dir, caps| {
+            assert_eq!(run_dir, seen_dir, "the provisioner sees the run dir");
+            counter.fetch_add(1, Ordering::SeqCst);
+            (
+                caps.provide(ProbeCap),
+                Some(Box::new(ProbeGuard(flag.clone())) as _),
+            )
+        });
+
+    let mut b = GraphBuilder::bare();
+    let scope = b.add_scope(Scope::new(ScopeId::new(0)));
+    b.add_step("only", scope, "noop");
+    let graph = b.build();
+
+    let report = rt.run(graph).await.expect("replay is byte-identical");
+    assert_eq!(report.status, RunStatus::Success);
+    assert!(
+        provisions.load(Ordering::SeqCst) >= 1,
+        "the provisioner ran"
+    );
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "the guard dropped when the run ended"
+    );
+    // The capability type itself is exercised end to end by the GitHub
+    // component's batteries; here the seam's mechanics are the subject.
+    let _ = ProbeCap;
+    let _ = fs::remove_dir_all(&dir);
+}

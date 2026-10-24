@@ -245,6 +245,21 @@ validate-workflows target="":
 lint-nu:
     nu scripts/lint-nu.nu
 
+# Vendored fork crates (fabro-eeee, ADR-0034): vendor/petri and
+# vendor/pebble are SNAPSHOTS of the denkhaus fork branches, consumed
+# through the path patches in Cargo.toml. `vendor-pins` proves the
+# snapshot — content hash, tree sha against the fork commit, and that
+# every patched crate resolves from the tree instead of a git source.
+vendor-pins:
+    nu scripts/vendor-pins-fixtures.nu
+
+# Sync a vendored fork with its branch. `just vendor status` (drift, no
+# clone), `just vendor import petri` (fork tip -> tree + PINS),
+# `just vendor export petri --message '...'` (tree -> fork commit,
+# pushed; the fork stays the history archive and the upstream-PR vehicle).
+vendor *args:
+    nu scripts/vendor-sync.nu {{ args }}
+
 # Session sprint-ledger rotation (iterate-skill bookkeeping, SESSION-OWNED):
 # iterate-state.json keeps the newest 10 notes, older ones move to
 # iterate-state-archive.jsonl (one {"note": …} record per line, append-only,

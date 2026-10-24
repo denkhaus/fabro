@@ -36,6 +36,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cargo +nightly-2026-04-14 fmt --check --all` — check formatting (pinned nightly required for rustfmt config; CI uses the same date)
 - `cargo +nightly-2026-04-14 fmt --all` — auto-format
 - `cargo +nightly-2026-04-14 clippy --workspace --all-targets -- -D warnings` — lint (CI runs nightly clippy to match; install with `rustup toolchain install nightly-2026-04-14 --profile minimal --component clippy,rustfmt`)
+- `just vendor-pins` — verify the vendored fork snapshots (content hash, tree sha, path resolution)
+- `cd vendor/petri && cargo nextest run --locked -p petri-attractor-steps` — a vendored fork crate's own suite (own workspace, `--locked`)
 
 macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)` / `EMFILE`, raise the shell's soft FD limit before running tests, for example `ulimit -n 4096 && cargo nextest run --workspace`. Some terminals and inherited agent sessions start with `ulimit -n 256`, which is too low for the shared CLI test daemon under parallel nextest load.
 
@@ -283,6 +285,33 @@ When working in an area covered by a strategy doc, read the relevant document
 - **`docs/internal/migrations-strategy.md`** — read when adding or changing temporary compatibility migrations, startup/file rewrites, migration runners, backups, or removal deadlines
 - **`docs/internal/error-handling-strategy.md`** — read when changing error types, using `anyhow`/`thiserror`, adding `.map_err(...)`, converting errors to `String`, changing API error responses, or touching CLI/miette/log/telemetry error rendering
 - **`docs/internal/react-effects-policy.md`** — read when adding or refactoring React effects in `apps/fabro-web`; direct `useEffect` calls should be avoided in component code
+
+## Vendored fork crates (petri, pebble)
+
+`vendor/petri` and `vendor/pebble` are in-tree SNAPSHOTS of the
+`denkhaus/petri` and `denkhaus/pebble` fork branches (`fabro`), consumed
+through the path `[patch]` blocks in `Cargo.toml` (ADR-0034). The fork
+repositories stay the history archive and the upstream-PR vehicle; this
+repository carries no fork history.
+
+- Provenance is `vendor/PINS.toml` (fork_sha, tree_sha, content_sha256,
+  files, crates). `just vendor-pins` verifies it and fails when the tree
+  drifts from the recorded snapshot or when a patched crate silently
+  resolves from a git source again.
+- Sync: `just vendor status` (drift, no clone), `just vendor import <name>`
+  (fork tip → tree + PINS), `just vendor export <name> --message '…'`
+  (tree → one fork commit, pushed). One managed clone per fork lives at
+  `tmp/vendor/<name>` (gitignored, created on demand).
+- The vendored workspaces are their OWN workspaces
+  (`workspace.exclude`): their feature graph and lockfile never unify with
+  fabro's. Run their suites with `--locked`; a run that rewrites a vendored
+  lockfile is content drift, not a test run.
+- A vendored change is exported in the same change that needs it (the
+  ADR-0027 dependency-finish rule). A vendor bump is one commit: tree +
+  PINS section + `Cargo.lock` when the graph moved.
+- `run-images.nu` stages `vendor/` into the toolchain cook context and
+  folds a vendor hash into the gate hash, so a vendored edit rebuilds the
+  image and the cook needs no GitHub auth for the forks.
 
 ## Shell quoting in sandbox code
 

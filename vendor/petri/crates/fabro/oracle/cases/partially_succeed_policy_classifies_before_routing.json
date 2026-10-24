@@ -1,0 +1,11 @@
+{
+  "name": "partially_succeed_policy_classifies_before_routing",
+  "workflow": "digraph T {\n  start [shape=Mdiamond]\n  exit [shape=Msquare]\n\n  a [prompt=\"x\", on_failure=\"partially_succeed\"]\n  recover [prompt=\"x\"]\n  b [prompt=\"x\"]\n  start -> a\n  a -> recover [condition=\"outcome=failed\"]\n  a -> b\n  recover -> exit\n  b -> exit\n\n}\n",
+  "scripts": {
+    "a": {
+      "outcome": "failed",
+      "failure_reason": "boom"
+    }
+  },
+  "departure": "deliberate departure: the pinned Fabro's validator rejects on_failure=\"partially_succeed\" (its on_failure_valid rule accepts route, exit, succeed), so Fabro never runs this graph. Petri keeps the spelling as a documented extension: it behaves like Fabro's `succeed` in every respect (a failure an explicit route matches stays failed, an unmatched failure is promoted) except that the promoted stage reports `partially_succeeded` instead of `succeeded`. Here the explicit outcome=failed edge matches, so `recover` is taken and `a` stays failed."
+}

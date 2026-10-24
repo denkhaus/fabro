@@ -1,0 +1,67 @@
+# Provenance of the vendored fork crates (fabro-eeee, ADR-0034).
+#
+# The vendored trees are SNAPSHOTS: vendor/<name> equals the git tree of the
+# fork commit named below; the fork's history lives in its GitHub repository
+# (denkhaus/petri, denkhaus/pebble), which stays the upstream-PR vehicle and
+# the sync partner. The fabro repository carries no fork history on purpose.
+#
+# Checked by `scripts/vendor-pins-fixtures.nu` (`just vendor-pins`, battery
+# `vendor-pins`):
+#   - content_sha256 is recomputed from the tree on every run (no network),
+#   - tree_sha is the fork commit's git tree object, verified against a fork
+#     clone when one is reachable (fail-open with a note when it is not),
+#   - every crate below must appear in Cargo.lock as a PATH package (no git
+#     source) — a vendored crate that silently resolves from a git source
+#     again is the failure this catches.
+#
+# `files` counts the TRACKED files (git ls-files; one symlink each:
+# CLAUDE.md -> AGENTS.md). The content hash covers the same tracked set —
+# build outputs under vendor/<name>/target are not part of the snapshot.
+#
+# A vendor bump is a deliberate edit of this file plus the import commit:
+# `just vendor import <name>` writes both.
+
+[petri]
+vendor = "vendor/petri"
+fork = "denkhaus/petri"
+branch = "fabro"
+fork_sha = "2dedbc295a1fa4b3afd5ec3bd2188b6e22a0cc98"
+upstream = "lithoscomputer/petri"
+upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
+tree_sha = "d456e135c9233e24081fc21f13e89f018375962f"
+content_sha256 = "516a3ac64839a6a9a951239d8f067b98eb9b8537120d8a3ed753ea40c06328db"
+files = 928
+crates = [
+    "petri-attractor-steps",
+    "petri-driver",
+    "petri-engine",
+    "petri-execution",
+    "petri-executor",
+    "petri-executor-sandbox",
+    "petri-frontend",
+    "petri-frontend-attractor",
+    "petri-frontend-fabro",
+    "petri-frontend-native",
+    "petri-ir",
+    "petri-runtime",
+    "petri-steps",
+    "petri-store",
+    "petri-testkit",
+]
+imported = "2026-10-24"
+[pebble]
+vendor = "vendor/pebble"
+fork = "denkhaus/pebble"
+branch = "fabro"
+fork_sha = "47a036fd600452d3a75d9b1ad77953947419d07e"
+upstream = "lithoscomputer/pebble"
+upstream_sha = "65a3bab8b35f4ce46ef0742599511a331de5885b"
+tree_sha = "6b35a3102b84a8fa424b1119338cd58e673f6b00"
+content_sha256 = "c8e8277ad9fae8995c85d27f5c16634d7af3ba866a5bc0193d34ee61e82bf351"
+files = 526
+crates = [
+    "pebble-agent",
+    "pebble-cli-core",
+    "pebble-coding-agent",
+]
+imported = "2026-10-24"

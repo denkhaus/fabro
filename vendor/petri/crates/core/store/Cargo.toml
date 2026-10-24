@@ -1,0 +1,30 @@
+[package]
+name = "petri-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The durable record store a run lives in: the traits, the run-directory backend and the in-memory backend."
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+# The package is `petri-store`; the crate is `store`, so code reads `store::…`.
+name = "store"
+
+[dependencies]
+ir = { workspace = true }
+async-trait = { workspace = true }
+getrandom = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+testkit = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

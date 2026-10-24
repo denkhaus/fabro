@@ -1,0 +1,34 @@
+[package]
+name = "petri-github-acceptance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The acceptance battery: the compatibility corpus, and real workflows run end to end."
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+# The package is `petri-github-acceptance`; the crate is `acceptance`, so code reads `acceptance::…`.
+name = "acceptance"
+
+[dependencies]
+ir = { workspace = true }
+frontend = { workspace = true }
+frontend-gha = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+
+[dev-dependencies]
+executor-sandbox.workspace = true
+execution = { workspace = true }
+async-trait = { workspace = true }
+runtime = { workspace = true }
+github-actions = { workspace = true }
+github-objects = { workspace = true }
+testkit = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }

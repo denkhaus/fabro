@@ -1,0 +1,6 @@
+# The git dependencies (sandbox-driver, Pebble, lithos-llm, the twins) are
+# public and fetched over HTTPS, so no fetch needs a credential. The git CLI
+# still does the fetching: it honors a developer's own Git configuration and
+# proxies, and its errors name the repository.
+[net]
+git-fetch-with-cli = true

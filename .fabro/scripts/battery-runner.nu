@@ -153,10 +153,15 @@ const BATTERIES = [
     # fork_structured).
     '.fabro/scripts/touchpoints-parity-fixtures.nu'
     # Dependency freeze pin (ADR-0027, 2026-10-09): the locked revs of the
-    # engine dependency repos (petri, pebble, lithos-llm, sandbox-driver,
+    # GIT-pinned engine dependency repos (lithos-llm, sandbox-driver,
     # twins, daytona-sdk-rust) must equal the recorded list — a dep bump
     # cannot ride in silently; it is a deliberate edit plus a reason.
     '.fabro/scripts/dep-pins-fixtures.nu'
+    # Vendored fork provenance (fabro-eeee, ADR-0034): vendor/petri and
+    # vendor/pebble must still be the snapshots recorded in
+    # vendor/PINS.toml (content hash, tree sha), and every patched crate
+    # must resolve from the tree instead of a git source again.
+    'scripts/vendor-pins-fixtures.nu'
     # planner-output schema parity battery (fabro-899b, arch-gate sprint 42
     # candidate 2): develop and loop carry the last measured live copy pair
     # of the fabro-8922 family (0.913-similar); a schema edit on one side

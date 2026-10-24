@@ -1,0 +1,212 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: check (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            docker: required
+          - runner: ubuntu-24.04-arm
+            docker: required
+          - runner: macos-15
+            docker: absent
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Free disk space for Rust and Docker
+        if: runner.os == 'Linux'
+        run: |
+          # Hosted runner SDKs that this Rust workspace does not use.
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install locked tools
+        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+        with:
+          version: 2026.6.11
+          install_args: --locked --jobs=1
+
+      # Mise's tool cache can restore Rust installation markers without the
+      # rustup-managed toolchains. Reconcile every required component here.
+      - name: Ensure Rust toolchains are complete
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal --component clippy
+          rustup toolchain install 1.89.0 --profile minimal
+          rustup toolchain install nightly-2026-04-14 --profile minimal --component rustfmt
+
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-on-failure: true
+          shared-key: nightly-${{ matrix.runner }}
+
+      - name: Fetch the corpus
+        run: scripts/corpus-fetch.sh && scripts/corpus-fetch-actions.sh && scripts/corpus-fetch-fabro.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # The Fabro replacement set is vendored under crates/fabro/acceptance/bundles
+      # with its provenance in bundles.lock.json. Verify every tracked file
+      # against its locked digest before anything runs it; no bundle is fetched.
+      - name: Verify the vendored Fabro bundles
+        run: scripts/corpus-fetch-fabro-bundles.sh
+
+      # One directory per run for the scenario evidence records
+      # (crates/petri/cli/tests/support/fabro/evidence.rs) and the coverage
+      # report. The steps below keep it as a job artifact.
+      # The code-review bundle's rule loader imports PyYAML, and its host
+      # scenario cells resolve `python3` from PATH. Install the bundle's own
+      # pinned requirements, with hash checking, into a virtual environment
+      # placed first on PATH: the runners' system Python is externally
+      # managed on Ubuntu 24.04, and a `--user` install would be hidden by
+      # the run's isolated HOME. A Docker scope needs nothing here: the
+      # pinned runner image carries the same modules.
+      - name: Install the review bundle's Python requirements
+        run: |
+          python3 -m venv "$RUNNER_TEMP/fabro-python"
+          "$RUNNER_TEMP/fabro-python/bin/python" -m pip install --quiet --require-hashes \
+            -r crates/fabro/acceptance/bundles/code-review/.fabro/workflows/code-review/requirements-rules.txt
+          "$RUNNER_TEMP/fabro-python/bin/python" -c 'import yaml; print("PyYAML", yaml.__version__)'
+          echo "$RUNNER_TEMP/fabro-python/bin" >> "$GITHUB_PATH"
+
+      - name: Name the evidence directory
+        run: |
+          echo "PETRI_EVIDENCE_DIR=$RUNNER_TEMP/fabro-evidence" >> "$GITHUB_ENV"
+          echo "PETRI_FABRO_COVERAGE_DIR=$RUNNER_TEMP/fabro-evidence/cells" >> "$GITHUB_ENV"
+
+      # The pinned fabro binary the comparison matrix launches, built from the
+      # fetched corpus (never taken from PATH). Only the binary is cached, by
+      # the pin and the toolchain: a debug build is about 220 MB and takes
+      # about three minutes on a miss, seconds on a hit.
+      - name: Restore the pinned fabro binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: crates/fabro/corpus/fabro-target/debug/fabro
+          key: fabro-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('crates/fabro/corpus-pin.txt', 'mise.toml') }}
+
+      - name: Build the pinned fabro binary
+        run: |
+          started=$SECONDS
+          scripts/fabro-provision.sh
+          echo "fabro binary ready in $((SECONDS - started)) s"
+        env:
+          # Parity is required on Linux x86_64, where the routine job proves
+          # it; the other runners build the binary too but may skip visibly
+          # (a build problem there is a finding, not a gate failure).
+          PETRI_REQUIRE_FABRO_BINARY: ${{ matrix.runner == 'ubuntu-24.04' && '1' || '' }}
+
+      - name: Pre-pull the test image
+        if: matrix.docker == 'required'
+        run: docker pull alpine:3.20
+
+      # Container scopes reach Docker through the sandbox-driver plugin, built
+      # from the commit Cargo.lock locks. A separate step, so a plugin
+      # build failure reads as one.
+      - name: Build the sandbox plugins
+        run: mise run plugins:build
+
+      # check:nightly adds to the routine gate: the compiler floor, the long
+      # tests, the driver and execution simulations over many more seeds,
+      # three repeated black box runs under different schedules, the pinned
+      # Fabro comparison matrix, and the release-mode suite.
+      - name: Verify extended checks
+        id: verify
+        run: mise run check:nightly
+        env:
+          PETRI_REQUIRE_DOCKER: ${{ matrix.docker == 'required' && '1' || '' }}
+          PETRI_REQUIRE_CORPUS: '1'
+          PETRI_REQUIRE_FABRO_CORPUS: '1'
+          PETRI_REQUIRE_FABRO_BUNDLES: '1'
+          PETRI_REQUIRE_FABRO_BINARY: ${{ matrix.runner == 'ubuntu-24.04' && '1' || '' }}
+
+      # The final readiness gate, where Docker exists: the strict black box
+      # run (the differential matrix first, Docker and the vendored bundles
+      # required, no skipped cell) and a coverage report that fails unless
+      # every required cell of matrix.json passed, blocked cells included.
+      # check:nightly repeats the same set; this step adds the verdict the
+      # readiness plan's final milestone needs (CONTRACT.md, "Readiness gate").
+      - name: Verify the final readiness gate
+        if: matrix.docker == 'required'
+        run: mise run check:fabro:readiness
+        env:
+          PETRI_REQUIRE_CORPUS: '1'
+          PETRI_REQUIRE_FABRO_CORPUS: '1'
+          PETRI_REQUIRE_FABRO_BINARY: ${{ matrix.runner == 'ubuntu-24.04' && '1' || '' }}
+
+      # Required, passed, failed, skipped, missing, blocked, excluded: only a
+      # passed cell counts, and a run with no records is not a passing gate.
+      # Only after the tests ran: a setup failure has no records to report
+      # and must fail once, at the step that failed.
+      - name: Write the coverage report
+        if: always() && (steps.verify.conclusion == 'success' || steps.verify.conclusion == 'failure')
+        env:
+          REQUIRED_BACKENDS: ${{ matrix.docker == 'required' && 'host,docker' || 'host' }}
+        run: |
+          args=(--evidence "$PETRI_EVIDENCE_DIR" --strict --backends "$REQUIRED_BACKENDS")
+          matrix=crates/fabro/acceptance/scenarios/matrix.json
+          [ -f "$matrix" ] && args+=(--matrix "$matrix")
+          python3 scripts/fabro-coverage-report.py "${args[@]}"
+          cat "$PETRI_EVIDENCE_DIR/coverage.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # A failed run keeps everything: every record, every bundle with the
+      # process output, the inspect document, the twin logs, and the copied
+      # case directories of the failed scenarios. Only when the evidence
+      # directory was named: before that step there is nothing to upload.
+      - name: Keep the full evidence of a failed run
+        if: failure() && env.PETRI_EVIDENCE_DIR != ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fabro-evidence-nightly-${{ matrix.runner }}-failed
+          path: ${{ env.PETRI_EVIDENCE_DIR }}
+          if-no-files-found: warn
+          retention-days: 30
+
+      # A passed run keeps the compact results: the records and the report.
+      - name: Keep the compact evidence of a passed run
+        if: success()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fabro-evidence-nightly-${{ matrix.runner }}
+          path: |
+            ${{ env.PETRI_EVIDENCE_DIR }}/records
+            ${{ env.PETRI_EVIDENCE_DIR }}/coverage.json
+            ${{ env.PETRI_EVIDENCE_DIR }}/coverage.md
+            ${{ env.PETRI_EVIDENCE_DIR }}/junit*.xml
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: No containers left behind
+        if: matrix.docker == 'required'
+        run: |
+          leftovers=$(docker ps -a --format '{{.Names}}' | grep '^petri-' || true)
+          if [ -n "$leftovers" ]; then
+            echo "the run leaked containers:"
+            echo "$leftovers"
+            exit 1
+          fi
+          echo "clean"

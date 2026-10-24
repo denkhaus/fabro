@@ -55,12 +55,16 @@
 # zai 429 killed the loop planner with retries: 0). Patching our forks is
 # expected; the rev move is recorded here per ADR-0027 decision 2/3.
 #
-# Scope: the engine dependency repos only (petri, pebble, lithos-llm,
-# sandbox-driver, twins, daytona-sdk-rust). Our own seeds crate is tag-pinned.
+# Scope: the GIT-pinned engine dependencies only (lithos-llm,
+# sandbox-driver, twins, daytona-sdk-rust). petri and pebble are VENDORED
+# in-tree since fabro-eeee (2026-10-24): their pin is the vendor snapshot
+# in vendor/PINS.toml, checked by `scripts/vendor-pins-fixtures.nu` (a path package
+# leaves no rev in the lock, so this battery cannot see them). Our own
+# seeds crate is tag-pinned.
 
 const LOCK = 'Cargo.lock'
 
-const ENGINE_REPOS = ['petri', 'pebble', 'lithos-llm', 'sandbox-driver', 'twins', 'daytona-sdk-rust']
+const ENGINE_REPOS = ['lithos-llm', 'sandbox-driver', 'twins', 'daytona-sdk-rust']
 
 # package name -> allowed rev(s), 12-hex prefixes.
 const PINS = {
@@ -68,29 +72,8 @@ const PINS = {
     "daytona-sdk": ["0e69058c888a"]
     "daytona-toolbox-client": ["0e69058c888a"]
     "lithos-llm": ["fd42e6b2805b"]
-    # 2026-10-19 deliberate bump 208f391 -> 5897c06 (fabro-9c79 + fabro-bb27:
-    # consecutive tool-error budget + openai-wire [TOOL ERROR] wrap; mimo
-    # incident 01M59MG9XS2A). Patch of our own fork per ADR-0027.
-    # 2026-10-24 deliberate bump 5897c06 -> 47a036fd (fabro-c98c: the marker
-    # replaces the flag, the chat-wire unsupported_control storm ends).
-    "pebble-agent": ["47a036fd6004"]
-    "pebble-cli-core": ["47a036fd6004"]
-    "pebble-coding-agent": ["47a036fd6004"]
-    "petri-attractor-steps": ["2dedbc295a1f"]
-    "petri-driver": ["2dedbc295a1f"]
-    "petri-engine": ["2dedbc295a1f"]
-    "petri-execution": ["2dedbc295a1f"]
-    "petri-executor": ["2dedbc295a1f"]
-    "petri-executor-sandbox": ["2dedbc295a1f"]
-    "petri-frontend": ["2dedbc295a1f"]
-    "petri-frontend-attractor": ["2dedbc295a1f"]
-    "petri-frontend-fabro": ["2dedbc295a1f"]
-    "petri-frontend-native": ["2dedbc295a1f"]
-    "petri-ir": ["2dedbc295a1f"]
-    "petri-runtime": ["2dedbc295a1f"]
-    "petri-steps": ["2dedbc295a1f"]
-    "petri-store": ["2dedbc295a1f"]
-    "petri-testkit": ["2dedbc295a1f"]
+    # petri + pebble are VENDORED since fabro-eeee (2026-10-24): their
+    # provenance lives in vendor/PINS.toml, checked by scripts/vendor-pins-fixtures.nu.
     "sandbox-driver": ["90b0d8257671"]
     "sandbox-driver-daytona": ["236196ed134d"]
     "sandbox-driver-daytona-config": ["90b0d8257671"]
@@ -164,8 +147,10 @@ def main [] {
     }
 
     # Teeth: the parser must actually see revs (a broken parse would make
-    # both loops above trivially green).
-    if ($locked | transpose | length) < 20 {
+    # both loops above trivially green). 14 git-pinned engine packages
+    # remain after the petri/pebble vendoring (fabro-eeee); the vendored
+    # 18 are checked by scripts/vendor-pins-fixtures.nu.
+    if ($locked | transpose | length) < 10 {
         print $"RED: the parser found only ($locked | transpose | length) engine packages — far too few; the lock parse is broken, this battery proves nothing"
         $red = true
     } else {

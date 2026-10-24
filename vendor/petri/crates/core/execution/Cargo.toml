@@ -1,0 +1,37 @@
+[package]
+name = "petri-execution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Invocation and execution coordination for Petri."
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "execution"
+
+[dependencies]
+ir = { workspace = true }
+store = { workspace = true }
+engine = { workspace = true }
+driver = { workspace = true }
+runtime = { workspace = true }
+executor = { workspace = true }
+executor-sandbox = { workspace = true }
+steps = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+smol_str = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+
+[dev-dependencies]
+testkit = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }

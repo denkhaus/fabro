@@ -1,0 +1,292 @@
+//! Lifecycle stages at stable model-turn boundaries.
+
+use std::error::Error as StdError;
+use std::fmt;
+use std::result::Result as StdResult;
+
+use async_trait::async_trait;
+use lithos_llm::types::{Message, Response};
+use tokio_util::sync::CancellationToken;
+
+use crate::SessionScope;
+use crate::agent::UserMessage;
+use crate::tool::ToolCatalog;
+
+/// What the agent does after a model turn answers without tool calls.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
+pub enum AfterAnswerAction {
+    /// Finish the prompt with this answer.
+    #[default]
+    Complete,
+    /// Start another model turn without committing another message.
+    Continue,
+    /// Commit another user message and start another model turn.
+    ContinueWith(UserMessage),
+}
+
+/// An immutable view of the conversation at one model turn.
+///
+/// Lifecycle stages and tool discovery both receive one.
+#[derive(Clone, Copy, Debug)]
+pub struct TurnContext<'a> {
+    session:  &'a SessionScope,
+    model:    &'a str,
+    turn:     usize,
+    messages: &'a [Message],
+}
+
+impl<'a> TurnContext<'a> {
+    /// Creates a context for one model turn.
+    #[must_use]
+    pub const fn new(
+        session: &'a SessionScope,
+        model: &'a str,
+        turn: usize,
+        messages: &'a [Message],
+    ) -> Self {
+        Self {
+            session,
+            model,
+            turn,
+            messages,
+        }
+    }
+
+    /// The acting session and its ancestry.
+    #[must_use]
+    pub const fn session(&self) -> &'a SessionScope {
+        self.session
+    }
+
+    /// The model selector for this turn.
+    #[must_use]
+    pub const fn model(&self) -> &str {
+        self.model
+    }
+
+    /// The zero-based model-turn number in the current prompt.
+    #[must_use]
+    pub const fn turn(&self) -> usize {
+        self.turn
+    }
+
+    /// The committed conversation at this boundary.
+    #[must_use]
+    pub const fn messages(&self) -> &[Message] {
+        self.messages
+    }
+}
+
+/// A typed conversation change returned from a lifecycle stage.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ConversationUpdate {
+    replacement:     Option<Vec<Message>>,
+    preserve_prefix: usize,
+}
+
+impl ConversationUpdate {
+    /// Leaves the canonical conversation unchanged.
+    #[must_use]
+    pub const fn unchanged() -> Self {
+        Self {
+            replacement:     None,
+            preserve_prefix: 0,
+        }
+    }
+
+    /// Replaces the canonical conversation at a stable turn boundary.
+    ///
+    /// The replacement must preserve tool-call and tool-result pairing.
+    #[must_use]
+    pub fn replace(messages: Vec<Message>) -> Self {
+        Self {
+            replacement:     Some(messages),
+            preserve_prefix: 0,
+        }
+    }
+
+    /// Replaces only the tail after `preserve_prefix` committed messages.
+    ///
+    /// This lets a projection normalize new turns without copying older
+    /// messages. The prefix must fit the current conversation, and the result
+    /// must preserve tool-call and tool-result pairing. An invalid prefix
+    /// fails the lifecycle stage without changing the conversation.
+    #[must_use]
+    pub fn replace_tail(preserve_prefix: usize, messages: Vec<Message>) -> Self {
+        Self {
+            replacement: Some(messages),
+            preserve_prefix,
+        }
+    }
+
+    pub(crate) fn apply(self, messages: &mut Vec<Message>) -> StdResult<bool, LifecycleError> {
+        let Some(replacement) = self.replacement else {
+            return Ok(false);
+        };
+        if self.preserve_prefix > messages.len() {
+            return Err(LifecycleError::new(
+                "conversation update prefix exceeds the current conversation",
+            ));
+        }
+        messages.truncate(self.preserve_prefix);
+        messages.extend(replacement);
+        Ok(true)
+    }
+}
+
+/// Work performed at stable model-turn boundaries.
+///
+/// The default methods do nothing. A coding layer can compact history before
+/// or after a model turn and can return a background result after a natural
+/// answer. Returning a message from [`after_answer`](Self::after_answer)
+/// continues the same prompt with that message.
+#[async_trait]
+pub trait AgentLifecycle: Send + Sync {
+    /// Prepares an ephemeral view for the next model request after tool
+    /// discovery.
+    ///
+    /// `None` uses committed history. A replacement changes this request only;
+    /// it does not change history or the system prompt. Tool calls and results
+    /// must remain paired. The future may be dropped on cancellation and must
+    /// not leave cleanup-sensitive work behind.
+    async fn prepare_context(
+        &self,
+        _context: TurnContext<'_>,
+        _tools: &ToolCatalog,
+        _cancel: &CancellationToken,
+    ) -> StdResult<Option<Vec<Message>>, LifecycleError> {
+        Ok(None)
+    }
+
+    /// Runs after steering is committed and before tools are resolved.
+    async fn before_model(
+        &self,
+        _context: TurnContext<'_>,
+        _cancel: &CancellationToken,
+    ) -> StdResult<ConversationUpdate, LifecycleError> {
+        Ok(ConversationUpdate::unchanged())
+    }
+
+    /// Runs after middleware has selected the tools visible for this turn.
+    async fn after_tool_discovery(
+        &self,
+        _context: TurnContext<'_>,
+        _tools: &ToolCatalog,
+        _cancel: &CancellationToken,
+    ) -> StdResult<ConversationUpdate, LifecycleError> {
+        Ok(ConversationUpdate::unchanged())
+    }
+
+    /// Runs after the assistant response is committed.
+    ///
+    /// An error ends the prompt, but only after the tool calls the response
+    /// made are answered as `Cancelled` without running, so the committed
+    /// turn is never left without its results.
+    async fn after_model(
+        &self,
+        _context: TurnContext<'_>,
+        _response: &Response,
+        _cancel: &CancellationToken,
+    ) -> StdResult<ConversationUpdate, LifecycleError> {
+        Ok(ConversationUpdate::unchanged())
+    }
+
+    /// Prepares queued follow-up input before the agent commits it.
+    async fn prepare_follow_up(
+        &self,
+        _context: TurnContext<'_>,
+        message: UserMessage,
+        _cancel: &CancellationToken,
+    ) -> StdResult<UserMessage, LifecycleError> {
+        Ok(message)
+    }
+
+    /// Runs before a natural answer completes the prompt.
+    ///
+    /// The returned action decides whether the answer completes the prompt.
+    async fn after_answer(
+        &self,
+        _context: TurnContext<'_>,
+        _response: &Response,
+        _cancel: &CancellationToken,
+    ) -> StdResult<AfterAnswerAction, LifecycleError> {
+        Ok(AfterAnswerAction::Complete)
+    }
+}
+
+/// A lifecycle-stage failure with an optional source chain.
+#[derive(Debug)]
+pub struct LifecycleError {
+    message: String,
+    source:  Option<Box<dyn StdError + Send + Sync>>,
+}
+
+impl LifecycleError {
+    /// Creates a failure with no lower-level source.
+    #[must_use]
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            source:  None,
+        }
+    }
+
+    /// Creates a failure that preserves its lower-level source.
+    pub fn with_source(
+        message: impl Into<String>,
+        source: impl StdError + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            message: message.into(),
+            source:  Some(Box::new(source)),
+        }
+    }
+}
+
+impl fmt::Display for LifecycleError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl StdError for LifecycleError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn StdError + 'static))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use lithos_llm::types::Role;
+
+    use super::*;
+
+    #[test]
+    fn replacing_a_tail_preserves_the_prefix_and_rejects_invalid_ranges_atomically() {
+        let prefix = Message::text(Role::User, "keep this allocation");
+        let mut messages = vec![prefix, Message::text(Role::User, "old tail")];
+        let allocation = messages[0].content().as_ptr();
+        let replacement = Message::text(Role::User, "new tail");
+        ConversationUpdate::replace_tail(1, vec![replacement.clone()])
+            .apply(&mut messages)
+            .expect("valid update");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].content().as_ptr(), allocation);
+        assert_eq!(messages[1], replacement);
+        let before = messages.clone();
+        assert!(
+            ConversationUpdate::replace_tail(3, vec![])
+                .apply(&mut messages)
+                .is_err()
+        );
+        assert_eq!(messages, before);
+        assert!(
+            !ConversationUpdate::unchanged()
+                .apply(&mut messages)
+                .expect("no change")
+        );
+    }
+}

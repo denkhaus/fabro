@@ -1,0 +1,13 @@
+---
+source: tests/event_contract.rs
+expression: "render(&AgentProfileKind::ALL)"
+---
+[
+  "anthropic",
+  "claude-5",
+  "openai",
+  "gemini",
+  "kimi",
+  "gpt56",
+  "gpt6"
+]

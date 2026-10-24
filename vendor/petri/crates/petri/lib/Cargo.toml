@@ -1,0 +1,49 @@
+[package]
+name = "petri"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "A token-flow workflow engine: core, plus every component it ships with."
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+lithos-llm = { workspace = true, features = ["runtime", "builtin-catalog", "environment-credentials"] }
+runtime = { workspace = true }
+execution = { workspace = true }
+frontend-gha = { workspace = true }
+frontend-attractor = { workspace = true }
+frontend-fabro = { workspace = true }
+attractor-steps = { workspace = true }
+# The retry observer that puts the client's own retries on the native agent's
+# event stream; Pebble asks the application that builds the client to install it.
+pebble-coding-agent = { workspace = true }
+github-actions = { workspace = true }
+github-objects = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+testkit = { workspace = true }
+# The fallback reconstruction test drives a native agent with a scripted
+# model client.
+pebble-coding-agent = { workspace = true, features = ["test-util"] }
+smol_str = { workspace = true }
+tokio-util = { workspace = true }
+# The readiness embedding proof serves the provider twins on loopback and
+# builds a model client pointed at them: the same twins the black box
+# harness uses (`crates/petri/cli`), with `lithos-llm`'s credential types.
+lithos-llm = { workspace = true, features = ["runtime"] }
+tokio = { workspace = true, features = ["net"] }
+twin-openai = { git = "https://github.com/lithoscomputer/twins", branch = "main" }
+twin-anthropic = { git = "https://github.com/lithoscomputer/twins", branch = "main" }
+# The twins export Axum routers; the proof serves them on an ephemeral port.
+axum = "0.8"

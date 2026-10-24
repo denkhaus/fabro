@@ -1,0 +1,17 @@
+{
+  "name": "static_fan_out_joins_all_branches",
+  "workflow": "digraph T {\n  start [shape=Mdiamond]\n  exit [shape=Msquare]\n\n  fork [shape=component]\n  a [prompt=\"x\"]\n  b [prompt=\"x\"]\n  merge [shape=tripleoctagon]\n  report [prompt=\"x\"]\n  start -> fork\n  fork -> a\n  fork -> b\n  a -> merge\n  b -> merge\n  merge -> report -> exit\n\n}\n",
+  "scripts": {
+    "a": {
+      "context_updates": {
+        "seen_a": "1"
+      }
+    },
+    "b": {
+      "context_updates": {
+        "seen_b": "1"
+      }
+    }
+  },
+  "departure": "Fabro records the branches as parallel branch events, not stages, so its path omits `a` and `b`. Under Petri each branch runs in a child invocation whose stage keeps a final record, so the path lists `a` and `b` in branch order between `fork` and `merge`. Branch context is kept under parallel.results and never merges into the parent context, matching Fabro: the recorded context is empty on both sides."
+}

@@ -61,7 +61,7 @@ def stage-cook-context [] {
     rm -rf $out
     mkdir $out
     let files = (git ls-files | lines | where {|f|
-        ($f | str starts-with "lib/") or ($f | str starts-with "test/") or ($f | str starts-with "docs/public/api-reference/") or ($f == "Cargo.toml") or ($f == "Cargo.lock") or ($f == "rust-toolchain") or ($f == "rust-toolchain.toml") or ($f | str starts-with ".cargo/")
+        ($f | str starts-with "lib/") or ($f | str starts-with "test/") or ($f | str starts-with "vendor/") or ($f | str starts-with "docs/public/api-reference/") or ($f == "Cargo.toml") or ($f == "Cargo.lock") or ($f == "rust-toolchain") or ($f == "rust-toolchain.toml") or ($f | str starts-with ".cargo/")
     })
     if ($files | is-empty) {
         error make {msg: "run-images: cook context staging found no files (git ls-files empty?)"}
@@ -96,7 +96,11 @@ def build-one [dockerfile: string, tag: string, push: bool, sha12: string] {
         # toolchain rebuild even when the Dockerfile is byte-identical.
         stage-cook-context
         let lock_hash = (open --raw Cargo.lock | hash sha256)
-        ($content | hash sha256) + ($cli_hash | str substring 0..15) + ($lock_hash | str substring 0..15)
+        # A vendored fork change must force a rebuild: the baked dependency
+        # artifacts would otherwise stay stale against the new vendor tree
+        # (fabro-eeee; the lock alone does not move on a vendor code edit).
+        let vendor_hash = (git ls-files -s vendor/ | str join (char newline) | hash sha256)
+        ($content | hash sha256) + ($cli_hash | str substring 0..15) + ($lock_hash | str substring 0..15) + ($vendor_hash | str substring 0..15)
     } else {
         ($content | hash sha256)
     })

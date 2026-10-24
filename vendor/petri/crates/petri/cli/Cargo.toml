@@ -1,0 +1,44 @@
+[package]
+name = "petri-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The petri command line."
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "petri"
+path = "src/main.rs"
+
+[dependencies]
+petri = { workspace = true }
+cli = { workspace = true }
+tokio = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+# The black box scenario loader (`tests/support/fabro/scenario.rs`) and the
+# pinned Fabro adapter's decision records.
+serde = { workspace = true }
+regex = { workspace = true }
+globset = { workspace = true }
+testkit = { workspace = true }
+# The in-process client test builds requests and reads error kinds.
+lithos-llm = { workspace = true, features = ["runtime"] }
+tokio = { workspace = true, features = ["net"] }
+# The provider twins the black box harness starts on loopback.
+twin-openai = { git = "https://github.com/lithoscomputer/twins", branch = "main" }
+twin-anthropic = { git = "https://github.com/lithoscomputer/twins", branch = "main" }
+# The twins export Axum routers; the harness serves them and captures request
+# bodies through a middleware layer.
+axum = "0.8"
+# The pinned Fabro adapter talks to the private Fabro server's HTTP API; the
+# comparison reads decision records and digests bundles.
+reqwest = { workspace = true }
+sha2 = { workspace = true }
+toml = { workspace = true }

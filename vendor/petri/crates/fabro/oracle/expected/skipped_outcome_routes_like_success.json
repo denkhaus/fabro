@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "fabro_commit": "05ebd0fd1beec214b558f4b478e36bd08b507dc7",
+  "harness": {
+    "source": "fabro binary through the CLI and server API; see crates/fabro/oracle/harness/",
+    "realization": {
+      "a": "agent",
+      "b": "agent"
+    }
+  },
+  "fabro": {
+    "status": "success",
+    "path": [
+      {
+        "node": "start",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "b",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "exit",
+        "outcome": "succeeded"
+      }
+    ],
+    "context": {},
+    "executions": 1
+  },
+  "departure": "Fabro records no stage for a skipped outcome, so its path omits `a`; Petri records every final outcome, `skipped` included. The routing (an `outcome=skipped` edge is taken) is the same.",
+  "petri": {
+    "status": "success",
+    "path": [
+      {
+        "node": "start",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "a",
+        "outcome": "skipped"
+      },
+      {
+        "node": "b",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "exit",
+        "outcome": "succeeded"
+      }
+    ],
+    "context": {},
+    "executions": 1
+  }
+}

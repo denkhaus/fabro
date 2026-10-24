@@ -106,8 +106,10 @@ RUN cargo chef cook --all-targets --recipe-path /recipe.json
 
 FROM base AS final
 # Warm dependency layers: cooked target dir plus the registry/git caches
-# (pebble-coding-agent is a git-rev dependency) land in the image, and
-# CARGO_TARGET_DIR (set in base) points run-container builds at them.
+# (lithos-llm and sandbox-driver are still git-rev dependencies; petri and
+# pebble are vendored in-tree since fabro-eeee, ADR-0034) land in the
+# image, and CARGO_TARGET_DIR (set in base) points run-container builds at
+# them.
 COPY --from=chef-cook /opt/target /opt/target
 COPY --from=chef-cook /root/.cargo/registry /root/.cargo/registry
 COPY --from=chef-cook /root/.cargo/git /root/.cargo/git

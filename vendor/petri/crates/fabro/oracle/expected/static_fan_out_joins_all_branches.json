@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "fabro_commit": "05ebd0fd1beec214b558f4b478e36bd08b507dc7",
+  "harness": {
+    "source": "fabro binary through the CLI and server API; see crates/fabro/oracle/harness/",
+    "realization": {
+      "a": "agent",
+      "b": "agent",
+      "report": "agent"
+    }
+  },
+  "fabro": {
+    "status": "success",
+    "path": [
+      {
+        "node": "start",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "fork",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "merge",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "report",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "exit",
+        "outcome": "succeeded"
+      }
+    ],
+    "context": {},
+    "executions": 1
+  },
+  "departure": "Fabro records the branches as parallel branch events, not stages, so its path omits `a` and `b`. Under Petri each branch runs in a child invocation whose stage keeps a final record, so the path lists `a` and `b` in branch order between `fork` and `merge`. Branch context is kept under parallel.results and never merges into the parent context, matching Fabro: the recorded context is empty on both sides.",
+  "petri": {
+    "status": "success",
+    "path": [
+      {
+        "node": "start",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "fork",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "a",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "b",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "merge",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "report",
+        "outcome": "succeeded"
+      },
+      {
+        "node": "exit",
+        "outcome": "succeeded"
+      }
+    ],
+    "context": {},
+    "executions": 1
+  }
+}

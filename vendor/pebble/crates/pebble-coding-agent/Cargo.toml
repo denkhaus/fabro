@@ -1,0 +1,110 @@
+[package]
+name = "pebble-coding-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Coding-agent library built on pebble-agent"
+
+[features]
+# Test doubles (`pebble_coding_agent::test_support`) for embedding applications.
+test-util = []
+# MCP servers as tool sources (`pebble_coding_agent::mcp`): the `rmcp` client
+# over stdio and HTTP, and the `PortRoutes` contract an application implements
+# over its own sandbox to reach a server launched in the environment.
+mcp = ["dep:rmcp", "dep:reqwest", "dep:sse-stream", "dep:url"]
+# `pebble_coding_agent::search::providers`: Brave and Venice web search over
+# their public HTTP APIs, for an application that would rather not write them.
+search-providers = ["dep:reqwest"]
+# `pebble_coding_agent::sandbox_driver`: a sandbox-driver handle as the
+# `Environment` a session runs in, with the exec policy, the port routes (with
+# `mcp`), and the failure rendering an application over the driver needs.
+sandbox-driver = ["dep:sandbox-driver"]
+# `pebble_coding_agent::sandbox_driver::test_support`: a mock sandbox over the
+# driver's scripted doubles, for an application's tests.
+sandbox-driver-test-util = ["sandbox-driver", "dep:sandbox-driver-testing"]
+
+[dependencies]
+async-trait.workspace = true
+futures-util.workspace = true
+lithos-llm = { workspace = true, features = ["runtime"] }
+pebble-agent = { path = "../pebble-agent" }
+# The HTTP transport the search providers and the MCP client share. lithos-llm
+# already builds this version with these features and more for its own runtime,
+# so it adds nothing to the lockfile; a search provider is given the
+# application's client, and the MCP client builds its own.
+reqwest = { version = "0.13.4", default-features = false, features = [
+  "json",
+  "query",
+  "rustls",
+  "stream",
+], optional = true }
+serde.workspace = true
+serde_json.workspace = true
+# Deterministic todo identities: a whole-list tool identifies an item by its
+# text, so the id is a hash of it. Pinned to the version lithos-llm already
+# resolves, along with every crate underneath it.
+sha2 = "0.10.9"
+thiserror.workspace = true
+tokio = { workspace = true, features = [
+  "fs",
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "sync",
+  "time",
+] }
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1.18.1", features = ["v4"] }
+# The MCP client and its HTTP transports. rmcp 1.7 targets the reqwest line
+# lithos-llm locks (0.13); the `reqwest` feature selects rustls as lithos-llm
+# does. `sse-stream` and `url` back the legacy SSE transport, which rmcp no
+# longer ships as a client.
+rmcp = { version = "=1.7.0", default-features = false, features = [
+  "client",
+  "reqwest",
+  "transport-child-process",
+  "transport-streamable-http-client-reqwest",
+], optional = true }
+# The sandbox provider layer the `sandbox_driver` module adapts, and its
+# scripted doubles for the mock sandbox.
+sandbox-driver = { workspace = true, optional = true }
+sandbox-driver-testing = { workspace = true, optional = true }
+sse-stream = { version = "0.2", optional = true }
+url = { version = "2.5", optional = true }
+
+# Signalling a command's process group without writing unsafe code.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.4", features = ["process"] }
+
+[dev-dependencies]
+# Concrete integrations belong to the example and provider-profile tests.
+lithos-llm = { workspace = true, features = [
+  "runtime",
+  "builtin-catalog",
+  "environment-credentials",
+] }
+# The search providers are tested against a fake engine, and the MCP HTTP
+# transports against a fake server, both served in the test process. Already
+# in the lockfile through lithos-llm's own tests.
+axum = "0.8"
+insta = { version = "1.48.0", features = ["json"] }
+# The sandbox-driver adapter is tested over the driver's Host provider in a
+# temporary directory, and over its scripted doubles.
+sandbox-driver-host.workspace = true
+sandbox-driver-testing.workspace = true
+tempfile = "3"
+# `start_paused` test runtimes, so a test that waits out a retry delay does not
+# actually wait, the multi-threaded runtime the example's `#[tokio::main]`
+# asks for, and the listener the fake search engine binds. Adds no package to
+# the lockfile: tokio is already a dependency.
+tokio = { version = "1.49.0", features = ["net", "rt-multi-thread", "test-util"] }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "embedding"
+required-features = ["test-util"]
