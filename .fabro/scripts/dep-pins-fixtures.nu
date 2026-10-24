@@ -9,6 +9,15 @@
 # locked engine package missing from PINS REDs, and a PINS entry that the
 # lock no longer carries REDs.
 #
+# Bump 2026-10-24 (pebble 59f5699de785 -> 47a036fd6004, fabro-c98c):
+# the request-path tool-error wrap now REPLACES the structured flag with
+# its "[TOOL ERROR] " content marker. The chat-completions wire (zai's
+# profile) has no error marker and reported unsupported_control for every
+# request that still carried the flag — the production WARN storm on zai
+# loop runs after fork.24 (4x per planner session while the content wrap
+# already worked). A result whose marker never reaches the content keeps
+# the flag, so an invisible failure still reports. Patching our forks is
+# expected; the rev move is recorded here per ADR-0027 decision 2/3.
 # Bump 2026-10-23 (petri 13e4e6627693 -> 2dedbc295a1f + pebble
 # 5897c0635698 -> 59f5699de785, fabro-d4f2 + fabro-c98c, sprint 50 part 2):
 # petri — a plain interrupt settles the attempt after a 60s grace with the
@@ -62,9 +71,11 @@ const PINS = {
     # 2026-10-19 deliberate bump 208f391 -> 5897c06 (fabro-9c79 + fabro-bb27:
     # consecutive tool-error budget + openai-wire [TOOL ERROR] wrap; mimo
     # incident 01M59MG9XS2A). Patch of our own fork per ADR-0027.
-    "pebble-agent": ["59f5699de785"]
-    "pebble-cli-core": ["59f5699de785"]
-    "pebble-coding-agent": ["59f5699de785"]
+    # 2026-10-24 deliberate bump 5897c06 -> 47a036fd (fabro-c98c: the marker
+    # replaces the flag, the chat-wire unsupported_control storm ends).
+    "pebble-agent": ["47a036fd6004"]
+    "pebble-cli-core": ["47a036fd6004"]
+    "pebble-coding-agent": ["47a036fd6004"]
     "petri-attractor-steps": ["2dedbc295a1f"]
     "petri-driver": ["2dedbc295a1f"]
     "petri-engine": ["2dedbc295a1f"]
