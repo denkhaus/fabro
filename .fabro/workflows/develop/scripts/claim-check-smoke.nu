@@ -148,6 +148,26 @@ try {
         if not ($raw.stderr | str contains "fail-open") { fail $"21: expected a fail-open note, got ($raw.stderr | str substring 0..200)" }
         print "PASS (21: script dry-run fails open end-to-end)"
 
+        # id-kind (the work-line claim form, 2026-10-25): a .seeds id, a
+        # central work item key (owner/repo#N, ADR-0032 §4), and the
+        # bounces (malformed item key, bare junk, empty).
+        if (id-kind "fabro-006d") != 'seed' { fail "22: seed id must classify as seed" }
+        print "PASS (22: seed id classifies)"
+        if (id-kind "denkhaus/work#1") != 'work-item' { fail "23: work item key must classify as work-item" }
+        print "PASS (23: work item key classifies)"
+        if (id-kind "denkhaus/work#abc") != 'invalid' { fail "24: non-numeric item number must bounce" }
+        if (id-kind "junk") != 'invalid' { fail "24: junk must bounce" }
+        if (id-kind "") != 'invalid' { fail "24: empty must bounce" }
+        print "PASS (24: malformed ids bounce)"
+
+        # the work-item dry-run (the incident shape: the loop lane's
+        # claim bounced on denkhaus/work#1): no seeds body, so the gate
+        # degrades fail-open and the claim-check exits 0.
+        let item = (do { echo "denkhaus/work#1" | ^nu $script } | complete)
+        if $item.exit_code != 0 { fail $"25: work-item dry-run must exit 0, got ($item | to json --raw)" }
+        if not ($item.stdout | str contains "claim-check: ok denkhaus/work#1") { fail $"25: expected the ok line, got ($item.stdout | str substring 0..200)" }
+        print "PASS (25: work item claim passes the gate)"
+
         print "claim-check-smoke: all cases pass"
 } finally {
     cd $home_dir

@@ -8,7 +8,12 @@
 #    a planner whose structured output validated routing but dropped
 #    its context_updates parks the run EARLY instead of burning a
 #    20-30 min implementer cycle. When the key exists, this arm only
-#    asserts it is non-empty and well-formed (fabro- seed id prefix).
+#    asserts it is non-empty and well-formed. Two claim forms are legal
+#    (ADR-0032 §4): a .seeds id (fabro- prefix) and a central work-line
+#    item key (owner/repo#N — the loop lane claims GitHub items on
+#    denkhaus/work). A work item has no seeds body: the body gate
+#    degrades fail-open and the line-tip guard scans for the item key
+#    itself.
 #
 # 2. Seed-body path gate (fabro-4c81): every repo path the claimed
 #    seed body cites as EXISTING evidence must resolve in the current
@@ -189,6 +194,19 @@ def line-tip-guard [seed_id: string, body: string] {
     line-tip-verdict $base_sha $tip_sha $range.stdout $seed_id $body
 }
 
+# Classify the claimed id: a .seeds id (fabro- prefix), a central
+# work-line item key (owner/repo#N, ADR-0032 §4 — the loop lane claims
+# GitHub items), or neither (a misconfigured stdin_source bounces).
+def id-kind [id: string]: nothing -> string {
+    if ($id | str starts-with "fabro-") {
+        'seed'
+    } else if ($id | parse --regex '^[\w.-]+/[\w.-]+#\d+$' | is-not-empty) {
+        'work-item'
+    } else {
+        'invalid'
+    }
+}
+
 def main []: nothing -> nothing {
     # Non-tty stdin: nu's `input` only works on a tty; the engine pipes the
     # context value, so read it through an external `cat` (closeout idiom).
@@ -198,11 +216,20 @@ def main []: nothing -> nothing {
         print -e "claim-check: stdin carried no seed id (stdin_source misconfigured?)"
         exit 1
     }
-    if not ($seed_id | str starts-with "fabro-") {
-        print -e $"claim-check: stdin value is not a seed id: ($seed_id)"
+    let kind = (id-kind $seed_id)
+    if $kind == 'invalid' {
+        print -e $"claim-check: stdin value is not a claimable id (seed fabro-* or work item owner/repo#N): ($seed_id)"
         exit 1
     }
-    let show = (do { ^seeds show $seed_id --format json } | complete)
+    # A work-line item has no seeds body: the seeds show arm is seed-only,
+    # the body gate degrades fail-open on the empty record (proven class
+    # '1: seeds exit non-zero' in the smoke), and the line-tip guard
+    # scans the range for the item key itself.
+    let show = (if $kind == 'seed' {
+        do { ^seeds show $seed_id --format json } | complete
+    } else {
+        {"exit_code": 1, "stdout": "", "stderr": "work-line item — no seeds body"}
+    })
     let guard_body = (
         try { $show.stdout | from json | get -o issue | default {} | get -o description | default '' } catch { '' }
     )
