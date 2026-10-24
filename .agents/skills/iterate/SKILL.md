@@ -460,7 +460,14 @@ stores it belongs to; reach them by phase need:
   push cell). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
   may push as soon as no pass runs. Evidence and history: `ml prime git`.
-- Deploy windows: deploy only while no conductor pass runs. GATE-TOUCHING
+- Deploy windows: deploy only while no conductor pass runs. PRE-DEPLOY
+  BENCH GATE (fabro-6041 grill 2026-10-24, user GO): before EVERY deploy
+  window, run the fabro-test workbench — `cd ~/dev/fabro-test && just up
+  && just workbench` (refreshes the local image, then the facet table:
+  probes + platform checks + mini, ~15 min, <1 EUR). A RED table means
+  NO window: fix or seed first (the repo's own rule — new product bugs
+  land as FACETS row + probe BEFORE any deploy). Extends the repo's
+  'after every upstream merge' cadence to fork releases. GATE-TOUCHING
   DEPLOYS (fabro-2919, Grundsatz-review 2026-10-12): before the window,
   run `just smoke-window-gate` (the twin-scenario smoke: scripted 429 ->
   tick holds + manual fire refused; reopen -> next recheck tick fires) —

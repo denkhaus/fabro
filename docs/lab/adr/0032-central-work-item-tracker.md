@@ -171,6 +171,17 @@ The repository is configured per project; the same central repo can serve
 many projects through `project:<id>` labels. A project that prefers its
 own repo or another provider changes config, not code.
 
+Amended 2026-10-24 (fabro-6041 grill, user decision): the central-tracker
+policy covers **test and proof items too** — the fabro-test bench's
+work-line probes draw from project `fabro-proof` on `denkhaus/work`
+(synthetic, marked items maintained idempotently by the bench), never
+from a test repo's own tracker and never from the line's items. The
+bench probe and the production acceptance fire are ONE artifact
+(unified proof/probe): the same probe workflow runs locally before
+every deploy window and, via a manual-trigger proof automation, once
+per window on production against the same project. Work-item-line
+tests run entirely without `.seeds`.
+
 Issue content is the durable spec. Labels carry the queue classification:
 `project:<id>`, `lane:<lane>`, `type:<type>`, `prio:<p0..p4>`,
 `source:<user|revisor|architect|agent>`, plus `needs-user`, `revision`,
