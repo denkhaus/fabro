@@ -183,6 +183,20 @@ impl WorkStore {
         Self { pool }
     }
 
+    /// Begin a write transaction that holds the SQLite write lock from the
+    /// start (`BEGIN IMMEDIATE`).
+    ///
+    /// A deferred transaction that reads before it writes fails its write
+    /// upgrade with `SQLITE_BUSY` the moment another connection commits in
+    /// between (the fabro-9166 production incident: run-store event batches
+    /// commit on the same file while a work-store write is in flight), and
+    /// `busy_timeout` does not apply to that failure. Taking the write lock
+    /// at begin turns that race into a wait the timeout can cover — the
+    /// same posture the run store already uses for its batches.
+    async fn begin_write(&self) -> Result<sqlx::Transaction<'static, sqlx::Sqlite>> {
+        Ok(self.pool.begin_with("BEGIN IMMEDIATE").await?)
+    }
+
     /// Create or update a project's tracker configuration.
     pub async fn upsert_project(&self, project: &WorkProject) -> Result<()> {
         let lane_labels = serde_json::to_string(&project.lane_labels)?;
@@ -292,7 +306,7 @@ ORDER BY project_id
         let claim_id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now();
         let now_ms = now.timestamp_millis();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_write().await?;
         let inserted = sqlx::query(
             r"
 INSERT INTO work_claims (
@@ -361,7 +375,7 @@ INSERT INTO work_claims (
     ) -> Result<WorkClaim> {
         let now = Utc::now();
         let now_ms = now.timestamp_millis();
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_write().await?;
         let current = sqlx::query("SELECT state, run_id FROM work_claims WHERE claim_id = ?")
             .bind(claim_id)
             .fetch_optional(&mut *tx)
@@ -573,7 +587,7 @@ ORDER BY seq
     /// Enqueue a projection job. Re-enqueuing the same idempotency key is a
     /// no-op (the first job remains authoritative).
     pub async fn enqueue(&self, kind: &str, payload: Value, idempotency_key: &str) -> Result<()> {
-        let mut tx = self.pool.begin().await?;
+        let mut tx = self.begin_write().await?;
         self.enqueue_in_tx(
             &mut tx,
             kind,
@@ -891,6 +905,8 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::Duration;
+    use sqlx::Connection as _;
+    use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
     use tokio::task::JoinSet;
 
     use super::{ClaimState, GrantOutcome, GrantRequest, WorkProject, WorkStore};
@@ -1262,5 +1278,99 @@ mod tests {
             store.complete(&due[0].id).await.unwrap_err(),
             Error::WorkOutboxEntryNotFound(_)
         ));
+    }
+
+    /// A foreign connection with its own short busy budget, opened on the
+    /// store's database file.
+    async fn foreign_connection(path: &std::path::Path) -> SqliteConnection {
+        let options = SqliteConnectOptions::new()
+            .filename(path)
+            .busy_timeout(std::time::Duration::from_millis(150));
+        SqliteConnection::connect_with(&options)
+            .await
+            .expect("foreign connection opens")
+    }
+
+    /// fabro-9166, mechanism level: under WAL a deferred transaction whose
+    /// read snapshot a foreign commit invalidates fails its write upgrade
+    /// with `SQLITE_BUSY` immediately — `busy_timeout` never applies. This
+    /// is the exact failure the production release path hit while run-store
+    /// batches committed on the same file.
+    #[tokio::test]
+    async fn deferred_read_then_foreign_commit_breaks_the_write_upgrade() {
+        let (directory, store) = store().await;
+        let run_id = fabro_types::RunId::new();
+        assert!(matches!(
+            store.grant(&request("item-1", run_id)).await,
+            Ok(GrantOutcome::Granted(_))
+        ));
+        drop(store);
+        let path = directory.path().join("fabro.sqlite3");
+
+        let mut reader = foreign_connection(&path).await;
+        let mut writer = foreign_connection(&path).await;
+
+        // The deferred transaction takes a read snapshot.
+        let mut reader_tx = reader.begin().await.expect("deferred begin");
+        let _: (i64,) = sqlx::query_as("SELECT count(*) FROM work_claims")
+            .fetch_one(&mut *reader_tx)
+            .await
+            .expect("read inside deferred tx");
+
+        // A foreign commit advances the WAL past that snapshot.
+        sqlx::query("UPDATE work_projects SET display_name = 'foreign write'")
+            .execute(&mut writer)
+            .await
+            .expect("foreign commit");
+
+        // The read-then-write upgrade must fail: the snapshot is stale.
+        let upgrade = sqlx::query("UPDATE work_claims SET updated_at_ms = updated_at_ms")
+            .execute(&mut *reader_tx)
+            .await;
+        assert!(
+            upgrade.is_err(),
+            "the stale-snapshot write upgrade is exactly the failure the \
+             store must avoid by beginning write transactions IMMEDIATE"
+        );
+    }
+
+    /// fabro-9166, fix level: an open store write transaction excludes
+    /// foreign writers from BEGIN, not just from its first write. Mutation
+    /// proof: with a deferred begin the probe write succeeds while the
+    /// store transaction is between its read and write, and this
+    /// assertion fails.
+    #[tokio::test]
+    async fn write_transactions_exclude_foreign_writers_from_begin() {
+        let (directory, store) = store().await;
+        let run_id = fabro_types::RunId::new();
+        assert!(matches!(
+            store.grant(&request("item-1", run_id)).await,
+            Ok(GrantOutcome::Granted(_))
+        ));
+
+        let mut tx = store.begin_write().await.expect("write tx begins");
+        let _: (i64,) = sqlx::query_as("SELECT count(*) FROM work_claims")
+            .fetch_one(&mut *tx)
+            .await
+            .expect("read inside write tx");
+
+        let path = directory.path().join("fabro.sqlite3");
+        let mut probe = foreign_connection(&path).await;
+        let blocked = sqlx::query("UPDATE work_projects SET display_name = 'probe write'")
+            .execute(&mut probe)
+            .await;
+        assert!(
+            blocked.is_err(),
+            "an open store write transaction must hold the write lock — a \
+             foreign writer slipping in front of its first write is the \
+             stale-snapshot window"
+        );
+        tx.commit().await.expect("commit");
+
+        // With the transaction committed the foreign writer proceeds.
+        sqlx::query("UPDATE work_projects SET display_name = 'after commit'")
+            .execute(&mut probe)
+            .await
+            .expect("foreign write after commit");
     }
 }
