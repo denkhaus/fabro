@@ -15,7 +15,12 @@ that a fabro workflow's agent stages should use MUST be vendored into
 recognize and load them.
 
 One incoming-batch review, end to end. Chat replies in German, all
-written artifacts in English. The autonomous line implements; this
+written artifacts in English — ADR-0033, hard rule, every repo of the
+line (fabro, fabro-test, fabro-tofu): docs, comments, workflow prompts,
+seed notes, commit messages, PR bodies. A German file does NOT license
+German additions; translate the whole file in the same change. Only test
+data that deliberately exercises non-English model output is exempt, and
+it is named as such. The autonomous line implements; this
 skill reviews, reconciles, and integrates. Never implement seeds here
 (except standing agent-exceptions recorded in iterate).
 
@@ -211,6 +216,12 @@ Every landed feature answers: does the source of truth know about it?
   depends on changed (PR supervisor semantics, tool registration).
 - ADR when a decision crystallized; strategy docs when the touched area
   has one (logging, events, testing, errors, migrations, secrets).
+- Language gate (ADR-0033): every artifact in the diff is English —
+  docs, catalogs, code comments, workflow prompts, seed notes, commit
+  messages, PR bodies. German text or a mixed-language file is a gap
+  finding (fix the whole file in one change), unless the artifact is
+  test data that deliberately exercises non-English model output and
+  says so.
 - Missing docs = gap finding, seed-worthy, not a chat note.
 
 ## Phase 3 - Tracker reconciliation

@@ -19,7 +19,12 @@ description: >-
 
 One development cycle, end to end. The user starts a cycle by invoking
 /iterate; the agent drives everything else. Chat replies in German,
-all written artifacts in English.
+all written artifacts in English — ADR-0033, hard rule, every repo of
+the line (fabro, fabro-test, fabro-tofu): docs, ADRs, catalogs, code
+comments, workflow prompts, seed notes, commit messages, PR bodies. A
+German file does NOT license German additions; translate the whole file
+in the same change. The only exemption is test data that deliberately
+exercises non-English model output, named as such.
 
 Scope: LOCAL session instrument for the human-side agent. Fabro workflows
 never load or reference this skill; skills a run's agent stages need are
@@ -284,6 +289,12 @@ stores it belongs to; reach them by phase need:
 - Run the code-review skill on the diff since the base point (standards
   axis = rust-style-guide + strategy docs; spec axis). Freeze the diff to
   a patch file first; both axes review the frozen snapshot.
+- Language gate (ADR-0033): every reviewed artifact is English — docs,
+  comments, workflow prompts, seed notes, commit messages, PR bodies. A
+  German paragraph or a mixed-language file in the diff is a FINDING,
+  not a nit: fix it in the same cycle, translating the whole file at
+  once. Only test data that deliberately probes non-English model output
+  stays non-English and is named as such.
 - Proof of work: the cycle report NAMES the guideline pages loaded for
   the diff and the verification commands actually run.
 - Fork-feature regression check: run the fork-only presence suites
@@ -416,6 +427,14 @@ stores it belongs to; reach them by phase need:
   message back (`git log -1 --format=%B`) before pushing. Stage NAMED
   files only (never `git add -A`) so a sibling session's uncommitted
   work cannot ride the commit.
+- Language gate before commit (ADR-0033): re-read the staged diff — every
+  written line is English (comments, prompts, docs, seed notes, the
+  commit message, the PR body). Cheap mechanical catch:
+  `git diff --cached | rg -n 'ä|ö|ü|ß|Zweck|Regeln|Facette|Pflege|wird|nicht|muss'`.
+  Hits are inspected, not silently kept; test data that deliberately
+  exercises German model output is the named exemption. A sibling repo
+  with its own landing dance (fabro-test: `nu scripts/land.nu`) needs
+  the same look at its docs, not only at its scripts.
 - A SHARED checkout means shared FILES (observed 2026-10-03 with two
   iterate sessions): whole-file commits can sweep a sibling's tracker
   lines into your commit. Check the per-id diff
@@ -615,6 +634,15 @@ stores it belongs to; reach them by phase need:
   that contradicts a standing decision (even a code-comment one like
   2026-09-14's recheck design) stops for an explicit supersession, never a
   silent additive layer.
+- WRITTEN LANGUAGE IS ENGLISH (ADR-0033, user directive 2026-10-24):
+  chat German, artifacts English — in EVERY repo of the line (fabro,
+  fabro-test, fabro-tofu): docs, ADRs, catalogs, code comments, workflow
+  prompts, seed notes, commit messages, PR bodies, review notes. A
+  German file never licenses German additions; translate the whole file
+  in the same change. Only test data that deliberately exercises
+  non-English model output stays non-English, and it is named as such.
+  Distinct from NO LANGUAGE SPRAWL below: that rule is about SCRIPT
+  languages (nu vs python vs sh); this one is about the written language.
 - NO LANGUAGE SPRAWL (user top priority, directive 2026-10-03): every script invoked by workflows, justfile, or gate/tooling entry points MUST be a nu script. Never add, extend, or split non-nu script assets. The one standing violation — the upstream code-review lane's 16-file / 8.5k-line python engine — was RETIRED on 2026-10-08 (user GO) as never used in this fork instead of ported (fabro-c16a closed; the graph, rules, templates and pins are gone, the upstream asset stays recoverable from upstream history). POSIX sh survives only where the failure mode it guards is a sandbox WITHOUT nu (`.fabro/scripts/toolchain-guard.sh`). Architecture scans and sprint plans check the language axis BEFORE proposing splits/refactors.
 - Style-guide pair invariant (fabro-6538, 591a decision 2026-10-03):
   `.fabro/skills/rust-style-guide/` is canonical, `.agents/skills/rust-style-guide/`

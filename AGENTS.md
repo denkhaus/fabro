@@ -4,8 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Communication conventions
 
-- Chat replies in German; all written artifacts, docs, and commit
-  messages in English.
+- **WRITTEN LANGUAGE: English — always, everywhere (ADR-0033, user
+  directive 2026-10-24).** Chat replies are German; every written
+  artifact is English. This is a review gate, not a preference.
+- Scope: ALL written artifacts of the line, in EVERY repo (fabro,
+  fabro-test, fabro-tofu, ...): docs, ADRs, READMEs, catalogs like
+  FACETS.md, code comments, workflow prompts and prompt comments, seed
+  titles/descriptions/notes, commit messages, PR titles/bodies, review
+  notes, tracker comments.
+- File language never licenses drift: a German file does not permit
+  German additions — add English, and translate the whole file in the
+  same change (no mixed-language files; 2026-10-24 fabro-test incident:
+  bench docs were extended in German because the file was German).
+- Sole exemption: test DATA whose purpose is non-English model output
+  (e.g. a prompt that deliberately asks the model to answer in German).
+  Exemptions are named in the artifact.
+- Enforcement: the iterate and integrate skills check language in their
+  review phases; a German artifact in a reviewed diff is a finding.
 - Every time stated in a chat reply is Europe/Berlin (user directive
   2026-10-22); convert UTC/server times before reporting.
 
