@@ -59,10 +59,12 @@ def locked-entries [] {
     $entries
 }
 
-# Fork clones that may be reachable on this machine (checked read-only).
+# Fork clones that may be reachable on this machine (checked read-only):
+# the managed sync clones first (tmp/vendor/<name> — vendor-sync's cache),
+# then the classic dev checkouts.
 def clone-path [fork: string]: nothing -> string {
     let name = ($fork | split row '/' | last)
-    let candidates = [$"../($name)" $"../../($name)" $"($env.HOME? | default '')/dev/($name)"]
+    let candidates = [$"tmp/vendor/($name)" $"../($name)" $"../../($name)" $"($env.HOME? | default '')/dev/($name)"]
     let found = ($candidates | where {|p| ($p | path exists) and (($p | path join '.git') | path exists) })
     if ($found | is-empty) { '' } else { $found | first }
 }
