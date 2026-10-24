@@ -100,9 +100,19 @@ RUN cargo chef prepare --recipe-path /recipe.json
 # workspace root — the skeleton does not carry it, so it is staged next
 # to the skeleton or cook dies inside progenitor.
 FROM base AS chef-cook
+# WORKDIR /src like the planner: the vendored fork crates ride in the
+# recipe as PATH packages with relative manifests (vendor/petri/...,
+# vendor/pebble/...) — resolved against the cook workspace root, they
+# must land in /src/vendor/... (fabro-eeee), not /vendor/....
+WORKDIR /src
 COPY --from=chef-plan /recipe.json ./
+# cargo-chef skeletons only the WORKSPACE members; the vendored fork
+# crates are excluded from the workspace (ADR-0034), so their real
+# manifests and sources must be present for cook to compile them
+# (fabro-eeee — the pre-vendoring git deps needed no such copy).
+COPY --from=chef-plan /src/vendor /src/vendor
 COPY --from=chef-plan /src/docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
-RUN cargo chef cook --all-targets --recipe-path /recipe.json
+RUN cargo chef cook --all-targets --recipe-path ./recipe.json
 
 FROM base AS final
 # Warm dependency layers: cooked target dir plus the registry/git caches
