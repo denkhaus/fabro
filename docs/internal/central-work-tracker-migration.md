@@ -362,9 +362,17 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
   @fabro/@agent -> lane:develop, @loop -> lane:loop, unassigned -> NO
   lane label = human triage; closed items full bodies, created and
   closed state_reason=completed; the `seeds:` label is the idempotency
-  key — 3 pilot items already exist); (4) freeze + archive: the JSONL
+  key — pilot items already exist); (4) freeze + archive: the JSONL
   moves to the tracker repo archive AND the in-tree .seeds file is
-  DELETED (no zombie copy); (5) host-script triage, three pots —
+  DELETED (no zombie copy). ARCHIVE LAYOUT (user directive 2026-10-25):
+  one subfolder per SOURCE repo — `archive/<owner>-<repo>/issues-<freeze-
+  date>.jsonl` — because this migration is the TEMPLATE for other
+  seed-tracker repos moving onto fabro, and every source keeps its own
+  namespace (`archive-seeds.nu`); the "3 pilot items" correction: the
+  2026-10-25 inventory shows TWO pilot migrations (#6 fabro-d5f0, #8
+  fabro-9337; #1/#2 were adapter-verify scratches), and they carry no
+  `seeds:` label — `retrofit-pilots.nu` brings them onto the canonical
+  form; (5) host-script triage, three pots —
   RETIRE the vacuous (push-gate integrity arm, dup-run-check seeds arm,
   close-claim-check), REWORK onto the CLI source (friction-score,
   salvage-sweep), UNTOUCHED (dep-pins/vendor/fixtures); (6) mini facet +
