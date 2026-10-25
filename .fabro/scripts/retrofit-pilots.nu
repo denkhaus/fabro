@@ -20,8 +20,8 @@ def main [
     # read races the rotation clock).
     let _ = (do { ^'/home/denkhaus/dev/fabro/target/debug/fabro' work --server $server claims --project $project } | complete)
     let pilots = [
-        {id: 'fabro-d5f0', number: 6, labels: ['project:fabro' 'prio:p2' 'revision' 'seeds:fabro-d5f0' 'type:task']}
-        {id: 'fabro-9337', number: 8, labels: ['project:fabro' 'prio:p2' 'residual' 'seeds:fabro-9337' 'type:task']}
+        {id: 'fabro-d5f0', number: 6, title: 'spec_paths extractor: expand {a,b,c} brace groups before the path filter', labels: ['project:fabro' 'prio:p2' 'revision' 'seeds:fabro-d5f0' 'type:task']}
+        {id: 'fabro-9337', number: 8, title: "Deferred follow-up from fabro-4653: extend prompt-lint's vendor-CLI check (check 9) scope from develop-onl", labels: ['project:fabro' 'prio:p2' 'residual' 'seeds:fabro-9337' 'type:task']}
     ]
     let token = (auth-token)
     for $p in $pilots {
@@ -39,9 +39,12 @@ def main [
         let lab = ($set_labels | do { gh api --method PUT $"repos/($repo)/issues/($p.number)/labels" --input - } | complete)
         print $"  labels: exit ($lab.exit_code) ($lab.stderr | str trim | str substring 0..120)"
 
-        # body: through the deployed server's update endpoint (POST — the
-        # route is work-items/update via post, not PATCH)
-        let payload = ({itemKey: $"($repo)#($p.number)", body: $body} | to json)
+        # body + title: through the deployed server's update endpoint (POST
+        # — the route is work-items/update via post, not PATCH). The title
+        # is part of the canonical form: the pilot's hand title must not
+        # survive as a second naming (verify diff found exactly that on
+        # fabro-9337).
+        let payload = ({itemKey: $"($repo)#($p.number)", title: $p.title, body: $body} | to json)
         let url = $"($server)/api/v1/projects/($project)/work-items/update"
         let patch = (try {
             let r = ($payload | http post --headers (auth-header) --full $url -t application/json)
