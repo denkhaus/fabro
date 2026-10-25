@@ -1,0 +1,632 @@
+use fabro_test::{fabro_json_snapshot, fabro_snapshot, test_context};
+use httpmock::MockServer;
+use serde_json::json;
+
+fn item_json(item_key: &str, title: &str, state: &str) -> serde_json::Value {
+    item_json_with_body(
+        item_key,
+        title,
+        state,
+        &format!("body of {item_key}\nsecond line"),
+    )
+}
+
+fn item_json_with_body(item_key: &str, title: &str, state: &str, body: &str) -> serde_json::Value {
+    json!({
+        "itemKey": item_key,
+        "title": title,
+        "body": body,
+        "state": state,
+        "labels": ["project:fabro", "lane:loop"],
+        "priority": 2,
+        "url": format!("https://github.com/{item_key}"),
+        "updatedAt": "2026-10-25T18:04:05Z"
+    })
+}
+
+fn project_json(lanes: &[(&str, &str)]) -> serde_json::Value {
+    json!({
+        "projectId": "fabro",
+        "displayName": "Fabro",
+        "trackerProvider": "github",
+        "trackerRepo": "denkhaus/work",
+        "targetRepo": "denkhaus/fabro",
+        "projectLabel": "project:fabro",
+        "laneLabels": lanes
+            .iter()
+            .map(|(lane, label)| ((*lane).to_string(), (*label).to_string()))
+            .collect::<std::collections::HashMap<_, _>>(),
+        "claimLabelPrefix": "fabro:run:",
+        "claimCommentEnabled": false,
+        "backpressureOpenPrCap": 0
+    })
+}
+
+#[test]
+fn help() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "--help"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Read and write work items and read their claims (ADR-0032)
+
+    Usage: fabro work [OPTIONS] <COMMAND>
+
+    Commands:
+      list    List a project's open work items
+      show    Show one work item, body included
+      create  File a new work item
+      close   Close a work item with a reason
+      claims  List a project's live claims
+      help    Print this message or the help of the given subcommand(s)
+
+    Options:
+          --json              Output as JSON [env: FABRO_JSON=]
+          --server <SERVER>   Fabro server target: http(s) URL or absolute Unix socket path [env: FABRO_SERVER=]
+          --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --quiet             Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose           Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help              Print help
+    ----- stderr -----
+    ");
+}
+
+#[test]
+fn create_help() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "create", "--help"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    File a new work item
+
+    Usage: fabro work create [OPTIONS] --project <PROJECT> --title <TITLE>
+
+    Options:
+          --json               Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>  Work project id
+          --debug              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --title <TITLE>      Item title
+          --body <BODY>        Item body
+          --no-upgrade-check   Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --body-file <PATH>   Read the item body from a file (`-` reads stdin)
+          --quiet              Suppress non-essential output [env: FABRO_QUIET=]
+          --lane <LANE>        Lane to file the item in (translated through the project's lane labels)
+          --verbose            Enable verbose output [env: FABRO_VERBOSE=]
+          --label <LABELS>     Raw tracker label; repeatable or comma-separated
+      -h, --help               Print help
+    ----- stderr -----
+    ");
+}
+
+#[test]
+fn show_help() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "show", "--help"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Show one work item, body included
+
+    Usage: fabro work show [OPTIONS] --project <PROJECT> <SELECTOR>
+
+    Arguments:
+      <SELECTOR>  Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+
+    Options:
+          --json               Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>  Work project id
+          --debug              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --no-upgrade-check   Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --quiet              Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose            Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help               Print help
+    ----- stderr -----
+    ");
+}
+
+#[test]
+fn list_renders_open_items_and_forwards_the_filters() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method("GET")
+            .path("/api/v1/projects/fabro/work-items")
+            .query_param("lane", "loop")
+            .query_param("limit", "10");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(
+                json!({ "data": [item_json("denkhaus/work#12", "a lane item", "open")] })
+                    .to_string(),
+            );
+    });
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop")]).to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "list",
+        "--project",
+        "fabro",
+        "--lane",
+        "loop",
+        "--limit",
+        "10",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    KEY               PRIO  STATE  LABELS                   TITLE       
+     denkhaus/work#12  2     open   project:fabro,lane:loop  a lane item
+    ----- stderr -----
+    ");
+
+    // The lane name is checked against the registry, and the filters travel
+    // as query parameters.
+    project.assert();
+    mock.assert();
+}
+
+#[test]
+fn list_refuses_an_unknown_lane_before_listing() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("develop", "lane:develop"), ("loop", "lane:loop")]).to_string());
+    });
+    let items = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro/work-items");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(json!({ "data": [] }).to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "list", "--project", "fabro", "--lane", "revisor"]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × work project fabro declares no lane "revisor" (declared lanes: develop, loop)
+    "#);
+
+    project.assert();
+    items.assert_calls(0);
+}
+
+#[test]
+fn list_refuses_a_limit_outside_the_api_range() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "list", "--project", "fabro", "--limit", "500"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: false
+    exit_code: 2
+    ----- stdout -----
+    ----- stderr -----
+    error: invalid value '500' for '--limit <LIMIT>': 500 is not in 1..=100
+
+    For more information, try '--help'.
+    ");
+}
+
+#[test]
+fn list_json_returns_the_items() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let mock = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro/work-items");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(
+                // A single-line body on purpose: the JSON snapshot filters
+                // normalize backslashes, which would turn a `\n` in the body
+                // into `/n` and make the snapshot read like a bug.
+                json!({
+                    "data": [item_json_with_body(
+                        "denkhaus/work#12",
+                        "a lane item",
+                        "open",
+                        "a single-line body"
+                    )]
+                })
+                .to_string(),
+            );
+    });
+    context.set_http_target(&server.base_url());
+
+    let output = context
+        .command()
+        .args(["--json", "work", "list", "--project", "fabro"])
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    fabro_json_snapshot!(context.filters(), value, @r#"
+    [
+      {
+        "body": "a single-line body",
+        "itemKey": "denkhaus/work#12",
+        "labels": [
+          "project:fabro",
+          "lane:loop"
+        ],
+        "priority": 2,
+        "state": "open",
+        "title": "a lane item",
+        "updatedAt": "[TIMESTAMP]",
+        "url": "https://github.com/denkhaus/work#12"
+      }
+    ]
+    "#);
+    mock.assert();
+}
+
+/// A bare number is repository-relative: the CLI reads the project row once
+/// and composes `denkhaus/work#12` before the item request.
+#[test]
+fn show_resolves_a_bare_number_against_the_project_tracker() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop")]).to_string());
+    });
+    let item = server.mock(|when, then| {
+        when.method("GET")
+            .path("/api/v1/projects/fabro/work-item")
+            .query_param("itemKey", "denkhaus/work#12");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#12", "a lane item", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "show", "--project", "fabro", "12"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    FIELD     VALUE                               
+     key       denkhaus/work#12                    
+     state     open                                
+     priority  2                                   
+     labels    project:fabro,lane:loop             
+     title     a lane item                         
+     url       https://github.com/denkhaus/work#12 
+     updated   2026-10-25T18:04:05+00:00
+
+    body of denkhaus/work#12
+    second line
+    ----- stderr -----
+    ");
+
+    project.assert();
+    item.assert();
+}
+
+/// A legacy id goes to the server unchanged: the migration-label seam
+/// (stage 1a) owns the resolution, so the CLI must not read the project row
+/// first.
+#[test]
+fn show_passes_a_legacy_id_through_without_a_project_lookup() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop")]).to_string());
+    });
+    let item = server.mock(|when, then| {
+        when.method("GET")
+            .path("/api/v1/projects/fabro/work-item")
+            .query_param("itemKey", "fabro-d5f0");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#6", "a migrated item", "closed").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "show", "--project", "fabro", "fabro-d5f0"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    FIELD     VALUE                              
+     key       denkhaus/work#6                    
+     state     closed                             
+     priority  2                                  
+     labels    project:fabro,lane:loop            
+     title     a migrated item                    
+     url       https://github.com/denkhaus/work#6 
+     updated   2026-10-25T18:04:05+00:00
+
+    body of denkhaus/work#6
+    second line
+    ----- stderr -----
+    ");
+
+    item.assert();
+    project.assert_calls(0);
+}
+
+#[test]
+fn show_refuses_a_selector_outside_the_three_shapes() {
+    let context = test_context!();
+    let server = MockServer::start();
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "show", "--project", "fabro", "denkhaus/work"]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × invalid work item selector "denkhaus/work": pass a full key (`owner/repo#12`), a bare number (`12`), or a legacy id (`fabro-d5f0`)
+    "#);
+}
+
+#[test]
+fn create_reads_the_body_from_a_file_and_translates_the_lane() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop")]).to_string());
+    });
+    let create = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items")
+            .body_includes("\"title\":\"a filed item\"")
+            .body_includes("line one\\nline two")
+            .body_includes("lane:loop")
+            .body_includes("residual");
+        then.status(201)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#13", "a filed item", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let body_path = context
+        .write_home("item-body.md", "line one\nline two\n")
+        .home_dir
+        .join("item-body.md");
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "create",
+        "--project",
+        "fabro",
+        "--title",
+        "a filed item",
+        "--body-file",
+        body_path.to_str().expect("utf-8 path"),
+        "--lane",
+        "loop",
+        "--label",
+        "residual",
+    ]);
+    // Text mode prints the new key alone so a script can capture it.
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    denkhaus/work#13
+    ----- stderr -----
+    ");
+
+    project.assert();
+    create.assert();
+}
+
+#[test]
+fn create_reads_the_body_from_stdin() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let create = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items")
+            .body_includes("piped body");
+        then.status(201)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#14", "piped", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "create",
+        "--project",
+        "fabro",
+        "--title",
+        "piped",
+        "--body-file",
+        "-",
+    ])
+    .write_stdin("piped body\n");
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    denkhaus/work#14
+    ----- stderr -----
+    ");
+
+    create.assert();
+}
+
+#[test]
+fn create_refuses_an_unknown_lane_before_writing() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("develop", "lane:develop"), ("loop", "lane:loop")]).to_string());
+    });
+    let create = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items");
+        then.status(201);
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "create",
+        "--project",
+        "fabro",
+        "--title",
+        "a filed item",
+        "--body",
+        "body",
+        "--lane",
+        "revisor",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × work project fabro declares no lane "revisor" (declared lanes: develop, loop)
+    "#);
+
+    project.assert();
+    create.assert_calls(0);
+}
+
+#[test]
+fn close_sends_the_reason_and_reports_the_key() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let close = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items/close")
+            .body_includes("denkhaus/work#12")
+            .body_includes("landed in 84caa6f98");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#12", "a lane item", "closed").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "close",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--reason",
+        "landed in 84caa6f98",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Closed denkhaus/work#12 (closed).
+    ");
+
+    close.assert();
+}
+
+#[test]
+fn claims_renders_the_live_queue() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let claims = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro/claims");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(
+                json!({
+                    "data": [{
+                        "claimId": "9ff5d7c8-1a6c-4f4e-9d2f-8f9e0f0b6a13",
+                        "projectId": "fabro",
+                        "itemKey": "denkhaus/work#12",
+                        "runId": "01M5SATCK7Z4XEGY6V0J4ZJQ03",
+                        "lane": "loop",
+                        "state": "awaiting_merge",
+                        "grantedAt": "2026-10-25T18:00:00Z",
+                        "updatedAt": "2026-10-25T18:10:00Z",
+                        "prUrl": "https://github.com/denkhaus/fabro/pull/496"
+                    }]
+                })
+                .to_string(),
+            );
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "claims", "--project", "fabro"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    CLAIM                                 ITEM              RUN                         LANE  STATE           GRANTED                    PR                                         
+     9ff5d7c8-1a6c-4f4e-9d2f-8f9e0f0b6a13  denkhaus/work#12  [ULID]  loop  awaiting_merge  2026-10-25T18:00:00+00:00  https://github.com/denkhaus/fabro/pull/496
+    ----- stderr -----
+    ");
+
+    claims.assert();
+}
+
+#[test]
+fn claims_reports_an_empty_ledger_without_failing() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let claims = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro/claims");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(json!({ "data": [] }).to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args(["work", "claims", "--project", "fabro"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    No live claims in project fabro.
+    ");
+
+    claims.assert();
+}

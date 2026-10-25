@@ -94,6 +94,7 @@ mod variable_rm;
 mod variable_set;
 mod version;
 mod wait;
+mod work;
 mod worker_auth;
 mod workflow;
 mod workflow_create;

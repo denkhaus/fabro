@@ -30,6 +30,7 @@ pub(crate) mod upgrade;
 pub(crate) mod validate;
 pub(crate) mod variable;
 pub(crate) mod version;
+pub(crate) mod work;
 pub(crate) mod workflow;
 
 use std::sync::Arc;

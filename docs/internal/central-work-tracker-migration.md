@@ -355,7 +355,8 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
 - **Seven-stage runbook (one window, ends in the fork.26 deploy):**
   (1) resolver seam (fabro_work_show resolves `seeds:fabro-xxxx` labels,
   show-only — list finds legacy ids by body text search anyway) + CLI
-  work commands; (2) dry-run against fabro-dryrun, gateway = FULL
+  work commands — **DONE 2026-10-25** (seam 84caa6f98, CLI see
+  "STAGE 1 STATUS" below); (2) dry-run against fabro-dryrun, gateway = FULL
   normalized diff of 0; (3) import (host nu script, checkpoint/resume,
   open-before-closed; open items carry lane labels per assignee mapping
   @fabro/@agent -> lane:develop, @loop -> lane:loop, unassigned -> NO
@@ -371,6 +372,59 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
   (claim -> PR -> merge -> close) exists as a bench row (the ADR-0023
   rescue rule); (7) toolchain rebuild without the seeds binary = the
   fork.26 deploy window.
+
+- **STAGE 1 STATUS (2026-10-25).** Half 1a landed as 84caa6f98 (the
+  resolver seam: the item read path resolves `seeds:<id>` labels). Half 1b
+  is `fabro work` in the CLI — the surface the host scripts will call. Every
+  verb REQUIRES `--project <id>` (user decision: no settings default, no env
+  fallback), so no script line can quietly read the wrong project:
+
+  | verb | arguments | wire |
+  |---|---|---|
+  | `list` | `--lane <name>`, `--limit`, `--query <text>` | `GET /projects/{id}/work-items` |
+  | `show <selector>` | — | `GET /projects/{id}/work-item?itemKey=…` |
+  | `create` | `--title`, `--body` or `--body-file <path>` (`-` = stdin), `--lane`, `--label` | `POST /projects/{id}/work-items` |
+  | `close <selector>` | `--reason <text>` | `POST /projects/{id}/work-items/close` |
+  | `claims` | — | `GET /projects/{id}/claims` |
+
+  - Selector grammar: `owner/repo#12` and a legacy id (`fabro-d5f0`,
+    optionally `seeds:fabro-d5f0`) travel to the server unchanged; a bare
+    `12` composes against the project's `trackerRepo`, the only shape that
+    needs the project row. Anything else is refused at the CLI boundary,
+    naming the three accepted shapes.
+  - `--lane` is a lane NAME, translated through the project's `laneLabels`;
+    an unknown lane is a hard error that lists the declared lanes, never a
+    silent raw label.
+  - An item body travels through `--body-file -` for real items: a tracker
+    body must not be spelled onto a shell command line.
+  - Two facts the bench probe measured, both binding for the script
+    rewiring in stage 5: the server adds `project.projectLabel` to every
+    create (an item is project-scoped by construction, so `list` finds it
+    without the caller naming that label), and GitHub's label-filtered
+    issue list converges about two seconds after a write (measured on
+    denkhaus/work#10..#12) — a script that creates and then lists must
+    poll, not assert on the first read.
+  - Proven by: 8 unit tests (selector grammar including the tightened legacy
+    shape, lane translation, body input), 16 IT tests under
+    `tests/it/cmd/work.rs` (httpmock wire pins for the five verbs, full-output
+    snapshots of every verb, help snapshots, and the two refusals that must
+    not reach the server), and the bench facet `P4 work CLI`
+    (`work-cli-checks` in fabro-test, first green 2026-10-25 on
+    denkhaus/work#15). A read-only live smoke ran against
+    `https://mirtuell.net` on 2026-10-25: `list` and `show` (bare number)
+    against project `fabro-proof`, `claims` (empty ledger), and project
+    `fabro` reporting no open items — correct until the import fills it. The
+    legacy-id branch stays wire-pinned only: no tracker item carries a
+    `seeds:` label before the import, so its live proof arrives with stage 3.
+  - One deviation from the settled design, recorded here so spec and code
+    agree: `show`'s head is the crate's `FIELD`/`VALUE` table (key, state,
+    priority, labels, title, url, updated) rather than a bare plain-text
+    block, with the body verbatim below it. The table is the shape every
+    other verb in this CLI prints, and `--json` remains the structured form.
+  - `.seeds` stays untouched: the nu scripts (friction-score,
+    salvage-sweep, push-gate, close-claim-check) move onto these verbs in
+    stage 5, after the facade proved itself — no deprecation hint, no
+    stderr warning in the meantime.
 
 - PRODUCTION EVIDENCE 2026-10-22 (fabro-36a2): three concurrent Loop runs
   (held-slot replay + two API-trigger fires that bypassed

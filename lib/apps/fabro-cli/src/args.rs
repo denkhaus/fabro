@@ -1502,6 +1502,8 @@ pub(crate) enum Commands {
     Automations(AutomationsNamespace),
     /// Manage the server's work-project registry
     Projects(ProjectsNamespace),
+    /// Read and write work items and read their claims (ADR-0032)
+    Work(WorkNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1626,6 +1628,13 @@ impl Commands {
             },
             Self::Projects(ns) => match &ns.command {
                 ProjectsCommand::Upsert(_) => "projects upsert",
+            },
+            Self::Work(ns) => match &ns.command {
+                WorkCommand::List(_) => "work list",
+                WorkCommand::Show(_) => "work show",
+                WorkCommand::Create(_) => "work create",
+                WorkCommand::Close(_) => "work close",
+                WorkCommand::Claims(_) => "work claims",
             },
             Self::Automations(ns) => match &ns.command {
                 AutomationsCommand::List(_) => "automations list",
@@ -2141,6 +2150,101 @@ pub(crate) struct ProjectsUpsertArgs {
     /// Print the declared projects without writing them
     #[arg(long)]
     pub(crate) dry_run: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: WorkCommand,
+}
+
+/// The work-item facade (ADR-0032 stage 1b): after the cutover this is the
+/// host's tracker read path, replacing the `.seeds` file reader. Every verb
+/// names its project explicitly — no settings default — so a script line
+/// always says which project it means.
+#[derive(Subcommand)]
+pub(crate) enum WorkCommand {
+    /// List a project's open work items
+    #[command(alias = "ls")]
+    List(WorkListArgs),
+    /// Show one work item, body included
+    Show(WorkShowArgs),
+    /// File a new work item
+    Create(WorkCreateArgs),
+    /// Close a work item with a reason
+    Close(WorkCloseArgs),
+    /// List a project's live claims
+    Claims(WorkClaimsArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct WorkListArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project: String,
+    /// Filter by lane name (the server translates it through the project's lane
+    /// labels)
+    #[arg(long)]
+    pub(crate) lane:    Option<String>,
+    /// Maximum items to return (1-100)
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+    pub(crate) limit:   Option<u32>,
+    /// Search title and body for these words, closed items included
+    #[arg(long)]
+    pub(crate) query:   Option<String>,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkShowArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkCreateArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:   String,
+    /// Item title
+    #[arg(long)]
+    pub(crate) title:     String,
+    /// Item body
+    #[arg(long, conflicts_with = "body_file")]
+    pub(crate) body:      Option<String>,
+    /// Read the item body from a file (`-` reads stdin)
+    #[arg(long, value_name = "PATH", conflicts_with = "body")]
+    pub(crate) body_file: Option<PathBuf>,
+    /// Lane to file the item in (translated through the project's lane labels)
+    #[arg(long)]
+    pub(crate) lane:      Option<String>,
+    /// Raw tracker label; repeatable or comma-separated
+    #[arg(long = "label", value_delimiter = ',')]
+    pub(crate) labels:    Vec<String>,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkCloseArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+    /// Closing reason, posted as the item's close comment
+    #[arg(long)]
+    pub(crate) reason:   String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkClaimsArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project: String,
 }
 
 #[derive(Args)]

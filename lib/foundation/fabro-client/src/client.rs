@@ -1692,6 +1692,22 @@ impl Client {
         Ok(response.into_inner().data)
     }
 
+    /// One configured work-item project. The host CLI needs the row itself
+    /// to compose short item selectors and to translate lanes into the
+    /// project's lane labels before a create.
+    pub async fn retrieve_work_project(&self, project_id: &str) -> Result<types::WorkProject> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .retrieve_work_project()
+                    .project_id(project_id.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        convert_type(response.into_inner())
+    }
+
     /// Create or replace a work project's tracker configuration
     /// (fabro-f1a9: the settings-declared registry's runbook hammer).
     pub async fn upsert_work_project(
@@ -1882,6 +1898,22 @@ impl Client {
             })
             .await?;
         Ok(response.into_inner())
+    }
+
+    /// The project's live claims — the queue view the host reads instead of
+    /// scanning run PRs: granted, active and awaiting_merge claims with the
+    /// item, the run, the lane and the claim's PR url.
+    pub async fn list_work_claims(&self, project_id: &str) -> Result<Vec<types::WorkClaim>> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .list_work_claims()
+                    .project_id(project_id.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner().data)
     }
 
     /// Release a claim back to the queue.
