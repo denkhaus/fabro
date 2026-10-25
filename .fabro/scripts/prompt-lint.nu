@@ -117,17 +117,22 @@ def trailing-newline-errors [f] {
     }
 }
 
-# check 9 (ADR-0032 phase 3): DEVELOP-workflow assets must not name the
-# tracker CLI's command forms or a forge client — the develop line runs
-# on the engine-mediated work-item tools (`fabro_work_*`), and a prompt
-# or graph that names a vendor command is either rot from the pre-tool
-# era or a regression. Scoped to .fabro/workflows/develop/** EXCLUDING
-# its scripts/ dir: the shared scripts (tracker-guard, claim-check,
-# evidence, closeout, preflight) still serve the seeds-based loop lane
-# through their lane flags — one file plus a lane flag (ADR-0008), the
-# vendor commands are their loop-mode implementation. Errors.
-def develop-files [] {
+# check 9 (ADR-0032 phase 3): develop AND loop workflow assets must not
+# name the tracker CLI's command forms or a forge client — both lines
+# run on the engine-mediated work-item tools (`fabro_work_*`), and a
+# prompt or graph that names a vendor command is either rot from the
+# pre-tool era or a regression. The loop lane joined the scope once the
+# shared scripts stopped serving the loop lane's seeds-based nodes
+# (fabro-786a, 2026-10-25: tracker-guard/claim-check left the loop
+# graph, no loop node speaks the seeds protocol anymore). Scoped to
+# .fabro/workflows/{develop,loop}/** EXCLUDING each workflow's
+# scripts/ dir: the shared scripts (tracker-guard, claim-check,
+# evidence, closeout, preflight) keep their vendor commands as the
+# seeds-protocol implementation for the surfaces that still use them —
+# one file plus a lane flag (ADR-0008). Errors.
+def vendor-cli-files [] {
     (glob .fabro/workflows/develop/**/*)
+    | append (glob .fabro/workflows/loop/**/*)
     | where {|p| (not ($p | str contains '/scripts/')) and ($p | path type) == 'file'}
 }
 
@@ -135,10 +140,10 @@ def vendor-cli-errors [f] {
     let text = (open --raw $f)
     mut errors = []
     for m in ($text | parse --regex '\bseeds (?<cmd>ready|list|show|create|close|update|search)\b') {
-        $errors = ($errors | append $"($f): tracker-CLI command 'seeds ($m.cmd)' in a develop asset — the develop line runs on the fabro_work_* tools per ADR-0032; the shared scripts' loop-mode commands live in scripts/, out of this check's scope")
+        $errors = ($errors | append $"($f): tracker-CLI command 'seeds ($m.cmd)' in a develop/loop asset — the develop and loop lines run on the fabro_work_* tools per ADR-0032; the shared scripts' seeds-protocol commands live in scripts/, out of this check's scope")
     }
     for m in ($text | parse --regex '(?m)(?:^|\s)`?gh\s+(?<cmd>[a-z-]+)') {
-        $errors = ($errors | append $"($f): forge-client command 'gh ($m.cmd)' in a develop asset — no forge client anywhere in the line's assets per ADR-0019/ADR-0032; use the run tools")
+        $errors = ($errors | append $"($f): forge-client command 'gh ($m.cmd)' in a develop/loop asset — no forge client anywhere in the lines' assets per ADR-0019/ADR-0032; use the run tools")
     }
     $errors
 }
@@ -183,9 +188,10 @@ def main [] {
     }
 
     # 9. ADR-0032 phase 3: no tracker-CLI / forge-client commands in
-    # develop assets (prompts, graph, toml, schemas — scripts excluded:
-    # the shared scripts' loop mode is still seeds-based by design).
-    for f in (develop-files) {
+    # develop or loop assets (prompts, graph, toml, schemas — scripts
+    # excluded: the shared scripts' seeds-protocol implementation lives
+    # there by design).
+    for f in (vendor-cli-files) {
         $errors = ($errors | append (vendor-cli-errors $f))
     }
 
