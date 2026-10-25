@@ -68,10 +68,13 @@ digraph Loop {
         max_retries=1
     ]
 
-    // Planner: same shape as develop's, meta focus. The tracker claim is
-    // the node's only write (fs_write pins the tracker file); loop
-    // assets stay hidden from FILE TOOLS (shell reads are the documented
-    // path for judging seed-basis against assets).
+    // Planner: same shape as develop's, meta focus. The claim is the
+    // fabro_work_next tool grant (engine-mediated, server-side mutex) —
+    // the planner writes NOTHING to the tree (ADR-0032 phase 3: the
+    // tracker left the fs envelope entirely; the frozen tracker file
+    // goes back behind the hide list). Loop assets stay hidden from
+    // FILE TOOLS (shell reads are the documented path for judging
+    // seed-basis against assets).
     planner [
         label="Planner",
         prompt="@prompts/planner.md",
@@ -82,9 +85,8 @@ digraph Loop {
         reasoning_effort="low",
         x.preamble_stages_ignore="planner,implementer,evidence",
         x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
-        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
-        x.fs_write=".seeds/issues.jsonl,.seeds/config.yaml",
-        x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_verdict,journal",
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
+        x.context_allow_keys="current_seed_id,current_seed_title,current_seed_brief,current_item_json,review_verdict,journal",
         // fabro_run_set_title (fabro-9711/ADR-0030): refine this run's
         // title to the claimed item right after the grant. The
         // fabro_work_* catalog (ADR-0032 phase 3) is the planner's whole
@@ -164,12 +166,15 @@ digraph Loop {
 
     // Evidence: the develop script with --lane loop — loop assets ARE
     // the review scope; out-of-lane paths surface in the anomaly
-    // section for the reviewer to adjudicate.
+    // section for the reviewer to adjudicate. ADR-0032 phase 3: stdin
+    // is the granted-item packet (current_item_json, planner-forwarded
+    // from its fabro_work_next tool result) — the capture resolves spec
+    // and diff base for EXACTLY this run's item (develop's wiring).
     evidence [
         label="Evidence",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/evidence.nu --lane loop",
-        stdin_source="current_seed_id",
+        script="nu .fabro/workflows/develop/scripts/evidence.nu --lane loop --work-item",
+        stdin_source="current_item_json",
         timeout="2m",
         max_retries=1
     ]
@@ -208,15 +213,28 @@ digraph Loop {
         retry_policy="standard"
     ]
 
-    // Closeout: the develop script with --lane loop — closes exactly
-    // this run's seed (stdin), residual/deferred sweeps file @loop.
+    // Closeout: post-approval bookkeeping (ADR-0010), ADR-0032 phase 3
+    // agent form (develop's wiring): closing is fabro_work_close and
+    // filing is fabro_work_create — engine-mediated tools no host
+    // script can call. The nu script stays the deterministic decision
+    // core (closeout.nu --work-item --plan-only --lane loop derives the
+    // filing plan from the stage journal mechanically; the lane label
+    // puts every filed residual back into THIS lane's queue), and this
+    // low-effort stage only executes the plan through the tools.
     closeout [
         label="Closeout",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/closeout.nu --lane loop",
-        stdin_source="current_seed_id",
-        timeout="1m",
-        max_retries=1
+        prompt="@prompts/closeout.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=3,
+        retry_policy="standard",
+        reasoning_effort="low",
+        x.preamble_stages_ignore="planner,implementer,reviewer,closeout",
+        // Read-only + shell (runs the plan script, greps the journal);
+        // writes stay denied — the tracker mutations are all tools.
+        x.tools="read_file,grep,glob,shell",
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
+        x.fabro_tools="fabro_work_close,fabro_work_create,fabro_work_list"
     ]
 
     start -> env_guard

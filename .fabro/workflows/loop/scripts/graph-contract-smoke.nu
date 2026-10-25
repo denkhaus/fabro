@@ -16,9 +16,18 @@
 #   4. preflight -> planner ("Preflight done") edge EXISTS.
 #   5. planner -> exit ("Already landed") edge EXISTS.
 #   6. Lane wiring: tracker_guard and preflight script lines carry
-#      --assignee loop; evidence and closeout carry --lane loop — a
-#      dropped flag would silently work @fabro's queue / capture the
-#      product review scope.
+#      --assignee loop; evidence carries --lane loop --work-item with
+#      stdin_source=current_item_json (the granted-item packet); closeout
+#      is the ADR-0032 agent form — prompt @prompts/closeout.md, the
+#      fabro_work_close/create/list tool surface, and the prompt's plan
+#      command carries closeout.nu --work-item --plan-only --lane loop
+#      (the lane label routes filed residuals back into THIS lane's
+#      queue; a dropped flag would silently work @fabro's queue / lose
+#      the residuals).
+#   6b. The planner forwards the granted-item packet: x.context_allow_keys
+#      names current_item_json (the evidence stage reads it from stdin;
+#      the e47c allow-keys lint drops undeclared keys — a missing entry
+#      silently starves evidence).
 #   7. Implementer envelope: x.fs_write names EXACTLY the loop-asset
 #      set (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) plus
 #      the fabro-dot snapshot dir (fabro-9973 — the one lib/ exception,
@@ -86,11 +95,40 @@ def main [] {
     if not ($lines | any {|l| ($l | str contains 'planner-preflight.nu') and ($l | str contains '--assignee loop')}) {
         fail 'preflight script line lost --assignee loop'
     }
-    if not ($lines | any {|l| ($l | str contains 'evidence.nu') and ($l | str contains '--lane loop')}) {
-        fail 'evidence script line lost --lane loop (product review scope would ship)'
+    if not ($lines | any {|l| ($l | str contains 'evidence.nu') and ($l | str contains '--lane loop') and ($l | str contains '--work-item')}) {
+        fail 'evidence script line lost --lane loop --work-item (product review scope / legacy seed protocol would ship)'
     }
-    if not ($lines | any {|l| ($l | str contains 'closeout.nu') and ($l | str contains '--lane loop')}) {
-        fail 'closeout script line lost --lane loop (residuals would file @fabro)'
+    let estart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'evidence ['} | get -o index | first | default null)
+    if $estart == null { fail 'evidence node not found' }
+    let eend = ($lines | enumerate | where {|e| ($e.index > $estart) and (($e.item | str trim) == ']')} | get -o index | first | default null)
+    if $eend == null { fail 'evidence node block not terminated' }
+    let eblock = ($lines | skip ($estart + 1) | take ($eend - $estart - 1))
+    if not ($eblock | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
+        fail 'evidence stdin_source lost current_item_json (the packet plumbing)'
+    }
+    # closeout agent form (ADR-0032 phase 3): prompt + work tools on the
+    # node, the plan command with --lane loop in the prompt file
+    if not ($lines | any {|l| ($l | str contains 'closeout') and ($l | str contains '@prompts/closeout.md')}) {
+        fail 'closeout node lost @prompts/closeout.md (agent form is the ADR-0032 wiring)'
+    }
+    if not ($lines | any {|l| ($l | str contains 'x.fabro_tools="fabro_work_close,fabro_work_create,fabro_work_list"')}) {
+        fail 'closeout node lost the fabro_work_close/create/list tool surface'
+    }
+    let closeout_prompt = ('.fabro/workflows/loop/prompts/closeout.md' | path expand)
+    if not ($closeout_prompt | path exists) { fail $"closeout prompt missing: ($closeout_prompt)" }
+    let ptext = (open --raw $closeout_prompt)
+    if not (($ptext | str contains 'closeout.nu --work-item --plan-only --lane loop')) {
+        fail 'closeout prompt lost the plan command (--work-item --plan-only --lane loop — residuals would file @fabro or land unlaned)'
+    }
+
+    # 6b. planner packet plumbing
+    let pstart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'planner ['} | get -o index | first | default null)
+    if $pstart == null { fail 'planner node not found (6b)' }
+    let pend = ($lines | enumerate | where {|e| ($e.index > $pstart) and (($e.item | str trim) == ']')} | get -o index | first | default null)
+    if $pend == null { fail 'planner node block not terminated (6b)' }
+    let pblock = ($lines | skip ($pstart + 1) | take ($pend - $pstart - 1))
+    if not ($pblock | any {|l| ($l | str trim | str starts-with 'x.context_allow_keys=') and ($l | str contains 'current_item_json')}) {
+        fail 'planner x.context_allow_keys lost current_item_json — the e47c lint would drop the packet and starve evidence'
     }
 
     # 7. implementer envelope pins

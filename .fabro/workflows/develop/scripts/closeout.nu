@@ -471,7 +471,7 @@ def sweep-exemption-arms [seed_id: string, run_id: string, journal_path: string]
 # from a loop run are loop-asset follow-ups (@loop); product residuals
 # stay @fabro. Passed by the calling graph's script line; deterministic
 # via the run's workflow spec.
-def main [--lane: string = "product", --work-item, --plan-only, --item-key: string, --run-id: string]: nothing -> nothing {
+def main [--lane: string = "", --work-item, --plan-only, --item-key: string, --run-id: string]: nothing -> nothing {
     # ADR-0032 phase 3 (develop, fork 7 + fork 8): PLAN-ONLY mode — the
     # tracker mutations (fabro_work_create / fabro_work_close) are
     # engine-mediated tools a host script cannot call (scrubbed worker
@@ -482,6 +482,11 @@ def main [--lane: string = "product", --work-item, --plan-only, --item-key: stri
     # deferred-action markers, EXEMPTION arms — titles, bodies, labels
     # ready for fabro_work_create. The agent owns the fork-8 fresh
     # filing-time dedupe (fabro_work_list query=<run-id>) and the close.
+    # Lane labels: a lane that passes --lane <name> gets
+    # lane:<name> on every filed plan entry, so its residuals re-enter
+    # THAT lane's work_next queue (the tracker grant filter requires the
+    # lane label). An empty --lane (develop's default) files unlaned —
+    # human triage, the landed develop behavior.
     if $work_item {
         if not $plan_only {
             print -e "closeout: --work-item without --plan-only is not a thing — work-item mode only derives the plan (the closeout agent executes it via fabro_work_* tools)"
@@ -492,6 +497,7 @@ def main [--lane: string = "product", --work-item, --plan-only, --item-key: stri
             print -e "closeout: --work-item --plan-only needs --item-key (this run's granted item)"
             exit 2
         }
+        let lane_labels = (if ($lane | is-empty) { [] } else { [$"lane:($lane)"] })
         let rid = (if ($run_id | default "" | str trim | is-empty) { current-run-id } else { $run_id | str trim })
         let journal_path = $".fabro/journal/($rid).jsonl"
         let findings = (journal-nonblocking $journal_path)
@@ -500,13 +506,13 @@ def main [--lane: string = "product", --work-item, --plan-only, --item-key: stri
         let plan = {itemKey: $key,
                     runId: $rid,
                     journal: $journal_path,
-                    findings: ($findings | each {|f| {title: (finding-title $f $key), body: $"Reviewer non-blocking residual from ($key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($f)\"\n\nOrigin: reviewer journal of run ($rid), closed item ($key).\nBasis: run ($rid), closed item ($key)", labels: ["residual"]}}),
-                    deferred: ($deferred | each {|a| {title: (deferred-title $a $key), body: $"Deferred human follow-up disclosed while implementing ($key).\n\nAction: \"($a)\"\n\nOrigin: implementer journal of run ($rid), deferred-action marker observation.\nBasis: run ($rid), closed item ($key)", labels: ["residual"]}}),
+                    findings: ($findings | each {|f| {title: (finding-title $f $key), body: $"Reviewer non-blocking residual from ($key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($f)\"\n\nOrigin: reviewer journal of run ($rid), closed item ($key).\nBasis: run ($rid), closed item ($key)", labels: (["residual"] | append $lane_labels)}}),
+                    deferred: ($deferred | each {|a| {title: (deferred-title $a $key), body: $"Deferred human follow-up disclosed while implementing ($key).\n\nAction: \"($a)\"\n\nOrigin: implementer journal of run ($rid), deferred-action marker observation.\nBasis: run ($rid), closed item ($key)", labels: (["residual"] | append $lane_labels)}}),
                     exemptions: ($exemptions | each {|arm|
                         let etext = (exemption-text $arm)
                         {title: (exemption-title $etext $key),
                          body: $"Deferred user/infra action the run exempted while implementing ($key).\n\nAction: \"($etext)\"\n\nOrigin: planner journal of run ($rid), EXEMPTION marker observation.\nBasis: run ($rid), closed item ($key)",
-                         labels: ["ops" "residual"]}})}
+                         labels: (["ops" "residual"] | append $lane_labels)}})}
         $plan | to json --raw | print
         return
     }
