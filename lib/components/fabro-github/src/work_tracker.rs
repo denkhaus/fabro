@@ -159,6 +159,40 @@ impl GitHubTracker {
             .ok_or_else(|| anyhow::anyhow!("work item key must be owner/repo#number: {item_key}"))
     }
 
+    /// Resolve a legacy `.seeds` id through its migration label: exactly
+    /// one issue carrying `seeds:<id>` (the importer's parity report
+    /// guarantees zero duplicates), any state — closed migrated items stay
+    /// resolvable for the dedupe and basis lookups that cite them.
+    async fn resolve_legacy_id(
+        &self,
+        project: &WorkProject,
+        legacy_id: &str,
+    ) -> anyhow::Result<Option<WorkItem>> {
+        let label = if legacy_id.starts_with("seeds:") {
+            legacy_id.to_string()
+        } else {
+            format!("seeds:{legacy_id}")
+        };
+        let hits = self
+            .search_items(
+                project,
+                &WorkItemFilter {
+                    lane:  None,
+                    limit: 5,
+                    query: None,
+                },
+                &format!("label:\"{label}\""),
+            )
+            .await?;
+        match hits.len() {
+            0 => Ok(None),
+            1 => Ok(hits.into_iter().next()),
+            n => anyhow::bail!(
+                "legacy id {legacy_id} resolves to {n} issues labeled {label} — duplicate seeds labels (the importer's parity report guarantees zero)"
+            ),
+        }
+    }
+
     fn project_lane_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
         let mut labels = vec![project.project_label.clone()];
         if let Some(lane) = filter.lane.as_deref() {
@@ -317,7 +351,23 @@ impl TrackerProvider for GitHubTracker {
     }
 
     async fn get(&self, project: &WorkProject, item_key: &str) -> anyhow::Result<Option<WorkItem>> {
-        let number = Self::issue_number(item_key)?;
+        let number = match Self::issue_number(item_key) {
+            Ok(number) => number,
+            Err(parse_error) => {
+                // Legacy-id resolver (ADR-0032 phase 4, grill amendment
+                // 2026-10-21): the importer stamps `seeds:fabro-xxxx` on
+                // every migrated issue — the label replaces the mapping
+                // file, and this seam keeps every `fabro-xxxx` reference
+                // in migrated bodies resolvable. The bare form namespaces
+                // itself; an explicit `seeds:` prefix passes through.
+                // Anything else stays the parse error (never a silent
+                // miss).
+                if item_key.starts_with("fabro-") || item_key.starts_with("seeds:") {
+                    return self.resolve_legacy_id(project, item_key).await;
+                }
+                return Err(parse_error);
+            }
+        };
         let value = self.list_issue_json(project, number).await?;
         Ok(self.json_item(&value).filter(|item| {
             item.labels
@@ -624,5 +674,102 @@ mod tests {
             .expect("the open-list arm resolves");
         listed.assert_calls_async(1).await;
         assert!(items.is_empty());
+    }
+
+    fn search_hit(number: u64, label: &str) -> serde_json::Value {
+        serde_json::json!({
+            "number": number, "title": format!("Migrated {label}"), "body": "b",
+            "state": "closed",
+            "labels": [{"name": "project:fabro"}, {"name": label}],
+            "html_url": format!("u{number}"), "updated_at": "2026-10-25T10:00:00Z"
+        })
+    }
+
+    #[tokio::test]
+    async fn legacy_id_resolves_through_the_seeds_label() {
+        let server = httpmock::MockServer::start_async().await;
+        // The bare fabro-xxxx form namespaces itself into the
+        // seeds:fabro-xxxx label qualifier (grill amendment 2026-10-21),
+        // and a closed migrated issue stays resolvable — dedupe and
+        // basis lookups cite closed items.
+        let searched = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .header("User-Agent", "fabro")
+                    .query_param(
+                        "q",
+                        "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"seeds:fabro-d5f0\"",
+                    )
+                    .query_param("per_page", "5");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 1,
+                    "items": [search_hit(42, "seeds:fabro-d5f0")]
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let item = tracker
+            .get(&project(), "fabro-d5f0")
+            .await
+            .expect("legacy resolution runs")
+            .expect("exactly one labeled issue resolves");
+        assert_eq!(item.item_key, "denkhaus/work#42");
+        searched.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn duplicate_seeds_labels_are_an_error_never_a_guess() {
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/search/issues");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 2,
+                    "items": [
+                        search_hit(41, "seeds:fabro-d5f0"),
+                        search_hit(42, "seeds:fabro-d5f0")
+                    ]
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let error = tracker
+            .get(&project(), "fabro-d5f0")
+            .await
+            .expect_err("duplicate labels must error");
+        assert!(
+            error.to_string().contains("duplicate seeds labels"),
+            "the error names the class: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unresolvable_legacy_id_is_not_found_and_junk_still_errors() {
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET).path("/search/issues");
+                then.status(200)
+                    .json_body(serde_json::json!({"total_count": 0, "items": []}));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        assert!(
+            tracker
+                .get(&project(), "fabro-zzzz")
+                .await
+                .expect("zero hits resolve cleanly")
+                .is_none(),
+            "an unresolvable legacy id is Not Found, never an error"
+        );
+        let junk = tracker
+            .get(&project(), "junk")
+            .await
+            .expect_err("malformed keys keep the parse error");
+        assert!(
+            junk.to_string().contains("owner/repo#number"),
+            "the teaching error survives: {junk}"
+        );
     }
 }

@@ -343,6 +343,35 @@ in the 2026-10-21 judgment log). Chosen path and rejected alternatives:
 
 ## Phase 5 — Cutover
 
+**GRILL RECORD 2026-10-25 (4 rounds, 18 questions, user GO on all; Jev
+pre-screen logged, framing-bias named). The settled design MERGES Phase
+4+5 into ONE cutover window — no sync, no coexistence:**
+
+- **No sync script.** The user's early-retirement decision dissolves the
+  drift problem: the import is a FINAL state transfer and .seeds dies at
+  the cutover. The fabro CLI becomes the facade over work items
+  (list/show/create/close/claims) — engine owns truth and dedup, host nu
+  scripts drive the CLI; gh is NOT the session path.
+- **Seven-stage runbook (one window, ends in the fork.26 deploy):**
+  (1) resolver seam (fabro_work_show resolves `seeds:fabro-xxxx` labels,
+  show-only — list finds legacy ids by body text search anyway) + CLI
+  work commands; (2) dry-run against fabro-dryrun, gateway = FULL
+  normalized diff of 0; (3) import (host nu script, checkpoint/resume,
+  open-before-closed; open items carry lane labels per assignee mapping
+  @fabro/@agent -> lane:develop, @loop -> lane:loop, unassigned -> NO
+  lane label = human triage; closed items full bodies, created and
+  closed state_reason=completed; the `seeds:` label is the idempotency
+  key — 3 pilot items already exist); (4) freeze + archive: the JSONL
+  moves to the tracker repo archive AND the in-tree .seeds file is
+  DELETED (no zombie copy); (5) host-script triage, three pots —
+  RETIRE the vacuous (push-gate integrity arm, dup-run-check seeds arm,
+  close-claim-check), REWORK onto the CLI source (friction-score,
+  salvage-sweep), UNTOUCHED (dep-pins/vendor/fixtures); (6) mini facet +
+  seeds binary retire TOGETHER, but ONLY after the full-chain probe
+  (claim -> PR -> merge -> close) exists as a bench row (the ADR-0023
+  rescue rule); (7) toolchain rebuild without the seeds binary = the
+  fork.26 deploy window.
+
 - PRODUCTION EVIDENCE 2026-10-22 (fabro-36a2): three concurrent Loop runs
   (held-slot replay + two API-trigger fires that bypassed
   `on_overlap=skip`) each claimed the same seed `fabro-3d9a` through the
