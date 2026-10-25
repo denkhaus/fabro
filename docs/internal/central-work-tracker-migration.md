@@ -383,6 +383,36 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
   rescue rule); (7) toolchain rebuild without the seeds binary = the
   fork.26 deploy window.
 
+- **STAGE 4b+5 STATUS (2026-10-26) — `.seeds` IS GONE.** Landed as one
+  breath (8c64a816c, pushed through the retired-arm gate): the host
+  scripts left the store in the same change that deleted it.
+  - RETIRED: push-gate's integrity arm (item identity is the issue
+    number; the duplicate-id class is structurally gone), close-claim-
+    check + smoke + battery entry (the tracker owns closes, the ledger
+    owns in-flight).
+  - REWORKED onto the tracker: friction-score (gh census for the item
+    enumeration — the facade pages at 100; claims via facade;
+    migrated items count with Original-Created/-Closed trailer times,
+    window metrics count native events only; live score 0.551 grind),
+    salvage-sweep (pointer check via `work list --query`, filing via
+    `work create`), qualitygate's seed-spec-paths (the run's item
+    resolves from the claim ledger; e2e fixtures stub a work shim),
+    dup-run-check's tracker arm (legacy labels via gh label search
+    until the facade seam ships with fork.26), prompt-lint's
+    resolvable-id tier (one gh census per run).
+  - UNTOUCHED: self-contained fixture batteries, dep-pins, vendor, the
+    `fabro seeds` PRODUCT verb, the cutover tools. The seeds HOST pin
+    (.mise.toml) stays until stage 7.
+  - Proof: battery-runner all green (23 + lint-nu) against the
+    store-less tree; tree binary (work verb) installed to
+    ~/.fabro/bin/fabro.
+  - REMAINING before the line may run again (manual-trigger holds):
+    the in-sandbox workflow-asset rewrite (develop/loop/revisor onto
+    the run tools — planner-preflight already shows the granted-item
+    form), then stage 6 (fabro-test mini off the seeds closeout + the
+    full-chain bench row) and stage 7 (toolchain without the seeds
+    binary = fork.26; gh is already image-free per ADR-0019).
+
 - **STAGE 2+3 STATUS (2026-10-25/26 night) — THE IMPORT IS DONE.** Both
   gateways passed; the tracker is the truth for all 974 items (973 seeds
   + fabro-4fb4, the import window's own item). Evidence:
