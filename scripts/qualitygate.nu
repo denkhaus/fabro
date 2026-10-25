@@ -339,58 +339,65 @@ export def spec-paths-missing [named: list<string>, diff: list<string>]: nothing
     $named | where {|p| $p not-in $diff}
 }
 
-# Pure: the in_progress ids among a `seeds list --assignee loop`
-# issues payload — the claimable resolution core (exported for the
-# fixture battery).
-export def in-progress-loop-seeds [issues: list<any>]: nothing -> list<string> {
-    $issues
-    | where {|i| (($i | get -o status | default '') == 'in_progress') and (($i | get -o assignee | default '') == 'loop')}
-    | get -o id
-    | default []
+# Pure: the item this run holds a live claim on, from a
+# `fabro work claims --project fabro --json` payload — the claimable
+# resolution core (exported for the fixture battery). A run holds at most
+# one live claim per project (ADR-0032); zero or many is ambiguity the
+# gate cannot attribute.
+export def claimed-item-for-run [claims: list<any>, run_id: string]: nothing -> string {
+    let mine = ($claims
+        | where {|c| (($c | get -o runId | default '') == $run_id)}
+        | get -o itemKey
+        | default [])
+    if (($mine | length) == 1) { $mine | first } else { '' }
 }
 
-# Deterministic seed-spec path verdict: resolve the run's claimed seed
-# (explicit --seed wins — the manual probe arm; otherwise the tracker's
-# in_progress loop-assigned set, where exactly one id means THE seed and
-# zero/many is ambiguity the gate cannot attribute), extract the
-# spec-named loop-asset paths, and RED on any named path the run diff
-# does not touch. Fail-open on the tier's own tooling errors (seeds CLI
-# failure, JSON surprise, unresolvable seed) — a broken probe must not
-# RED a sound diff (lane convention).
+# Deterministic seed-spec path verdict: resolve the run's claimed work
+# item (explicit --seed wins — the manual probe arm; otherwise the run's
+# live claim on the tracker, zero/many is ambiguity the gate cannot
+# attribute), extract the spec-named loop-asset paths from the item
+# body, and RED on any named path the run diff does not touch. Fail-open
+# on the tier's own tooling errors (work CLI failure, JSON surprise,
+# unresolvable item) — a broken probe must not RED a sound diff (lane
+# convention). NOTE: legacy-id --seed values resolve once the server
+# seam ships with fork.26; until then pass full keys.
 def "main check-seed-spec-paths" [--seed: string = ""]: nothing -> nothing {
     let base = (run-base)
     if not $base.grounded {
         print "seed-spec-paths base ungrounded: interactive or pre-checkpoint, diffing working tree"
     }
     let diff = (run-diff-paths $base)
+    let run_id = (
+        current-branch
+        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
+        | get -o id.0
+        | default ''
+    )
     let seed = (if ($seed | is-not-empty) {
         $seed
     } else {
-        let list = (do { ^seeds list --format json --assignee loop --limit 200 } | complete)
+        let list = (do { ^fabro work --server https://mirtuell.net claims --project fabro --json } | complete)
         if $list.exit_code != 0 {
-            print "seed-spec-paths: seeds list failed — skipping (fail-open)"
+            print "seed-spec-paths: work claims failed — skipping (fail-open)"
             ""
         } else {
-            let issues = (try { $list.stdout | from json | get -o issues } catch { [] })
-            let claimed = (in-progress-loop-seeds $issues)
+            let claims = (try { $list.stdout | from json } catch { [] })
+            let claimed = (claimed-item-for-run $claims $run_id)
             if ($claimed | is-empty) {
-                print "seed-spec-paths: no in_progress loop-assigned seed — skipping (fail-open)"
+                print "seed-spec-paths: no live claim for this run — skipping (fail-open)"
                 ""
-            } else if (($claimed | length) == 1) {
-                $claimed | first
             } else {
-                print $"seed-spec-paths: ($claimed | length) in_progress loop-assigned seeds \(($claimed | str join ', ')\) — cannot attribute this run's seed, skipping \(fail-open\)"
-                ""
+                $claimed
             }
         }
     })
     if ($seed | is-empty) { return }
-    let show = (do { ^seeds show $seed --format json } | complete)
+    let show = (do { ^fabro work --server https://mirtuell.net show --project fabro $seed --json } | complete)
     if $show.exit_code != 0 {
-        print $"seed-spec-paths: seeds show ($seed) failed — skipping \(fail-open\)"
+        print $"seed-spec-paths: work show ($seed) failed — skipping \(fail-open\)"
         return
     }
-    let desc = (try { $show.stdout | from json | get -o issue.description | default '' } catch { '' })
+    let desc = (try { $show.stdout | from json | get -o body | default '' } catch { '' })
     let named = (spec-named-loop-paths $desc)
     if ($named | is-empty) {
         print $"== seed-spec-paths [($seed)] — spec names no loop-asset paths, tier idle =="

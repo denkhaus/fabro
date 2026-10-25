@@ -2,7 +2,7 @@
 # prompt-lint: synthetic-seed-ids
 # Seed-spec path fixtures (fabro-8a60): the pure core of the
 # check-seed-spec-paths tier — spec-named-loop-paths extraction,
-# spec-paths-missing, in-progress-loop-seeds — over decisive canned
+# spec-paths-missing, claimed-item-for-run — over decisive canned
 # shapes, plus the end-to-end RED/GREEN arms of the subcommand over a
 # scratch git fixture (run branch + checkpoint subject, the
 # run-scope-fixtures pattern). The tier's purpose is the incident
@@ -138,37 +138,43 @@ if (spec-paths-missing ["scripts/qualitygate.nu"] ["scripts/qualitygate.nu"]) !=
     fail "fully-touched diff must miss nothing"
 }
 
-# ── seed resolution: in-progress loop-assigned ids ─────────────────────
-let issues = ([
-    {id: "fabro-0001" status: "open" assignee: "loop"}
-    {id: "fabro-0002" status: "in_progress" assignee: "loop"}
-    {id: "fabro-0003" status: "in_progress" assignee: "someone"}
-    {id: "fabro-0004" status: "closed" assignee: "loop"}
+# ── item resolution: this run's live claim ────────────────────────────
+let claims = ([
+    {runId: "01JOTHER" itemKey: "denkhaus/work#101"}
+    {runId: "01JMINE0" itemKey: "denkhaus/work#102"}
 ])
-if (in-progress-loop-seeds $issues) != ["fabro-0002"] {
-    fail "resolution must keep exactly the in_progress loop-assigned id"
+if (claimed-item-for-run $claims "01JMINE0") != "denkhaus/work#102" {
+    fail "resolution must return the item this run holds a claim on"
 }
-if (in-progress-loop-seeds []) != [] {
-    fail "empty issues payload resolves nothing"
+if (claimed-item-for-run $claims "01JNONE0") != "" {
+    fail "a run without a live claim resolves nothing"
+}
+let ambiguous = ([
+    {runId: "01JMINE0" itemKey: "denkhaus/work#102"}
+    {runId: "01JMINE0" itemKey: "denkhaus/work#103"}
+])
+if (claimed-item-for-run $ambiguous "01JMINE0") != "" {
+    fail "two claims on one run are ambiguity, not a guess"
 }
 
 # ── end-to-end: the subcommand REDs on an empty diff and greens when
 # the named path is touched, over a scratch git fixture (run branch +
 # checkpoint subject, the run-scope-fixtures pattern) and a canned
-# `seeds` executable planted on PATH (the tracker is not reachable from
-# a battery — the fake answers `show`/`list` with the same JSON shapes).
+# `fabro` work-facade shim planted on PATH (the tracker is not reachable
+# from a battery — the fake answers the claims/show calls with the same
+# JSON shapes; cutover stage 5, denkhaus/work#988).
 let tmp = (mktemp -d -t seed-spec-paths.XXXX)
 mkdir $"($tmp)/bin"
 (
     "#!/bin/sh
-case \"$1 $2\" in
-  'show fabro-f1x2') echo '{\"success\":true,\"issue\":{\"id\":\"fabro-f1x2\",\"status\":\"in_progress\",\"assignee\":\"loop\",\"description\":\"Extend scripts/qualitygate.nu and .fabro/workflows/loop/scripts/loop-gate.nu with the seed-spec path tier.\"}}'; exit 0;;
-  'list --format') echo '{\"success\":true,\"issues\":[{\"id\":\"fabro-f1x2\",\"status\":\"in_progress\",\"assignee\":\"loop\"}]}'; exit 0;;
+case \"\$*\" in
+  *' claims --project fabro --json'*) echo '[{\"claimId\":\"c1\",\"projectId\":\"fabro\",\"itemKey\":\"denkhaus/work#701\",\"runId\":\"FIXTURERUN\",\"lane\":\"loop\",\"state\":\"active\",\"grantedAt\":\"2026-10-26T00:00:00Z\",\"updatedAt\":\"2026-10-26T00:00:00Z\",\"prUrl\":null}]'; exit 0;;
+  *' show --project fabro denkhaus/work#701 --json'*) echo '{\"itemKey\":\"denkhaus/work#701\",\"title\":\"fixture\",\"body\":\"Extend scripts/qualitygate.nu and .fabro/workflows/loop/scripts/loop-gate.nu with the seed-spec path tier.\",\"state\":\"open\",\"labels\":[],\"priority\":2,\"url\":\"\",\"updatedAt\":\"2026-10-26T00:00:00Z\"}'; exit 0;;
 esac
-echo 'fake seeds: unsupported' >&2; exit 1"
-    | save $"($tmp)/bin/seeds"
+echo 'fake fabro: unsupported' >&2; exit 1"
+    | save $"($tmp)/bin/fabro"
 )
-^chmod +x $"($tmp)/bin/seeds"
+^chmod +x $"($tmp)/bin/fabro"
 $env.PATH = ($env.PATH | prepend $"($tmp)/bin")
 cd $tmp
 ^git init --quiet .
@@ -221,15 +227,15 @@ if not ($green.stdout | str contains 'seed-spec-paths green') {
 print "PASS (all named paths touched -> green)"
 
 # Fail-open arm: the tracker call itself fails -> exit 0, tier skipped.
-rm $"($tmp)/bin/seeds"
+rm $"($tmp)/bin/fabro"
 let fo = (do { ^nu $QUALITYGATE check-seed-spec-paths } | complete)
 if $fo.exit_code != 0 {
-    fail $"seeds CLI failure must fail open, got exit \($fo.exit_code\)"
+    fail $"work CLI failure must fail open, got exit \($fo.exit_code\)"
 }
 if not ($fo.stdout | str contains 'fail-open') {
     fail "fail-open arm must say so"
 }
-print "PASS (seeds CLI failure fails open)"
+print "PASS (work CLI failure fails open)"
 cd /
 rm -rf $tmp
 print "seed-spec-paths fixtures green"

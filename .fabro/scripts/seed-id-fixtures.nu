@@ -64,7 +64,6 @@ def main [] {
     let base = (mktemp -d)
     let red_root = ($base | path join 'red')
     mkdir ($red_root | path join '.fabro' 'scripts')
-    cp -r ('.seeds' | path expand) ($red_root | path join '.seeds')
     $"# fixture\n# see ($DEAD_FAMILY) for detail\n" | save --force ($red_root | path join '.fabro' 'scripts' 'family-fixtures.nu')
     let red = (do { ^nu -c $"cd '($red_root)'; nu '($LINT)'" } | complete)
     if $red.exit_code == 0 { fail $"prompt-lint stayed green on the unresolvable family literal ($DEAD_FAMILY)" }
@@ -75,7 +74,6 @@ def main [] {
 
     let green_root = ($base | path join 'green')
     mkdir ($green_root | path join '.fabro' 'scripts')
-    cp -r ('.seeds' | path expand) ($green_root | path join '.seeds')
     $"# fixture\n# see ($REAL_FAMILY) for detail\n" | save --force ($green_root | path join '.fabro' 'scripts' 'family-fixtures.nu')
     let green = (do { ^nu -c $"cd '($green_root)'; nu '($LINT)'" } | complete)
     if $green.exit_code != 0 { fail $"prompt-lint red on the RESOLVABLE family literal ($REAL_FAMILY): ($green.stdout + $green.stderr)" }

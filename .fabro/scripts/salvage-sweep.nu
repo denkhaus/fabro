@@ -45,7 +45,10 @@ def main [
       print $"salvage:none ($run.run_id) — no noteworthy work"
       continue
     }
-    let known = (do { ^seeds search $run.run_id --limit 5 } | complete)
+    # Known-pointer check through the tracker: the facade's text search
+    # reaches closed items too, so an already-filed pointer (open OR
+    # closed) suppresses a re-file (cutover stage 5, denkhaus/work#988).
+    let known = (do { ^fabro work --server $server list --project fabro --query $run.run_id --json --limit 5 } | complete)
     if ($known.exit_code == 0 and ($known.stdout | str contains $run.run_id)) {
       print $"salvage:pointer-exists ($run.run_id)"
       continue
@@ -58,9 +61,9 @@ def main [
     let today = (date now | format date '%Y-%m-%d')
     let body = ('SALVAGE POINTER (fabro-f312 sweep, ' + $today + '): terminal run ' + $run.run_id + ' — ' + $goal_short + ' — carries noteworthy stranded work (' + ($analysis.changed | into string) + ' changed lines, ' + ($analysis.new_files | into string) + ' new files, ' + ($analysis.added_seeds | into string) + ' added seed records); affected seed: ' + $analysis.affected_seed + '. Export: FABRO_SERVER=' + $server + ' fabro dump --output <dir> ' + $run.run_id + '. Review the stage diffs, land the work via PR citing the run, then close this pointer.')
     let title = ('salvage: run ' + $run.run_id + ' carries noteworthy stranded work')
-    let filed = (do { ^seeds create --title $title --type task --priority 2 --labels salvage,revision --description $body } | complete)
-    if $filed.exit_code != 0 {
-      print -e $"salvage-sweep: seeds create failed for ($run.run_id) — ($filed.stderr | str substring 0..120)"
+    let filed = (do { $body | ^fabro work --server $server create --project fabro --title $title --body-file - --label salvage --label revision --label 'prio:p2' --label 'type:task' --json } | complete)
+    if ($filed.exit_code != 0) {
+      print -e $"salvage-sweep: work create failed for ($run.run_id) — ($filed.stderr | str substring 0..120)"
       print $"sweep:skip:file-failed ($run.run_id)"
       continue
     }

@@ -61,9 +61,9 @@ const FIXTURES_DIR = (path self | path dirname)
 # Assert helper: record one case result, abort the battery on mismatch.
 def expect [case: string, got, want] {
     if $got == $want {
-        print $"PASS \($case\): ($got)"
+        print $"PASS ($case): ($got)"
     } else {
-        print -e $"FAIL \($case\): got ($got), want ($want)"
+        print -e $"FAIL ($case): got ($got), want ($want)"
         exit 1
     }
 }
@@ -92,15 +92,6 @@ def check [script: path, id: string, self: string] {
 # the cutover, the self-exclusion in the in-flight arm never fired, and
 # case (j) regressed to naming the invoking run's own branch (the newest
 # unmerged claimant) instead of the live foreign run.
-def preflight [script: path, candidates: string, self: string] {
-    let out = (do { with-env {FABRO_RUN_ID: $self} { nu $script --base origin/main --candidates $candidates } } | complete)
-    if ($out.exit_code != 0) {
-        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
-        exit 1
-    }
-    $out.stdout | lines | last | from json
-}
-
 # Read one seed from the scratch seeds tracker via seeds (parsed issue
 # record; null on failure) — never parse .seeds/issues.jsonl by hand.
 def sd-stat [id: string] {
@@ -109,12 +100,23 @@ def sd-stat [id: string] {
 }
 
 # Fabricate one scratch-tracker row: the exact compact-JSON-per-line
-# shape seeds itself writes (verified against seeds init/create output), for
-# the (l)-(n) live close-arm cases.
+# shape seeds itself writes (verified against seeds init/create output) —
+# planner-preflight's description reads (anchor + stranded-scan arms)
+# still resolve through the scratch store until the workflow-asset
+# rewrite lands.
 def fixture-row [id: string, status: string] {
     # concat, not $"($id)" interpolation: the literal parentheses around
     # the id are part of the expected description body.
     {id: $id, title: ("fixture " + $id), status: $status, type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: ("fixture body (" + $id + ")")} | to json --raw
+}
+
+def preflight [script: path, candidates: string, self: string] {
+    let out = (do { with-env {FABRO_RUN_ID: $self} { nu $script --base origin/main --candidates $candidates } } | complete)
+    if ($out.exit_code != 0) {
+        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
+        exit 1
+    }
+    $out.stdout | lines | last | from json
 }
 
 def main [] {
@@ -319,16 +321,48 @@ def main [] {
         let j2row = ($j2.context_updates | get 'output.preflight' | get candidates | first)
         expect 'j: merged run branch never marks' $j2row.in_flight false
 
-        # (l)-(n) fabro-83df report-only: scratch seeds tracker in the
-        # work clone (CWD) — seeds resolves .seeds relative to CWD. The
-        # script must NEVER write it: duplicates of every shape route
-        # "Preflight done" as advisory verdicts and the rows stay
-        # untouched (the planner owns decisions and closures).
+        # (l)-(n) fabro-83df report-only: TWO tracker surfaces now —
+        # dup-run-check resolves each candidate's legacy label through gh
+        # (cutover stage 5, denkhaus/work#988; the battery plants a gh
+        # shim whose answers live in state files, one per fixture id,
+        # content open/closed), while planner-preflight still reads
+        # candidate DESCRIPTIONS from the scratch seeds store (the
+        # workflow-asset rewrite is its own unit) — so both live here
+        # until that rewrite lands. The script must NEVER mutate either:
+        # duplicates of every shape route "Preflight done" as advisory
+        # verdicts and the planner owns decisions and closures.
         seeds init | ignore
         [(fixture-row 'fabro-fix-0003' 'open')
          (fixture-row 'fabro-fix-0009' 'closed')
          (fixture-row 'fabro-fix-0010' 'open')
          (fixture-row 'fabro-fix-0012' 'open')] | save --append .seeds/issues.jsonl
+        let gh_dir = ($scratch | path join 'gh-states')
+        let gh_bin = ($scratch | path join 'bin')
+        mkdir $gh_dir
+        mkdir $gh_bin
+        ('open' | save ($gh_dir | path join 'fabro-fix-0003'))
+        ('closed' | save ($gh_dir | path join 'fabro-fix-0009'))
+        ('open' | save ($gh_dir | path join 'fabro-fix-0010'))
+        ('open' | save ($gh_dir | path join 'fabro-fix-0012'))
+        # case q's closure-identity pair: both closed in the scratch
+        # store; the verdict split comes from the closing trailers
+        ('closed' | save ($gh_dir | path join 'fabro-fix-0030'))
+        ('closed' | save ($gh_dir | path join 'fabro-fix-0031'))
+        (
+    '#!/bin/sh
+# fixture gh shim: answers the legacy-label state lookup from state files
+for id in $(ls "$GH_STATES" 2>/dev/null); do
+  case "$*" in *"seeds:$id"*) cat "$GH_STATES/$id"; exit 0;; esac
+done
+echo missing'
+            | save ($gh_bin | path join 'gh')
+        )
+        ^chmod +x ($gh_bin | path join 'gh')
+        $env.PATH = ($env.PATH | prepend $gh_bin)
+        $env.GH_STATES = $gh_dir
+        def gh-state [id: string] {
+          open --raw ($gh_dir | path join $id)
+        }
 
         # (l) mixed batch: clean top, trackerless duplicate, non-top
         # duplicate — all route "Preflight done", nothing closes, no
@@ -344,8 +378,8 @@ def main [] {
         expect 'l: legend maps duplicate' ($lrep.legend.duplicate | str contains 'merge-target base') true
         expect 'l: legend maps clean' ($lrep.legend.clean | str contains 'no landed implementation') true
         expect 'l: legend maps degraded' ($lrep.legend.degraded | str contains 'check failed') true
-        expect 'l: clean top stays open' (sd-stat 'fabro-fix-0003').status 'open'
-        expect 'l: non-top duplicate stays open' (sd-stat 'fabro-fix-0010').status 'open'
+        expect 'l: clean top stays open' (gh-state 'fabro-fix-0003') 'open'
+        expect 'l: non-top duplicate stays open' (gh-state 'fabro-fix-0010') 'open'
 
         # (m) ambiguous duplicate: fix009 is tracker-closed with no
         # landed implementation and no closing evidence — verdict
@@ -356,10 +390,7 @@ def main [] {
         let mrep = ($m.context_updates | get 'output.preflight')
         expect 'm: ambiguous duplicate verdict reported' ($mrep.candidates | first | get verdict) 'duplicate'
         expect 'm: ambiguous duplicate sha null' ($mrep.candidates | first | get sha) null
-        let mrow = (sd-stat 'fabro-fix-0009')
-        expect 'm: tracker description untouched' $mrow.description 'fixture body (fabro-fix-0009)'
-        expect 'm: no spurious closeReason' ($mrow | get -o closeReason | default null) null
-        expect 'm: status still closed (fixture state)' $mrow.status 'closed'
+        expect 'm: tracker state file untouched' (gh-state 'fabro-fix-0009') 'closed'
 
         # (n) top-position duplicate with resolvable sha: the strongest
         # already-landed signal that USED to auto-close — it still only
@@ -369,7 +400,7 @@ def main [] {
         expect 'n: top duplicate routes to planner' $n.preferred_next_label 'Preflight done'
         let nrep = ($n.context_updates | get 'output.preflight')
         expect 'n: duplicate sha still reported' (($nrep.candidates | first | get sha | default null | str length) >= 7) true
-        expect 'n: tracker shows top seed still open' (sd-stat 'fabro-fix-0012').status 'open'
+        expect 'n: tracker shows top seed still open' (gh-state 'fabro-fix-0012') 'open'
 
         # (s1)-(s5) fabro-a8d5 stranded-implementation scan: salvage
         # pointers in candidate descriptions are verified mechanically —

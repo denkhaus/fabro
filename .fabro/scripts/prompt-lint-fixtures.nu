@@ -2,9 +2,11 @@
 # prompt-lint fixture battery (fabro-cb5c): the SYNTHETIC_IDS_MARKER in
 # prompt-lint.nu suspends ONE check (resolvable seed ids) for ONE file, so
 # the suspension itself needs a pin. This battery runs the REAL lint — no
-# re-implementation — inside throwaway roots in the system temp dir: a
-# copied `.seeds/` makes `seeds show` resolve exactly as it does in the
-# repo, and the fixture files are the only lint targets in scope.
+# re-implementation — inside throwaway roots in the system temp dir: the
+# resolvable-id tier reads the work tracker's legacy labels through the gh
+# census (absolute), so a dead fixture id reds and the real migrated id
+# below resolves exactly as it does in the repo, and the fixture files are
+# the only lint targets in scope.
 #
 #   nu .fabro/scripts/prompt-lint-fixtures.nu
 #
@@ -44,7 +46,10 @@ def fail [what: string]: nothing -> nothing {
 def new-root [base: string, name: string]: nothing -> string {
     let root = ($base | path join $name)
     mkdir ($root | path join '.fabro' 'scripts')
-    cp -r ('.seeds' | path expand) ($root | path join '.seeds')
+    # no tracker store is staged: the resolvable-id tier reads the work
+    # tracker's legacy labels through the gh census (absolute, any cwd —
+    # cutover stage 5, denkhaus/work#988), so a dead id reds and a real
+    # migrated id resolves without any .seeds in the fixture root
     $root
 }
 

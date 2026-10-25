@@ -269,16 +269,22 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
     for id in $ids {
         mut tracker_status = "unknown"
         mut tracker_note = ""
-        let sd_ok = ((which seeds | length) > 0)
-        if $sd_ok {
-            let s = (do { seeds show $id --format json } | complete)
-            if $s.exit_code == 0 {
-                $tracker_status = ($s.stdout | from json | get issue.status? | default "unknown")
+        # Tracker status through the work tracker (cutover stage 5,
+        # denkhaus/work#988): the migrated item's `seeds:fabro-xxxx` label
+        # resolves the id, gh reads the issue state — label search works
+        # today; the facade's legacy-id seam (fork.26) can replace the gh
+        # call later. Unknown stays fail-open (a broken lookup must not
+        # fake a verdict).
+        let gh_state = (do { gh api --method GET 'search/issues' -f q=('repo:denkhaus/work is:issue label:"seeds:' + $id + '"') -f per_page=1 --jq '.items | if (length) > 0 then .[0].state else "missing" end' } | complete)
+        if $gh_state.exit_code == 0 {
+            let state = ($gh_state.stdout | str trim)
+            if $state in ['open' 'closed'] {
+                $tracker_status = $state
             } else {
-                $tracker_note = "seeds show failed — tracker check skipped"
+                $tracker_note = "tracker item not found by legacy label"
             }
         } else {
-            $tracker_note = "seeds absent — tracker check skipped"
+            $tracker_note = "tracker lookup failed — tracker check skipped"
         }
 
         if $fetch.exit_code != 0 {

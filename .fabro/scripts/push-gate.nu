@@ -33,37 +33,13 @@ def main [
         print $"GATE OPEN: ($branch) is not the line branch — the run gate is denkhaus-scoped (2026-09-21)"
         exit 0
     }
-    # (c) tracker integrity, READ-ONLY: the .seeds JSONL must parse, carry
-    # no duplicate ids and no blank lines (2026-10-14 incident: a rebase
-    # hand-merge produced a duplicate id + 859 blank lines and downstream
-    # JSON parsing stayed green because JSON tolerates surrounding
-    # whitespace — the user caught it by eye). Local and cheap, so it runs
-    # before the server/PR checks.
-    let issues = '.seeds/issues.jsonl'
-    if not ($issues | path exists) {
-        print $"GATE REFUSED: ($issues) missing — the tracker is part of the line"
-        exit 1
-    }
-    let raw_lines = (open --raw $issues | lines)
-    let blank = ($raw_lines | where {|l| $l | str trim | is-empty } | length)
-    if $blank > 0 {
-        print $"GATE REFUSED: ($blank) blank lines in ($issues) — normalize the tracker before pushing"
-        exit 1
-    }
-    # String-basis id scan (parse/regex only): JSON parse errors would
-    # travel as sticky pipeline errors past try/catch in nu, so the gate
-    # never asks from json to throw — a line not starting with the id
-    # shape IS the corruption signal.
-    let recs = ($raw_lines | each {|l| $l | parse --regex '^\{"id":"(?<id>[^"]+)' } | flatten)
-    if (($raw_lines | length) != ($recs | length)) {
-        print $"GATE REFUSED: ($issues) has records without a leading id — fix the tracker before pushing"
-        exit 1
-    }
-    let dups = ($recs | get id | uniq --count | where count > 1)
-    if ($dups | length) > 0 {
-        print $"GATE REFUSED: duplicate tracker ids: ($dups | get value | str join ', ') — run seeds dedupe and review the merge"
-        exit 1
-    }
+    # (c) RETIRED 2026-10-26 (cutover stage 5, denkhaus/work#988): the
+    # .seeds integrity arm. The tracker moved to work items
+    # (denkhaus/work; .seeds deleted in the same change, its archive at
+    # denkhaus/work/archive/denkhaus-fabro/) — the 2026-10-14 duplicate-id
+    # class is structurally gone: item identity is GitHub's issue number,
+    # and the importer's parity report plus the verify gateway own the
+    # one-time equivalence proof. Re-checks live in the claims view below.
     let terminal = ['succeeded' 'failed' 'canceled' 'cancelled']
     let ps = (do { ^fabro ps --server $server --json } | complete)
     if $ps.exit_code != 0 {

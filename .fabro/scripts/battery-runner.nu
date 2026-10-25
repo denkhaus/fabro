@@ -74,11 +74,12 @@ const SMOKES = [
     # journal, deferred-action and exemption-arm sweep. Same finding —
     # unregistered until fabro-8b38.
     '.fabro/workflows/develop/scripts/closeout-smoke.nu'
-    # close-claim battery (fabro-2a3b): the close-claim-check core over
-    # the incident fixture pair — a subject claiming a close the tracker
-    # never recorded is a finding; remainder/residual/file phrasings
-    # stay quiet. The LIVE check runs in the session's line watch.
-    '.fabro/scripts/close-claim-check-smoke.nu'
+    # close-claim battery RETIRED 2026-10-26 (cutover stage 5,
+    # denkhaus/work#988): close-claim-check guarded commit subjects
+    # claiming a seeds close the file tracker never saw; the tracker is
+    # now the work-item server (closes go through it or never exist) and
+    # the claim ledger owns in-flight state — the check's question is
+    # structurally answered.
     # prompt-lint marker battery (fabro-cb5c): the synthetic-fixture-id
     # marker must silence ONLY its own file — the check keeps teeth on
     # unmarked files and every other prompt-lint check stays live on a

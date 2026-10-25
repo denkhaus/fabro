@@ -130,6 +130,23 @@ def trailing-newline-errors [f] {
 # evidence, closeout, preflight) keep their vendor commands as the
 # seeds-protocol implementation for the surfaces that still use them —
 # one file plus a lane flag (ADR-0008). Errors.
+# The resolved legacy-id set on the tracker: every `seeds:fabro-xxxx`
+# label across the project's items, read once per lint run through gh
+# (host, read-only, paginated — the facade's legacy-id seam ships with
+# fork.26; until then label membership is the same answer, cutover
+# stage 5, denkhaus/work#988).
+def tracker-known-ids []: nothing -> list<string> {
+    let run = (do { gh api --paginate 'repos/denkhaus/work/issues?state=all&labels=project%3Afabro&per_page=100' --jq '.[].labels[].name' } | complete)
+    if $run.exit_code != 0 {
+        print -e $"prompt-lint: tracker census failed: ($run.stderr | str trim | str substring 0..160)"
+        exit 1
+    }
+    $run.stdout
+    | lines
+    | where {|l| ($l | str trim | str starts-with 'seeds:')}
+    | each {|l| $l | str trim | str replace -r '^seeds:' ''}
+}
+
 def vendor-cli-files [] {
     (glob .fabro/workflows/develop/**/*)
     | append (glob .fabro/workflows/loop/**/*)
@@ -196,6 +213,9 @@ def main [] {
     }
 
     let justfile_lines = (if ('justfile' | path exists) { open --raw justfile | lines } else { [] })
+    # one census for the whole run: the resolvable-id tier checks label
+    # membership, not per-id lookups
+    let known_ids = (tracker-known-ids)
 
     for f in $files {
         let text = (open --raw $f)
@@ -221,11 +241,7 @@ def main [] {
             print $"note: ($f) declares synthetic fixture ids — resolvable-id check skipped for ($skipped | length) ids: ($skipped | str join ', ')"
         } else {
             for full in (seed-ids-in $text) {
-                # sd -> seeds cutover (2026-09-26): the Rust tracker CLI is
-                # `seeds` on PATH everywhere now (host + toolchain image);
-                # exit codes match (0 resolves, 1 not found).
-                let s = (do { seeds show $full --format json } | complete)
-                if $s.exit_code != 0 {
+                if not ($full in $known_ids) {
                     $errors = ($errors | append $"($f): seed id '($full)' does not resolve in the tracker")
                 }
             }
