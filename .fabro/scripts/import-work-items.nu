@@ -232,10 +232,15 @@ def work-call [
     loop {
         if $run.exit_code == 0 { break }
         let err = ($run.stderr | str trim)
-        let rate = ($err | str contains 'rate limit') or ($err | str contains '403') or ($err | str contains 'secondary limit') or ($err | str contains 'abuse')
+        # PRIMARY rate exhaustion (5k/hr per installation) resets up to an
+        # hour out — wait in 5-minute steps. Secondary/abuse signals clear
+        # in ~70s.
+        let primary = ($err | str contains 'rate limit exceeded')
+        let rate = $primary or ($err | str contains 'rate limit') or ($err | str contains '403') or ($err | str contains 'secondary limit') or ($err | str contains 'abuse')
         if (not $rate) or ($attempt >= $retries) { break }
-        print -e $"  rate-limited, attempt ($attempt); sleeping 70s: ($err | str substring 0..120)"
-        sleep 70sec
+        let wait = (if $primary { 300sec } else { 70sec })
+        print -e $"  rate-limited, attempt ($attempt); sleeping ($wait): ($err | str substring 0..120)"
+        sleep $wait
         $attempt = ($attempt + 1)
         $run = (run-once $fabro $server $args $stdin)
     }
@@ -312,12 +317,16 @@ def run-import [
 }
 
 def close-one [fabro: string, server: string, project: string, key: string, p: record]: nothing -> bool {
-    let args = (if ($p.close_reason | is-empty) {
-        ['close' '--project' $project $key]
+    # `reason` is required by the API schema (and the CLI mirrors it), so a
+    # closed item with no recorded reason closes with the standard
+    # placeholder — the canonical body carries the truth (no close-reason
+    # section); the comment is the tracker-side close note.
+    let reason = (if ($p.close_reason | is-empty) {
+        'Closed at the .seeds freeze; no close reason recorded.'
     } else {
-        ['close' '--project' $project $key '--reason' $p.close_reason]
+        $p.close_reason
     })
-    let run = (work-call $fabro $server $args)
+    let run = (work-call $fabro $server ['close' '--project' $project $key '--reason' $reason])
     if $run.exit_code != 0 {
         print -e $"  CLOSE FAILED ($p.id) ($key): ($run.stderr | str trim | str substring 0..200)"
         return false
