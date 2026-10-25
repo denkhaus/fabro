@@ -166,7 +166,11 @@ def canonical [item: record, freeze_commit: string]: nothing -> record {
     }
     {
         id: $item.id
-        title: $item.title
+        # GitHub strips surrounding whitespace from issue titles — the
+        # canonical form trims first so the stored title IS canonical
+        # (dry-run finding: the only 2 diffs of the first gateway run
+        # were trailing spaces, fabro-21a5 / fabro-41fa).
+        title: ($item.title | str trim)
         status: $item.status
         priority: $prio
         labels: $labels
@@ -372,7 +376,9 @@ def run-verify [
     mut n = 0
     for $t in $targets {
         $n = ($n + 1)
-        let run = (do { ^$fabro work --server $server show --project $project $t.key --json } | complete)
+        # read through work-call: primary-limit exhaustion backs off in
+        # 5-minute steps instead of counting as a read failure
+        let run = (work-call $fabro $server ['show' '--project' $project $t.key '--json'])
         if $run.exit_code != 0 {
             $read_failures = ($read_failures | append {id: $t.expected.id, key: $t.key, error: ($run.stderr | str trim | str substring 0..160)})
             continue
@@ -396,6 +402,7 @@ def run-verify [
             $diffs = ($diffs | append {id: $t.expected.id, field: 'priority', want: ($t.expected.priority | into string), got: ($item.priority | into string)})
         }
         if ($n mod 50) == 0 { print $"  ... ($n) read back" }
+        sleep 150ms
     }
 
     # label-search spot check: the stage-1a seam resolves through label
