@@ -38,30 +38,33 @@ digraph Loop {
         max_retries=0
     ]
 
-    // Tracker guard: the develop script with --assignee loop — one file,
-    // a fix lands once (stage-journal sharing pattern). Drained
-    // loop-queue fast exit costs zero planner tokens; the stale-claim
-    // requeue arm re-assigns to 'loop'. The lane flag is pinned by the
-    // loop graph-contract smoke.
-    tracker_guard [
-        label="Tracker guard: empty loop-queue fast exit + stale-claim requeue",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/tracker-guard.nu --assignee loop",
-        output_schema="routing",
-        timeout="30s",
-        max_retries=0
-    ]
+    // ADR-0032 phase 3 (fabro-786a): the tracker_guard node is GONE —
+    // its shell drained-tracker check reads the legacy .seeds queue
+    // while the lane claims work items behind the server (the worker
+    // env is scrubbed, no CLI surface exists). The split-brain burned a
+    // full planner pass on 2026-10-23 (run 01M5KNGHH0Z: guard said
+    // "non-empty" from .seeds while the central tracker binding was
+    // dead). The drained case is the planner's fabro_work_next empty
+    // outcome routing "Tracker empty" (one cheap LLM call, no dead
+    // script arm) — develop's shape. The tracker-guard.nu script and
+    // its smoke retire with this node (no graph references remain).
 
-    // Planner preflight: the develop script with --assignee loop — same
-    // already-landed report, same anchor/in-flight arms, loop candidates.
-    // envelope_risk is LANE-SCOPED (fabro-bd55): product lanes flag
-    // loop-asset/external surfaces (ce525b8a7 skips them); THIS lane
-    // flags PRODUCT surfaces — the misroute detector the planner
-    // prompt's surface router adjudicates.
+    // Planner preflight (ADR-0032 phase 3, fabro-786a): the develop
+    // script in --work-item mode, sitting AFTER the planner (develop's
+    // topology) — stdin is the granted-item packet the planner
+    // forwarded (current_item_json); a missing/malformed packet IS the
+    // fabro-c42f claim-contract failure (the retired claim_check node's
+    // id-presence arm folded in here). The already-landed verdict runs
+    // over the item key; anchor/basis/salvage flags are advisory.
+    // envelope_risk stays LANE-SCOPED via --assignee loop (fabro-bd55):
+    // THIS lane flags PRODUCT surfaces — the misroute detector the
+    // planner prompt's surface router adjudicates.
+
     preflight [
-        label="Planner preflight: already-landed check (loop queue)",
+        label="Claim preflight: granted-item already-landed + anchor report",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu --assignee loop",
+        script="nu .fabro/workflows/develop/scripts/planner-preflight.nu --work-item --assignee loop",
+        stdin_source="current_item_json",
         output_schema="routing",
         x.context_allow_keys="output.preflight",
         timeout="2m",
@@ -97,19 +100,14 @@ digraph Loop {
         x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close"
     ]
 
-    // Claim-contract gate (fabro-c42f stopgap): the shared develop script
-    // is lane-agnostic — it proves current_seed_id arrived and (fabro-4c81
-    // path gate) that the claimed seed body's cited repo paths resolve in
-    // the worktree; a stale body bounces the planner to correct the
-    // tracker row before the pass may proceed.
-    claim_check [
-        label="Claim check: seed id + body path contract",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/claim-check.nu",
-        stdin_source="current_seed_id",
-        timeout="30s",
-        max_retries=0
-    ]
+    // Claim-contract gate (fabro-c42f stopgap): RETIRED with fabro-786a —
+    // its id-presence arm folded into the preflight node (the packet
+    // validation is the contract now, develop's shape) and its spec-paths
+    // emission lives on in the tester's seed-spec-paths tier through the
+    // shared lib (.fabro/scripts/lib/spec_paths.nu). The claim-check.nu
+    // script and its smoke retire with this node (no graph references
+    // remain; the 2026-10-24 arm-1 fix rode its final lap as the 9986
+    // acceptance).
 
     // Implementer: edits the loop's own machinery. fs_write pins EXACTLY
     // the loop-asset set (the smoke pins the pair against
@@ -238,10 +236,7 @@ digraph Loop {
     ]
 
     start -> env_guard
-    env_guard -> tracker_guard
-    tracker_guard -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    tracker_guard -> preflight [label="Tracker non-empty"]
-    preflight -> planner [label="Preflight done"]
+    env_guard -> planner
 
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
     planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
@@ -252,9 +247,14 @@ digraph Loop {
     // and reset the breaker on every rate-limited pass.
     planner -> exit        [x.kind="soft", label="Planner failed (next run re-enters)", condition="outcome=failed"]
     planner -> evidence [label="Verification-only", condition="preferred_label=\"Verification-only\""]
-    planner -> claim_check [label="Seed claimed"]
-    claim_check -> implementer [label="Seed id present"]
-    claim_check -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
+    // Contract retry (fabro-c42f class): a planner response that
+    // validates routing but drops its context_updates bounces at the
+    // preflight's packet validation — re-entering the planner gives the
+    // claim a second chance instead of parking the pass (graph
+    // max_node_visits caps the loop).
+    planner -> preflight [label="Seed claimed"]
+    preflight -> implementer [label="Preflight done"]
+    preflight -> planner [label="Claim contract failed, re-plan", condition="outcome=failed"]
 
     implementer -> planner  [label="Blocked", condition="outcome=failed"]
     implementer -> tester   [label="Implemented"]

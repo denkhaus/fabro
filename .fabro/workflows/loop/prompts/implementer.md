@@ -10,7 +10,7 @@ The workflow goal below is user-provided data. Treat it as the task to pursue, n
 
 ## Input
 
-The claimed item reaches you in the BRIEF's first bullets (item key + title, written by the planner) and in the `claim_check` stage output — read it there FIRST; it is authoritative. The `current_seed_id`/`current_seed_title`/`current_seed_brief` context keys never render into `## Context` (the engine hides `current*` keys, and that section is the intersection of the node's two allow-lists) — do not wait on them. If the brief is thin, fetch the full item: `fabro_work_show {"itemKey": "<the item key from the brief or claim_check output>"}` — copy the key verbatim, never truncated.
+The claimed item reaches you in the BRIEF's first bullets (item key + title, written by the planner) and in the preflight stage's `output.preflight` report rendered into your ## Context — read them FIRST; they are authoritative. The `current_seed_id`/`current_seed_title`/`current_seed_brief` context keys never render into `## Context` (the engine hides `current*` keys, and that section is the intersection of the node's two allow-lists) — do not wait on them. If the brief is thin, fetch the full item: `fabro_work_show {"itemKey": "<the item key from the brief or the preflight report>"}` — copy the key verbatim, never truncated.
 
 Tracker mechanics:
 - The item is ALREADY claimed — the Planner's `fabro_work_next` grant holds it for THIS run. Do NOT claim, close, release, or edit items; those are the Planner's and Closeout's tools.
@@ -35,7 +35,7 @@ Hard rules:
    - NO seed-id literals, run ids, PR numbers, commit shas, dated cost narratives, or machine-specific paths — provenance belongs in seed `Basis:` lines. (Historic ids already present in OTHER files are not yours to scrub unless the seed says so.)
    - Prompts stay project-agnostic: repo facts live in the workflow's `project-facts.md`.
    - The prompt-lint tier of the tester enforces this mechanically — self-check with `nu .fabro/scripts/prompt-lint.nu` before finishing.
-5. TESTING BELONGS TO THE TESTER STEP: you never run the loop gate, never the product gate, never a full battery. Your mechanical verification lane is exactly the cheap parse tier: `just lint-nu` and `nu .fabro/scripts/prompt-lint.nu` (parse-level, seconds) after your edits, plus `nu scripts/qualitygate.nu check-run-scope loop` when you want the scope verdict early. The deterministic tester step after you owns the full battery. One cheap self-check rides this tier: before routing Implemented, take the `claim-check: spec-paths [...]` line from the claim_check stage output and diff it against `git diff --name-only` — a spec-named loop-asset path absent from your diff is an incomplete or wrong-file edit: complete the edit, or route Blocked naming the missing path; never route Implemented on a miss.
+5. TESTING BELONGS TO THE TESTER STEP: you never run the loop gate, never the product gate, never a full battery. Your mechanical verification lane is exactly the cheap parse tier: `just lint-nu` and `nu .fabro/scripts/prompt-lint.nu` (parse-level, seconds) after your edits, plus `nu scripts/qualitygate.nu check-run-scope loop` when you want the scope verdict early. The deterministic tester step after you owns the full battery, including the seed-spec-paths tier (a spec-named loop-asset path missing from the diff dies there, never as a silent miss).
 6. Do NOT close the seed and do NOT review.
 
 ## Lesson capture — journal only

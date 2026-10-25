@@ -8,26 +8,32 @@
 #
 # Contract:
 #   1. planner node carries NO goal_gate — the deterministic guards
-#      (tracker_guard) legitimately bypass it (same fabro-92e2 class as
-#      develop).
+#      legitimately bypass it (same fabro-92e2 class as develop).
 #   2. NO preflight -> exit edge — report-only preflight, never a script
 #      exit.
-#   3. tracker_guard -> exit ("Tracker empty") edge EXISTS.
-#   4. preflight -> planner ("Preflight done") edge EXISTS.
+#   3. The tracker_guard node is GONE (fabro-786a): its .seeds
+#      drained-queue read was a split-brain against the work-line claim;
+#      the planner's "Tracker empty" -> exit edge carries the drained
+#      case now, and no tracker_guard/claim_check node may return.
+#   4. The preflight sits AFTER the planner (develop's topology):
+#      planner -> preflight ("Seed claimed"), preflight -> implementer
+#      ("Preflight done"), preflight -> planner re-plan on failure (the
+#      fabro-c42f claim-contract retry).
 #   5. planner -> exit ("Already landed") edge EXISTS.
-#   6. Lane wiring: tracker_guard and preflight script lines carry
-#      --assignee loop; evidence carries --lane loop --work-item with
-#      stdin_source=current_item_json (the granted-item packet); closeout
-#      is the ADR-0032 agent form — prompt @prompts/closeout.md, the
+#   6. Lane wiring: the preflight script line carries --work-item
+#      --assignee loop with stdin_source=current_item_json (the
+#      granted-item packet; --assignee drives the bd55 lane-scoped
+#      envelope_risk); evidence carries --lane loop --work-item with
+#      stdin_source=current_item_json; closeout is the ADR-0032 agent
+#      form — prompt @prompts/closeout.md, the
 #      fabro_work_close/create/list tool surface, and the prompt's plan
 #      command carries closeout.nu --work-item --plan-only --lane loop
 #      (the lane label routes filed residuals back into THIS lane's
-#      queue; a dropped flag would silently work @fabro's queue / lose
-#      the residuals).
+#      queue).
 #   6b. The planner forwards the granted-item packet: x.context_allow_keys
-#      names current_item_json (the evidence stage reads it from stdin;
-#      the e47c allow-keys lint drops undeclared keys — a missing entry
-#      silently starves evidence).
+#      names current_item_json (the evidence and preflight stages read
+#      it from stdin; the e47c allow-keys lint drops undeclared keys — a
+#      missing entry silently starves both).
 #   7. Implementer envelope: x.fs_write names EXACTLY the loop-asset
 #      set (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl) plus
 #      the fabro-dot snapshot dir (fabro-9973 — the one lib/ exception,
@@ -78,22 +84,43 @@ def main [] {
     if ($lines | any {|l| ($l | str contains 'preflight -> exit')}) {
         fail 'preflight -> exit edge exists: report-only preflight must never exit the run'
     }
-    if not ($lines | any {|l| ($l | str contains 'tracker_guard -> exit') and ($l | str contains 'Tracker empty')}) {
-        fail 'tracker_guard -> exit ("Tracker empty") edge missing'
+    # 3. the guards are GONE (fabro-786a): no tracker_guard or claim_check
+    # node may return, and the planner carries the drained-queue exit
+    if ($lines | any {|l| ($l | str trim | str starts-with 'tracker_guard [')}) {
+        fail 'tracker_guard node resurrected — the .seeds split-brain guard is retired (fabro-786a); the planner routes the drained case'
     }
-    if not ($lines | any {|l| ($l | str contains 'preflight -> planner') and ($l | str contains 'Preflight done')}) {
-        fail 'preflight -> planner ("Preflight done") edge missing'
+    if ($lines | any {|l| ($l | str trim | str starts-with 'claim_check [')}) {
+        fail 'claim_check node resurrected — the claim contract lives in the preflight packet validation (fabro-786a)'
+    }
+    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Tracker empty')}) {
+        fail 'planner -> exit ("Tracker empty") edge missing — the drained-queue fast exit rides the planner now'
+    }
+    # 4. preflight after the planner (develop's topology) with the
+    # c42f retry edge
+    if not ($lines | any {|l| ($l | str contains 'planner -> preflight') and ($l | str contains 'Seed claimed')}) {
+        fail 'planner -> preflight ("Seed claimed") edge missing'
+    }
+    if not ($lines | any {|l| ($l | str contains 'preflight -> implementer') and ($l | str contains 'Preflight done')}) {
+        fail 'preflight -> implementer ("Preflight done") edge missing'
+    }
+    if not ($lines | any {|l| ($l | str contains 'preflight -> planner') and ($l | str contains 'Claim contract failed')}) {
+        fail 'preflight -> planner re-plan edge missing — a dropped packet would dead-end instead of retrying'
     }
     if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
         fail 'planner -> exit ("Already landed") edge missing'
     }
 
     # 6. lane wiring on the script lines
-    if not ($lines | any {|l| ($l | str contains 'tracker-guard.nu') and ($l | str contains '--assignee loop')}) {
-        fail 'tracker_guard script line lost --assignee loop (would work @fabro queue)'
+    if not ($lines | any {|l| ($l | str contains 'planner-preflight.nu') and ($l | str contains '--assignee loop') and ($l | str contains '--work-item')}) {
+        fail 'preflight script line lost --work-item --assignee loop (legacy candidate mode / wrong risk lane would ship)'
     }
-    if not ($lines | any {|l| ($l | str contains 'planner-preflight.nu') and ($l | str contains '--assignee loop')}) {
-        fail 'preflight script line lost --assignee loop'
+    let pfstart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'preflight ['} | get -o index | first | default null)
+    if $pfstart == null { fail 'preflight node not found' }
+    let pfend = ($lines | enumerate | where {|e| ($e.index > $pfstart) and (($e.item | str trim) == ']')} | get -o index | first | default null)
+    if $pfend == null { fail 'preflight node block not terminated' }
+    let pfblock = ($lines | skip ($pfstart + 1) | take ($pfend - $pfstart - 1))
+    if not ($pfblock | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
+        fail 'preflight stdin_source lost current_item_json (the packet plumbing)'
     }
     if not ($lines | any {|l| ($l | str contains 'evidence.nu') and ($l | str contains '--lane loop') and ($l | str contains '--work-item')}) {
         fail 'evidence script line lost --lane loop --work-item (product review scope / legacy seed protocol would ship)'
@@ -189,8 +216,8 @@ def main [] {
     if not ($guard_lines | any {|l| ($l | str contains 'start -> env_guard')}) {
         fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
     }
-    if not ($guard_lines | any {|l| ($l | str contains 'env_guard -> tracker_guard')}) {
-        fail 'env_guard -> tracker_guard edge missing — the placement guard must precede every nu stage'
+    if not ($guard_lines | any {|l| ($l | str contains 'env_guard -> planner')}) {
+        fail 'env_guard -> planner edge missing — the placement guard must precede every nu stage'
     }
     if not ($guard_lines | any {|l| ($l | str contains 'toolchain-guard.sh loop') and ($l | str starts-with '        script="sh ')}) {
         fail 'env_guard script line must run the shared guard via POSIX sh with the loop lane flag — nu cannot guard a sandbox without nu'
@@ -200,20 +227,20 @@ def main [] {
         fail $'start must have exactly ONE outgoing edge, the placement guard; found ($guard_start_edges | length) — a second edge would bypass it'
     }
 
-    # 12. spec-paths implementer self-check (the pre-tester kill of the
-    # spec-paths bounce): the shared claim-check (the loop graph runs
-    # the develop lane's script) must emit the `claim-check: spec-paths`
-    # line into stage output, and the loop implementer prompt must carry
-    # the diff-against-the-run-diff clause before routing Implemented.
-    # Lose either half and the miss bounces off the tester battery again.
-    let CLAIM_CHECK = ('.fabro/workflows/develop/scripts/claim-check.nu' | path expand)
+    # 12. spec-paths coverage after the claim-check retirement
+    # (fabro-786a): the tester's seed-spec-paths tier (qualitygate,
+    # sourcing the shared lib) owns the kill; the implementer prompt
+    # must name that tier so a spec-paths miss routes Blocked at the
+    # latest before the tester, and the retired claim-check script must
+    # stay gone (its pins died with it; the lib is canonical).
     let IMPLEMENTER_PROMPT = ('.fabro/workflows/loop/prompts/implementer.md' | path expand)
-    if not ((open --raw $CLAIM_CHECK) | str contains 'claim-check: spec-paths') {
-        fail 'claim-check lost the spec-paths emission — the implementer self-check loses its input'
+    if not ((open --raw $IMPLEMENTER_PROMPT) | str contains 'seed-spec-paths tier') {
+        fail 'implementer prompt lost the seed-spec-paths tier naming — a spec-paths miss would bounce off the tester unexplained'
     }
-    if not ((open --raw $IMPLEMENTER_PROMPT) | str contains 'claim-check: spec-paths') {
-        fail 'implementer prompt lost the spec-paths self-check line — a spec-paths miss would bounce off the tester again'
+    let CLAIM_CHECK = ('.fabro/workflows/develop/scripts/claim-check.nu' | path expand)
+    if ($CLAIM_CHECK | path exists) {
+        fail 'claim-check.nu still exists — the retired script and its pins died with the node (fabro-786a); the lib is canonical'
     }
 
-    print 'loop graph-contract-smoke: OK — guard exits, lane wiring, envelope pins, red bounce, evidence budget, placement guard, spec-paths self-check intact'
+    print 'loop graph-contract-smoke: OK — guard retirement, preflight topology, lane wiring, envelope pins, red bounce, evidence budget, placement guard, spec-paths tier naming intact'
 }

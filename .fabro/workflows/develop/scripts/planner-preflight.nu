@@ -406,7 +406,11 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
         let report = {mode: "checked",
                       run_id: ($run_id | default null),
                       item: $key,
-                      candidates: [(row $verdict $body ($SCRIPT_DIR | path join '../../../..') [] $base false "fabro")],
+                      # lane via --assignee (fabro-bd55): the loop passes
+                      # --assignee loop so envelope_risk flags PRODUCT
+                      # surfaces (the misroute detector); the develop
+                      # default stays "fabro" (loop-asset risk).
+                      candidates: [(row $verdict $body ($SCRIPT_DIR | path join '../../../..') [] $base false $assignee)],
                       legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $salvage_legend),
                       degraded_reason: (if $verdict.verdict == "degraded" { "dup-run-check degraded (fail-open)" } else { null })}
         {"outcome": "succeeded",

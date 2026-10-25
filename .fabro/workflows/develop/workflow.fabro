@@ -67,9 +67,9 @@ digraph Develop {
     // longer has (work items live behind the server; the worker env is
     // scrubbed, no CLI surface exists). The drained case is now the
     // planner's fabro_work_next empty outcome routing "Tracker empty"
-    // (one cheap LLM call, no dead script arm). The shared script
-    // survives unchanged for the loop lane (still seeds-based there
-    // until its own phase-3 unit): one file plus a lane flag.
+    // (one cheap LLM call, no dead script arm). The loop lane retired
+    // its guard with fabro-786a (2026-10-25); the tracker-guard.nu
+    // script and its smoke are deleted.
     //
     // Claim preflight (ADR-0032 phase 3, fork 7 — was the pre-planner
     // candidate preflight): deterministic REPORT over the GRANTED item,

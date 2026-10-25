@@ -41,10 +41,11 @@
 # friction-score.nu are tools, not batteries).
 const SMOKES = [
     '.fabro/workflows/develop/scripts/evidence-smoke.nu'
-    # Claim-gate path battery (fabro-4c81): the pure claim-body-verdict
-    # core over canned seeds-show records — blocking classes, creation-
-    # intent windows, advisory classes, fail-open contract.
-    '.fabro/workflows/develop/scripts/claim-check-smoke.nu'
+    # Claim-gate path battery (fabro-4c81): RETIRED with fabro-786a —
+    # claim-check.nu left the graphs when the loop folded the claim
+    # contract into the preflight's packet validation (develop's shape);
+    # the spec-paths extraction lives on in the shared lib + the
+    # tester's seed-spec-paths tier.
     # Graph-contract pin (fabro-83df/fabro-92e2, incident 2026-09-19):
     # the develop graph must keep its deterministic-exit contract —
     # planner ungated, preflight report-only, guard exits intact.
@@ -58,13 +59,11 @@ const SMOKES = [
     # path there too — first stage after start, POSIX sh, no bypass
     # edge. The revisor had no graph-contract smoke before this.
     '.fabro/workflows/revisor/scripts/graph-contract-smoke.nu'
-    # tracker-guard pure decision logic (fabro-0da8): guard-decision /
-    # sd-issue-count over canned complete-style records — both-empty
-    # route, open/in_progress arms, and the sd-failure fail-open
-    # contract. Found UNREGISTERED by the fabro-8b38 registration
-    # sweep (the ac84 silent-de-gate class): the script existed, ran
-    # green, and nothing executed it.
-    '.fabro/workflows/develop/scripts/tracker-guard-smoke.nu'
+    # tracker-guard pure decision logic (fabro-0da8): RETIRED with
+    # fabro-786a — tracker-guard.nu left the graphs when the loop moved
+    # its drained-queue exit into the planner's work_next routing
+    # (develop's shape; the split-brain cost run 01M5KNGHH0Z a full
+    # planner pass).
     # Salvage-sweep analysis battery (fabro-f312, user directive
     # 2026-09-30): the dump analysis is the sweep's decision core, so
     # the battery pins the five verdict-relevant shapes — failed with
