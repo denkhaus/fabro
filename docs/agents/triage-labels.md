@@ -1,19 +1,23 @@
 # Triage Labels
 
 The skills speak in terms of five canonical triage roles. This file maps those
-roles to the actual label strings used in this repo's issue tracker (Seeds).
+roles onto the work-item label standard (ADR-0032; see
+`docs/agents/issue-tracker.md`): `prio:pN`, `type:*`, `lane:*`, free-form
+topic labels. `seeds:*` is legacy-only.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
-| -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
-| `wontfix`                  | `wontfix`            | Will not be actioned                     |
+| Label in mattpocock/skills | Our tracker form | Meaning |
+| -------------------------- | ---------------- | ------- |
+| `needs-triage`             | `needs-triage` (free-form label) AND no `lane:*` label | sits in the human-triage backlog |
+| `needs-info`              | `needs-info` (free-form label) | waiting on the reporter for more information |
+| `ready-for-agent`         | `lane:develop` | the agent line's candidate pool — fully specified, the line works it |
+| `ready-for-human`         | no `lane:*` label (the backlog) | requires human implementation |
+| `wontfix`                 | `close --reason "wontfix: …"` | will not be actioned — closed, never a zombie label |
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the
-corresponding label string from this table.
+Notes:
 
-Seeds note: labels are free-form strings on a seed (`seeds create --label ...`),
-so they exist only once applied. `needs-triage` is the established incoming
-label in this repo; triage swaps it for one of the other four (or closes).
+- Lanes are the real switch: an OPEN item without a lane IS the
+  human-triage queue; `ready-for-agent` is literally `lane:develop`.
+- A wontfix is a closed item with the reason, not an open item carrying a
+  label — open-but-dead does not exist on this tracker.
+- Free-form labels (`needs-triage`, `needs-info`) exist only once
+  applied; the tracker has no label registry requirement.

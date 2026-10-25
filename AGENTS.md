@@ -353,3 +353,17 @@ Never run `cargo insta accept` without first checking what's pending — it acce
 - `#[e2e_test(twin, live("VAR"))]` — dual-mode test that runs against twin-openai or real API. `#[e2e_test(twin)]` for twin-only tests (e.g., scripted failures). `#[e2e_test(live("VAR"))]` for live-only tests requiring secrets. `#[e2e_test()]` for sandbox tests with no API deps. Behavior is controlled by `FABRO_TEST_MODE` (`live`, `strict`; default is `twin`), and `cargo nextest run --profile e2e ...` implies `strict`. Use `fabro_test::e2e_openai!()` in twin/dual-mode tests to get `(base_url, api_key)`.
 - Local test HTTP clients must use `.no_proxy()`. Prefer shared helpers like `fabro_test::test_http_client()` or crate-local equivalents instead of `reqwest::Client::new()`, bare `Client::builder().build()`, or `reqwest::get(...)`.
 - This is not cosmetic: macOS proxy discovery adds hidden startup overhead to repeated localhost reqwest clients and can surface as misleading nextest timeouts.
+
+## Agent skills
+
+### Issue tracker
+
+Work items in project `fabro` on the production server (tracker repo `denkhaus/work`), driven by the `fabro work` CLI — `.seeds` is retired. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five triage roles map onto the label standard (`prio:pN`, `type:*`, `lane:*`; wontfix = close, not label). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` at the root, one CONTEXT.md per context, ADRs in `docs/lab/adr/`. See `docs/agents/domain.md`.
