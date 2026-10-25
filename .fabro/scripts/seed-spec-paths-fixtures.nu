@@ -88,6 +88,45 @@ expect-extraction "Revisor pass filed a revision. Basis: revisor revision .fabro
 # An empty/absent description names nothing.
 expect-extraction "" []
 
+# ── extraction: brace groups expand BEFORE the path filter ────────────
+# (denkhaus/work#6) The motivating incident: a spec citing a comma
+# brace group emitted exactly ONE path because the path-character class
+# cannot tokenize `{a,b,c}` — the one-unit gate under-constrained the
+# whole run. Expansion runs first; every alternative then faces the
+# SAME filters as a literal citation (these three exist as files, so
+# the directory filter keeps them).
+expect-extraction "Rewrite .fabro/workflows/develop/prompts/{planner,implementer,reviewer}.md as one unit." [
+    ".fabro/workflows/develop/prompts/planner.md"
+    ".fabro/workflows/develop/prompts/implementer.md"
+    ".fabro/workflows/develop/prompts/reviewer.md"
+]
+# Brace citation mid-sentence: trailing sentence punctuation (`,`)
+# does not ride the expanded paths; a literal citation alongside still
+# extracts independently (literal citations list before expanded ones —
+# the pipeline's plain-then-braced order).
+expect-extraction "Update .fabro/workflows/loop/prompts/{planner,closeout}.md, then scripts/qualitygate.nu." [
+    "scripts/qualitygate.nu" ".fabro/workflows/loop/prompts/planner.md" ".fabro/workflows/loop/prompts/closeout.md"
+]
+# Negative: a NON-comma brace (`{record}`) is not an enumeration — no
+# expansion, and the untokenizable citation drops instead of emitting a
+# mangled partial path.
+expect-extraction "Fix the .fabro/prompts/{record}.md citation and edit .fabro/scripts/prompt-lint.nu." [
+    ".fabro/scripts/prompt-lint.nu"
+]
+# Negative: creation-intent through the brace literal — an `Add`
+# window in front of the brace citation drops EVERY alternative (the
+# whole group is the proposed target), not just literally-named ones;
+# a literal `extend` citation stays enforced.
+expect-extraction "Add .fabro/scripts/{new-probe,other-probe}.nu and extend scripts/qualitygate.nu." [
+    "scripts/qualitygate.nu"
+]
+# Negative: out-of-lane alternatives stay out — expansion does not
+# widen the loop-asset allow-list (lib/ and docs/ paths drop exactly as
+# literal citations do).
+expect-extraction "Rewrite lib/{a,b}.rs and docs/{x,y}.md plus .fabro/scripts/lib/spec_paths.nu." [
+    ".fabro/scripts/lib/spec_paths.nu"
+]
+
 # ── missing: the RED set ───────────────────────────────────────────────
 if (spec-paths-missing ["scripts/qualitygate.nu"] []) != ["scripts/qualitygate.nu"] {
     fail "empty diff must miss every named path — the tier's reason to exist"
