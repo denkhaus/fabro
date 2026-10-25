@@ -12,20 +12,22 @@
 #       revisor, architect, anything. NOTE: fabro ps --json carries
 #       status as {"kind": "..."} — a string compare against 'running'
 #       silently passes while runs are active (the 2026-09-17 violation).
-#   (b) NO open PR on the line repo: run-PRs (fabro/run/* heads, the
-#       publish pipeline's vehicles) AND lane-PRs (sibling GitButler lanes'
-#       landing vehicles) both block - the serialization is intended
-#       (double-landing hazard). The refusal NAMES every blocking PR
-#       (number + head), run-PRs and lane-PRs separately (fabro-a9bd).
+#   (b) NO live work claim on the line's project (ADR-0032 phase 3,
+#       e829 grill fork 4, settled 2026-10-21): claims in granted /
+#       active / awaiting_merge mean line work is in flight — the
+#       awaiting_merge claim's prUrl names the run-PR the merger window
+#       will land. Foreign PRs and claimless run-PRs (drained parks'
+#       journal vehicles) no longer block: the merger rebases base-first,
+#       and gh leaves the gate entirely (the line's own state is the
+#       authority). An unreachable claims view fails the gate CLOSED.
 #
 # Exit 0 = GATE OPEN (push allowed). Exit 1 = REFUSED (prints why).
 # Usage: nu .fabro/scripts/push-gate.nu [--branch denkhaus]
-#        [--server https://mirtuell.net] [--repo denkhaus/fabro]
+#        [--server https://mirtuell.net]
 
 def main [
     --branch: string = 'denkhaus'
     --server: string = 'https://mirtuell.net'
-    --repo: string = 'denkhaus/fabro'
 ] {
     if $branch != 'denkhaus' {
         print $"GATE OPEN: ($branch) is not the line branch — the run gate is denkhaus-scoped (2026-09-21)"
@@ -72,30 +74,39 @@ def main [
     let active = ($runs | where {|r|
         ($r.status?.kind? | default 'unknown') not-in $terminal
     })
-    let pr = (do { ^gh pr list --repo $repo --state open --json number,headRefName } | complete)
-    let open = (if $pr.exit_code == 0 {
-        $pr.stdout | from json
-    } else {
-        # gh failing must fail the gate closed, with a visible reason
-        [{number: 999, headRefName: 'gh-list-failed'}]
+    # (b) live claims on the line's project (e829 fork 4): granted /
+    # active / awaiting_merge. The auth entry carries `token` for
+    # dev-token servers and `access_token` for OAuth (short-lived — the
+    # workbench convention); an unreachable claims view fails CLOSED.
+    let auth = (open ~/.fabro/auth.json | get servers | get -o $server | default {})
+    let token = ($auth | get -o token | default ($auth | get -o access_token | default ''))
+    if ($token | is-empty) {
+        print $"GATE REFUSED: no auth entry for ($server) in ~/.fabro/auth.json — the claims view is the gate's authority, never skip it"
+        exit 1
+    }
+    let claims = (try {
+        http get --headers { Authorization: $"Bearer ($token)" } $"($server)/api/v1/projects/fabro/claims" | get -o data | default []
+    } catch {|err|
+        null
     })
-    let run_prs = ($open | where {|p| ($p.headRefName | str starts-with 'fabro/run/') })
-    let lane_prs = ($open | where {|p| not ($p.headRefName | str starts-with 'fabro/run/') })
+    if $claims == null {
+        print $"GATE REFUSED: claims view unreachable on ($server) — the gate fails closed (e829 fork 4)"
+        exit 1
+    }
+    let blocking = ($claims | where {|c| ($c | get -o state | default '') in ['granted' 'active' 'awaiting_merge'] })
     if ($active | length) > 0 {
         print $"GATE REFUSED: ($active | length) active runs: ($active | each {|r| $r.run_id } | str join ', ')"
-        if ($open | length) > 0 { print $"also ($open | length) open PRs" }
+        if ($blocking | length) > 0 { print $"also ($blocking | length) live claims" }
         exit 1
     }
-    if ($open | length) > 0 {
-        if ($run_prs | length) > 0 {
-            print $"GATE REFUSED: ($run_prs | length) open run-PRs — after-merge window not reached:"
-            for $p in $run_prs { print $"  run-PR  #($p.number) ($p.headRefName)" }
-        }
-        if ($lane_prs | length) > 0 {
-            print $"GATE REFUSED: ($lane_prs | length) open lane-PRs — sibling landing vehicles, serialization intended:"
-            for $p in $lane_prs { print $"  lane-PR #($p.number) ($p.headRefName)" }
+    if ($blocking | length) > 0 {
+        print $"GATE REFUSED: ($blocking | length) live claims on project fabro — line work in flight:"
+        for $c in $blocking {
+            let pr = ($c | get -o pr_url | default '')
+            let pr_note = (if ($pr | is-empty) { '' } else { ' ' + $pr })
+            print $"  claim ($c | get -o claim_id | default '-') ($c | get -o item_key | default '-') [($c | get -o state)]($pr_note)"
         }
         exit 1
     }
-    print 'GATE OPEN: no active runs, no open PRs — push allowed'
+    print 'GATE OPEN: no active runs, no live claims — push allowed'
 }
