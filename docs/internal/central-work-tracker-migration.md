@@ -357,12 +357,14 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
   show-only — list finds legacy ids by body text search anyway) + CLI
   work commands — **DONE 2026-10-25** (seam 84caa6f98, CLI see
   "STAGE 1 STATUS" below); (2) dry-run against fabro-dryrun, gateway = FULL
-  normalized diff of 0; (3) import (host nu script, checkpoint/resume,
+  normalized diff of 0 — **DONE 2026-10-25** (see "STAGE 2+3 STATUS");
+  (3) import (host nu script, checkpoint/resume,
   open-before-closed; open items carry lane labels per assignee mapping
   @fabro/@agent -> lane:develop, @loop -> lane:loop, unassigned -> NO
   lane label = human triage; closed items full bodies, created and
   closed state_reason=completed; the `seeds:` label is the idempotency
-  key — pilot items already exist); (4) freeze + archive: the JSONL
+  key — pilot items already exist) — **DONE 2026-10-25**; (4) freeze +
+  archive: the JSONL
   moves to the tracker repo archive AND the in-tree .seeds file is
   DELETED (no zombie copy). ARCHIVE LAYOUT (user directive 2026-10-25):
   one subfolder per SOURCE repo — `archive/<owner>-<repo>/issues-<freeze-
@@ -380,6 +382,44 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
   (claim -> PR -> merge -> close) exists as a bench row (the ADR-0023
   rescue rule); (7) toolchain rebuild without the seeds binary = the
   fork.26 deploy window.
+
+- **STAGE 2+3 STATUS (2026-10-25/26 night) — THE IMPORT IS DONE.** Both
+  gateways passed; the tracker is the truth for all 974 items (973 seeds
+  + fabro-4fb4, the import window's own item). Evidence:
+  - Dry-run (stage 2): project `fabro-dryrun` on the new private repo
+    `denkhaus/work-dryrun` (App installation extended by the user),
+    974/974 created + 633/633 closed, verify = FULL normalized diff of
+    0, 30/30 label-search spot checks, 0 extras.
+  - Real import (stage 3): project `fabro` on `denkhaus/work`,
+    974/974, 633/633, same gateway green (report 2026-10-25 23:34).
+    Pilots #6/#8 retrofitted onto the canonical form (labels + body +
+    title — the only production diff of the first verify was the pilot
+    #8's hand-retitled headline).
+  - Archive (stage 4a): `issues.jsonl` + `plans.jsonl` byte-exact at
+    `denkhaus/work/archive/denkhaus-fabro/{issues,plans}-2026-10-25.jsonl`.
+  - Findings that shaped the tooling (all committed on denkhaus):
+    `--reason` is required by the close schema — reason-less items close
+    with the standard placeholder comment; GitHub strips surrounding
+    whitespace from titles — the canonical form trims; primary rate
+    exhaustion needs 5-minute backoff steps (installation 161242007,
+    the close phase's comment+patch+get per item); the update route is
+    POST `/work-items/update`; the raw auth.json token races the CLI's
+    rotation — refresh through an authenticated CLI call first.
+  - Freeze discipline: one mid-window .seeds write (the fabro-4fb4
+    description amendment) was caught by the sha pin — the importer was
+    killed before the item was created and resumed under the new sha;
+    NO .seeds writes after that (evidence goes into tracker close
+    comments from here on).
+  - TOOLCHAIN ANALYSIS (user question 2026-10-25, answer confirmed):
+    `gh` is ALREADY absent from the toolchain image (no apt/mise
+    install; no in-sandbox call sites — ADR-0019 pin holds; gh stays a
+    HOST audit tool). `seeds` leaves the image ONLY at stage 7: its
+    remaining consumers are the in-sandbox workflow assets
+    (develop/loop/revisor scripts + prompts) and the fabro-test mini's
+    fail-closed seeds closeout — removal points are
+    `Dockerfile.toolchain:169-188` (release binary 0.7.0) and the
+    `.mise.toml` cargo pin (0.9.0), both gated behind the stage-6
+    full-chain bench probe per ADR-0023.
 
 - **STAGE 1 STATUS (2026-10-25).** Half 1a landed as 84caa6f98 (the
   resolver seam: the item read path resolves `seeds:<id>` labels). Half 1b
