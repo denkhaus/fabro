@@ -15,6 +15,10 @@ def main [
     --repo: string = 'denkhaus/work'
     --apply: int = 0                  # 0 = show plan only, 1 = write
 ]: nothing -> nothing {
+    # Refresh the rotating token through an authenticated CLI call first:
+    # the raw token in auth.json may be expired (the CLI rotates it; a bare
+    # read races the rotation clock).
+    let _ = (do { ^'/home/denkhaus/dev/fabro/target/debug/fabro' work --server $server claims --project $project } | complete)
     let pilots = [
         {id: 'fabro-d5f0', number: 6, labels: ['project:fabro' 'prio:p2' 'revision' 'seeds:fabro-d5f0' 'type:task']}
         {id: 'fabro-9337', number: 8, labels: ['project:fabro' 'prio:p2' 'residual' 'seeds:fabro-9337' 'type:task']}
@@ -35,10 +39,17 @@ def main [
         let lab = ($set_labels | do { gh api --method PUT $"repos/($repo)/issues/($p.number)/labels" --input - } | complete)
         print $"  labels: exit ($lab.exit_code) ($lab.stderr | str trim | str substring 0..120)"
 
-        # body: through the deployed server's update endpoint
+        # body: through the deployed server's update endpoint (POST — the
+        # route is work-items/update via post, not PATCH)
         let payload = ({itemKey: $"($repo)#($p.number)", body: $body} | to json)
-        let patch = ($payload | do { http patch --headers [(auth-header)] $"($server)/api/v1/projects/($project)/work-items/update" -t application/json } | complete)
-        print $"  body patch: exit ($patch.exit_code) ($patch.stdout | str substring 0..80)($patch.stderr | str substring 0..120)"
+        let url = $"($server)/api/v1/projects/($project)/work-items/update"
+        let patch = (try {
+            let r = ($payload | http post --headers (auth-header) --full $url -t application/json)
+            {ok: ($r.status == 200), detail: $"status ($r.status): ($r.body | to json -r | str substring 0..100)"}
+        } catch {|err|
+            {ok: false, detail: ($err.msg | default ($err | to json -r) | str substring 0..160)}
+        })
+        print $"  body update: ($patch.detail)"
     }
     if $apply == 0 { print 'retrofit: plan shown; rerun with --apply 1 to write' }
 }
