@@ -19,6 +19,12 @@
 #      the ids whose check was skipped (auditable, not silent);
 #   5. every other check stays live on a marked file (a drifted justfile
 #      anchor still reds).
+#   6. check 9's vendor-CLI scope covers the LOOP lane's prompt assets
+#      (denkhaus/work#8): a vendor CLI in a loop prompt reds — narrowing
+#      the check back to develop-only would leave that fixture green and
+#      RED this battery — a vendor CLI in a loop SCRIPT stays out of
+#      scope (the scripts/ exclusion is deliberate), and a clean loop
+#      prompt stays silent.
 
 const LINT = (path self | path dirname | path join 'prompt-lint.nu')
 # Marker, dead id and anchor are built by concatenation so THIS file's own
@@ -100,5 +106,29 @@ def main [] {
     if not ($five.out | str contains 'comment line') { fail $"the anchor red is not the drifted-anchor finding: ($five.out)" }
     print 'ok: the justfile-anchor check stays live on a marked file'
 
-    print 'prompt-lint-fixtures: green — 6 assertions'
+    # 6. check 9 scope covers the LOOP lane's prompt assets: a vendor
+    # CLI in a loop prompt reds (this is the pin — a narrowing back to
+    # develop-only leaves this fixture green and REDs this battery), a
+    # vendor CLI in a loop SCRIPT stays out of scope by design, and a
+    # clean loop prompt stays silent.
+    let r6 = (new-root $base 'loopscope')
+    mkdir ($r6 | path join '.fabro' 'workflows' 'loop' 'prompts')
+    mkdir ($r6 | path join '.fabro' 'workflows' 'loop' 'scripts')
+    # Vendor literals are built by concatenation so THIS battery file
+    # never carries a live vendor command form itself.
+    let VENDOR = 'seeds ' + 'list'
+    $"# loop prompt fixture\nrun the command `($VENDOR)` and see rot.\n" | save --force ($r6 | path join '.fabro' 'workflows' 'loop' 'prompts' 'planner.md')
+    let six_red = (run-lint $r6)
+    if $six_red.code == 0 { fail $"a vendor CLI in a loop prompt passed the lint: ($six_red.out)" }
+    if not ($six_red.out | str contains 'tracker-CLI') { fail $"the loop-prompt red is not the vendor-CLI finding: ($six_red.out)" }
+    print 'ok: a vendor CLI in a loop prompt asset reds'
+    rm ($r6 | path join '.fabro' 'workflows' 'loop' 'prompts' 'planner.md')
+    $"# tool\n# ($VENDOR)\n" | save --force ($r6 | path join '.fabro' 'workflows' 'loop' 'scripts' 'tool-fixtures.nu')
+    "# clean loop prompt\n" | save --force ($r6 | path join '.fabro' 'workflows' 'loop' 'prompts' 'planner.md')
+    let six_green = (run-lint $r6)
+    if $six_green.code != 0 { fail $"the scripts-excluded vendor literal or a clean loop prompt red the lint: ($six_green.out)" }
+    if ($six_green.out | str contains 'tracker-CLI') { fail $"a loop-script vendor literal was flagged despite the scripts/ exclusion: ($six_green.out)" }
+    print 'ok: loop scripts stay out of scope and a clean loop prompt stays silent'
+
+    print 'prompt-lint-fixtures: green — 6 checks, loop vendor-CLI scope pinned'
 }
