@@ -31,6 +31,7 @@ def main [
     --max: int = 0                     # stop after N items (smoke runs); 0 = all
     --pacing-ms: int = 750             # pause between write ops
     --sample: int = 30                 # label-search spot-check size in verify
+    --only: string = ''                # canonical mode: comma-joined ids to emit
 ]: nothing -> nothing {
     if ($project | is-empty) { fail 'import: --project is required' }
     if ($server | is-empty) { fail 'import: --server is required' }
@@ -60,6 +61,10 @@ def main [
         }
         'verify' => {
             run-verify $plan $checkpoint $project $server $fabro_bin $repo $whitelist $sample
+        }
+        'canonical' => {
+            if ($only | is-empty) { fail 'import: --mode canonical needs --only <ids,comma-joined>' }
+            write-canonical $plan $only $checkpoint_dir
         }
         _ => { fail $"import: unknown mode ($mode)" }
     }
@@ -471,6 +476,24 @@ def spread-sample [rows: list<record>, size: int]: nothing -> list<record> {
     let take = (if $size > $len { $len } else { $size })
     if $take <= 0 { return [] }
     seq 0 ($take - 1) | each {|i| $rows | get (($i * $len) // $take)}
+}
+
+# --- canonical emission (pilot retrofit) --------------------------------------
+
+# Emits the canonical body for the named ids, one file per id. The two
+# hand-migrated pilots (fabro-d5f0 -> #6, fabro-9337 -> #8) predate the
+# label amendment; the retrofit applies the same canonical form the
+# importer writes so the gateway diff covers them too.
+def write-canonical [plan: list<record>, only: string, out_dir: string]: nothing -> nothing {
+    let ids = ($only | split row ',')
+    for $id in $ids {
+        let p = ($plan | where {|p| $p.id == $id} | first)
+        if $p == null { fail $"canonical: ($id) not in the source" }
+        let path = ($out_dir | path join $"canonical-($id).md")
+        $"($p.body)\n" | save --force $path
+        print $"canonical: ($id) -> ($path)"
+        print $"  labels: ($p.labels | str join ',')  expect state: ($p.expect_state)"
+    }
 }
 
 # --- plan display ---------------------------------------------------------------
