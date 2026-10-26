@@ -9,11 +9,12 @@ use axum::body::{self, Body};
 use axum::extract::Request;
 #[cfg(test)]
 use axum::extract::State as AxumState;
-use axum::http::{HeaderValue, Request as HttpRequest, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Request as HttpRequest, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::Response;
 use axum::{Router, middleware};
 use chrono::Duration as ChronoDuration;
+use fabro_api::types::{RunIntent, RunIntentArgs};
 use fabro_config::user::default_storage_dir;
 use fabro_config::{LlmLayer, RunLayer, ServerSettingsBuilder, Storage, WorkLayer, envfile};
 use fabro_db::DbPool;
@@ -40,6 +41,8 @@ use crate::jwt_auth::{AuthMode, ConfiguredAuth};
 use crate::principal_middleware::{AuthContextSlot, RequestAuthContext};
 use crate::sandbox_access::SandboxInventory;
 use crate::server::automation_breaker::AutomationBreakerNotifier;
+use crate::server::handler::runs;
+use crate::server::handler::runs::CreateRunFromIntentRequest;
 use crate::server::{
     self, AppState, AppStateConfig, EnvLookup, ResolvedAppStateSettings, RouterOptions,
     build_app_state,
@@ -891,6 +894,71 @@ pub fn test_auth_mode() -> AuthMode {
 
 pub fn build_test_router(state: Arc<AppState>) -> Router {
     with_test_user(server::build_router(state, test_auth_mode()))
+}
+
+/// A real run with a git target (denkhaus/work#991): the work-route
+/// scope binds run -> target repository -> project through the run's
+/// projection, so channel ITs need a run that EXISTS — the production
+/// channel only ever spawns for one. Minting an invented run id (the
+/// pre-binding IT pattern) now resolves no project.
+pub async fn create_test_run_with_target(
+    state: &Arc<AppState>,
+    repo: &str,
+    branch: &str,
+) -> fabro_types::RunId {
+    const MINIMAL_DOT: &str = r#"digraph Test {
+        graph [goal="Test"]
+        start [shape=Mdiamond]
+        exit  [shape=Msquare]
+        start -> exit
+    }"#;
+    let entrypoint =
+        fabro_types::WorkflowPath::new("workflow.fabro").expect("a static workflow path");
+    let files = std::collections::BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
+    let version =
+        fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::default())
+            .expect("the static workflow version should build");
+    let version = fabro_workflow_version::ValidatedWorkflowVersion::new(version)
+        .expect("the static workflow version should validate");
+    let workflow_version_id =
+        fabro_workflow_version::WorkflowVersionStore::new(state.store_ref().blobs())
+            .put(&version)
+            .await
+            .expect("the workflow version fixture should store");
+    let run_id = fabro_types::RunId::new();
+    let response = Box::pin(runs::create_run_from_intent(
+        Arc::clone(state),
+        CreateRunFromIntentRequest {
+            intent:          RunIntent {
+                workflow_version_id,
+                target: fabro_types::RunTarget::Git(fabro_types::GitRunTarget {
+                    repo:   repo.to_string(),
+                    branch: branch.to_string(),
+                    tag:    None,
+                    sha:    None,
+                }),
+                args: RunIntentArgs::default(),
+                environment_id: None,
+                parent_id: None,
+                title: None,
+                goal: None,
+                force: None,
+            },
+            explicit_run_id: Some(run_id),
+            actor:           fabro_types::Principal::System {
+                system_kind: fabro_types::SystemActorKind::Engine,
+            },
+            headers:         HeaderMap::new(),
+            automation:      None,
+        },
+    ))
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::CREATED,
+        "the run fixture must be created"
+    );
+    run_id
 }
 
 /// A spawned per-run capability channel over a temp-dir socket (ADR

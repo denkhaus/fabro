@@ -120,22 +120,15 @@ async fn upsert_project(
 }
 
 async fn list_claims(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
 ) -> Result<Response, ApiError> {
-    if state
-        .work_store()
-        .project(&project_id)
-        .await
-        .map_err(store_error)?
-        .is_none()
-    {
-        return Err(not_found("work project", &project_id));
-    }
+    // Workers read their own project's ledger only (denkhaus/work#991).
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let claims = state
         .work_store()
-        .active_claims(&project_id)
+        .active_claims(&caller.project().project_id)
         .await
         .map_err(store_error)?;
     let response = WorkClaimListResponse {
@@ -157,7 +150,11 @@ async fn grant_claim(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
-    let project = resolve_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    // Workers grant into their own project for their OWN run only
+    // (denkhaus/work#991): a foreign body runId is refused loudly.
+    let run_id = bind_granted_run_id(&caller, run_id)?;
+    let project = caller.project();
     let outcome = state
         .work_store()
         .grant(&GrantRequest {
@@ -189,8 +186,8 @@ async fn grant_claim(
         outcome,
         WorkClaimGrantOutcome::Granted | WorkClaimGrantOutcome::AlreadyHeld
     ) {
-        if let Ok(tracker) = tracker_for(&state, &project).await {
-            item = tracker.get(&project, &item_key).await.ok().flatten();
+        if let Ok(tracker) = tracker_for(&state, project).await {
+            item = tracker.get(project, &item_key).await.ok().flatten();
         }
     }
     Ok(Json(WorkClaimGrantResponse {
@@ -202,7 +199,7 @@ async fn grant_claim(
 }
 
 async fn retrieve_claim(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
 ) -> Result<Response, ApiError> {
@@ -213,16 +210,26 @@ async fn retrieve_claim(
         .await
         .map_err(store_error)?
         .ok_or_else(|| not_found("work claim", &claim_id))?;
+    bind_claim_to_caller(&auth, &claim)?;
     Ok(Json(api_claim(claim)?).into_response())
 }
 
 async fn transition_claim(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
     Json(request): Json<WorkClaimTransitionRequest>,
 ) -> Result<Response, ApiError> {
     validate_claim_id(&claim_id)?;
+    // The binding check runs BEFORE the store mutation: a foreign claim
+    // is refused without side effects (denkhaus/work#991).
+    let existing = state
+        .work_store()
+        .claim(&claim_id)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| not_found("work claim", &claim_id))?;
+    bind_claim_to_caller(&auth, &existing)?;
     let claim = state
         .work_store()
         .transition(
@@ -257,12 +264,21 @@ async fn transition_claim(
 }
 
 async fn release_claim(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
     Json(request): Json<WorkClaimReleaseRequest>,
 ) -> Result<Response, ApiError> {
     validate_claim_id(&claim_id)?;
+    // The binding check runs BEFORE the store mutation: a foreign claim
+    // is refused without side effects (denkhaus/work#991).
+    let existing = state
+        .work_store()
+        .claim(&claim_id)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| not_found("work claim", &claim_id))?;
+    bind_claim_to_caller(&auth, &existing)?;
     let claim = state
         .work_store()
         .release(&claim_id, &request.reason)
@@ -286,20 +302,20 @@ async fn release_claim(
 }
 
 async fn list_claim_events(
-    _auth: RequiredRunManagementActor,
+    auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(claim_id): Path<String>,
 ) -> Result<Response, ApiError> {
     validate_claim_id(&claim_id)?;
-    if state
+    // Workers read their own claims' event streams only
+    // (denkhaus/work#991).
+    let claim = state
         .work_store()
         .claim(&claim_id)
         .await
         .map_err(store_error)?
-        .is_none()
-    {
-        return Err(not_found("work claim", &claim_id));
-    }
+        .ok_or_else(|| not_found("work claim", &claim_id))?;
+    bind_claim_to_caller(&auth, &claim)?;
     let events = state
         .work_store()
         .events(&claim_id)
@@ -388,10 +404,13 @@ async fn list_work_items(
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemQuery>,
 ) -> Result<Response, ApiError> {
-    let project = resolve_project(&state, &auth, &project_id).await?;
-    let tracker = tracker_for(&state, &project).await?;
+    // Workers list their own project's items only — foreign reads are
+    // refused, not just foreign writes (denkhaus/work#991, ADR-0019).
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    let tracker = tracker_for(&state, project).await?;
     let items = tracker
-        .list(&project, WorkItemFilter {
+        .list(project, WorkItemFilter {
             lane:  params.lane,
             limit: params.limit.unwrap_or(50).clamp(1, 100) as usize,
             query: params.query,
@@ -423,14 +442,15 @@ async fn create_work_item(
     if request.body.trim().is_empty() {
         return Err(ApiError::bad_request("body must not be empty"));
     }
-    let project = resolve_project(&state, &auth, &project_id).await?;
-    let tracker = tracker_for(&state, &project).await?;
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    let tracker = tracker_for(&state, project).await?;
     let mut labels = vec![project.project_label.clone()];
     labels.extend(request.labels);
     labels.sort();
     labels.dedup();
     let item = tracker
-        .create(&project, WorkItemDraft {
+        .create(project, WorkItemDraft {
             title: request.title,
             body: request.body,
             labels,
@@ -446,10 +466,14 @@ async fn close_work_item(
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCloseRequest>,
 ) -> Result<Response, ApiError> {
-    let project = resolve_project(&state, &auth, &project_id).await?;
-    let tracker = tracker_for(&state, &project).await?;
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    // Workers close only items they hold a live claim on — the check
+    // precedes the tracker mutation (denkhaus/work#991).
+    require_claim_held_by_run(&state, &caller, &request.item_key).await?;
+    let tracker = tracker_for(&state, project).await?;
     tracker
-        .close(&project, &request.item_key, &request.reason)
+        .close(project, &request.item_key, &request.reason)
         .await
         .map_err(tracker_failed)?;
     // A closed item releases any live claim (DB first, projection second).
@@ -464,10 +488,10 @@ async fn close_work_item(
             .release(&claim.claim_id, "item closed")
             .await
             .map_err(store_error)?;
-        best_effort_clear_claim(&state, &project, &claim).await;
+        best_effort_clear_claim(&state, project, &claim).await;
     }
     let item = tracker
-        .get(&project, &request.item_key)
+        .get(project, &request.item_key)
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &request.item_key))?;
@@ -487,8 +511,13 @@ async fn update_work_item(
             "work item update needs a title or a body",
         ));
     }
-    let project = resolve_project(&state, &auth, &project_id).await?;
-    let tracker = tracker_for(&state, &project).await?;
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    // Workers edit only items they hold a live claim on — spec
+    // corrections happen while the run works the item
+    // (denkhaus/work#991).
+    require_claim_held_by_run(&state, &caller, &request.item_key).await?;
+    let tracker = tracker_for(&state, project).await?;
     let title = request
         .title
         .as_deref()
@@ -500,7 +529,7 @@ async fn update_work_item(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let item = tracker
-        .update(&project, &request.item_key, title, body)
+        .update(project, &request.item_key, title, body)
         .await
         .map_err(tracker_failed)?;
     Ok(Json(api_item(item)).into_response())
@@ -516,9 +545,13 @@ async fn claim_next(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
-    let project = resolve_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    // Workers claim next in their own project for their OWN run only
+    // (denkhaus/work#991): a foreign body runId is refused loudly.
+    let run_id = bind_granted_run_id(&caller, run_id)?;
+    let project = caller.project();
     let tracker = state
-        .work_tracker_for_project(&project)
+        .work_tracker_for_project(project)
         .await
         .map_err(|error| {
             ApiError::new(
@@ -527,7 +560,7 @@ async fn claim_next(
             )
         })?;
     let items = tracker
-        .list(&project, WorkItemFilter {
+        .list(project, WorkItemFilter {
             lane:  Some(request.lane.clone()),
             limit: 50,
             query: None,
@@ -564,7 +597,7 @@ async fn claim_next(
             .into_iter()
             .find(|claim| claim.state == ClaimState::AwaitingMerge);
         let blocking_item = match blocking.as_ref() {
-            Some(claim) => tracker.get(&project, &claim.item_key).await.ok().flatten(),
+            Some(claim) => tracker.get(project, &claim.item_key).await.ok().flatten(),
             None => None,
         };
         return Ok(Json(WorkClaimNextResponse {
@@ -594,7 +627,7 @@ async fn claim_next(
                 // The claim committed; the tracker projection is eventual. A
                 // failed projection enqueues the durable outbox job.
                 if let Err(error) = tracker
-                    .project_claim(&project, &item.item_key, &claim.run_id.to_string())
+                    .project_claim(project, &item.item_key, &claim.run_id.to_string())
                     .await
                 {
                     tracing::warn!(
@@ -636,7 +669,7 @@ async fn claim_next(
             }
             GrantOutcome::AlreadyHeld(claim) => {
                 let held_item = tracker
-                    .get(&project, &claim.item_key)
+                    .get(project, &claim.item_key)
                     .await
                     .ok()
                     .flatten()
@@ -661,7 +694,7 @@ async fn claim_next(
         .await
         .map_err(store_error)?
     {
-        let held_item = tracker.get(&project, &claim.item_key).await.ok().flatten();
+        let held_item = tracker.get(project, &claim.item_key).await.ok().flatten();
         return Ok(Json(WorkClaimNextResponse {
             outcome: WorkClaimNextOutcome::AlreadyHeld,
             claim:   Some(api_claim(claim)?),
@@ -696,10 +729,12 @@ async fn retrieve_work_item(
     let item_key = params
         .item_key
         .ok_or_else(|| ApiError::bad_request("itemKey is required"))?;
-    let project = resolve_project(&state, &auth, &project_id).await?;
-    let tracker = tracker_for(&state, &project).await?;
+    // Workers read their own project's items only (denkhaus/work#991).
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    let tracker = tracker_for(&state, project).await?;
     let item = tracker
-        .get(&project, &item_key)
+        .get(project, &item_key)
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &item_key))?;
@@ -739,15 +774,21 @@ async fn resolve_project(
             "project `self` resolves through a run-scoped caller; a user names the project id",
         ));
     };
+    run_own_project(state, run_id).await
+}
+
+/// The run→project seam behind `self`: a run's target repository names
+/// the one work project its worker may touch (denkhaus/work#991).
+async fn run_own_project(state: &Arc<AppState>, run_id: &RunId) -> Result<WorkProject, ApiError> {
     let projection = state.load_run_projection(run_id).await.map_err(|_| {
         ApiError::new(
             StatusCode::NOT_FOUND,
-            format!("run {run_id} not found — cannot resolve project `self`"),
+            format!("run {run_id} not found — cannot resolve its work project"),
         )
     })?;
     let Some(fabro_types::RunTarget::Git(target)) = projection.spec.target.as_ref() else {
         return Err(ApiError::bad_request(
-            "run has no git target — project `self` cannot resolve; name the project id",
+            "run has no git target — its work project cannot resolve; name the project id",
         ));
     };
     state
@@ -765,6 +806,150 @@ async fn resolve_project(
                 ),
             )
         })
+}
+
+/// The work-route caller with its resolved project binding
+/// (denkhaus/work#991, grill 2026-10-26): a user may name any project
+/// and touch any claim (the human surface); the run's worker is BOUND
+/// to the project its run's target repository names — reads and writes
+/// alike (ADR-0019 least privilege), one policy for both delivery
+/// forms: the agent run tools travel these routes with the same
+/// principal, so hardening here binds them in the same breath.
+#[derive(Debug)]
+enum WorkCaller {
+    /// A user: any project, any claim.
+    User { project: WorkProject },
+    /// The run's worker: the run's own project only.
+    RunWorker {
+        run_id:  RunId,
+        project: WorkProject,
+    },
+}
+
+impl WorkCaller {
+    fn project(&self) -> &WorkProject {
+        match self {
+            Self::User { project } | Self::RunWorker { project, .. } => project,
+        }
+    }
+}
+
+/// Resolves the path's project id into a [`WorkCaller`]: users take the
+/// direct (or `self`-refusing) path; workers resolve their own project
+/// and every OTHER literal id — foreign reads included — is refused
+/// with the run's scope in the message.
+async fn resolve_caller_project(
+    state: &Arc<AppState>,
+    auth: &RequiredRunManagementActor,
+    project_id: &str,
+) -> Result<WorkCaller, ApiError> {
+    match &auth.0 {
+        fabro_types::Principal::User(_) => Ok(WorkCaller::User {
+            project: resolve_project(state, auth, project_id).await?,
+        }),
+        fabro_types::Principal::Worker { run_id } => {
+            let project = run_own_project(state, run_id).await?;
+            if project_id == "self" || project_id == project.project_id {
+                Ok(WorkCaller::RunWorker {
+                    run_id: *run_id,
+                    project,
+                })
+            } else {
+                Err(ApiError::new(
+                    StatusCode::FORBIDDEN,
+                    format!(
+                        "run {run_id} is scoped to work project {} — {project_id} is beyond its \
+                         scope",
+                        project.project_id
+                    ),
+                ))
+            }
+        }
+        // RequiredRunManagementActor passes only users and scoped workers.
+        _ => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "work routes serve users and run workers only",
+        )),
+    }
+}
+
+/// One policy for claim-owning routes: a user may touch any claim; the
+/// run's worker only claims whose `run_id` is its own (denkhaus/work#991).
+fn bind_claim_to_caller(
+    auth: &RequiredRunManagementActor,
+    claim: &WorkClaim,
+) -> Result<(), ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        if claim.run_id != *run_id {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                format!(
+                    "claim {} belongs to run {} — run {run_id} may only touch its own claims",
+                    claim.claim_id, claim.run_id
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `grant`/`next` are pinned to the authenticated run for workers
+/// (denkhaus/work#991): a body runId naming a foreign run is refused
+/// loudly instead of silently stamped — a caller bug must surface, not
+/// land as a grant to the wrong run. Users keep granting for any run.
+fn bind_granted_run_id(caller: &WorkCaller, request_run_id: RunId) -> Result<RunId, ApiError> {
+    match caller {
+        WorkCaller::User { .. } => Ok(request_run_id),
+        WorkCaller::RunWorker { run_id, .. } => {
+            if request_run_id == *run_id {
+                Ok(request_run_id)
+            } else {
+                Err(ApiError::new(
+                    StatusCode::FORBIDDEN,
+                    format!(
+                        "grant is pinned to the authenticated run {run_id} — body runId \
+                         {request_run_id} names a different run",
+                    ),
+                ))
+            }
+        }
+    }
+}
+
+/// Close and update are claim-bound for workers (denkhaus/work#991): the
+/// run must HOLD a live claim on the item — closing or editing an item
+/// another run works, or one nobody holds, is beyond the run's scope.
+async fn require_claim_held_by_run(
+    state: &Arc<AppState>,
+    caller: &WorkCaller,
+    item_key: &str,
+) -> Result<(), ApiError> {
+    let WorkCaller::RunWorker { run_id, project } = caller else {
+        return Ok(());
+    };
+    let held = state
+        .work_store()
+        .active_claim_for_item(&project.project_id, item_key)
+        .await
+        .map_err(store_error)?;
+    match held {
+        Some(claim) if claim.run_id == *run_id => Ok(()),
+        Some(claim) => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!(
+                "item {item_key} is claimed by run {} — run {run_id} may only close or edit its \
+                 own claimed items",
+                claim.run_id
+            ),
+        )),
+        None => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!(
+                "item {item_key} has no live claim — run {run_id} may only close or edit items \
+                 it holds a claim on",
+            ),
+        )),
+    }
 }
 
 async fn tracker_for(
@@ -918,7 +1103,10 @@ mod resolve_self_tests {
     use fabro_static::EnvVars;
     use fabro_types::{GitRunTarget, Principal, RunId, RunTarget, SystemActorKind, WorkflowPath};
 
-    use super::resolve_project;
+    use super::{
+        WorkCaller, bind_claim_to_caller, bind_granted_run_id, require_claim_held_by_run,
+        resolve_caller_project, resolve_project,
+    };
     use crate::principal_middleware::RequiredRunManagementActor;
     use crate::server::AppState;
     use crate::test_support::TestAppStateBuilder;
@@ -1211,5 +1399,240 @@ mod resolve_self_tests {
             .await
             .expect_err("`self` is reserved for run-scoped callers");
         assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+    }
+
+    fn foreign_project() -> fabro_work::WorkProject {
+        fabro_work::WorkProject {
+            project_id:               "other".to_string(),
+            display_name:             "Other".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/other".to_string()),
+            project_label:            "project:other".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    /// A run on denkhaus/fabro is scoped to project fabro: `self` and the
+    /// literal id both pass, every other project — reads included — is
+    /// refused with the scope in the message (denkhaus/work#991).
+    #[tokio::test]
+    async fn a_worker_is_bound_to_its_own_project_beyond_it_refused() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        state
+            .work_store()
+            .upsert_project(&foreign_project())
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+
+        let caller = resolve_caller_project(&state, &auth, "self").await.unwrap();
+        assert_eq!(caller.project().project_id, "fabro");
+        let caller = resolve_caller_project(&state, &auth, "fabro")
+            .await
+            .unwrap();
+        assert_eq!(caller.project().project_id, "fabro");
+
+        let error = resolve_caller_project(&state, &auth, "other")
+            .await
+            .expect_err("a foreign project is beyond the run's scope — reads included");
+        assert_eq!(error.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// A user names any project; `self` stays reserved for runs.
+    #[tokio::test]
+    async fn a_user_resolves_any_project() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        state
+            .work_store()
+            .upsert_project(&foreign_project())
+            .await
+            .unwrap();
+        let auth = RequiredRunManagementActor(Principal::User(fabro_types::UserPrincipal {
+            identity:    fabro_types::IdpIdentity::new("https://issuer.test", "user-1")
+                .expect("issuer and subject are non-empty"),
+            login:       "tester".to_string(),
+            auth_method: fabro_types::AuthMethod::DevToken,
+            avatar_url:  None,
+        }));
+        let caller = resolve_caller_project(&state, &auth, "other")
+            .await
+            .unwrap();
+        assert_eq!(caller.project().project_id, "other");
+    }
+
+    /// Claim-owning routes bind to the run: a worker touches only claims
+    /// whose run is its own; a user touches any (denkhaus/work#991).
+    #[tokio::test]
+    async fn a_claim_belongs_to_its_run_for_workers() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let holder = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let stranger = RunId::new();
+        let granted = state
+            .work_store()
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#7".to_string(),
+                run_id:     holder,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .unwrap();
+        let claim = match granted {
+            fabro_work::GrantOutcome::Granted(claim) => claim,
+            other => panic!("the fixture grant must succeed: {other:?}"),
+        };
+
+        bind_claim_to_caller(
+            &RequiredRunManagementActor(Principal::Worker { run_id: holder }),
+            &claim,
+        )
+        .expect("the holding run touches its own claim");
+        bind_claim_to_caller(
+            &RequiredRunManagementActor(Principal::User(fabro_types::UserPrincipal {
+                identity:    fabro_types::IdpIdentity::new("https://issuer.test", "user-1")
+                    .expect("issuer and subject are non-empty"),
+                login:       "tester".to_string(),
+                auth_method: fabro_types::AuthMethod::DevToken,
+                avatar_url:  None,
+            })),
+            &claim,
+        )
+        .expect("a user touches any claim");
+
+        let error = bind_claim_to_caller(
+            &RequiredRunManagementActor(Principal::Worker { run_id: stranger }),
+            &claim,
+        )
+        .expect_err("a foreign run's claim is beyond the worker's scope");
+        assert_eq!(error.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// grant/next pin the body runId to the authenticated run for
+    /// workers: a foreign runId is refused loudly, never stamped over
+    /// (denkhaus/work#991).
+    #[test]
+    fn grant_pins_the_body_run_id_for_workers() {
+        let run_a = RunId::new();
+        let run_b = RunId::new();
+        let caller = WorkCaller::RunWorker {
+            run_id:  run_a,
+            project: bound_project(),
+        };
+        assert_eq!(bind_granted_run_id(&caller, run_a).unwrap(), run_a);
+        let error = bind_granted_run_id(&caller, run_b)
+            .expect_err("a foreign body runId is refused, not stamped over");
+        assert_eq!(error.status(), StatusCode::FORBIDDEN);
+
+        let caller = WorkCaller::User {
+            project: bound_project(),
+        };
+        assert_eq!(
+            bind_granted_run_id(&caller, run_b).unwrap(),
+            run_b,
+            "users keep granting for any run"
+        );
+    }
+
+    /// Close and update are claim-bound for workers: the run must HOLD a
+    /// live claim on the item — another run's claim and no claim at all
+    /// are both beyond scope (denkhaus/work#991).
+    #[tokio::test]
+    async fn close_and_update_require_a_live_claim_held_by_the_run() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let holder = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let stranger = RunId::new();
+        state
+            .work_store()
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#9".to_string(),
+                run_id:     holder,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let holder_caller = WorkCaller::RunWorker {
+            run_id:  holder,
+            project: bound_project(),
+        };
+        require_claim_held_by_run(&state, &holder_caller, "denkhaus/work#9")
+            .await
+            .expect("the holding run closes and edits its claimed item");
+
+        let stranger_caller = WorkCaller::RunWorker {
+            run_id:  stranger,
+            project: bound_project(),
+        };
+        let error = require_claim_held_by_run(&state, &stranger_caller, "denkhaus/work#9")
+            .await
+            .expect_err("an item another run holds is beyond scope");
+        assert_eq!(error.status(), StatusCode::FORBIDDEN);
+
+        let error = require_claim_held_by_run(&state, &stranger_caller, "denkhaus/work#404")
+            .await
+            .expect_err("an unclaimed item is beyond a worker's scope too");
+        assert_eq!(error.status(), StatusCode::FORBIDDEN);
+
+        let user_caller = WorkCaller::User {
+            project: bound_project(),
+        };
+        require_claim_held_by_run(&state, &user_caller, "denkhaus/work#9")
+            .await
+            .expect("a user closes and edits without holding a claim");
     }
 }

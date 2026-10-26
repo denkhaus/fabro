@@ -22,7 +22,7 @@ mod models;
 mod pair;
 mod petri;
 pub(in crate::server) mod pull_requests;
-pub(in crate::server) mod runs;
+pub(crate) mod runs;
 mod sandbox;
 mod sandboxes;
 mod secrets;

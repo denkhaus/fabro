@@ -29,6 +29,9 @@ fn project_body() -> Value {
         "displayName": "Fabro",
         "trackerProvider": "github",
         "trackerRepo": "denkhaus/work",
+        // The run->project scope binding resolves through it
+        // (denkhaus/work#991): a run on denkhaus/fabro maps here.
+        "targetRepo": "denkhaus/fabro",
         "projectLabel": "project:fabro",
         "laneLabels": {"loop": "lane:loop"},
         "claimLabelPrefix": "fabro:run:",
@@ -480,6 +483,9 @@ mod next_item {
                     "displayName": "Fabro",
                     "trackerProvider": "github",
                     "trackerRepo": "denkhaus/work",
+                    // The run->project scope binding resolves through it
+                    // (denkhaus/work#991): a run on denkhaus/fabro maps here.
+                    "targetRepo": "denkhaus/fabro",
                     "projectLabel": "project:fabro",
                     "laneLabels": {"loop": "lane:loop"}
                 }))
@@ -698,7 +704,9 @@ mod next_item {
 
     #[tokio::test]
     async fn work_routes_accept_run_tools_workers_and_refuse_plain_workers() {
-        use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
+        use fabro_server::test_support::{
+            TestAppStateBuilder, build_test_router, create_test_run_with_target,
+        };
         use tower::ServiceExt;
 
         let tracker = FakeTracker::with_items(vec![item(1, 1)]);
@@ -708,7 +716,10 @@ mod next_item {
         let app = build_test_router(state.clone());
         put_project(&app).await;
 
-        let run_id = fabro_types::RunId::new();
+        // A real run on denkhaus/fabro: the work-route scope binds run ->
+        // target repo -> project (denkhaus/work#991), and grant pins the
+        // body runId to the authenticated run.
+        let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
         let plain = state.test_issue_worker_token(&run_id);
         let refused = app
             .clone()
@@ -720,7 +731,7 @@ mod next_item {
                     .header("authorization", format!("Bearer {plain}"))
                     .body(Body::from(
                         serde_json::to_vec(&json!({
-                            "runId": RUN_A,
+                            "runId": run_id.to_string(),
                             "lane": "loop"
                         }))
                         .expect("fixture serializes"),
@@ -745,7 +756,7 @@ mod next_item {
                     .header("authorization", format!("Bearer {tools}"))
                     .body(Body::from(
                         serde_json::to_vec(&json!({
-                            "runId": RUN_A,
+                            "runId": run_id.to_string(),
                             "lane": "loop"
                         }))
                         .expect("fixture serializes"),
@@ -754,13 +765,20 @@ mod next_item {
             )
             .await
             .expect("response");
-        assert_eq!(granted.status(), StatusCode::OK);
-        let body: Value = serde_json::from_slice(
-            &axum::body::to_bytes(granted.into_body(), usize::MAX)
+        let status = granted.status();
+        let granted_text = String::from_utf8(
+            axum::body::to_bytes(granted.into_body(), usize::MAX)
                 .await
-                .expect("body"),
+                .expect("body")
+                .to_vec(),
         )
-        .expect("json");
+        .expect("utf-8 body");
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "next grant through the bound worker: {granted_text}"
+        );
+        let body: Value = serde_json::from_str(&granted_text).expect("json");
         assert_eq!(body["outcome"], "granted");
     }
 

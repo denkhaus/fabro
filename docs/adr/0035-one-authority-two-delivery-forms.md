@@ -8,8 +8,26 @@
   authority this shares), ADR-0019 (capability gates — this is a
   capability delta WITH a recorded user decision), ADR-0017 (engine stays
   tool-agnostic — the channel is transport, not tool semantics)
-- Evidence: to come with the implementation (the capability-channel unit,
-  denkhaus/work items); this ADR records the DIRECTION decision.
+- Evidence: slice 1 landed as denkhaus/fabro b0b95db2a —
+  `RunChannel::spawn` binds the per-run Unix socket, the stamping
+  layer replaces any client-supplied Authorization with the run's
+  worker token (`run:worker` + `agent:run_tools`), `stop()` ends the
+  accept loop and removes the socket; the channel IT pins the scope
+  matrix and the stamping discipline over the sandbox wire
+  (bearer-less UDS HTTP). The claim-binding core landed as
+  denkhaus/work#991: the per-call policy below is now ENFORCED, not
+  promised — `resolve_caller_project` binds the worker's requests
+  (reads included) to the project its run's target repository names,
+  close/update require a live claim held by the run, and grant/next
+  pin the body runId to the authenticated run. Evidence: four
+  module-level binding pins (each mutation-proven RED) plus wire-level
+  ITs answering foreign project / foreign body runId / another run's
+  claim with 403 and the scope in the message, never served. Still to
+  come: the lifecycle wiring (sandbox bind mount, spawn at run start,
+  stop at terminal — the module's `dead_code` allow) rides
+  denkhaus/work#989's next slice. The review's duplicated
+  "Transport protocol" line is resolved: one bullet below, matching
+  the served implementation.
 
 ## Context
 

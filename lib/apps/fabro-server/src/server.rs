@@ -194,7 +194,9 @@ pub(crate) mod fork_work_registry;
 mod fork_work_registry_tests;
 #[cfg(test)]
 mod fork_worker_exit_park_tests;
-mod handler;
+// pub(crate): test-support's run fixture reaches the intent handler;
+// extern stays hidden (denkhaus/work#991).
+pub(crate) mod handler;
 pub(crate) mod petri_runs;
 pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;

@@ -150,6 +150,38 @@ async fn uds_request(
     (status, body)
 }
 
+/// POST a JSON body over the channel socket — the request shape a
+/// deterministic step's nu script speaks (create/grant/close arms).
+async fn uds_json(
+    socket: &std::path::Path,
+    path: &str,
+    payload: &serde_json::Value,
+) -> (u16, String) {
+    let payload = serde_json::to_string(payload).expect("payload serializes");
+    let mut stream = tokio::net::UnixStream::connect(socket)
+        .await
+        .expect("connect to the channel socket");
+    let raw = format!(
+        "POST {path} HTTP/1.1\r\nHost: run-channel\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+        payload.len()
+    );
+    stream
+        .write_all(raw.as_bytes())
+        .await
+        .expect("write the request");
+    let mut body = String::new();
+    stream
+        .read_to_string(&mut body)
+        .await
+        .expect("read the response");
+    let status = body
+        .split_whitespace()
+        .nth(1)
+        .and_then(|code| code.parse::<u16>().ok())
+        .expect("a status line");
+    (status, body)
+}
+
 async fn seed_project(state: &Arc<AppState>) {
     // Project upsert is user-only: seed it through the test router's
     // user bearer BEFORE the channel exists — the channel must not be
@@ -164,6 +196,9 @@ async fn seed_project(state: &Arc<AppState>) {
                 "displayName": "Fabro",
                 "trackerProvider": "github",
                 "trackerRepo": "denkhaus/work",
+                // The run->project scope binding resolves through it
+                // (denkhaus/work#991): a run on denkhaus/fabro maps here.
+                "targetRepo": "denkhaus/fabro",
                 "projectLabel": "project:fabro",
                 "laneLabels": {"loop": "lane:loop"},
                 "claimLabelPrefix": "fabro:run:",
@@ -179,6 +214,63 @@ async fn seed_project(state: &Arc<AppState>) {
     assert_eq!(response.status(), StatusCode::OK, "project seed via user");
 }
 
+/// Seeds a claim held by a FOREIGN run through the user surface (the
+/// worker must not be able to do this itself; the user path may grant
+/// for any run) and returns its claim id.
+async fn seed_foreign_claim(state: &Arc<AppState>, foreign_run: &RunId) -> String {
+    let app = build_test_router(Arc::clone(state));
+    let payload = json!({
+        "itemKey": "denkhaus/work#7",
+        "runId": foreign_run.to_string(),
+        "lane": "loop"
+    });
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri("/api/v1/projects/fabro/claims")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&payload).expect("claim fixture serializes"),
+        ))
+        .expect("claim request should build");
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("the foreign claim seed via user should succeed");
+    assert_eq!(response.status(), StatusCode::OK, "claim seed via user");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("claim response body");
+    let claim: serde_json::Value = serde_json::from_slice(&bytes).expect("claim response json");
+    claim["claim"]["claimId"]
+        .as_str()
+        .expect("the seeded claim id")
+        .to_string()
+}
+
+/// Reads a claim's state back through the user surface — used to prove
+/// a REFUSED worker operation mutated nothing.
+async fn claim_state_via_user(state: &Arc<AppState>, claim_id: &str) -> String {
+    let app = build_test_router(Arc::clone(state));
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(format!("/api/v1/claims/{claim_id}"))
+        .body(Body::empty())
+        .expect("claim read request should build");
+    let response = app
+        .oneshot(request)
+        .await
+        .expect("the claim read via user should succeed");
+    assert_eq!(response.status(), StatusCode::OK, "claim read via user");
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("claim read body");
+    let claim: serde_json::Value = serde_json::from_slice(&bytes).expect("claim read json");
+    claim["state"]
+        .as_str()
+        .expect("the claim state")
+        .to_string()
+}
+
 #[tokio::test]
 async fn the_channel_serves_the_worker_scope_and_refuses_user_surfaces() {
     let state = TestAppStateBuilder::new()
@@ -186,7 +278,14 @@ async fn the_channel_serves_the_worker_scope_and_refuses_user_surfaces() {
         .build();
     seed_project(&state).await;
 
-    let run_id: RunId = "01JRANCHANNER000000000000A".parse().expect("a run id");
+    // A real run on denkhaus/fabro: the work-route scope resolves run ->
+    // target repo -> project through the run's projection (denkhaus/work#991).
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
 
@@ -251,7 +350,12 @@ async fn a_client_supplied_authorization_header_is_replaced_not_honored() {
         .build();
     seed_project(&state).await;
 
-    let run_id: RunId = "01JRANCHANNER000000000000B".parse().expect("a run id");
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
 
@@ -274,32 +378,101 @@ async fn create_reaches_the_tracker_with_the_channel_body() {
         .build();
     seed_project(&state).await;
 
-    let run_id: RunId = "01JRANCHANNER000000000000C".parse().expect("a run id");
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
 
     let payload = json!({"title": "filed by a deterministic script", "body": "through the channel", "labels": []});
-    let payload = serde_json::to_string(&payload).expect("payload serializes");
-    let mut stream = tokio::net::UnixStream::connect(&socket)
-        .await
-        .expect("connect");
-    let raw = format!(
-        "POST /api/v1/projects/fabro/work-items HTTP/1.1\r\nHost: run-channel\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
-        payload.len()
-    );
-    stream
-        .write_all(raw.as_bytes())
-        .await
-        .expect("write create");
-    let mut body = String::new();
-    stream.read_to_string(&mut body).await.expect("read create");
-    assert!(
-        body.starts_with("HTTP/1.1 201"),
-        "create through the channel is created: {body}"
-    );
+    let (status, body) = uds_json(&socket, "/api/v1/projects/fabro/work-items", &payload).await;
+    assert_eq!(status, 201, "create through the channel is created: {body}");
     assert!(
         body.contains("denkhaus/work#2"),
         "the scripted tracker's item key returns: {body}"
+    );
+
+    channel.stop().await;
+}
+
+/// The claim-binding core over the wire (denkhaus/work#991): the three
+/// refusals the cutover review demanded — a foreign project, a foreign
+/// body runId on grant, another run's claim — each answered with 403
+/// and the scope in the message, never served.
+#[tokio::test]
+async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+
+    // A claim held by a FOREIGN run — seeded through the user surface,
+    // as another run's live claim would be.
+    let foreign_run: RunId = "01JRANCHANNER000000000000F".parse().expect("a run id");
+    let foreign_claim_id = seed_foreign_claim(&state, &foreign_run).await;
+
+    let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
+    let socket = channel.socket_path().to_path_buf();
+
+    // (a) a foreign project — reads included, not just writes
+    let (status, body) = uds_request(&socket, "GET /api/v1/projects/other/work-items", &[]).await;
+    assert_eq!(
+        status, 403,
+        "a foreign project read is beyond the run's scope: {body}"
+    );
+    assert!(
+        body.contains("beyond its scope"),
+        "the refusal names the run's scope: {body}"
+    );
+
+    // (b) a foreign body runId on grant — refused loudly, never stamped
+    let (status, body) = uds_json(
+        &socket,
+        "/api/v1/projects/fabro/claims",
+        &json!({
+            "itemKey": "denkhaus/work#1",
+            "runId": foreign_run.to_string(),
+            "lane": "loop"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "grant with a foreign body runId is refused: {body}"
+    );
+    assert!(
+        body.contains("pinned to the authenticated run"),
+        "the refusal names the pin: {body}"
+    );
+
+    // (c) another run's claim — release refused before any mutation
+    let (status, body) = uds_json(
+        &socket,
+        &format!("/api/v1/claims/{foreign_claim_id}/release"),
+        &json!({"reason": "should never land"}),
+    )
+    .await;
+    assert_eq!(
+        status, 403,
+        "releasing a foreign run's claim is refused: {body}"
+    );
+    assert!(
+        body.contains("belongs to run"),
+        "the refusal names the owning run: {body}"
+    );
+    let state_after = claim_state_via_user(&state, &foreign_claim_id).await;
+    assert_ne!(
+        state_after, "released",
+        "the refused release mutated nothing, the claim is still {state_after}"
     );
 
     channel.stop().await;
