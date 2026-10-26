@@ -25,7 +25,7 @@ report it in the journal, never silently work around it.
   aggregates EVERY journal into the loop-wide digest (workflow derived
   from the node signature: planner=develop, select=revisor,
   analyze=architect) — the architect's primary system evidence.
-- Decision records — ADRs live in `docs/lab/adr/`; strategy docs
+- Decision records — ADRs live in `docs/adr/`; strategy docs
   (logging, events, testing, secrets, migrations, error handling) live in
   `docs/internal/`. Read them via shell (they are fs_hide-bound for FILE
   tools in this flow).
