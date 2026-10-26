@@ -991,6 +991,13 @@ pub fn spawn_test_run_channel(state: Arc<AppState>, run_id: &fabro_types::RunId)
     TestRunChannel { inner }
 }
 
+/// What the terminal transition calls (denkhaus/work#1003): drains the
+/// run's channel registration; `true` when THIS call won the take, so
+/// a second drain is provably a no-op.
+pub fn drain_test_run_channel(state: &AppState, run_id: &fabro_types::RunId) -> bool {
+    server::run_channel::cleanup_run_channel_for_run(state, *run_id)
+}
+
 pub fn build_test_router_with_options(state: Arc<AppState>, options: RouterOptions) -> Router {
     with_test_user(server::build_router_with_options(
         state,

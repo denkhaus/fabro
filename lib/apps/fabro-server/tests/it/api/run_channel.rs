@@ -398,6 +398,58 @@ async fn create_reaches_the_tracker_with_the_channel_body() {
     channel.stop().await;
 }
 
+/// The terminal drain (denkhaus/work#1003): taking the registration
+/// stops the channel — socket gone — and the SECOND drain finds
+/// nothing, so a racing terminal fold and stop() cannot double-stop.
+#[tokio::test]
+async fn the_terminal_drain_stops_the_socket_and_a_redrain_is_a_no_op() {
+    use std::time::Duration;
+
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+    let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
+    let socket = channel.socket_path().to_path_buf();
+
+    // alive before the drain
+    let (health, _) = uds_request(&socket, "GET /health", &[]).await;
+    assert_eq!(health, 200, "the channel serves before the drain");
+
+    // The drain runs the removal in a spawned task (the production
+    // shape); poll for the socket FILE to disappear — a connect probe
+    // would pass without the removal too (no listener -> refused even
+    // on a stale file; mutation-proven blind, then fixed to exists()).
+    let first = fabro_server::test_support::drain_test_run_channel(&state, &run_id);
+    assert!(first, "the first drain takes the registration");
+    let gone = tokio::time::timeout(Duration::from_secs(5), async {
+        while socket.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await;
+    assert!(gone.is_ok(), "the drained channel's socket file is removed");
+    let refused = std::os::unix::net::UnixStream::connect(&socket).is_err();
+    assert!(refused, "a racing connect after the removal fails loudly");
+
+    // A second drain (the racing terminal fold) wins nothing.
+    let second = fabro_server::test_support::drain_test_run_channel(&state, &run_id);
+    assert!(
+        !second,
+        "the second drain finds nothing — double stop is a no-op"
+    );
+
+    // And the handle's stop after the drain is the same no-op (it
+    // proxies through the registry).
+    channel.stop().await;
+}
+
 /// The claim-binding core over the wire (denkhaus/work#991): the three
 /// refusals the cutover review demanded — a foreign project, a foreign
 /// body runId on grant, another run's claim — each answered with 403

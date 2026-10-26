@@ -1194,6 +1194,9 @@ pub struct AppState {
     resource_sampler: resource_sampler::ResourceSampler,
     max_concurrent_runs: usize,
     pub(crate) worker_control_bus: Arc<dyn WorkerControlBus>,
+    /// The run-keyed capability-channel registrations the terminal
+    /// transition drains (ADR-0035 lifecycle, denkhaus/work#1003).
+    pub(crate) run_channels: run_channel::RunChannelRegistry,
     /// The steers and interrupts awaiting their worker's answer.
     pub(crate) worker_control_acks: Arc<WorkerControlAcks>,
     pub(crate) worker_runtime: Arc<dyn WorkerRuntime>,
@@ -2894,6 +2897,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         resource_sampler: resource_sampler::ResourceSampler::new(),
         max_concurrent_runs,
         worker_control_bus,
+        run_channels: run_channel::RunChannelRegistry::default(),
         worker_control_acks: Arc::new(WorkerControlAcks::new(WORKER_CONTROL_ACK_WAIT)),
         worker_runtime,
         petri_runs,
@@ -3796,6 +3800,8 @@ fn fail_managed_run(state: &Arc<AppState>, run_id: RunId, reason: FailureReason,
         clear_live_run_state(managed_run);
     }
     cleanup_worker_control_bus_for_run(state.as_ref(), run_id);
+    // The capability channel dies where the bus dies (denkhaus/work#1003).
+    run_channel::cleanup_run_channel_for_run(state.as_ref(), run_id);
 }
 
 /// Fold one lifecycle record of the run's stream into the in-memory run:
@@ -3864,6 +3870,8 @@ fn apply_lifecycle_to_managed_run(state: &AppState, run_id: RunId, record: &RunL
             managed_run.active_steerable_stages.clear();
             managed_run.active_non_steerable_stages.clear();
             cleanup_worker_control_bus_for_run(state, run_id);
+            // The capability channel dies where the bus dies (denkhaus/work#1003).
+            run_channel::cleanup_run_channel_for_run(state, run_id);
         }
         RunLifecycleKind::Failed | RunLifecycleKind::Dead => {
             managed_run.status = record.status.unwrap_or(RunStatus::Failed {
@@ -3873,6 +3881,8 @@ fn apply_lifecycle_to_managed_run(state: &AppState, run_id: RunId, record: &RunL
             managed_run.active_steerable_stages.clear();
             managed_run.active_non_steerable_stages.clear();
             cleanup_worker_control_bus_for_run(state, run_id);
+            // The capability channel dies where the bus dies (denkhaus/work#1003).
+            run_channel::cleanup_run_channel_for_run(state, run_id);
         }
         RunLifecycleKind::Runnable
         | RunLifecycleKind::StartRequested
