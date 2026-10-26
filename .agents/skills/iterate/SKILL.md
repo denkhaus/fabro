@@ -479,6 +479,14 @@ stores it belongs to; reach them by phase need:
   tracker write, sweep `git status` for stray untracked entries and
   delete them before committing — otherwise they ride the next
   `git add`.
+- After a MECHANICAL MULTI-FILE REWRITE (sed across a reference path,
+  rename wave), derive the staging set from the change itself
+  (`git diff --name-only`), not from a hand-typed list, and gate the
+  push on an EMPTY `git status` — 2026-10-26 (ADR move to docs/adr):
+  two consecutive pushes left riders behind because the sed batch had
+  six files and the hand-typed `git add` list had four; the dirty
+  remainder was visible in `git status` both times and got pushed past.
+  A clean tree is part of the push gate's check, not an afterthought.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
