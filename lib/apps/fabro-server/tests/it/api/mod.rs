@@ -9,6 +9,7 @@ mod install_openai_compatible;
 mod mcp_servers;
 mod petri_store;
 mod routing;
+mod run_channel;
 mod run_files;
 mod run_wait;
 mod runs;

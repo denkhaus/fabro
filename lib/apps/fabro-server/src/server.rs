@@ -199,6 +199,7 @@ pub(crate) mod petri_runs;
 pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
+pub(crate) mod run_channel;
 mod run_publish;
 pub(crate) mod run_records;
 mod session_runtime;

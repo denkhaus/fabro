@@ -36,24 +36,32 @@ fragile forwarding choreography (the fabro-c42f packet-drop class).
 
 ## Decision
 
-**Option C — a per-run capability channel into the sandbox, no secret
-material anywhere in the sandbox.**
+**Option C — a per-run capability channel into the sandbox: the
+universal bridge between deterministic workflow steps and the engine,
+with no secret material anywhere in the sandbox.**
 
 - The engine exposes one per-run capability endpoint (a Unix socket
   mounted into the run's sandbox by the sandbox driver; engine-side
   lifecycle: created with the run, closed at terminal state).
 - The `fabro` CLI ships in the toolchain image and detects the channel
-  (e.g. `FABRO_RUN_CHANNEL`): `fabro work …` in a sandbox routes over
-  the channel instead of a bearer token. Same verbs, same UX as the
-  host — different transport.
-- The engine-side handler is THE SAME authorization core the run tools
-  use: one policy (run-scoped, claim-bound, project-bound), two
-  presentations (tool protocol for LLM steps, channel RPC for
-  deterministic steps).
-- Transport protocol: thin JSON-RPC-shaped request/response (final
-  shape is the implementation unit's to settle; MCP reuse was weighed
-  and left open — scripts need a handful of verbs, not a tool
-  negotiation).
+  (e.g. `FABRO_RUN_CHANNEL`): CLI calls in a sandbox route over the
+  channel instead of a bearer token. Same verbs, same UX as the host —
+  different transport.
+- **Parity principle — the channel is not a capability list.** The
+  engine-side handler stamps the run's worker principal (`run:worker`
+  + `agent:run_tools`) into every request internally; the existing
+  principal middleware and route extractors ARE the authorization. The
+  channel therefore exposes exactly what the run's agent could reach
+  through its run tools — no more, no less. Every engine capability
+  that becomes agent-reachable (work items today; whatever the engine
+  grows tomorrow) arrives for deterministic steps in the same breath.
+  Work items are the FIRST consumer (the cutover, ADR-0032); they
+  define nothing about the channel's shape.
+- Transport protocol: HTTP over the socket, served by the same axum
+  router the TCP server serves (axum serves Unix listeners; the
+  internal stamping layer is the production twin of the test
+  router's user-bearer injection). The sandbox CLI needs a UDS
+  transport in fabro-client; the wire is the API as-is.
 
 ## Options weighed
 
@@ -89,6 +97,11 @@ claim, run lifecycle NO, foreign projects/claims NO.
 
 ## Consequences
 
+- **The channel is the universal bridge, not a work-item service** (user
+  amendment 2026-10-26): deterministic steps reach the ENGINE through
+  it — work items are the first consumer, and every future
+  agent-reachable capability flows to scripts automatically under the
+  parity principle.
 - The workflow-asset rewrite (develop/loop/revisor onto work items)
   targets the CHANNEL, not packets: closeout verifies the claim
   server-side, files residuals atomically, closes atomically — the

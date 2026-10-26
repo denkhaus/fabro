@@ -893,6 +893,36 @@ pub fn build_test_router(state: Arc<AppState>) -> Router {
     with_test_user(server::build_router(state, test_auth_mode()))
 }
 
+/// A spawned per-run capability channel over a temp-dir socket (ADR
+/// 0035 IT support): the run's worker principal stamped internally, the
+/// socket returned for raw bearer-less HTTP. ITs prove the scope matrix
+/// over the wire the sandbox CLI will speak.
+pub struct TestRunChannel {
+    inner: server::run_channel::RunChannel,
+}
+
+impl TestRunChannel {
+    #[must_use]
+    pub fn socket_path(&self) -> &std::path::Path {
+        self.inner.socket_path()
+    }
+
+    pub async fn stop(self) {
+        self.inner.stop().await;
+    }
+}
+
+pub fn spawn_test_run_channel(state: Arc<AppState>, run_id: &fabro_types::RunId) -> TestRunChannel {
+    let dir = std::env::temp_dir().join(format!(
+        "fabro-run-channel-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let socket = dir.join("channel.sock");
+    let inner = server::run_channel::RunChannel::spawn(state, test_auth_mode(), *run_id, socket)
+        .expect("the test run channel should spawn");
+    TestRunChannel { inner }
+}
+
 pub fn build_test_router_with_options(state: Arc<AppState>, options: RouterOptions) -> Router {
     with_test_user(server::build_router_with_options(
         state,
