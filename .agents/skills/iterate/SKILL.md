@@ -41,7 +41,7 @@ stores it belongs to; reach them by phase need:
   `nu` (scripting pitfalls), `engine` (over limit — prefer specific domains).
 - `seeds show <id>` / `seeds search <term>` — actionable work, one keyword
   per search (AND-strict).
-- ADRs in `docs/lab/adr/` — decisions. Ones this skill leans on: 0008
+- ADRs in `docs/adr/` — decisions. Ones this skill leans on: 0008
   (graph+prompts+scripts as one unit), 0009 (stage-envelope family order),
   0012 (dogfooding), 0015 (serialization, one line one executor), 0017
   (tool-agnostic engine), 0018 (ownership boundary), 0019 (capability
@@ -809,14 +809,14 @@ stores it belongs to; reach them by phase need:
   decisions, this skill = process. Nothing stays in chat that belongs in
   one of them. Fabro-specific Rust rules (test-support feature, strum,
   import style, shell_quote) sit ON TOP of rust-style-guide.
-- HANDOFFS ARE TRANSPORT ARTIFACTS, NOT HISTORY (user directive
-  2026-10-26): a handoff exists to carry tasks from one session to the
-  next. The moment its demands are consumed (landed or filed as work
-  items), the handoff is DELETED — a markdown handoff file is `git rm`ed
-  in the consuming session (git keeps the history; no superseded
-  banners, no doc-graveyard), a work-item handoff is CLOSED with the
-  evidence. The consuming session also cleans references to the deleted
-  file (checklists, docs) in the same change; ADR citations stay
-  untouched (historical record). Leaving a consumed handoff in the tree
-  is a finding of the same class as stale docs: the next session reads
-  it as current state.
+- HANDOFFS ARE TRANSPORT ARTIFACTS, NOT HISTORY (ADR-0036, user
+  directive 2026-10-26): a handoff exists to carry tasks from one
+  session to the next. The moment its demands are consumed (landed or
+  filed as work items), the handoff is DELETED — a markdown handoff
+  file is `git rm`ed in the consuming session (git keeps the history;
+  no superseded banners, no doc-graveyard), a work-item handoff is
+  CLOSED with the evidence. The consuming session also cleans
+  references to the deleted file (checklists, docs) in the same change;
+  ADR citations stay untouched (historical record). Leaving a consumed
+  handoff in the tree is a finding of the same class as stale docs:
+  the next session reads it as current state.

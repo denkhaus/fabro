@@ -366,4 +366,4 @@ The five triage roles map onto the label standard (`prio:pN`, `type:*`, `lane:*`
 
 ### Domain docs
 
-Multi-context: `CONTEXT-MAP.md` at the root, one CONTEXT.md per context, ADRs in `docs/lab/adr/`. See `docs/agents/domain.md`.
+Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/` (one series: lab-branch era 0001–0031, denkhaus line 0032+). See `docs/agents/domain.md`.

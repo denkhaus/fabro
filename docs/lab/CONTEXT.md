@@ -1,5 +1,10 @@
 # Lab platform context — glossary
 
+> **LEGACY (2026-10-26).** This is the lab branch's platform glossary,
+> kept because lab-era ADRs cite its terms. The canonical glossary is
+> `GLOSSARY.md` at the repo root; terms migrate into it on touch (see
+> `docs/agents/domain.md`).
+
 Engine/workflow dogfooding vocabulary for the platform world
 (`docs/lab/`, ADRs 0009+). Terms defined here are binding for seeds,
 prompts, and ADRs; avoid the listed synonyms.

@@ -1,54 +1,61 @@
 # Domain Docs
 
 How the engineering skills should consume this repo's domain documentation
-when exploring the codebase. Layout: **multi-context**.
+when exploring the codebase. Layout: **single-context**.
 
-## Contexts
+## Where things live
 
-`CONTEXT-MAP.md` at the repo root (created lazily by /domain-modeling) points
-to one CONTEXT.md per context. The contexts:
-
-| Context | Where | What it owns |
-| --- | --- | --- |
-| Engine | `lib/` (Rust workspace: apps/components/foundation) | run, stage, checkpoint, sandbox, workflow engine vocabulary |
-| Web | `apps/fabro-web`, `lib/packages/fabro-api-client` | SPA, API client, run/session UI vocabulary |
-| Lab | `docs/lab/` on `denkhaus` | workflow dogfooding; fabro-as-product (ADR-0012/0013) |
-| Marketing/docs | `apps/marketing`, `docs/public` | site and public docs vocabulary |
-
-## The Lab contexts
-
-- **Product world (retired 2026-09-05)**: the `denkhaus-lab` branch is
-  gone — final state preserved as tag `archive/denkhaus-lab-final`
-  (gofib CLI world, ADR-0012 history). The product IS fabro now.
-- **Platform world (rescued)**: `docs/lab/` on `denkhaus` — the retired
-  meta branch's durable home. ADRs 0001–0008 live in `docs/lab/adr/`
-  (numbering continues there: ADR-0009+), the engine docs snapshot in
-  `docs/lab/fabro/`, review reports in `docs/lab/reviews/`. New lab
-  platform decisions go to `docs/lab/adr/`.
+- `GLOSSARY.md` (repo root) — the canonical glossary. Line and
+  work-tracker vocabulary; terms are binding for work items, prompts,
+  and ADRs.
+- `docs/adr/` — the decision record. One continuing numbered series
+  with three eras of provenance (user record, 2026-10-26):
+  - **0001–0008, lab/meta era**: rescued from the retired `lab/meta`
+    branch; per-world platform decisions (see ADR-0005 for that era's
+    own rules).
+  - **~0009–0031, lab-branch era**: workflow-authoring decisions,
+    developed on the `lab` branch decoupled from the engine on
+    `denkhaus`. This era includes the German-titled `rev`/`rev2` files
+    (revisor/engine-side revision decisions, e.g.
+    `0009-rev-fs-policy-flow-on-petri.md`,
+    `0021-rev2-quota-park-on-petri.md`) that SHARE numbers with the
+    main series — citations resolve by full filename, and where a
+    skill cites a bare "ADR-0009"/"ADR-0021" it means the English
+    stage-envelope / line-recovery files.
+  - **0032+, denkhaus line**: the line's own decisions, written in this
+    tree, English per ADR-0033.
+- `docs/lab/CONTEXT.md` — the lab branch's platform glossary
+  (legacy; still cited by lab-era ADRs). Root `GLOSSARY.md` is
+  canonical; lab terms migrate into it on touch.
+- `docs/lab/` (rest) — rescued lab-era material: review reports, the
+  engine docs snapshot, petri analyses.
 
 ## Before exploring, read these
 
-- `CONTEXT-MAP.md` at the repo root if it exists; then the per-context CONTEXT.md relevant to the topic.
-- `docs/adr/` at the repo root (system-wide decisions) — created lazily; absence is fine.
-- Lab work: `origin/denkhaus-lab:CONTEXT.md` and `docs/lab/adr/` in this tree.
+- `GLOSSARY.md` at the repo root.
+- The ADR in `docs/adr/` that owns the area you touch (cited by number
+  in skills, work items, and code comments).
 
-If any of these files don't exist, proceed silently. Don't flag their absence;
-don't suggest creating them upfront. `/domain-modeling` (reached via
-`/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily
-when terms or decisions actually get resolved.
+If a file you'd expect doesn't exist, proceed silently. Don't flag its
+absence; don't suggest creating it upfront. `/domain-modeling` (reached
+via `/grill-with-docs` and `/improve-codebase-architecture`) extends
+the glossary lazily when terms actually get resolved.
 
 ## Use the glossary's vocabulary
 
-When your output names a domain concept (in an issue title, a refactor
-proposal, a hypothesis, a test name), use the term as defined in the relevant
-CONTEXT.md. Don't drift to synonyms the glossary explicitly avoids (the
-_Avoid_ lines). If the concept you need isn't in the glossary yet, that's a
-signal: either you're inventing language the project doesn't use (reconsider)
-or there's a real gap (note it for /domain-modeling).
+When your output names a domain concept (in a work item title, a
+refactor proposal, a hypothesis, a test name), use the term as defined
+in `GLOSSARY.md`. Don't drift to synonyms the glossary explicitly
+avoids. If the concept you need isn't in the glossary yet, that's a
+signal: either you're inventing language the project doesn't use
+(reconsider) or there's a real gap (note it for `/domain-modeling`).
 
 ## Flag ADR conflicts
 
-If your output contradicts an existing ADR, surface it explicitly rather than
-silently overriding:
+If your output contradicts an existing ADR, surface it explicitly
+rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+
+Opening a superseding ADR beats silently widening an accepted one; the
+complexity brake (ADR-0028 lesson) applies.
