@@ -15,6 +15,7 @@ mod petri_fork;
 mod petri_tools;
 mod server_lifecycle;
 mod smoke;
+mod work_channel;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

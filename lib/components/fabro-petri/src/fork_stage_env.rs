@@ -52,6 +52,7 @@ use sandbox_driver::{
 };
 
 use crate::fork_git_identity::RunGitIdentity;
+use crate::fork_run_channel::RunChannelMount;
 
 /// The environment variable the engine injects: the id of the node being
 /// dispatched, as the deterministic verify dispatcher (`just verify`)
@@ -104,26 +105,31 @@ impl StageDispatch {
 /// A factory that wraps its provider's sandboxes with the run's injected
 /// process environment — the dispatched stage and the run's Git identity:
 /// the one touch point on the provider path every built-in kind connects
-/// through.
+/// through. With a channel mount it also applies the per-run capability
+/// channel (ADR-0035) to every sandbox spec the provider creates.
 pub struct StageFactory {
-    inner:    Arc<dyn ProviderFactory>,
-    stages:   Arc<StageDispatch>,
-    identity: Arc<RunGitIdentity>,
+    inner:       Arc<dyn ProviderFactory>,
+    stages:      Arc<StageDispatch>,
+    identity:    Arc<RunGitIdentity>,
+    run_channel: Option<Arc<RunChannelMount>>,
 }
 
 impl StageFactory {
     /// Wrap `inner` so every sandbox it connects carries the injections:
-    /// the dispatched stage and the run's Git identity.
+    /// the dispatched stage, the run's Git identity, and — when the run
+    /// has one — the per-run capability channel mount.
     #[must_use]
     pub fn new(
         inner: Arc<dyn ProviderFactory>,
         stages: Arc<StageDispatch>,
         identity: Arc<RunGitIdentity>,
+        run_channel: Option<Arc<RunChannelMount>>,
     ) -> Self {
         Self {
             inner,
             stages,
             identity,
+            run_channel,
         }
     }
 }
@@ -152,9 +158,10 @@ impl ProviderFactory for StageFactory {
     ) -> sandbox_driver::Result<Arc<dyn SandboxProvider>> {
         let provider = self.inner.connect(context).await?;
         Ok(Arc::new(StageProvider {
-            inner:    provider,
-            stages:   Arc::clone(&self.stages),
-            identity: Arc::clone(&self.identity),
+            inner:       provider,
+            stages:      Arc::clone(&self.stages),
+            identity:    Arc::clone(&self.identity),
+            run_channel: self.run_channel.clone(),
         }))
     }
 }
@@ -162,10 +169,14 @@ impl ProviderFactory for StageFactory {
 /// A provider whose sandboxes inject the dispatched stage and the run's
 /// Git identity into every process they run. Delegates everything but
 /// handle creation, the same shape as the driver's own `OwnedProvider`.
+/// With a channel mount, every sandbox spec it CREATES first gains the
+/// per-run capability channel (bind and env) — the one branch the
+/// kind-agnostic wrap carries (ADR-0035, work#989 grill R2.3).
 pub struct StageProvider {
-    inner:    Arc<dyn SandboxProvider>,
-    stages:   Arc<StageDispatch>,
-    identity: Arc<RunGitIdentity>,
+    inner:       Arc<dyn SandboxProvider>,
+    stages:      Arc<StageDispatch>,
+    identity:    Arc<RunGitIdentity>,
+    run_channel: Option<Arc<RunChannelMount>>,
 }
 
 #[async_trait]
@@ -183,7 +194,14 @@ impl SandboxProvider for StageProvider {
         spec: &SandboxSpec,
         events: Option<EventContext>,
     ) -> sandbox_driver::Result<Arc<dyn Sandbox>> {
-        let sandbox = self.inner.create(spec, events).await?;
+        // The channel mount is applied to a CLONED spec: the engine's
+        // spec stays as it lowered it, only the driver's copy carries
+        // the channel (the bind and env are delivery, not graph state).
+        let mut spec = spec.clone();
+        if let Some(mount) = &self.run_channel {
+            mount.apply(self.inner.kind().as_str(), &mut spec);
+        }
+        let sandbox = self.inner.create(&spec, events).await?;
         Ok(stage_sandbox(sandbox, &self.stages, &self.identity))
     }
 

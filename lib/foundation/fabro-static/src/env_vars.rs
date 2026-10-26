@@ -31,6 +31,18 @@ impl EnvVars {
     pub const FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS: &'static str =
         "FABRO_PUSH_CRED_REFRESH_INTERVAL_SECONDS";
     pub const FABRO_QUIET: &'static str = "FABRO_QUIET";
+    /// Server-side override for the per-run capability channel root
+    /// (ADR-0035): the directory whose per-run subdirs the sandbox
+    /// daemon can bind into run sandboxes. Compose deployments pin the
+    /// host path here so server view and daemon view coincide.
+    pub const FABRO_RUN_CHANNEL_DIR: &'static str = "FABRO_RUN_CHANNEL_DIR";
+    /// Set by the server on the per-run worker subprocess (the
+    /// `FABRO_HOOK_ASSETS` transport pattern): the path of this run's
+    /// capability channel socket, so the worker's `RuntimeSpec` can
+    /// hand the mount to the sandbox wrap (ADR-0035). A worker-internal
+    /// transport variable — sandbox processes see `FABRO_SERVER`
+    /// instead, through the mount itself.
+    pub const FABRO_RUN_CHANNEL_SOCK: &'static str = "FABRO_RUN_CHANNEL_SOCK";
     pub const FABRO_SERVER: &'static str = "FABRO_SERVER";
     pub const FABRO_SERVER_MAX_CONCURRENT_RUNS: &'static str = "FABRO_SERVER_MAX_CONCURRENT_RUNS";
     pub const FABRO_SLACK_APP_TOKEN: &'static str = "FABRO_SLACK_APP_TOKEN";

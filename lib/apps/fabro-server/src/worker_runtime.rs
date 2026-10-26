@@ -57,6 +57,12 @@ pub(crate) struct WorkerLaunchSpec {
     /// leaves the variable unset and hook scripts fall back to
     /// workspace-relative paths.
     pub(crate) hook_assets:            Option<PathBuf>,
+    /// The path of this run's capability channel socket (ADR-0035),
+    /// exported to the worker as `FABRO_RUN_CHANNEL_SOCK` (the
+    /// `FABRO_HOOK_ASSETS` transport pattern) so the worker's
+    /// `RuntimeSpec` mounts it into the run's sandboxes. `None` when
+    /// the operator's kill switch is off or the spawn failed.
+    pub(crate) run_channel_socket:     Option<PathBuf>,
 }
 
 pub(crate) struct StartedWorker {
@@ -117,6 +123,9 @@ impl LocalWorkerRuntime {
         }
         if let Some(hook_assets) = spec.hook_assets.as_deref() {
             cmd.env(EnvVars::FABRO_HOOK_ASSETS, hook_assets);
+        }
+        if let Some(socket) = spec.run_channel_socket.as_deref() {
+            cmd.env(EnvVars::FABRO_RUN_CHANNEL_SOCK, socket);
         }
         // The worker's storage anchor for host-side artifacts (the
         // judgment stream): the worker knows its storage dir as an

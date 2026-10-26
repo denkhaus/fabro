@@ -22,11 +22,29 @@
   pin the body runId to the authenticated run. Evidence: four
   module-level binding pins (each mutation-proven RED) plus wire-level
   ITs answering foreign project / foreign body runId / another run's
-  claim with 403 and the scope in the message, never served. Still to
-  come: the SPAWN caller (the sandbox bind mount at run start) — the
-  terminal drain landed as denkhaus/work#1003 (run-keyed registry,
-  idempotent take, drains at the three terminal sites; the module's
-  `dead_code` allow narrows to the spawn gap). The review's duplicated
+  claim with 403 and the scope in the message, never served. The
+  SPAWN caller and the sandbox mount landed as denkhaus/work#989
+  (the terminal drain landed as denkhaus/work#1003: run-keyed
+  registry, idempotent take, drains at the three terminal sites):
+  the run launch spawns the channel before any sandbox spec exists,
+  the socket lives at `<channel-root>/<run>/channel.sock` (settings
+  `[server.run_channel]`, env override `FABRO_RUN_CHANNEL_DIR`, kill
+  switch `enabled = false`), and `RunChannelMount` applies it at
+  sandbox create — Docker gains the per-run DIRECTORY bind at
+  `/run/fabro` (a directory bind survives a crash-rest re-bind) plus
+  `FABRO_SERVER=/run/fabro/channel.sock`, Host gains the env only,
+  Daytona stays honestly absent, and NO bearer material ever enters
+  the sandbox env (the worker token crosses to the worker as
+  `FABRO_RUN_CHANNEL_SOCK` and stops there — the variable carries the
+  socket PATH, never a token; no secret value crosses the process
+  boundary). Evidence: five inline
+  mount pins (Docker env+bind, binds append, Host, Daytona,
+  no-bearer), the production-spawn IT (layout, health, kill switch,
+  env override, awaited stale stop before respawn) and the CLI
+  channel IT — the compiled `fabro` runs list/show/create/close over
+  the socket with `FABRO_SERVER` as its ONLY credential and is
+  refused a foreign project; all three mutation-proven RED. The
+  review's duplicated
   "Transport protocol" line is resolved: one bullet below, matching
   the served implementation.
 

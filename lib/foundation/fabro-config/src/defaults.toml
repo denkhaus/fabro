@@ -46,6 +46,13 @@ max_concurrent_runs = 5
 [server.retention]
 max_run_age_days = 14
 
+# Per-run capability channel (ADR-0035): spawn one channel per run at
+# launch; `dir` is the daemon-visible root whose per-run subdirs run
+# sandboxes bind (empty -> <storage>/run-channels; FABRO_RUN_CHANNEL_DIR
+# overrides it at consumption).
+[server.run_channel]
+enabled = true
+
 [server.artifacts]
 provider = "local"
 prefix = ""

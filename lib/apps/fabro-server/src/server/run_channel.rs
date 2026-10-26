@@ -20,16 +20,14 @@
 //! the sandbox side carries no secret material, the connection is the
 //! authority, and closing the socket at run terminal revokes it.
 
-// Not yet constructed in production: the SPAWN caller (the sandbox bind
-// mount at run start) lands in the next slice of denkhaus/work#989 —
-// until then the IT under tests/it/api/run_channel.rs proves the
-// surface through test-support, where this module IS used (clippy runs
-// feature-less and would call it dead). The TERMINAL DRAIN exists
-// (denkhaus/work#1003: the registry and its three server-side call
-// sites are production code).
+// The production SPAWN caller (denkhaus/work#989) is
+// `spawn_for_run` below; the IT under tests/it/api/run_channel.rs
+// exercises the same surface through test-support. The TERMINAL
+// DRAIN is denkhaus/work#1003 (the registry and its three
+// server-side call sites).
 #![allow(
     dead_code,
-    reason = "the production spawn caller lands in the next denkhaus/work#989 slice; the terminal drain (work#1003) and the ITs use the rest"
+    reason = "the handle's accessor and stop serve the test-support ITs (TestRunChannel); the production spawn hands the path out directly and lets the registry own shutdown — a feature-less clippy run sees neither test-support consumer"
 )]
 
 use std::os::unix::fs::PermissionsExt as _;
@@ -42,10 +40,13 @@ use axum::http::header::AUTHORIZATION;
 use axum::middleware;
 use axum::middleware::Next;
 use axum::routing::Router;
+use fabro_petri::fork_run_channel::CHANNEL_SOCKET_FILE;
+use fabro_static::EnvVars;
 use fabro_types::RunId;
 use tokio::fs;
 use tokio::net::UnixListener;
 use tokio::sync::watch;
+use tokio::task::JoinHandle;
 
 use crate::jwt_auth::AuthMode;
 use crate::server::{AppState, build_router};
@@ -57,13 +58,22 @@ use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
 pub(crate) struct RegisteredChannel {
     shutdown:    watch::Sender<bool>,
     socket_path: PathBuf,
+    /// The serve task itself: `stop` awaits it before removing the
+    /// socket, so a respawn for the same run (launch, resume, retry)
+    /// binds AFTER the old listener is gone — never racing a removal
+    /// against the fresh bind (denkhaus/work#989).
+    served:      JoinHandle<()>,
 }
 
 impl RegisteredChannel {
-    /// Graceful stop: ends the accept loop (the serve task sees the
-    /// watch flip), waits are the server's; removes the socket file.
+    /// Graceful stop: ends the accept loop, WAITS for the serve task
+    /// to leave the socket, then removes the socket file — the file is
+    /// gone before this returns, so the next spawn binds clean.
     async fn stop(self) {
         let _ = self.shutdown.send(true);
+        if let Err(join_error) = self.served.await {
+            tracing::warn!(?join_error, "run channel serve task ended with an error");
+        }
         let _ = fs::remove_file(&self.socket_path).await;
     }
 }
@@ -110,6 +120,63 @@ pub(crate) fn cleanup_run_channel_for_run(state: &AppState, run_id: RunId) -> bo
         registered.stop().await;
     });
     true
+}
+
+/// The spawn caller of ADR-0035 (denkhaus/work#989): start the run's
+/// channel BEFORE the launch builds anything the sandbox will see, so
+/// the socket exists by the time the spec gains its bind. Returns the
+/// socket path for the run's worker (`RuntimeSpec::run_channel`), or
+/// `None` when the operator's kill switch disables the channel
+/// (`[server.run_channel] enabled = false`, work#989 grill R2.4).
+///
+/// Layout (work#989 grill F2/R2.1): the channel root — env override
+/// `FABRO_RUN_CHANNEL_DIR`, then `[server.run_channel] dir`, then
+/// `<storage>/run-channels` — holds one SUBDIR per run, and the
+/// sandbox mounts only that subdir: one daemon-visible path serves
+/// server and daemon alike (compose pins the root into the server
+/// container unchanged), and a crash-rest re-bind (a new inode) stays
+/// visible through the directory the container holds.
+pub(crate) async fn spawn_for_run(state: &Arc<AppState>, run_id: RunId) -> Option<PathBuf> {
+    if !state.server_settings().server.run_channel.enabled {
+        return None;
+    }
+    let root = (state.env_lookup)(EnvVars::FABRO_RUN_CHANNEL_DIR)
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            state
+                .server_settings()
+                .server
+                .run_channel
+                .dir
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+        })
+        .unwrap_or_else(|| state.server_storage_dir().join("run-channels"));
+    let socket_path = root.join(run_id.to_string()).join(CHANNEL_SOCKET_FILE);
+    // An earlier launch of the same run (resume, retry) registered its
+    // channel: AWAIT its stop — old listener gone, file removed — so
+    // the respawn can neither race the old removal nor hit EADDRINUSE
+    // against the old listener.
+    if let Some(stale) = state.run_channels.take(run_id) {
+        stale.stop().await;
+    }
+    match RunChannel::spawn(
+        Arc::clone(state),
+        state.auth_mode.clone(),
+        run_id,
+        socket_path.clone(),
+    ) {
+        Ok(_channel) => Some(socket_path),
+        Err(error) => {
+            tracing::error!(
+                ?error,
+                "run channel spawn failed; the run launches without a channel"
+            );
+            None
+        }
+    }
 }
 
 /// A spawned channel server: the socket path (for the sandbox mount) and
@@ -182,11 +249,10 @@ impl RunChannel {
         }
 
         let (shutdown, mut shutdown_rx) = watch::channel(false);
-        state.run_channels.insert(run_id, RegisteredChannel {
-            shutdown,
-            socket_path: socket_path.clone(),
-        });
-        tokio::spawn(async move {
+        // Every error path above left nothing behind; the task starts
+        // serving and the registration claims it in the very next
+        // statement — nothing fails between the two.
+        let served = tokio::spawn(async move {
             let served = axum::serve(listener, stamped)
                 .with_graceful_shutdown(async move {
                     let _ = shutdown_rx.changed().await;
@@ -195,6 +261,11 @@ impl RunChannel {
             if let Err(error) = served {
                 tracing::warn!(%error, "run channel server ended with an error");
             }
+        });
+        state.run_channels.insert(run_id, RegisteredChannel {
+            shutdown,
+            socket_path: socket_path.clone(),
+            served,
         });
         Ok(Self {
             socket_path,
@@ -316,14 +387,15 @@ mod tests {
     /// The registry IS the idempotency: one take claims the
     /// registration, the second finds nothing — a double stop cannot
     /// exist because there is nothing left to stop (work#1003).
-    #[test]
-    fn the_second_take_finds_nothing() {
+    #[tokio::test]
+    async fn the_second_take_finds_nothing() {
         let registry = RunChannelRegistry::default();
         let run_id = RunId::new();
         let (shutdown, _rx) = tokio::sync::watch::channel(false);
         registry.insert(run_id, super::RegisteredChannel {
             shutdown,
             socket_path: std::path::PathBuf::from("/tmp/never-removed-by-this-test.sock"),
+            served: tokio::spawn(std::future::ready(())),
         });
 
         assert!(

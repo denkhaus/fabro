@@ -44,6 +44,7 @@ use fabro_interview::ControlInterviewer;
 use fabro_petri::check::Admitted;
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::fork_run_channel::RunChannelMount;
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
 use fabro_petri::petri::{Access, Digest, LogId, Record, RunKey, RunLogs, RunStore, StoreError};
@@ -117,6 +118,9 @@ pub(crate) fn runtime_spec(
         // The engine binds the run's id on the local hook service when the
         // run executes; the launch spec itself has no id to give yet.
         run_id: None,
+        // The launch spec spawns the run's capability channel (ADR-0035);
+        // this hand-built spec serves admission paths only.
+        run_channel: None,
         // Likewise the Git identity: `engine::run` hands the runtime the
         // run's hooks spec, whose identity every sandbox process carries
         // (fabro-19f9).
@@ -719,6 +723,14 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
         // serves a hook's declared `secrets` (fabro-225f).
         Some(Arc::new(VaultSecrets::from_vault(&vault))),
     );
+    // The capability channel (ADR-0035): this in-process path spawns
+    // the run's channel itself — the worker path's launch spawns it in
+    // `worker_launch_spec`.
+    let mut runtime = runtime;
+    runtime.run_channel = super::run_channel::spawn_for_run(&state, run_id)
+        .await
+        .map(RunChannelMount::new)
+        .map(Arc::new);
     let request = RunRequest {
         run_id: run_id.to_string(),
         run_dir: run_dir.join("petri"),

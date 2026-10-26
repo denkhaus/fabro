@@ -34,6 +34,7 @@ use tracing::debug;
 
 use crate::fork_git_identity::RunGitIdentity;
 use crate::fork_hook_warning::{HookWarningSink, HookWarningWatchdog};
+use crate::fork_run_channel::RunChannelMount;
 use crate::fork_stage_env::StageDispatch;
 use crate::fork_stage_envelope::StageEnvelopes;
 use crate::providers::{self, SandboxProviderConfig};
@@ -86,6 +87,13 @@ pub struct RuntimeSpec {
     /// instead (fabro-6558). `None` leaves it unset (admission checks,
     /// offline validation).
     pub run_id:           Option<String>,
+    /// The run's capability channel mount (ADR-0035, denkhaus/work#989):
+    /// the socket path of the per-run channel the engine serves, which
+    /// every sandbox spec the runtime creates gains as its bind (Docker)
+    /// and `FABRO_SERVER` env (Docker and Host). `None` runs without a
+    /// channel (admission checks, offline validation, or the operator's
+    /// kill switch).
+    pub run_channel:      Option<Arc<RunChannelMount>>,
     /// The identity the run's commits are authored with, injected into
     /// every process its sandboxes spawn (fabro-19f9): a stage that
     /// commits inside its sandbox commits as the run (see
@@ -133,12 +141,17 @@ impl RuntimeSpec {
                 "run processes commit as the run's git identity"
             );
         }
-        let mut runtime = providers::staged_runtime(&self.sandbox, &stages, &git_identity)
-            .frontend(
-                Fabro::new()
-                    .with_settings_toml(self.settings_toml.clone())
-                    .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
-            );
+        let mut runtime = providers::staged_runtime(
+            &self.sandbox,
+            &stages,
+            &git_identity,
+            self.run_channel.as_ref(),
+        )
+        .frontend(
+            Fabro::new()
+                .with_settings_toml(self.settings_toml.clone())
+                .with_mcp_catalog_toml(self.mcp_catalog_toml.clone()),
+        );
         if let Some(client) = &self.model_client {
             runtime = runtime.capability(PebbleClient(client.clone()));
         }

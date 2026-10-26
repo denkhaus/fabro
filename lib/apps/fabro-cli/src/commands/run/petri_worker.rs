@@ -74,6 +74,7 @@ use fabro_llm::credentials::{CredentialProvider, readiness};
 use fabro_petri::blobs::ClientBlobs;
 use fabro_petri::controls::{RunControls, SteerError};
 use fabro_petri::engine::{self, Conclusion, Execution, RunRequest};
+use fabro_petri::fork_run_channel::RunChannelMount;
 use fabro_petri::fork_stage_envelope::StageEnvelopes;
 use fabro_petri::hooks::HooksSpec;
 use fabro_petri::interview::{Approval, FabroInterviewer};
@@ -642,6 +643,13 @@ async fn runtime_spec(
     // environment (fabro-225f).
     let hook_secrets: Option<Arc<dyn HookSecretProvider>> =
         Some(Arc::new(VaultSecrets::from_vault(&*vault.read().await)));
+    // The capability channel (ADR-0035): the server spawned this run's
+    // socket at launch and passed its path in the worker environment;
+    // the mount rides every sandbox spec the runtime creates.
+    let run_channel = crate::process_env_var(EnvVars::FABRO_RUN_CHANNEL_SOCK)
+        .filter(|value| !value.trim().is_empty())
+        .map(RunChannelMount::new)
+        .map(Arc::new);
     Ok(RuntimeSpec {
         sandbox: SandboxProviderConfig::from_lookup(daytona, crate::process_env_var),
         settings_toml: None,
@@ -654,6 +662,7 @@ async fn runtime_spec(
         // The engine binds the run's id on the local hook service when the
         // run executes; the worker assembles the spec before that.
         run_id: None,
+        run_channel,
         // Likewise the Git identity: `engine::run` reads it off the run's
         // hooks spec, which every sandbox process then carries (fabro-19f9).
         git_identity: None,

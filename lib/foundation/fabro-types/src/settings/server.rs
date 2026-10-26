@@ -32,6 +32,8 @@ pub struct ServerNamespace {
     pub scheduler:    ServerSchedulerSettings,
     /// Periodic run-history retention (fabro-b1a4, fork).
     pub retention:    ServerRetentionSettings,
+    /// The per-run capability channel (ADR-0035, fork).
+    pub run_channel:  ServerRunChannelSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
 }
@@ -53,6 +55,7 @@ impl ServerNamespace {
             artifacts:    ServerArtifactsSettings::default(),
             scheduler:    ServerSchedulerSettings::default(),
             retention:    ServerRetentionSettings::default(),
+            run_channel:  ServerRunChannelSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
         }
@@ -257,6 +260,29 @@ pub struct ServerSchedulerSettings {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerRetentionSettings {
     pub max_run_age_days: u64,
+}
+
+/// `[server.run_channel]` — the per-run capability channel (ADR-0035):
+/// whether the server spawns one channel per run at run launch, and
+/// the root directory whose per-run subdirs the sandbox daemon binds
+/// into run sandboxes. `dir: None` resolves to
+/// `<storage>/run-channels`; the `FABRO_RUN_CHANNEL_DIR` env var
+/// overrides the resolved directory at consumption (compose pins the
+/// host path there). The resolver fills `enabled` from `defaults.toml`
+/// (true); user settings override it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerRunChannelSettings {
+    pub enabled: bool,
+    pub dir:     Option<String>,
+}
+
+impl Default for ServerRunChannelSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dir:     None,
+        }
+    }
 }
 
 #[derive(

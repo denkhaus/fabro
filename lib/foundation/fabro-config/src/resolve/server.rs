@@ -7,9 +7,9 @@ use fabro_types::settings::server::{
     ObjectStoreProvider, ObjectStoreSettings, SandboxPluginSettings, ServerApiSettings,
     ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings,
     ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings, ServerNamespace,
-    ServerRetentionSettings, ServerSandboxProviderSettings, ServerSandboxProvidersSettings,
-    ServerSandboxSettings, ServerSchedulerSettings, ServerStorageSettings, ServerWebSettings,
-    SlackIntegrationSettings, WebhookStrategy,
+    ServerRetentionSettings, ServerRunChannelSettings, ServerSandboxProviderSettings,
+    ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
+    ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
 };
 use fabro_util::Home;
 
@@ -56,6 +56,17 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .as_ref()
                 .and_then(|retention| retention.max_run_age_days)
                 .expect("defaults.toml should provide server.retention.max_run_age_days"),
+        },
+        run_channel: ServerRunChannelSettings {
+            enabled: layer
+                .run_channel
+                .as_ref()
+                .and_then(|run_channel| run_channel.enabled)
+                .expect("defaults.toml should provide server.run_channel.enabled"),
+            dir:     layer
+                .run_channel
+                .as_ref()
+                .and_then(|run_channel| run_channel.dir.clone()),
         },
         logging: ServerLoggingSettings {
             level:       layer

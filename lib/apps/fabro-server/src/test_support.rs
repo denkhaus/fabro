@@ -362,6 +362,7 @@ impl TestAppStateBuilder {
             ),
             sandbox_inventory: self.sandbox_inventory,
             shutdown: CancellationToken::new(),
+            auth_mode: test_auth_mode(),
             #[cfg(test)]
             worker_control_bus: None,
             #[cfg(test)]
@@ -996,6 +997,17 @@ pub fn spawn_test_run_channel(state: Arc<AppState>, run_id: &fabro_types::RunId)
 /// a second drain is provably a no-op.
 pub fn drain_test_run_channel(state: &AppState, run_id: &fabro_types::RunId) -> bool {
     server::run_channel::cleanup_run_channel_for_run(state, *run_id)
+}
+
+/// The PRODUCTION spawn path (denkhaus/work#989) exposed for ITs:
+/// spawn the run's channel through the settings/env switch and the
+/// `<root>/<run>/channel.sock` layout exactly as the run launch does,
+/// returning the socket path or `None` when the kill switch is off.
+pub async fn spawn_for_run_for_test(
+    state: &Arc<AppState>,
+    run_id: fabro_types::RunId,
+) -> Option<std::path::PathBuf> {
+    server::run_channel::spawn_for_run(state, run_id).await
 }
 
 /// Spawn the channel ON A GIVEN socket path — the crash-path ITs own

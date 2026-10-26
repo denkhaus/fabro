@@ -10,7 +10,10 @@ use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use fabro_server::server::AppState;
-use fabro_server::test_support::{TestAppStateBuilder, build_test_router, spawn_test_run_channel};
+use fabro_server::test_support::{
+    TestAppStateBuilder, build_test_router, spawn_for_run_for_test, spawn_test_run_channel,
+};
+use fabro_static::EnvVars;
 use fabro_types::RunId;
 use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
 use serde_json::json;
@@ -602,4 +605,91 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
     );
 
     channel.stop().await;
+}
+
+/// The production spawn path (denkhaus/work#989): the run's channel
+/// lands at `<root>/<run>/channel.sock` and serves, the operator kill
+/// switch refuses the spawn, `FABRO_RUN_CHANNEL_DIR` relocates the
+/// root (the compose pin), and a respawn of the same run replaces the
+/// registration cleanly — the stale stop is awaited before the re-bind,
+/// so neither EADDRINUSE nor a post-bind removal race survives.
+#[tokio::test]
+async fn the_production_spawn_layouts_serves_switches_and_respawns() {
+    let state = TestAppStateBuilder::new().build();
+    let run_id = RunId::new();
+    let socket = spawn_for_run_for_test(&state, run_id)
+        .await
+        .expect("the default settings spawn a channel");
+    assert!(
+        socket
+            .to_string_lossy()
+            .ends_with(&format!("run-channels/{run_id}/channel.sock")),
+        "one subdir per run under the channel root: {}",
+        socket.display()
+    );
+    assert!(socket.exists(), "the socket file is bound");
+    let (health, _) = uds_request(&socket, "GET /health", &[]).await;
+    assert_eq!(health, 200, "the production-spawned channel serves health");
+
+    let again = spawn_for_run_for_test(&state, run_id)
+        .await
+        .expect("a respawn succeeds");
+    assert_eq!(again, socket, "the layout is deterministic");
+    let (health_again, _) = uds_request(&socket, "GET /health", &[]).await;
+    assert_eq!(
+        health_again, 200,
+        "the respawned channel serves — the stale stop completed before the re-bind"
+    );
+
+    // Kill switch (work#989 grill R2.4): the run launches without a
+    // channel and no socket file appears.
+    let switched_off = fabro_config::ServerSettingsBuilder::from_toml(
+        r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[server.run_channel]
+enabled = false
+"#,
+    )
+    .expect("the kill-switch settings resolve");
+    let off = TestAppStateBuilder::new()
+        .runtime_settings(switched_off, fabro_config::RunLayer::default())
+        .build();
+    let refused = spawn_for_run_for_test(&off, RunId::new()).await;
+    assert!(
+        refused.is_none(),
+        "the kill switch refuses the spawn entirely"
+    );
+
+    // Env override (compose pin): the root moves wholesale, the
+    // per-run subdir and file name stay.
+    let root = std::env::temp_dir().join(format!(
+        "fabro-run-channel-root-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let root_for_env = root.to_string_lossy().into_owned();
+    let relocated = TestAppStateBuilder::new()
+        .env_lookup(move |name| {
+            (name == EnvVars::FABRO_RUN_CHANNEL_DIR).then(|| root_for_env.clone())
+        })
+        .build();
+    let relocated_run = RunId::new();
+    let socket2 = spawn_for_run_for_test(&relocated, relocated_run)
+        .await
+        .expect("the env override still spawns");
+    assert!(
+        socket2.starts_with(&root),
+        "FABRO_RUN_CHANNEL_DIR relocates the root: {}",
+        socket2.display()
+    );
+    assert!(
+        socket2
+            .to_string_lossy()
+            .ends_with(&format!("{relocated_run}/channel.sock")),
+        "the per-run layout survives relocation: {}",
+        socket2.display()
+    );
 }

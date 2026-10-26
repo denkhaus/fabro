@@ -1194,6 +1194,10 @@ pub struct AppState {
     resource_sampler: resource_sampler::ResourceSampler,
     max_concurrent_runs: usize,
     pub(crate) worker_control_bus: Arc<dyn WorkerControlBus>,
+    /// The auth mode the server resolved at startup (ADR-0035): the
+    /// per-run capability channel serves the SAME router with this
+    /// mode, so the channel's route gate matches the TCP server's.
+    pub(crate) auth_mode: AuthMode,
     /// The run-keyed capability-channel registrations the terminal
     /// transition drains (ADR-0035 lifecycle, denkhaus/work#1003).
     pub(crate) run_channels: run_channel::RunChannelRegistry,
@@ -1464,6 +1468,9 @@ pub(crate) struct AppStateConfig {
     pub(crate) http_client: Option<fabro_http::HttpClient>,
     pub(crate) sandbox_inventory: Option<SandboxInventory>,
     pub(crate) shutdown: CancellationToken,
+    /// The auth mode resolved at startup (serve) or the test mode
+    /// (test_support); the per-run channel serves it (ADR-0035).
+    pub(crate) auth_mode: AuthMode,
     #[cfg(test)]
     pub(crate) worker_control_bus: Option<Arc<dyn WorkerControlBus>>,
     #[cfg(test)]
@@ -2707,6 +2714,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         http_client,
         sandbox_inventory,
         shutdown,
+        auth_mode,
         #[cfg(test)]
         worker_control_bus,
         #[cfg(test)]
@@ -2897,6 +2905,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         resource_sampler: resource_sampler::ResourceSampler::new(),
         max_concurrent_runs,
         worker_control_bus,
+        auth_mode,
         run_channels: run_channel::RunChannelRegistry::default(),
         worker_control_acks: Arc::new(WorkerControlAcks::new(WORKER_CONTROL_ACK_WAIT)),
         worker_runtime,
@@ -4063,13 +4072,14 @@ async fn append_worker_exit_failure(state: &AppState, run_id: RunId, worker_exit
     reason = "Worker subprocess startup resolves Cargo's test binary env override when present."
 )]
 fn worker_launch_spec(
-    state: &AppState,
+    state: &Arc<AppState>,
     run_id: RunId,
     mode: RunExecutionMode,
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
     github_app_private_key: Option<String>,
     hook_assets: Option<std::path::PathBuf>,
+    run_channel_socket: Option<std::path::PathBuf>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -4110,6 +4120,10 @@ fn worker_launch_spec(
         github_app_private_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
         hook_assets,
+        // The capability channel (ADR-0035): the caller spawned it in
+        // the async launch context before building this spec, so the
+        // socket exists ahead of the first sandbox spec.
+        run_channel_socket,
     })
 }
 
@@ -4488,15 +4502,20 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     };
     let state_for_build = Arc::clone(&state);
     let run_dir_for_build = run_dir.clone();
+    // The capability channel (ADR-0035): spawned HERE — in the async
+    // launch context, before the worker can build its first sandbox
+    // spec — and handed to the worker as its socket path.
+    let run_channel_socket = run_channel::spawn_for_run(&state, run_id).await;
     let start_result = spawn_blocking(move || {
         worker_launch_spec(
-            state_for_build.as_ref(),
+            &state_for_build,
             run_id,
             execution_mode,
             &run_dir_for_build,
             agent_fabro_tools_enabled,
             github_app_private_key,
             hook_assets,
+            run_channel_socket,
         )
     })
     .await

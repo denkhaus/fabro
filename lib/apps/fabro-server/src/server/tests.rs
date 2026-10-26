@@ -2073,6 +2073,7 @@ fn slack_app_state_with_settings_and_secret_sources(
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
         sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
+        auth_mode: crate::test_support::test_auth_mode(),
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
@@ -2197,7 +2198,7 @@ fn worker_command_uses_null_stdin_and_token_env() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         RunId::new(),
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2216,14 +2217,7 @@ fn worker_command_sets_worker_args() {
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let run_id = RunId::new();
 
-    let cmd = worker_command(
-        state.as_ref(),
-        run_id,
-        RunExecutionMode::Resume,
-        &run_dir,
-        false,
-    )
-    .unwrap();
+    let cmd = worker_command(&state, run_id, RunExecutionMode::Resume, &run_dir, false).unwrap();
 
     let args = cmd
         .as_std()
@@ -2255,7 +2249,7 @@ fn worker_command_default_token_omits_agent_run_tools_scope() {
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2280,7 +2274,7 @@ fn worker_command_opt_in_token_includes_agent_run_tools_scope() {
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2304,12 +2298,13 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let spec = worker_launch_spec(
-        state.as_ref(),
+        &state,
         RunId::new(),
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
         Some("test-private-key".to_string()),
+        None,
         None,
     )
     .unwrap();
@@ -2331,13 +2326,14 @@ fn worker_command_exports_hook_assets_dir_when_staged() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let spec = worker_launch_spec(
-        state.as_ref(),
+        &state,
         RunId::new(),
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
         None,
         Some(std::path::PathBuf::from("/run/hook-assets")),
+        None,
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
@@ -2362,11 +2358,12 @@ fn worker_command_leaves_hook_assets_unset_without_staging() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let spec = worker_launch_spec(
-        state.as_ref(),
+        &state,
         RunId::new(),
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
+        None,
         None,
         None,
     )
@@ -2385,7 +2382,7 @@ fn worker_command_omits_github_app_private_key_when_unset() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         RunId::new(),
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2415,7 +2412,7 @@ level = "debug"
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2445,7 +2442,7 @@ destination = "stdout"
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2474,7 +2471,7 @@ fn worker_command_sets_fabro_config_to_active_absolute_config_path() {
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2516,7 +2513,7 @@ destination = "file"
     let run_id = RunId::new();
 
     let cmd = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2548,7 +2545,7 @@ destination = "file"
     let run_id = RunId::new();
 
     let Err(err) = worker_command(
-        state.as_ref(),
+        &state,
         run_id,
         RunExecutionMode::Start,
         storage_dir.path(),
@@ -2562,13 +2559,43 @@ destination = "file"
     assert!(message.contains("stdot"));
 }
 
+/// The capability channel reaches the worker as its socket path in the
+/// environment (ADR-0035, denkhaus/work#989 — the FABRO_HOOK_ASSETS
+/// transport pattern): the server spawns the channel, the worker
+/// reads this variable and mounts the path into its sandbox specs.
+#[cfg(unix)]
+#[test]
+fn worker_command_forwards_the_run_channel_socket() {
+    let storage_dir = tempfile::tempdir().unwrap();
+    let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
+    let spec = worker_launch_spec(
+        &state,
+        RunId::new(),
+        RunExecutionMode::Start,
+        storage_dir.path(),
+        false,
+        None,
+        None,
+        Some(std::path::PathBuf::from(
+            "/tmp/run-channels/run_1/channel.sock",
+        )),
+    )
+    .unwrap();
+    let cmd = LocalWorkerRuntime::command_for_spec(&spec);
+
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::FABRO_RUN_CHANNEL_SOCK),
+        EnvOverride::Set("/tmp/run-channels/run_1/channel.sock".to_string())
+    );
+}
+
 fn test_worker_ref(pid: u32) -> WorkerRef {
     WorkerRef::Local { pid }
 }
 
 #[cfg(unix)]
 fn worker_command(
-    state: &AppState,
+    state: &Arc<AppState>,
     run_id: RunId,
     mode: RunExecutionMode,
     run_dir: &Path,
@@ -2580,6 +2607,7 @@ fn worker_command(
         mode,
         run_dir,
         agent_fabro_tools_enabled,
+        None,
         None,
         None,
     )?;
@@ -5658,6 +5686,7 @@ fn create_github_token_app_state_with_env_lookup_and_llm_catalog_settings(
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
         sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
+        auth_mode: crate::test_support::test_auth_mode(),
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
@@ -11427,6 +11456,7 @@ methods = ["dev-token"]
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
         sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
+        auth_mode: crate::test_support::test_auth_mode(),
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,
@@ -11488,6 +11518,7 @@ fn slack_service_respects_disabled_server_config_even_with_vault_tokens() {
         http_client: Some(fabro_http::test_http_client().expect("test HTTP client should build")),
         sandbox_inventory: None,
         shutdown: tokio_util::sync::CancellationToken::new(),
+        auth_mode: crate::test_support::test_auth_mode(),
         worker_control_bus: None,
         worker_runtime: None,
         automation_materializer_override: None,

@@ -23,6 +23,7 @@ use sandbox_driver_docker::DockerProvider;
 use sandbox_driver_host::HostProvider;
 
 use crate::fork_git_identity::RunGitIdentity;
+use crate::fork_run_channel::RunChannelMount;
 use crate::fork_stage_env::{StageDispatch, StageFactory};
 
 const USER_AGENT: &str = concat!("fabro-server/", env!("CARGO_PKG_VERSION"));
@@ -138,7 +139,7 @@ pub fn standard_runtime(config: &SandboxProviderConfig) -> Runtime {
         reason = "the one place a standard runtime is built, with the built-in providers installed"
     )]
     let runtime = Runtime::standard();
-    runtime.in_process_providers(built_in_providers(config, None))
+    runtime.in_process_providers(built_in_providers(config, None, None))
 }
 
 /// [`standard_runtime`] with the engine-injected process environment:
@@ -146,26 +147,31 @@ pub fn standard_runtime(config: &SandboxProviderConfig) -> Runtime {
 /// [`crate::fork_stage_env`], so each process a stage spawns carries
 /// `FABRO_STAGE=<node-id>` as the run's hook service records it
 /// (fabro-6e7f) and the run's Git identity as its author and committer
-/// (fabro-19f9, [`crate::fork_git_identity`]).
+/// (fabro-19f9, [`crate::fork_git_identity`]). With `run_channel`, each
+/// sandbox spec also gains the per-run capability channel mount
+/// (ADR-0035, [`crate::fork_run_channel`]): the socket bind for Docker
+/// sandboxes, the `FABRO_SERVER` env for Docker and Host.
 #[must_use]
 pub fn staged_runtime(
     config: &SandboxProviderConfig,
     stages: &Arc<StageDispatch>,
     identity: &Arc<RunGitIdentity>,
+    run_channel: Option<&Arc<RunChannelMount>>,
 ) -> Runtime {
-    staged_runtime_inner(config, Some((stages, identity)))
+    staged_runtime_inner(config, Some((stages, identity)), run_channel)
 }
 
 fn staged_runtime_inner(
     config: &SandboxProviderConfig,
     injected: Option<(&Arc<StageDispatch>, &Arc<RunGitIdentity>)>,
+    run_channel: Option<&Arc<RunChannelMount>>,
 ) -> Runtime {
     #[expect(
         clippy::disallowed_methods,
         reason = "the one place a standard runtime is built, with the built-in providers installed"
     )]
     let runtime = Runtime::standard();
-    runtime.in_process_providers(built_in_providers(config, injected))
+    runtime.in_process_providers(built_in_providers(config, injected, run_channel))
 }
 
 /// Petri's bare runtime with Fabro's built-in providers installed.
@@ -176,7 +182,7 @@ pub fn bare_runtime(config: &SandboxProviderConfig) -> Runtime {
         reason = "the one place a bare runtime is built, with the built-in providers installed"
     )]
     let runtime = Runtime::bare();
-    runtime.in_process_providers(built_in_providers(config, None))
+    runtime.in_process_providers(built_in_providers(config, None, None))
 }
 
 /// The Docker connection used by both the server and Petri. The driver reads
@@ -204,16 +210,20 @@ pub async fn connect_daytona(
 /// only when a Daytona scope is acquired, never for admission or a Host run.
 /// With `injected`, each factory is wrapped for the engine-injected process
 /// environment: the dispatched stage (fabro-6e7f) and the run's Git
-/// identity (fabro-19f9).
+/// identity (fabro-19f9). With `run_channel`, the same wrap applies the
+/// per-run capability channel mount to every sandbox spec it creates
+/// (ADR-0035).
 fn built_in_providers(
     config: &SandboxProviderConfig,
     injected: Option<(&Arc<StageDispatch>, &Arc<RunGitIdentity>)>,
+    run_channel: Option<&Arc<RunChannelMount>>,
 ) -> InProcessProviders {
     let factory = |factory: Arc<dyn ProviderFactory>| match injected {
         Some((stages, identity)) => Arc::new(StageFactory::new(
             factory,
             Arc::clone(stages),
             Arc::clone(identity),
+            run_channel.cloned(),
         )) as Arc<dyn ProviderFactory>,
         None => factory,
     };

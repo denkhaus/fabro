@@ -65,6 +65,9 @@ fn offline_runtime(run: Option<&RunLayer>) -> RuntimeSpec {
         run_tools:        None,
         envelopes:        None,
         run_id:           None,
+        // Nothing executes here: an offline validation serves no
+        // capability channel (ADR-0035).
+        run_channel:      None,
         // Nothing executes here: an offline validation injects no
         // identity into any sandbox process (fabro-19f9).
         git_identity:     None,

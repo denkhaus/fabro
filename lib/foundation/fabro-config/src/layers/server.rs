@@ -35,6 +35,8 @@ pub struct ServerLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retention:    Option<ServerRetentionLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_channel:  Option<ServerRunChannelLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logging:      Option<ServerLoggingLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integrations: Option<ServerIntegrationsLayer>,
@@ -204,6 +206,17 @@ pub struct ServerSchedulerLayer {
 pub struct ServerRetentionLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_run_age_days: Option<u64>,
+}
+
+/// `[server.run_channel]` — the per-run capability channel (ADR-0035,
+/// fork): spawn toggle and the daemon-visible channel root directory.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct ServerRunChannelLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dir:     Option<String>,
 }
 
 /// `[server.logging]` — process-owned logging configuration for the server.

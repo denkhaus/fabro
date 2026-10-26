@@ -75,6 +75,7 @@ pub mod fork_exec_guard;
 pub mod fork_git_identity;
 pub mod fork_hook_warning;
 pub mod fork_preamble_policy;
+pub mod fork_run_channel;
 pub mod fork_stage_env;
 pub mod fork_stage_envelope;
 pub mod generation_guard_lint;

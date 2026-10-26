@@ -754,6 +754,7 @@ where
         http_client: None,
         sandbox_inventory: None,
         shutdown: shutdown.clone(),
+        auth_mode: auth_mode.clone(),
         #[cfg(test)]
         worker_control_bus: None,
         #[cfg(test)]
