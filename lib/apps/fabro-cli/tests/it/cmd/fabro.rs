@@ -52,6 +52,7 @@ fn help() {
       env          Manage server environments
       automations  Manage server automations (alias: auto)
       projects     Manage the server's work-project registry
+      work         Read and write work items and read their claims (ADR-0032)
       variable     Manage server-owned variables
       settings     Inspect effective settings
       workflow     Workflow operations

@@ -73,11 +73,8 @@ fn reject_conflicting_family(raw_labels: &[String], family: &str, derived: &str)
 /// `--body` for short items, `--body-file` (or `-` for stdin) for real
 /// bodies: tracker text must never travel through a shell command line.
 fn read_body(args: &WorkCreateArgs) -> Result<String> {
-    super::read_optional_body(args.body.as_deref(), args.body_file.as_deref())?.ok_or_else(|| {
-        anyhow::anyhow!(
-            "provide the item body with --body <text> or --body-file <path> (`-` reads stdin)"
-        )
-    })
+    super::read_optional_body(args.body.as_deref(), args.body_file.as_deref())?
+        .ok_or_else(|| anyhow::anyhow!(super::BODY_INPUT_REFUSAL))
 }
 
 #[cfg(test)]

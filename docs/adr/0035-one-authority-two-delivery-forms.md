@@ -23,9 +23,10 @@
   module-level binding pins (each mutation-proven RED) plus wire-level
   ITs answering foreign project / foreign body runId / another run's
   claim with 403 and the scope in the message, never served. Still to
-  come: the lifecycle wiring (sandbox bind mount, spawn at run start,
-  stop at terminal — the module's `dead_code` allow) rides
-  denkhaus/work#989's next slice. The review's duplicated
+  come: the SPAWN caller (the sandbox bind mount at run start) — the
+  terminal drain landed as denkhaus/work#1003 (run-keyed registry,
+  idempotent take, drains at the three terminal sites; the module's
+  `dead_code` allow narrows to the spawn gap). The review's duplicated
   "Transport protocol" line is resolved: one bullet below, matching
   the served implementation.
 

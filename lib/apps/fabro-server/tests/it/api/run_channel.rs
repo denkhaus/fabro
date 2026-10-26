@@ -450,6 +450,80 @@ async fn the_terminal_drain_stops_the_socket_and_a_redrain_is_a_no_op() {
     channel.stop().await;
 }
 
+/// The re-grilled crash path (2026-10-26, review disproved the
+/// original premise): a leftover file from a dead process makes bind
+/// fail EADDRINUSE — spawn removes the STALE file once and retries.
+#[tokio::test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the IT plants the stale socket file — sync fs::write IS the point"
+)]
+async fn a_stale_socket_file_from_a_crash_is_self_healed() {
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+
+    let dir = std::env::temp_dir().join(format!("fabro-stale-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let socket = dir.join("channel.sock");
+    std::fs::write(&socket, b"junk left by a crashed process").expect("stale file");
+
+    let channel = fabro_server::test_support::spawn_run_channel_on(
+        Arc::clone(&state),
+        &run_id,
+        socket.clone(),
+    );
+    let (health, _) = uds_request(&socket, "GET /health", &[]).await;
+    assert_eq!(
+        health, 200,
+        "the stale file was replaced by a serving socket"
+    );
+    channel.stop().await;
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A LIVE listener on the path keeps the refusal — spawn never unlinks
+/// a serving socket (the retry probes with a connect first).
+#[tokio::test]
+async fn a_live_listener_keeps_the_refusal() {
+    use tokio::net::UnixListener as TokioUnixListener;
+
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+
+    let dir = std::env::temp_dir().join(format!("fabro-live-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let socket = dir.join("channel.sock");
+    let live_listener = TokioUnixListener::bind(&socket).expect("the live listener binds");
+
+    let error =
+        fabro_server::test_support::try_spawn_run_channel_on(&state, &run_id, socket.clone())
+            .err()
+            .expect("a serving socket is never taken over");
+    assert!(
+        error.to_string().contains("Address already in use"),
+        "the original bind error surfaces: {error:#}"
+    );
+    assert!(socket.exists(), "the live listener's file stays untouched");
+    drop(live_listener);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The claim-binding core over the wire (denkhaus/work#991): the three
 /// refusals the cutover review demanded — a foreign project, a foreign
 /// body runId on grant, another run's claim — each answered with 403

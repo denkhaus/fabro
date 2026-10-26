@@ -111,6 +111,11 @@ async fn project_row(client: &Client, project_id: &str) -> Result<types::WorkPro
         .with_context(|| format!("reading work project {project_id}"))
 }
 
+/// The shared body-input refusal for create AND update (one message,
+/// code-review sprint 55+56 finding — the literal lived twice).
+const BODY_INPUT_REFUSAL: &str =
+    "provide the item body with --body <text> or --body-file <path> (`-` reads stdin)";
+
 /// The `--body` / `--body-file` input pair shared by create and update:
 /// tracker text travels through a flag, a file, or stdin (`-`) — never
 /// a shell command line. `None` when the caller provided neither (the
@@ -124,9 +129,7 @@ pub(super) fn read_optional_body(
         (Some(body), None) => Ok(Some(body.to_string())),
         (None, Some(path)) => read_body_file(path).map(Some),
         (None, None) => Ok(None),
-        (Some(_), Some(_)) => bail!(
-            "provide the item body with --body <text> or --body-file <path> (`-` reads stdin)"
-        ),
+        (Some(_), Some(_)) => bail!(BODY_INPUT_REFUSAL),
     }
 }
 

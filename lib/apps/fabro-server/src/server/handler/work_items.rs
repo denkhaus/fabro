@@ -223,13 +223,7 @@ async fn transition_claim(
     validate_claim_id(&claim_id)?;
     // The binding check runs BEFORE the store mutation: a foreign claim
     // is refused without side effects (denkhaus/work#991).
-    let existing = state
-        .work_store()
-        .claim(&claim_id)
-        .await
-        .map_err(store_error)?
-        .ok_or_else(|| not_found("work claim", &claim_id))?;
-    bind_claim_to_caller(&auth, &existing)?;
+    load_bound_claim(&state, &auth, &claim_id).await?;
     let claim = state
         .work_store()
         .transition(
@@ -272,13 +266,7 @@ async fn release_claim(
     validate_claim_id(&claim_id)?;
     // The binding check runs BEFORE the store mutation: a foreign claim
     // is refused without side effects (denkhaus/work#991).
-    let existing = state
-        .work_store()
-        .claim(&claim_id)
-        .await
-        .map_err(store_error)?
-        .ok_or_else(|| not_found("work claim", &claim_id))?;
-    bind_claim_to_caller(&auth, &existing)?;
+    load_bound_claim(&state, &auth, &claim_id).await?;
     let claim = state
         .work_store()
         .release(&claim_id, &request.reason)
@@ -891,6 +879,26 @@ fn bind_claim_to_caller(
         }
     }
     Ok(())
+}
+
+/// Loads the claim AND binds it to the caller in one step — the
+/// transition/release twins share exactly this shape (code-review
+/// sprint 55+56 finding: one helper instead of two inline copies), and
+/// the binding runs BEFORE any store mutation.
+async fn load_bound_claim(
+    state: &Arc<AppState>,
+    auth: &RequiredRunManagementActor,
+    claim_id: &str,
+) -> Result<WorkClaim, ApiError> {
+    validate_claim_id(claim_id)?;
+    let claim = state
+        .work_store()
+        .claim(claim_id)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| not_found("work claim", claim_id))?;
+    bind_claim_to_caller(auth, &claim)?;
+    Ok(claim)
 }
 
 /// `grant`/`next` are pinned to the authenticated run for workers

@@ -149,13 +149,37 @@ impl RunChannel {
         if let Some(parent) = socket_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let listener = UnixListener::bind(&socket_path)?;
+        // Crash rest (re-grilled 2026-10-26 after the review disproved
+        // the original premise — bind does NOT overwrite): a leftover
+        // file from a dead process makes bind fail EADDRINUSE. Probe
+        // ownership first — a connect that SUCCEEDS means a live
+        // listener serves this path and keeps the refusal (never unlink
+        // a serving socket); a refused connect means the file is stale:
+        // remove it ONCE and retry the bind.
+        let listener = match UnixListener::bind(&socket_path) {
+            Ok(listener) => listener,
+            Err(bind_error) if bind_error.kind() == std::io::ErrorKind::AddrInUse => {
+                if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
+                    return Err(bind_error.into());
+                }
+                std::fs::remove_file(&socket_path)?;
+                UnixListener::bind(&socket_path)?
+            }
+            Err(error) => return Err(error.into()),
+        };
         // Owner-only on the host side: the server user connects; inside
         // the sandbox the bind mount carries the socket and stage shells
         // run as root (the uid-mapped workspace precedent).
         // one-shot setup chmod, not a Tokio path — clippy's sync-I/O
         // disallow list does not cover set_permissions
-        std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))?;
+        if let Err(perm_error) =
+            std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
+        {
+            // registration has not happened yet — every error path
+            // before it leaves nothing behind
+            let _ = std::fs::remove_file(&socket_path);
+            return Err(perm_error.into());
+        }
 
         let (shutdown, mut shutdown_rx) = watch::channel(false);
         state.run_channels.insert(run_id, RegisteredChannel {
@@ -226,6 +250,68 @@ mod tests {
     use fabro_types::RunId;
 
     use super::RunChannelRegistry;
+
+    /// The stamping layer as a UNIT (denkhaus/work#991 deliverable —
+    /// the review's "empty test module" finding): a client-supplied
+    /// Authorization is REPLACED, never honored, and a bearer-less
+    /// request gets the run's token stamped in.
+    #[tokio::test]
+    async fn stamping_replaces_any_client_authorization() {
+        use axum::Router;
+        use axum::body::Body;
+        use axum::http::Request;
+        use axum::routing::get;
+        use tower::ServiceExt as _;
+
+        async fn echo_auth(req: axum::extract::Request) -> String {
+            req.headers()
+                .get(axum::http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("<missing>")
+                .to_string()
+        }
+
+        let router = Router::new().route("/", get(echo_auth));
+        let stamped = super::stamp_run_worker_bearer(router, "run-token");
+
+        let forged = stamped
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header("authorization", "Bearer forged-by-the-sandbox")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("stamped router answers");
+        let body = axum::body::to_bytes(forged.into_body(), usize::MAX)
+            .await
+            .expect("response body");
+        assert_eq!(
+            String::from_utf8(body.to_vec()).expect("utf-8"),
+            "Bearer run-token",
+            "the client bearer is replaced, never honored"
+        );
+
+        let bearer_less = stamped
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("stamped router answers");
+        let body = axum::body::to_bytes(bearer_less.into_body(), usize::MAX)
+            .await
+            .expect("response body");
+        assert_eq!(
+            String::from_utf8(body.to_vec()).expect("utf-8"),
+            "Bearer run-token",
+            "a bearer-less request gets the run's token stamped in"
+        );
+    }
 
     /// The registry IS the idempotency: one take claims the
     /// registration, the second finds nothing — a double stop cannot

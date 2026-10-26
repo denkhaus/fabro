@@ -998,6 +998,37 @@ pub fn drain_test_run_channel(state: &AppState, run_id: &fabro_types::RunId) -> 
     server::run_channel::cleanup_run_channel_for_run(state, *run_id)
 }
 
+/// Spawn the channel ON A GIVEN socket path — the crash-path ITs own
+/// their stale/live file and cannot use spawn_test_run_channel's
+/// self-chosen temp path.
+pub fn spawn_run_channel_on(
+    state: Arc<AppState>,
+    run_id: &fabro_types::RunId,
+    socket: std::path::PathBuf,
+) -> TestRunChannel {
+    try_spawn_run_channel_on_state(state, run_id, socket)
+        .expect("the run channel should spawn on the given path")
+}
+
+/// The same spawn with the error surfaced (the live-listener refusal
+/// IT asserts the EADDRINUSE outcome).
+pub fn try_spawn_run_channel_on(
+    state: &Arc<AppState>,
+    run_id: &fabro_types::RunId,
+    socket: std::path::PathBuf,
+) -> anyhow::Result<TestRunChannel> {
+    try_spawn_run_channel_on_state(Arc::clone(state), run_id, socket)
+}
+
+fn try_spawn_run_channel_on_state(
+    state: Arc<AppState>,
+    run_id: &fabro_types::RunId,
+    socket: std::path::PathBuf,
+) -> anyhow::Result<TestRunChannel> {
+    server::run_channel::RunChannel::spawn(state, test_auth_mode(), *run_id, socket)
+        .map(|inner| TestRunChannel { inner })
+}
+
 pub fn build_test_router_with_options(state: Arc<AppState>, options: RouterOptions) -> Router {
     with_test_user(server::build_router_with_options(
         state,
