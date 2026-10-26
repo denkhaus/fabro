@@ -691,12 +691,34 @@ fn update_sends_the_title_and_a_stdin_body_under_the_resolved_key() {
 }
 
 /// Neither title nor body is an error BEFORE any server call — the
-/// refusal never reaches the endpoint.
+/// refusal never reaches the endpoint. Whitespace-only input is the
+/// empty edit too (the first run of this verb shipped that gap: a
+/// blank stdin body sailed through the CLI check and was refused by
+/// the server instead).
 #[test]
 fn update_refuses_an_empty_edit_before_any_server_call() {
     let context = test_context!();
     let mut cmd = context.command();
     cmd.args(["work", "update", "--project", "fabro", "denkhaus/work#12"]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × an update needs a title or a body — pass --title, --body, or --body-file - (stdin)
+    "#);
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "update",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--body-file",
+        "-",
+    ])
+    .write_stdin("   \n\n");
     fabro_snapshot!(context.filters(), cmd, @r#"
     success: false
     exit_code: 1

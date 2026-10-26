@@ -17,7 +17,9 @@ pub(super) async fn update_command(args: &WorkUpdateArgs, ctx: &CommandContext) 
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let body = read_optional_body(args.body.as_deref(), args.body_file.as_deref())?;
+    let body = read_optional_body(args.body.as_deref(), args.body_file.as_deref())?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     if title.is_none() && body.is_none() {
         bail!("an update needs a title or a body — pass --title, --body, or --body-file - (stdin)");
     }
