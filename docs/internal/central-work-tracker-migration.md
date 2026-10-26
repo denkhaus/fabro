@@ -79,8 +79,10 @@ Fabro server
       B: `fabro_work_next` tool; C: run-status release + 30-min orphan).
 - [ ] File one migration epic (unassigned; assignment is the user's
       decision, ADR-0018).
-- [ ] Add a "superseded" note to `docs/internal/line-restore-handoff.md`
-      pointing at ADR-0032 and this plan.
+- [x] Add a "superseded" note to `docs/internal/line-restore-handoff.md`
+      pointing at ADR-0032 and this plan. (Note added 2026-10-20; the whole
+      handoff was later DELETED 2026-10-26 — consumed handoffs are deleted,
+      not archived; user directive 2026-10-26, git keeps the history.)
 - [ ] Confirm the line is off and `gh pr list --state open` has no run PRs.
 - [ ] Use `denkhaus/work` (Q8). Confirm the GitHub App installation on it
       and the Projects permission if a board is in scope. An organization
@@ -521,8 +523,10 @@ pre-screen logged, framing-bias named). The settled design MERGES Phase
       `.fabro/Dockerfile.toolchain` unchanged).
 - [ ] Freeze `.seeds` in the Fabro repo (no new writes; leave the file or
       move it to the tracker archive in a separate commit).
-- [ ] Update `docs/internal/line-restore-handoff.md` and the iterate/
-      integrate skills to the new tracker.
+- [x] Update `docs/internal/line-restore-handoff.md` and the iterate/
+      integrate skills to the new tracker. (Both handoff docs were DELETED
+      2026-10-26 per the user directive: consumed handoffs are deleted,
+      not kept; git keeps the history.)
 - [ ] Run the verification matrix below.
 
 ## Phase 6 — Verification and re-arm
@@ -638,8 +642,8 @@ implicit convention:
 - Scripts: `.fabro/scripts/{dup-run-check,salvage-sweep,close-claim-check,
   friction-score,prompt-lint}.nu` and the seed-specific fixtures.
 - Docs: `docs/lab/adr/0032-central-work-item-tracker.md`,
-  `docs/internal/central-work-tracker-migration.md`,
-  `docs/internal/line-restore-handoff.md`, `AGENTS.md`, `CLAUDE.md`.
+  `docs/internal/central-work-tracker-migration.md`, `AGENTS.md`,
+  `CLAUDE.md`.
 - Skills: `.agents/skills/iterate/SKILL.md`,
   `.agents/skills/integrate/SKILL.md`.
 - Toolchain: `.fabro/Dockerfile.toolchain`, `.mise.toml`, `justfile`

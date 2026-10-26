@@ -809,3 +809,14 @@ stores it belongs to; reach them by phase need:
   decisions, this skill = process. Nothing stays in chat that belongs in
   one of them. Fabro-specific Rust rules (test-support feature, strum,
   import style, shell_quote) sit ON TOP of rust-style-guide.
+- HANDOFFS ARE TRANSPORT ARTIFACTS, NOT HISTORY (user directive
+  2026-10-26): a handoff exists to carry tasks from one session to the
+  next. The moment its demands are consumed (landed or filed as work
+  items), the handoff is DELETED — a markdown handoff file is `git rm`ed
+  in the consuming session (git keeps the history; no superseded
+  banners, no doc-graveyard), a work-item handoff is CLOSED with the
+  evidence. The consuming session also cleans references to the deleted
+  file (checklists, docs) in the same change; ADR citations stay
+  untouched (historical record). Leaving a consumed handoff in the tree
+  is a finding of the same class as stale docs: the next session reads
+  it as current state.
