@@ -1,8 +1,12 @@
 #!/usr/bin/env nu
 # Rotate sprint notes: iterate-state.json keeps the newest $keep notes and
 # every older one moves to iterate-state-archive.jsonl — ONE JSON RECORD per
-# line ({"note": …}), oldest first, append-only (records, not bare strings:
-# a line must answer `.note` like every other JSONL file).
+# line, oldest first, append-only. The record IS the state's note OBJECT
+# unchanged: {"sprint": …, "note": …} (user directive 2026-10-26 — the
+# schema used to be a bare {"note": …} row; sprint numbers migrated with
+# 106 archived + 10 state records on the same day). A line must answer
+# `.note` AND `.sprint` like every other record, and the object shape lets
+# further fields be introduced per need without touching this script.
 # The state file stays small enough to read whole (fabro hit the 50 KB tool
 # limit at 90 notes / 134 KB, brightctl at 222 notes) while the history
 # stays in the repo, one git-diffable line per note.
@@ -48,15 +52,18 @@ def main [
             $old | lines | where { |line| not ($line | is-empty) } | each {
                 let parsed = (from json)
                 # fail loud on a foreign shape — a silent unwrap would let
-                # duplicates into the archive instead of erroring
-                if (not (($parsed | describe) | str starts-with "record") or not ("note" in ($parsed | columns))) {
-                    error make {msg: $"archive line is not a {note: …} record: ($parsed | to json --raw)"}
+                # duplicates into the archive instead of erroring; the
+                # {"sprint": …, "note": …} record is mandatory on both ends
+                if (not (($parsed | describe) | str starts-with "record")
+                    or not ("note" in ($parsed | columns))
+                    or not ("sprint" in ($parsed | columns))) {
+                    error make {msg: $"archive line is not a {sprint: …, note: …} record: ($parsed | to json --raw)"}
                 }
                 $parsed.note
             }
         }
     } else { [] }
-    let fresh = ($leaving | where { |note| not ($note in $archived) })
+    let fresh = ($leaving | where { |record| not ($record.note in $archived) })
     let fresh_count = ($fresh | length)
     let archived_count = ($archived | length)
     let stay_count = ($stay | length)
@@ -66,7 +73,9 @@ def main [
     # leaves the note in BOTH places, and the fresh-filter above dedupes it
     # on rerun — the other order would lose the note outright.
     if $fresh_count > 0 {
-        let lines = ($fresh | each { |note| {note: $note} | to json --raw })
+        # dedup is text-based (`.note` above); the archive line is the
+        # state object verbatim, sprint field included
+        let lines = ($fresh | each { |record| $record | to json --raw })
         let addition = ($lines | str join "\n")
         let body = if ($archive_path | path exists) {
             # the stored file ends with a newline — joining raw would put an

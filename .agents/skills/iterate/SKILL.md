@@ -122,7 +122,17 @@ stores it belongs to; reach them by phase need:
   and fire the LOCAL improve-codebase-architecture agent (user directive
   2026-10-02: the architect WORKFLOW stays deactivated on the line — never
   the api trigger; the local agent's top recommendations are filed as
-  seeds automatically). ALL seeds filed from the architecture pass are
+  seeds automatically). Two more review gates in the same cadence shape
+  (user directive 2026-10-26): if `sprints_completed % 2 == 0 &&
+  last_code_review_at_sprint != sprints_completed`, run the CODE-REVIEW
+  skill (two axes, parallel sub-agents, frozen diff, tracker specs) over
+  the commits since the last code review and set
+  `last_code_review_at_sprint := sprints_completed`; if
+  `sprints_completed % 5 == 0 && last_rust_security_review_at_sprint
+  != sprints_completed`, run the RUST-SECURITY skill over the workspace
+  diff since its last run and set its marker the same way. `null` means
+  never run. All three markers live in iterate-state.json beside the
+  notes. ALL seeds filed from the architecture pass are
   worked LOCALLY by this session; loop-asset-surface findings may go to
   the loop workflow — none go to the develop line (user directive
   2026-10-02 evening).
@@ -636,11 +646,15 @@ stores it belongs to; reach them by phase need:
   develop runs) NEVER count — the line is not inside a sprint. Historical
   note: the bootstrap-era count of 3 includes develop-lane closures under
   the superseded lane-blind rule; kept as history, not recounted.
+  Notes are OBJECTS, not strings (user directive 2026-10-26): each
+  state note is `{"sprint": <n>, "note": "<text>"}` — further fields
+  get added per need, and the object doubles as its own JSONL row.
   Notes rotation (brightctl port, retro 2026-10-17): after appending the
   sprint note, run `just rotate-notes` when notes > 10 — the state file
-  keeps the newest 10 notes, older ones move as one-`{"note": …}`-record-
-  per line JSONL into `iterate-state-archive.jsonl` (history stays
-  git-diffable). Deterministic and idempotent; `just rotate-notes-dry`
+  keeps the newest 10 notes, older ones move UNCHANGED as one-`{"sprint":
+  …, "note": …}`-record-per line JSONL into `iterate-state-archive.jsonl`
+  (history stays git-diffable; both ends validated against the record
+  shape). Deterministic and idempotent; `just rotate-notes-dry`
   previews. 90 notes cost every session start the 50 KB read-tool limit
   (134 KB file). The script (scripts/rotate-sprint-notes.nu) is
   SESSION-OWNED: never registered in qualitygate batteries, never called
