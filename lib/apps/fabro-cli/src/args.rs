@@ -1619,6 +1619,7 @@ impl Commands {
                 WorkCommand::Show(_) => "work show",
                 WorkCommand::Create(_) => "work create",
                 WorkCommand::Close(_) => "work close",
+                WorkCommand::Update(_) => "work update",
                 WorkCommand::Claims(_) => "work claims",
             },
             Self::Automations(ns) => match &ns.command {
@@ -2161,6 +2162,8 @@ pub(crate) enum WorkCommand {
     Create(WorkCreateArgs),
     /// Close a work item with a reason
     Close(WorkCloseArgs),
+    /// Edit a work item's title and/or body
+    Update(WorkUpdateArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
 }
@@ -2250,6 +2253,24 @@ pub(crate) struct WorkClaimsArgs {
     /// Work project id
     #[arg(long)]
     pub(crate) project: String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkUpdateArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:   String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector:  String,
+    /// New item title (empty keeps the current one)
+    #[arg(long)]
+    pub(crate) title:     Option<String>,
+    /// New item body
+    #[arg(long, conflicts_with = "body_file")]
+    pub(crate) body:      Option<String>,
+    /// Read the new item body from a file (`-` reads stdin)
+    #[arg(long)]
+    pub(crate) body_file: Option<PathBuf>,
 }
 
 #[derive(Args)]

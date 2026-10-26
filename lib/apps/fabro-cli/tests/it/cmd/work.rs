@@ -60,6 +60,7 @@ fn help() {
       show    Show one work item, body included
       create  File a new work item
       close   Close a work item with a reason
+      update  Edit a work item's title and/or body
       claims  List a project's live claims
       help    Print this message or the help of the given subcommand(s)
 
@@ -613,6 +614,96 @@ fn create_refuses_an_unknown_lane_before_writing() {
 
     project.assert();
     create.assert_calls(0);
+}
+
+#[test]
+fn update_help() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "update", "--help"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Edit a work item's title and/or body
+
+    Usage: fabro work update [OPTIONS] --project <PROJECT> <SELECTOR>
+
+    Arguments:
+      <SELECTOR>  Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+
+    Options:
+          --json                   Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>      Work project id
+          --debug                  Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --title <TITLE>          New item title (empty keeps the current one)
+          --body <BODY>            New item body
+          --no-upgrade-check       Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --body-file <BODY_FILE>  Read the new item body from a file (`-` reads stdin)
+          --quiet                  Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose                Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help                   Print help
+    ----- stderr -----
+    ");
+}
+
+/// The wayfinding append path (ADR-0032): title travels as the flag
+/// (short, not tracker prose), the body through stdin — the wire pin
+/// proves both reach the update endpoint under the resolved key.
+#[test]
+fn update_sends_the_title_and_a_stdin_body_under_the_resolved_key() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let update = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items/update")
+            .body_includes("\"itemKey\":\"denkhaus/work#12\"")
+            .body_includes("\"title\":\"A sharper title\"")
+            .body_includes("appended by the resolver");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#12", "A sharper title", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "update",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--title",
+        "A sharper title",
+        "--body-file",
+        "-",
+    ])
+    .write_stdin("appended by the resolver\n");
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Updated denkhaus/work#12.
+    ");
+
+    update.assert();
+}
+
+/// Neither title nor body is an error BEFORE any server call — the
+/// refusal never reaches the endpoint.
+#[test]
+fn update_refuses_an_empty_edit_before_any_server_call() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "update", "--project", "fabro", "denkhaus/work#12"]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × an update needs a title or a body — pass --title, --body, or --body-file - (stdin)
+    "#);
 }
 
 #[test]

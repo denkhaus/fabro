@@ -1,8 +1,20 @@
+#![expect(
+    clippy::disallowed_types,
+    reason = "sync CLI work commands read the item body through std::io::Read"
+)]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "sync CLI work commands read the item body from a plain file or std::io::stdin"
+)]
+
 mod claims;
 mod close;
 mod create;
 mod list;
 mod show;
+mod update;
+
+use std::io::Read as _;
 
 use anyhow::{Context as _, Result, bail};
 use cli_table::format::{Border, Separator};
@@ -21,6 +33,7 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Show(args) => show::show_command(&args, &ctx).await,
         WorkCommand::Create(args) => create::create_command(&args, &ctx).await,
         WorkCommand::Close(args) => close::close_command(&args, &ctx).await,
+        WorkCommand::Update(args) => update::update_command(&args, &ctx).await,
         WorkCommand::Claims(args) => claims::claims_command(&args, &ctx).await,
     }
 }
@@ -96,6 +109,37 @@ async fn project_row(client: &Client, project_id: &str) -> Result<types::WorkPro
         .retrieve_work_project(project_id)
         .await
         .with_context(|| format!("reading work project {project_id}"))
+}
+
+/// The `--body` / `--body-file` input pair shared by create and update:
+/// tracker text travels through a flag, a file, or stdin (`-`) — never
+/// a shell command line. `None` when the caller provided neither (the
+/// verbs decide whether that is an error). clap's `conflicts_with`
+/// refuses both flags together, so that arm is defensive only.
+pub(super) fn read_optional_body(
+    body: Option<&str>,
+    body_file: Option<&std::path::Path>,
+) -> Result<Option<String>> {
+    match (body, body_file) {
+        (Some(body), None) => Ok(Some(body.to_string())),
+        (None, Some(path)) => read_body_file(path).map(Some),
+        (None, None) => Ok(None),
+        (Some(_), Some(_)) => bail!(
+            "provide the item body with --body <text> or --body-file <path> (`-` reads stdin)"
+        ),
+    }
+}
+
+fn read_body_file(path: &std::path::Path) -> Result<String> {
+    if path == std::path::Path::new("-") {
+        let mut body = String::new();
+        std::io::stdin()
+            .read_to_string(&mut body)
+            .context("reading the item body from stdin")?;
+        return Ok(body);
+    }
+    std::fs::read_to_string(path)
+        .with_context(|| format!("reading the item body from {}", path.display()))
 }
 
 /// Translates a lane name into the tracker label the project maps it to.

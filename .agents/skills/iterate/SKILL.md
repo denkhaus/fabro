@@ -162,6 +162,14 @@ stores it belongs to; reach them by phase need:
   No tacit decisions: an ungrilled fork that ships is a finding. The
   grill names the alternatives and picks the optimal path WITH the user;
   the chosen path and its rejected alternatives land in the seed/ADR.
+  Rounds are DELIVERED through the `question` tool — one call per round,
+  the options carry one-line descriptions WITH the Jev pre-screen
+  distribution, the recommended option listed first and marked
+  "(Recommended)", free-form answers through the auto-added own-answer
+  option (user directive 2026-10-26: structured selections instead of
+  free-text question lists in chat; the answered record is what gets
+  written into the design). The noul dimensions are their own question
+  in the same call.
   Weichenstellende decisions belong to the user. Public-contract NAMES
   (graph attributes, API fields, tool names, CLI flags) are pivotal too:
   name the capability, surface naming for user decision before the first

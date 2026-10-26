@@ -1,16 +1,4 @@
-#![expect(
-    clippy::disallowed_types,
-    reason = "sync CLI `work create` command and its body-input tests read through std::io::Read"
-)]
-#![expect(
-    clippy::disallowed_methods,
-    reason = "sync CLI `work create` command: the item body comes from a plain file or std::io::stdin"
-)]
-
-use std::io::Read as _;
-use std::path::Path;
-
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 
 use super::{lane_label, project_row};
 use crate::args::WorkCreateArgs;
@@ -85,27 +73,11 @@ fn reject_conflicting_family(raw_labels: &[String], family: &str, derived: &str)
 /// `--body` for short items, `--body-file` (or `-` for stdin) for real
 /// bodies: tracker text must never travel through a shell command line.
 fn read_body(args: &WorkCreateArgs) -> Result<String> {
-    match (&args.body, &args.body_file) {
-        (Some(body), None) => Ok(body.clone()),
-        (None, Some(path)) => read_body_file(path),
-        // clap's `conflicts_with` refuses both flags together, so this arm is
-        // the caller who provided neither.
-        _ => bail!(
+    super::read_optional_body(args.body.as_deref(), args.body_file.as_deref())?.ok_or_else(|| {
+        anyhow::anyhow!(
             "provide the item body with --body <text> or --body-file <path> (`-` reads stdin)"
-        ),
-    }
-}
-
-fn read_body_file(path: &Path) -> Result<String> {
-    if path == Path::new("-") {
-        let mut body = String::new();
-        std::io::stdin()
-            .read_to_string(&mut body)
-            .context("reading the item body from stdin")?;
-        return Ok(body);
-    }
-    std::fs::read_to_string(path)
-        .with_context(|| format!("reading the item body from {}", path.display()))
+        )
+    })
 }
 
 #[cfg(test)]
