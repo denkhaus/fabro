@@ -26,6 +26,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build and test commands
 
+One-shot verification: `just verify [stage]` (scripts/verify.nu)
+chooses fmt + clippy + the right test slice for every crate the diff
+touched from the stage (implementer/tester/…; an explicit argument
+overrides the FABRO_STAGE env) — prefer it over hand-chaining the
+commands below.
+
 ### Rust
 - `cargo build --workspace` — build all crates
 - `cargo nextest run --workspace` — run all unit tests
@@ -40,117 +46,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `cd vendor/petri && cargo nextest run --locked -p petri-attractor-steps` — a vendored fork crate's own suite (own workspace, `--locked`)
 
 macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)` / `EMFILE`, raise the shell's soft FD limit before running tests, for example `ulimit -n 4096 && cargo nextest run --workspace`. Some terminals and inherited agent sessions start with `ulimit -n 256`, which is too low for the shared CLI test daemon under parallel nextest load.
-
-### TypeScript (fabro-web)
-- `cd apps/fabro-web && bun run dev` — rebuild web assets on change for the Rust server; refresh the browser manually
-- `cd apps/fabro-web && bun run test` — run tests
-- `cd apps/fabro-web && bun run typecheck` — type check
-- `cd apps/fabro-web && bun run build` — production build (writes to `apps/fabro-web/dist/` only; does NOT update the bundled SPA that ships in the Rust binary)
-- `cargo dev build [-- <cargo args>]` — refreshes the embedded SPA assets from the production build, verifies SPA asset budgets, and then runs `cargo build` with forwarded args. The embedded assets are gitignored except for `.gitkeep`; use this when building a Rust binary that should include a populated SPA bundle. `bun run dev` for local development is unchanged because debug builds prefer `apps/fabro-web/dist/` on disk via the server fallback.
-
-### Docker image
-- `cargo dev docker-build` — builds the local Docker image from the current tree using the release pipeline's cargo-zigbuild approach. Honors `--arch amd64|arm64`, `--tag <name>` (default `fabro-sh/fabro`), `--compile-only` (stages `tmp/docker-context/<arch>/fabro` without `docker build`), and `--dry-run` (prints the Docker commands without running them). Prefer this over writing a throwaway Dockerfile; the release pipeline, `Dockerfile`, and this command share the same binary layout.
-
-### Docker sandbox provider
-- Docker is the default runtime sandbox provider from `defaults.toml`. The Fabro process must have a working Docker client environment (`DOCKER_HOST`, socket access, Docker Desktop behavior, TLS settings, groups/permissions, and any remote daemon policy are operator responsibilities).
-- The packaged compose service mounts `/var/run/docker.sock` so the server can create sibling run containers on the host daemon. This is host-root-equivalent under Docker's security model; only use it in the trusted, single-tenant deployment model described by the sandbox code/docs.
-- Fabro no longer clones a repository into a sandbox: the engine prepares
-  every run's checkout. `CloneRequest` still travels beside the sandbox spec
-  so the run record names the origin and branch; fabro validates it (a pin
-  needs a branch, a non-GitHub origin needs `skip_clone`) and refuses a
-  request that asks for a clone. Preflight and `fabro exec` initialize
-  sandboxes with `CloneRequest::none()`, which creates an empty workspace.
-
-### Release automation
-- `cargo dev release` — creates the next stable release tag. Use `cargo dev release --nightly` for a nightly prerelease. Use `--dry-run` to print planned commands without mutating git or running Cargo, `--skip-tests` only after running the release-mode smoke yourself, and `--release-date YYYY-MM-DD` or `FABRO_RELEASE_DATE` for deterministic version computation.
-
-### Marketing site (apps/marketing)
-- `cd apps/marketing && bun run dev` — start Astro dev server
-- `cd apps/marketing && bun run build` — production build
-- `cd apps/marketing && bunx vercel --prod` — deploy to Vercel (project: website, domain: fabro.sh)
-
-### Dev servers
-1. `fabro server start` — starts the Rust API server (demo mode is per-request via `X-Fabro-Demo: 1` header)
-2. `cd apps/fabro-web && bun run dev` — rebuilds web assets on change; refresh the browser manually
-3. Mintlify docs dev server (requires Docker — `mintlify dev` needs Node LTS which may not match the host):
-   ```
-   docker run --rm -d -p 3333:3333 -v $(pwd)/docs/public:/docs -w /docs --name mintlify-dev node:22-slim \
-     bash -c "npx mintlify dev --host 0.0.0.0 --port 3333"
-   ```
-   Then open http://localhost:3333. Stop with `docker stop mintlify-dev`.
-
-## API workflow
-
-The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
-
-1. Edit `docs/public/api-reference/fabro-api.yaml`
-2. `cargo build -p fabro-api` — build.rs regenerates Rust types and client via progenitor
-3. Write/update handler in `lib/apps/fabro-server/src/server.rs`, add route to `build_router()`
-4. `cargo nextest run -p fabro-server` — conformance test catches spec/router drift
-5. `cd lib/packages/fabro-api-client && bun run generate` — regenerates TypeScript Axios client
-
-### API type ownership
-
-- Treat OpenAPI as the source of truth for the wire contract, not as the automatic owner of Rust types.
-- Before adding or keeping a generated schema type, search the workspace for an existing hand-written Rust type with the same product meaning.
-- If the schema and an existing Rust type have the same semantics and serde shape, reuse the existing type via `lib/foundation/fabro-api/build.rs` `with_replacement(...)` instead of generating a parallel API type.
-- If two types are close but not identical, prefer proposing changes that align them into one canonical type rather than accepting small drift. It is usually better to iterate the API now than to create permanently split Rust/API types.
-- Keep a separate API DTO only when the API is intentionally a projection, summary, or presentation-specific view of internal state. In that case, give it a distinct API-facing name instead of reusing the internal concept name.
-- Treat `ApiFoo` aliases and `foo_to_api` / `foo_from_api` adapters as a smell unless they represent a real semantic boundary. They should not exist only to bridge accidental duplicate types.
-- If a type is shared across crates and is part of the core product vocabulary, move it to a shared crate first, then make `fabro-api` reuse it.
-- For every new `with_replacement(...)`, add a `fabro-api` test that proves type identity and JSON parity with the OpenAPI schema.
-
-## Test support boundaries
-
-Test-only helpers, fixture constructors, fake credentials, in-memory stores, panic-heavy setup code, and test environment shims must not be exposed from production modules or linked into normal builds.
-
-Put shared test helpers in a dedicated `test_support` module gated behind tests or an explicit feature:
-
-```rust
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support;
-```
-
-If another crate's tests need those helpers, enable the feature only through a dev-dependency using Cargo's dual-listing pattern:
-
-```toml
-[dependencies]
-fabro-server = { path = "../fabro-server" }
-
-[dev-dependencies]
-fabro-server = { path = "../fabro-server", features = ["test-support"] }
-```
-
-Do not enable `test-support` in default features, production dependencies, release builds, or binaries.
-
-Use names that make the boundary obvious: `test_app_state`, `test_store_bundle`, `test_auth_mode`, and similar. Avoid production-looking names such as `create_app_state` for test fixtures. `#[doc(hidden)]` is not a substitute for feature-gating; hidden public APIs still compile, link, and can be used accidentally.
-
-Before merging changes that add or move shared test helpers, verify:
-
-- `cargo build --workspace` succeeds without `test-support`
-- relevant tests compile and run with `test-support`
-- `rg -n "create_app_state|test-only-name"` does not show production call sites
-- release/debug artifacts do not contain fake secrets, fixture tokens, or test helper symbols when built without `test-support`
-
-## Architecture
-
-Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run. Two crates import it: `fabro-petri` (the engine adapters) and `fabro-dot` (Petri's DOT parser, for reading a graph's shape and file references).
-
-### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
-- **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`
-- **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
-- **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
-- **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
-- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (tracking Petri `main`; see the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
-- **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
-- **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
-- **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
-- **fabro-github** — GitHub App auth (JWT signing, installation tokens, PR creation)
-- **fabro-mcp-server** — Fabro's own MCP server (`fabro mcp`): the run tools for external agents
-- **fabro-slack** — Slack integration (socket mode, blocks API)
-- **fabro-checkpoint** — Git checkpoint author identity and commit trailers
-- **fabro-telemetry** — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery
-- **fabro-util** — Shared utilities (redaction, terminal formatting)
 
 ### TypeScript (fabro-web)
 - `cd apps/fabro-web && bun run dev` — rebuild web assets on change for the Rust server; refresh the browser manually
@@ -344,6 +239,8 @@ Many CLI tests use `insta` inline snapshots. When a snapshot needs updating:
 1. Run `cargo insta pending-snapshots` to list what changed
 2. Verify each pending snapshot is expected
 3. Run `cargo insta accept` to accept all, or `cargo insta accept --snapshot <path>` for a specific one
+4. Run `cargo insta pending-snapshots` again — done means an EMPTY
+   list (plain accept can silently take only one of several pendings)
 
 Never run `cargo insta accept` without first checking what's pending — it accepts *all* pending snapshots, which may include unrelated changes.
 

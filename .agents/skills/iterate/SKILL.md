@@ -126,7 +126,9 @@ stores it belongs to; reach them by phase need:
   (user directive 2026-10-26): if `sprints_completed % 2 == 0 &&
   last_code_review_at_sprint != sprints_completed`, run the CODE-REVIEW
   skill (two axes, parallel sub-agents, frozen diff, tracker specs) over
-  the commits since the last code review and set
+  the commits since the last code review — fixpoint = the tip AT the end
+  of the sprint named in `last_code_review_at_sprint`, derive it with
+  `git log`, never HEAD~N — and set
   `last_code_review_at_sprint := sprints_completed`; if
   `sprints_completed % 5 == 0 && last_rust_security_review_at_sprint
   != sprints_completed`, run the RUST-SECURITY skill over the workspace
@@ -627,8 +629,11 @@ stores it belongs to; reach them by phase need:
 1. Cost review: what took longer than it should, what needed retries,
    what was missing at decision time. EVERY finding that implies a
    behavior change becomes an edit to THIS skill; domain knowledge goes
-   to mulch (`ml record ...`, then `ml sync` — real insights only);
-   durable preferences to memory. No finding stays unrecorded.
+   to mulch (`ml record <domain> '<content>' --type <failure|convention|
+   pattern|decision|reference|guide>` — type is required, failures also
+   need `--description` and `--resolution`; then `ml sync` — real
+   insights only); durable preferences to memory. No finding stays
+   unrecorded.
 2. New demands become seeds (`seeds create`), searched-first for
    duplicates. Ownership per ADR-0018: unassigned by default; `@fabro`
    only as a proposal for clearly-line work; design forks and
