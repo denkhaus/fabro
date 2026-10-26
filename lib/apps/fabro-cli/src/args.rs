@@ -1,4 +1,3 @@
-use std::fmt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -499,34 +498,20 @@ pub(crate) struct ValidateArgs {
     pub(crate) workflow: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, strum::Display)]
 pub(crate) enum GraphDirection {
     /// Left to right
+    #[strum(to_string = "LR")]
     Lr,
     /// Top to bottom
+    #[strum(to_string = "TB")]
     Tb,
 }
 
-impl fmt::Display for GraphDirection {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Lr => write!(f, "LR"),
-            Self::Tb => write!(f, "TB"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, strum::Display)]
 pub(crate) enum GraphOutputFormat {
+    #[strum(to_string = "svg")]
     Svg,
-}
-
-impl fmt::Display for GraphOutputFormat {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Svg => write!(f, "svg"),
-        }
-    }
 }
 
 #[derive(Args)]
