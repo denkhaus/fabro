@@ -495,6 +495,12 @@ stores it belongs to; reach them by phase need:
   six files and the hand-typed `git add` list had four; the dirty
   remainder was visible in `git status` both times and got pushed past.
   A clean tree is part of the push gate's check, not an afterthought.
+  And NEVER a file-WRITE and its file-CONSUME in one PARALLEL tool
+  block (2026-10-26, three times: the cp backup raced its own edit;
+  the #1003 close cat'd a file that landed a second later and CLOSED
+  THE ITEM WITH AN EMPTY REASON — repaired by a gh comment, but the
+  close comment is the evidence record). Sequence them: write, observe
+  the result, then consume.
   And NEVER amend a PUSHED commit: the branch refuses force-push and
   local/remote diverge (2026-10-26, the rotation rider: amend hit an
   already-pushed sha; recovery is `git reset --soft <pushed-sha>` +
