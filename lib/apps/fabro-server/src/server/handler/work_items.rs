@@ -454,6 +454,14 @@ async fn close_work_item(
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCloseRequest>,
 ) -> Result<Response, ApiError> {
+    // A close without evidence is no close — refuse at the boundary for
+    // every client (retro finding 2026-10-26), before any store or
+    // tracker call.
+    if request.reason.trim().is_empty() {
+        return Err(ApiError::bad_request(
+            "close reason must not be empty — a close carries its evidence",
+        ));
+    }
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     // Workers close only items they hold a live claim on — the check

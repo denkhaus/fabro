@@ -56,6 +56,41 @@ async fn put_project(app: &axum::Router) {
     response_json(response, StatusCode::OK, "PUT /projects/fabro").await;
 }
 
+/// A close without evidence is refused at the boundary for EVERY
+/// client (retro finding 2026-10-26: an empty close reason once landed
+/// with nothing red): empty AND whitespace-only reasons both answer
+/// 400 before any store or tracker call.
+#[tokio::test]
+async fn a_close_without_a_reason_is_refused_at_the_boundary() {
+    let app = app();
+    put_project(&app).await;
+
+    for reason in ["", "   \n"] {
+        let response = app
+            .clone()
+            .oneshot(json_request(
+                Method::POST,
+                "/projects/fabro/work-items/close",
+                &json!({"itemKey": "denkhaus/work#1", "reason": reason}),
+            ))
+            .await
+            .expect("close request should run");
+        let value = response_json(
+            response,
+            StatusCode::BAD_REQUEST,
+            "a reason-less close is refused",
+        )
+        .await;
+        let detail = value["errors"][0]["detail"]
+            .as_str()
+            .expect("the error detail");
+        assert!(
+            detail.contains("close reason must not be empty"),
+            "the refusal names the reason requirement: {detail}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn project_crud_and_the_claim_lifecycle() {
     let app = app();

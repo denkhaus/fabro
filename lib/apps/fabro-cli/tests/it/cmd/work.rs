@@ -764,6 +764,31 @@ fn close_sends_the_reason_and_reports_the_key() {
     close.assert();
 }
 
+/// The other side of the evidence rule (retro finding 2026-10-26): an
+/// empty or whitespace-only reason is refused at the CLI boundary
+/// before any server call — the item body must carry its evidence.
+#[test]
+fn close_refuses_an_empty_reason_before_any_server_call() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "close",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--reason",
+        "   ",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × a close reason is required — pass --reason "<evidence>" (run ids, PR, commit)
+    "#);
+}
+
 #[test]
 fn claims_renders_the_live_queue() {
     let context = test_context!();
