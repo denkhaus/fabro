@@ -646,15 +646,18 @@ stores it belongs to; reach them by phase need:
   develop runs) NEVER count — the line is not inside a sprint. Historical
   note: the bootstrap-era count of 3 includes develop-lane closures under
   the superseded lane-blind rule; kept as history, not recounted.
-  Notes are OBJECTS, not strings (user directive 2026-10-26): each
-  state note is `{"sprint": <n>, "note": "<text>"}` — further fields
-  get added per need, and the object doubles as its own JSONL row.
+  Notes live in the `sprints` field (user directives 2026-10-26): an
+  array of `{"sprint": <n>, "notes": ["<text>", …]}` records — ONE
+  record per sprint, SEVERAL notes per sprint possible (corrections and
+  gate passes ride alongside the sprint note), further fields get
+  added per need, and the record doubles as its own JSONL row.
   Notes rotation (brightctl port, retro 2026-10-17): after appending the
-  sprint note, run `just rotate-notes` when notes > 10 — the state file
-  keeps the newest 10 notes, older ones move UNCHANGED as one-`{"sprint":
-  …, "note": …}`-record-per line JSONL into `iterate-state-archive.jsonl`
+  sprint note, run `just rotate-notes` when sprints > 10 — the state file
+  keeps the newest 10 SPRINTS, older ones move UNCHANGED as one-`{"sprint":
+  …, "notes": […]}`-record-per line JSONL into `iterate-state-archive.jsonl`
   (history stays git-diffable; both ends validated against the record
-  shape). Deterministic and idempotent; `just rotate-notes-dry`
+  shape; dedup keys on the sprint number). Deterministic and idempotent;
+  `just rotate-notes-dry`
   previews. 90 notes cost every session start the 50 KB read-tool limit
   (134 KB file). The script (scripts/rotate-sprint-notes.nu) is
   SESSION-OWNED: never registered in qualitygate batteries, never called

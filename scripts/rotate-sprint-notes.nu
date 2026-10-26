@@ -1,15 +1,15 @@
 #!/usr/bin/env nu
-# Rotate sprint notes: iterate-state.json keeps the newest $keep notes and
+# Rotate sprint notes: iterate-state.json keeps the newest $keep SPRINTS and
 # every older one moves to iterate-state-archive.jsonl — ONE JSON RECORD per
-# line, oldest first, append-only. The record IS the state's note OBJECT
-# unchanged: {"sprint": …, "note": …} (user directive 2026-10-26 — the
-# schema used to be a bare {"note": …} row; sprint numbers migrated with
-# 106 archived + 10 state records on the same day). A line must answer
-# `.note` AND `.sprint` like every other record, and the object shape lets
-# further fields be introduced per need without touching this script.
+# line, oldest first, append-only. A sprint can carry SEVERAL notes, so the
+# state's unit is the sprint OBJECT {"sprint": …, "notes": ["…", …]}
+# (user directives: objects instead of bare strings 2026-10-26, grouped
+# per sprint the same day — the record doubles as its own JSONL row, and
+# further fields get introduced per need without touching this script).
+# A line must answer `.sprint` AND `.notes` like every other record.
 # The state file stays small enough to read whole (fabro hit the 50 KB tool
 # limit at 90 notes / 134 KB, brightctl at 222 notes) while the history
-# stays in the repo, one git-diffable line per note.
+# stays in the repo, one git-diffable line per sprint.
 #
 # Port of brightctl's scripts/rotate-sprint-notes.nu (retro 2026-10-17);
 # only the two file names differ (brightctl .sprint-state.json /
@@ -29,7 +29,7 @@
 # Run from the repo root:  nu scripts/rotate-sprint-notes.nu  (just: just rotate-notes)
 
 def main [
-    --keep: int = 10,   # notes that stay in the state file
+    --keep: int = 10,   # sprints that stay in the state file
     --dry-run,          # report the split, touch nothing
 ] {
     let state_path = "iterate-state.json"
@@ -38,14 +38,28 @@ def main [
         error make {msg: $"($state_path) not found — run this from the repo root"}
     }
     let state = (open $state_path)
-    let notes = ($state.notes | each { |n| $n })
-    let total = ($notes | length)
+    # nu describes an array-of-records as `table<…>` and an empty or
+    # heterogeneous array as `list…` — both are arrays, anything else
+    # (a bare string note era, a record, a number) is a foreign shape
+    let sprints_desc = ($state.sprints | describe)
+    if (not (($sprints_desc | str starts-with "table") or ($sprints_desc | str starts-with "list"))) {
+        error make {msg: $"state field sprints must be a list of {{sprint: …, notes: […]}} records, found: ($sprints_desc)"}
+    }
+    let sprints = ($state.sprints | each { |s|
+        if (not (($s | describe) | str starts-with "record")
+            or not ("sprint" in ($s | columns))
+            or not ("notes" in ($s | columns))) {
+            error make {msg: $"state sprint is not a {{sprint: …, notes: […]}} record: ($s | to json --raw)"}
+        }
+        $s
+    })
+    let total = ($sprints | length)
     if $total <= $keep {
-        print $"nothing to rotate: ($total) notes, keep ($keep)"
+        print $"nothing to rotate: ($total) sprints, keep ($keep)"
         return
     }
-    let stay = ($notes | skip ($total - $keep))
-    let leaving = ($notes | take ($total - $keep))
+    let stay = ($sprints | skip ($total - $keep))
+    let leaving = ($sprints | take ($total - $keep))
     let archived = if ($archive_path | path exists) {
         let old = (open --raw $archive_path)
         if ($old | is-empty) { [] } else {
@@ -53,28 +67,29 @@ def main [
                 let parsed = (from json)
                 # fail loud on a foreign shape — a silent unwrap would let
                 # duplicates into the archive instead of erroring; the
-                # {"sprint": …, "note": …} record is mandatory on both ends
+                # {"sprint": …, "notes": […]} record is mandatory on both
+                # ends, and dedup keys on the sprint number
                 if (not (($parsed | describe) | str starts-with "record")
-                    or not ("note" in ($parsed | columns))
-                    or not ("sprint" in ($parsed | columns))) {
-                    error make {msg: $"archive line is not a {sprint: …, note: …} record: ($parsed | to json --raw)"}
+                    or not ("sprint" in ($parsed | columns))
+                    or not ("notes" in ($parsed | columns))) {
+                    error make {msg: $"archive line is not a {sprint: …, notes: […]} record: ($parsed | to json --raw)"}
                 }
-                $parsed.note
+                $parsed.sprint
             }
         }
     } else { [] }
-    let fresh = ($leaving | where { |record| not ($record.note in $archived) })
+    let fresh = ($leaving | where { |record| not ($record.sprint in $archived) })
     let fresh_count = ($fresh | length)
     let archived_count = ($archived | length)
     let stay_count = ($stay | length)
-    print $"rotate ($fresh_count) of ($leaving | length) notes: ($total) -> ($stay_count) stay, archive grows to ($archived_count) + ($fresh_count)"
+    print $"rotate ($fresh_count) of the ($leaving | length) oldest sprints: ($total) -> ($stay_count) stay, archive grows to ($archived_count) + ($fresh_count)"
     if $dry_run { return }
     # The archive is written FIRST: a crash between the two writes then
-    # leaves the note in BOTH places, and the fresh-filter above dedupes it
-    # on rerun — the other order would lose the note outright.
+    # leaves the sprint in BOTH places, and the sprint-id dedup above
+    # removes it on rerun — the other order would lose it outright.
     if $fresh_count > 0 {
-        # dedup is text-based (`.note` above); the archive line is the
-        # state object verbatim, sprint field included
+        # dedup is by sprint id (above); the archive line is the state
+        # record verbatim, notes array included
         let lines = ($fresh | each { |record| $record | to json --raw })
         let addition = ($lines | str join "\n")
         let body = if ($archive_path | path exists) {
@@ -85,6 +100,6 @@ def main [
         } else { $addition }
         $"($body)\n" | save --force $archive_path
     }
-    $state | update notes $stay | to json --indent 2 | $"($in)\n" | save --force $state_path
-    print $"archived ($fresh_count), state holds ($stay_count) notes"
+    $state | update sprints $stay | to json --indent 2 | $"($in)\n" | save --force $state_path
+    print $"archived ($fresh_count) sprints, state holds ($stay_count)"
 }
