@@ -10,9 +10,12 @@
 //! "scheduler 3-strike", "interview mechanics") are answerable from the
 //! source of truth on every Ask-Fabro session, read-only by policy.
 //!
-//! Corpus v1: `docs/agents`, `docs/internal`, `docs/lab` (markdown
-//! only). `docs/public` (marketing + the generated API reference) and the
-//! historical `docs/plans`/`brainstorms`/`superpowers` trees stay out.
+//! Corpus v2: `docs/agents`, `docs/internal`, `docs/adr`, `docs/lab`
+//! (markdown only). `docs/public` (marketing + the generated API
+//! reference) and the historical `docs/plans`/`brainstorms`/
+//! `superpowers` trees stay out. The ADRs moved from `docs/lab/adr`
+//! to `docs/adr` (2026-10-26, single-context alignment); `docs/lab`
+//! stays for the rescued lab-era material.
 
 use include_dir::{Dir, include_dir};
 use pebble_coding_agent::tools::{RegisteredTool, ToolError, ToolSource};
@@ -20,6 +23,7 @@ use schemars::JsonSchema;
 
 static AGENTS_DOCS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../docs/agents");
 static INTERNAL_DOCS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../docs/internal");
+static ADR_DOCS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../docs/adr");
 static LAB_DOCS: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../../docs/lab");
 
 pub(crate) const FORK_ASK_DOCS_TOOL_NAME: &str = "fabro_docs";
@@ -29,10 +33,11 @@ pub(crate) const FORK_ASK_DOCS_TOOL_NAME: &str = "fabro_docs";
 /// through the workspace when the target checkout carries it.
 const MAX_DOC_CHARS: usize = 64 * 1024;
 
-fn corpus_roots() -> [(&'static Dir<'static>, &'static str); 3] {
+fn corpus_roots() -> [(&'static Dir<'static>, &'static str); 4] {
     [
         (&AGENTS_DOCS, "agents"),
         (&INTERNAL_DOCS, "internal"),
+        (&ADR_DOCS, "adr"),
         (&LAB_DOCS, "lab"),
     ]
 }
@@ -144,7 +149,7 @@ mod tests {
             "the events strategy doc must be in the embedded corpus"
         );
         assert!(
-            index.iter().any(|entry| entry.starts_with("lab/adr/")),
+            index.iter().any(|entry| entry.starts_with("adr/")),
             "the ADRs must be in the embedded corpus"
         );
         assert!(
