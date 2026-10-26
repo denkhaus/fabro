@@ -1,7 +1,7 @@
 # Migration plan: central work-item tracker and server-owned claims
 
 Status: proposed (direction user-approved 2026-10-20; implementation not started)
-Authority: `docs/lab/adr/0032-central-work-item-tracker.md`
+Authority: `docs/adr/0032-central-work-item-tracker.md`
 Audience: the next host-side session (the line stays OFF until the checklist
 passes)
 All user-facing times: Europe/Berlin. The document's internal timestamps,
@@ -641,7 +641,7 @@ implicit convention:
   as listed in Phase 3.
 - Scripts: `.fabro/scripts/{dup-run-check,salvage-sweep,close-claim-check,
   friction-score,prompt-lint}.nu` and the seed-specific fixtures.
-- Docs: `docs/lab/adr/0032-central-work-item-tracker.md`,
+- Docs: `docs/adr/0032-central-work-item-tracker.md`,
   `docs/internal/central-work-tracker-migration.md`, `AGENTS.md`,
   `CLAUDE.md`.
 - Skills: `.agents/skills/iterate/SKILL.md`,
