@@ -487,6 +487,11 @@ stores it belongs to; reach them by phase need:
   six files and the hand-typed `git add` list had four; the dirty
   remainder was visible in `git status` both times and got pushed past.
   A clean tree is part of the push gate's check, not an afterthought.
+  And NEVER amend a PUSHED commit: the branch refuses force-push and
+  local/remote diverge (2026-10-26, the rotation rider: amend hit an
+  already-pushed sha; recovery is `git reset --soft <pushed-sha>` +
+  a fresh commit — correctable, but a wasted gate round). Check
+  `git status` against the remote tip before any amend.
 - A `fabro create` whose post-processing dies still created the run:
   capture exactly one run id per intended create and `fabro rm --force`
   duplicates immediately - submitted ghosts count as active runs and wedge
