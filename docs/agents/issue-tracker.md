@@ -30,9 +30,12 @@ migrated items keep a `seeds:fabro-xxxx` label as their legacy anchor
   ships with the fork.26 build; until that deploy, use a tree build
   (`cargo build -p fabro-cli`, then `./target/debug/fabro work …`).
 - **Create**: `echo "$body" | fabro work --server … create --project fabro
-  --title "…" --body-file - [--lane develop] [--label topic]`. Bodies
-  NEVER travel on a command line — `--body-file -` reads stdin. Title and
-  body must be non-empty; the server stamps `project:fabro` itself.
+  --title "…" --body-file - [--lane develop] [--type bug] [--priority 1]
+  [--label topic]`. Bodies NEVER travel on a command line — `--body-file -`
+  reads stdin. `--type`/`--priority` derive the `type:<t>`/`prio:pN` labels
+  (never hand-spell them; a contradicting raw `--label` of the same family
+  is refused). Title and body must be non-empty; the server stamps
+  `project:fabro` itself.
 - **Keys**: the item key `denkhaus/work#N` is the canonical handle (use
   it in commits, PR bodies, docs). A bare `N` composes against the
   project's trackerRepo; a legacy id `fabro-xxxx` resolves through the

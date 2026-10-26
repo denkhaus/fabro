@@ -83,6 +83,7 @@ dialoguer.workspace = true
 axum.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
+strum.workspace = true
 tempfile = "3"
 sha2.workspace = true
 object_store.workspace = true

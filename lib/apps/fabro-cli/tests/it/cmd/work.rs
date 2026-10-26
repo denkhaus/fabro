@@ -89,18 +89,20 @@ fn create_help() {
     Usage: fabro work create [OPTIONS] --project <PROJECT> --title <TITLE>
 
     Options:
-          --json               Output as JSON [env: FABRO_JSON=]
-          --project <PROJECT>  Work project id
-          --debug              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
-          --title <TITLE>      Item title
-          --body <BODY>        Item body
-          --no-upgrade-check   Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
-          --body-file <PATH>   Read the item body from a file (`-` reads stdin)
-          --quiet              Suppress non-essential output [env: FABRO_QUIET=]
-          --lane <LANE>        Lane to file the item in (translated through the project's lane labels)
-          --verbose            Enable verbose output [env: FABRO_VERBOSE=]
-          --label <LABELS>     Raw tracker label; repeatable or comma-separated
-      -h, --help               Print help
+          --json                 Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>    Work project id
+          --debug                Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --title <TITLE>        Item title
+          --body <BODY>          Item body
+          --no-upgrade-check     Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --body-file <PATH>     Read the item body from a file (`-` reads stdin)
+          --quiet                Suppress non-essential output [env: FABRO_QUIET=]
+          --lane <LANE>          Lane to file the item in (translated through the project's lane labels)
+          --verbose              Enable verbose output [env: FABRO_VERBOSE=]
+          --type <ITEM_TYPE>     Item type (files the `type:<t>` label) [possible values: task, bug, feature, epic]
+          --priority <PRIORITY>  Item priority 0-4 (files the `prio:pN` label; default stays the tracker's p2)
+          --label <LABELS>       Raw tracker label; repeatable or comma-separated
+      -h, --help                 Print help
     ----- stderr -----
     ");
 }
@@ -392,6 +394,90 @@ fn show_refuses_a_selector_outside_the_three_shapes() {
     ----- stderr -----
       × invalid work item selector "denkhaus/work": pass a full key (`owner/repo#12`), a bare number (`12`), or a legacy id (`fabro-d5f0`)
     "#);
+}
+
+/// The structured vocabulary derives the standard labels: --type and
+/// --priority file type:<t>/prio:pN so a caller never hand-spells them
+/// (the review-item filing incident: unprefixed labels needed a cleanup).
+#[test]
+fn create_derives_type_and_priority_labels() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let create = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items")
+            .body_includes("\"labels\":[\"type:bug\",\"prio:p1\",\"residual\"]");
+        then.status(201)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#16", "a review gap", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "create",
+        "--project",
+        "fabro",
+        "--title",
+        "a review gap",
+        "--body",
+        "the body",
+        "--type",
+        "bug",
+        "--priority",
+        "1",
+        "--label",
+        "residual",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    denkhaus/work#16
+    ----- stderr -----
+    ");
+
+    create.assert();
+}
+
+/// A raw --label that CONTRADICTS the structured flag is refused before
+/// the server sees anything — one family, one value.
+#[test]
+fn create_refuses_a_contradicting_family_label() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let create = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items");
+        then.status(201);
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "create",
+        "--project",
+        "fabro",
+        "--title",
+        "a review gap",
+        "--body",
+        "the body",
+        "--type",
+        "bug",
+        "--label",
+        "type:task",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × conflicting type labels: --label "type:task" contradicts "type:bug" (drop the raw label or align it)
+    "#);
+
+    create.assert_calls(0);
 }
 
 #[test]

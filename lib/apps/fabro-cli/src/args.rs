@@ -2223,9 +2223,29 @@ pub(crate) struct WorkCreateArgs {
     /// Lane to file the item in (translated through the project's lane labels)
     #[arg(long)]
     pub(crate) lane:      Option<String>,
+    /// Item type (files the `type:<t>` label)
+    #[arg(long = "type", value_enum)]
+    pub(crate) item_type: Option<WorkItemTypeArg>,
+    /// Item priority 0-4 (files the `prio:pN` label; default stays the
+    /// tracker's p2)
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..=4))]
+    pub(crate) priority:  Option<u8>,
     /// Raw tracker label; repeatable or comma-separated
     #[arg(long = "label", value_delimiter = ',')]
     pub(crate) labels:    Vec<String>,
+}
+
+/// The item-type vocabulary as a clap enum, so `--type` refuses typos at
+/// the boundary instead of filing a mangled label. `strum::Display`
+/// with kebab-case mirrors clap's ValueEnum naming, which is the label
+/// vocabulary's shape.
+#[derive(Clone, Copy, Debug, strum::Display, clap::ValueEnum)]
+#[strum(serialize_all = "kebab-case")]
+pub(crate) enum WorkItemTypeArg {
+    Task,
+    Bug,
+    Feature,
+    Epic,
 }
 
 #[derive(Args)]

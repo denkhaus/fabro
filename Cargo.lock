@@ -2162,6 +2162,7 @@ dependencies = [
  "serde_yaml",
  "sha2 0.10.9",
  "shlex",
+ "strum 0.28.0",
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",

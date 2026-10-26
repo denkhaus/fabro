@@ -35,6 +35,21 @@ pub(super) async fn create_command(args: &WorkCreateArgs, ctx: &CommandContext) 
         let project = project_row(&client, &args.project).await?;
         labels.push(lane_label(&project, lane)?);
     }
+    // Structured vocabulary: --type/--priority DERIVE the standard labels,
+    // so a caller never hand-spells them (the review-item filing incident:
+    // unprefixed `bug`/`task` labels needed a gh cleanup pass). An explicit
+    // --label carrying a DIFFERENT value of the same family is a hard
+    // error — silent disagreement would file two labels of one family.
+    if let Some(item_type) = args.item_type {
+        let label = format!("type:{item_type}");
+        reject_conflicting_family(&args.labels, "type", &label)?;
+        labels.push(label);
+    }
+    if let Some(priority) = args.priority {
+        let label = format!("prio:p{priority}");
+        reject_conflicting_family(&args.labels, "prio", &label)?;
+        labels.push(label);
+    }
     labels.extend(args.labels.iter().cloned());
 
     let item = client
@@ -46,6 +61,23 @@ pub(super) async fn create_command(args: &WorkCreateArgs, ctx: &CommandContext) 
         print_json_pretty(&item)?;
     } else {
         fabro_util::printout!(printer, "{}", item.item_key);
+    }
+    Ok(())
+}
+
+/// One label family (type:/prio:) may carry exactly one value: a raw
+/// `--label` that names a DIFFERENT value of a family a structured flag
+/// already set is a hard error, the identical value passes (it dedups
+/// server-side).
+fn reject_conflicting_family(raw_labels: &[String], family: &str, derived: &str) -> Result<()> {
+    let prefix = format!("{family}:");
+    for label in raw_labels {
+        if label.starts_with(&prefix) && label != derived {
+            bail!(
+                "conflicting {family} labels: --label {label:?} contradicts {derived:?} \
+                 (drop the raw label or align it)"
+            );
+        }
     }
     Ok(())
 }
@@ -80,7 +112,7 @@ fn read_body_file(path: &Path) -> Result<String> {
 mod tests {
     use std::io::Write as _;
 
-    use super::read_body;
+    use super::{read_body, reject_conflicting_family};
     use crate::args::WorkCreateArgs;
 
     fn create_args(body: Option<&str>, body_file: Option<&str>) -> WorkCreateArgs {
@@ -90,6 +122,8 @@ mod tests {
             body:      body.map(str::to_string),
             body_file: body_file.map(Into::into),
             lane:      None,
+            item_type: None,
+            priority:  None,
             labels:    Vec::new(),
         }
     }
@@ -104,6 +138,19 @@ mod tests {
         let body = read_body(&create_args(None, Some(path)))?;
         assert_eq!(body, "from a file\n");
         Ok(())
+    }
+
+    #[test]
+    fn one_label_family_carries_exactly_one_value() {
+        // the identical raw label passes (dedup is the server's)
+        assert!(reject_conflicting_family(&["type:bug".to_string()], "type", "type:bug").is_ok());
+        assert!(reject_conflicting_family(&[], "prio", "prio:p1").is_ok());
+        // a DIFFERENT value of the same family is a hard error naming both
+        let error = reject_conflicting_family(&["type:task".to_string()], "type", "type:bug")
+            .expect_err("a contradicting family label is refused");
+        let message = error.to_string();
+        assert!(message.contains("type:task"), "{message}");
+        assert!(message.contains("type:bug"), "{message}");
     }
 
     #[test]
