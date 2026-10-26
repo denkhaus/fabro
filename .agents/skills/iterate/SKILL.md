@@ -208,7 +208,22 @@ stores it belongs to; reach them by phase need:
   (`Failed { reason: SoftStop }`). A test added through an EXISTING
   harness must prove the input reaches the seam: the projection harness
   never wrote the run spec's `graph_source`, so the first engine-level
-  pin was trivially green until the harness carried it.
+  pin was trivially green until the harness carried it. A sed-both-ways
+  mutation restore must verify the pattern is UNIQUE in the file first
+  (grep -c == 1, or anchor on surrounding context): the sprint-54
+  reverse sed rewrote `#[arg(long, value_enum)]` in THREE sibling
+  commands while restoring one and reddened unrelated worker_auth ITs
+  (caught only because the test filter matched them).
+- A NEW-flag IT failing with clap's "unexpected argument" is a FLAG-NAME
+  mismatch until proven otherwise (2026-10-26, work#995 handoff): clap
+  derives `--<snake_case_field>` when no explicit `long =` is set, so a
+  field `item_type` ships `--item-type` while tests, docs, and the
+  agreed surface say `--type`. Compare the bare field name against the
+  agreed flag BEFORE suspecting the test harness or a stale binary —
+  and a pending snapshot for a NEW feature whose captured output is the
+  FAILURE itself (error text, nonzero exit) means `cargo insta accept`
+  baked the bug in: rewrite the snapshot to the intended behavior, never
+  accept a failure-shaped snapshot of a new feature.
 - Run the touched tests IMMEDIATELY after each refactor edit, not at the
   end of the batch: three self-inflicted scanner bugs (two byte offsets,
   chain legs) each cost a hung 120s/20s test round; the unit test
