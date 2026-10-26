@@ -1,6 +1,9 @@
 # Migration plan: central work-item tracker and server-owned claims
 
-Status: proposed (direction user-approved 2026-10-20; implementation not started)
+Status: in progress — stages 1–5 landed 2026-10-25/26 (import, archive,
+`.seeds` gone, host scripts on the facade, ADR-0035); stages 6–7 pending.
+Direction user-approved 2026-10-20. Stage truth lives in the
+STAGE STATUS blocks below, not in this header.
 Authority: `docs/adr/0032-central-work-item-tracker.md`
 Audience: the next host-side session (the line stays OFF until the checklist
 passes)
