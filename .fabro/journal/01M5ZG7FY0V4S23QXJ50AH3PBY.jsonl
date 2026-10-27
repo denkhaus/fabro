@@ -1,3 +1,4 @@
 {"$schema":"fabro-journal-v1","run_id":"01M5ZG7FY0V4S23QXJ50AH3PBY","node":"start","visit":1,"status":"succeeded","ts":"2026-10-27T20:19:06Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5ZG7FY0V4S23QXJ50AH3PBY","node":"env_guard","visit":1,"status":"succeeded","ts":"2026-10-27T20:19:07Z","data":{}}
 {"$schema":"fabro-journal-v1","run_id":"01M5ZG7FY0V4S23QXJ50AH3PBY","node":"planner","visit":1,"status":"succeeded","ts":"2026-10-27T20:19:54Z","data":{"painpoints":[],"observations":["Body cited evidence.nu:431 but the marker print now sits at :877 — corrected in the item body via work_update so later readers get the right anchor; line-number citations in seed bodies drift, prefer file+symbol."]}}
+{"$schema":"fabro-journal-v1","run_id":"01M5ZG7FY0V4S23QXJ50AH3PBY","node":"preflight","visit":1,"status":"succeeded","ts":"2026-10-27T20:19:56Z","data":{}}
