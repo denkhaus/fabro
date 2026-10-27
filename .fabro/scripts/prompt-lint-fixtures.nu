@@ -3,10 +3,13 @@
 # prompt-lint.nu suspends ONE check (resolvable seed ids) for ONE file, so
 # the suspension itself needs a pin. This battery runs the REAL lint — no
 # re-implementation — inside throwaway roots in the system temp dir: the
-# resolvable-id tier reads the work tracker's legacy labels through the gh
-# census (absolute), so a dead fixture id reds and the real migrated id
-# below resolves exactly as it does in the repo, and the fixture files are
-# the only lint targets in scope.
+# resolvable-id tier through the REAL lint's census-file seam
+# (PROMPT_LINT_CENSUS_FILE, staged by new-root below): the gate host
+# carries no forge client and no network, so the battery supplies the
+# known legacy ids itself — the real migrated id below resolves, a dead
+# fixture id reds, and the fixture files are the only lint targets in
+# scope. The lint's own fail-open (census unavailable -> tier suspended)
+# is not pinned here; this battery pins the tier LIVE.
 #
 #   nu .fabro/scripts/prompt-lint-fixtures.nu
 #
@@ -46,10 +49,10 @@ def fail [what: string]: nothing -> nothing {
 def new-root [base: string, name: string]: nothing -> string {
     let root = ($base | path join $name)
     mkdir ($root | path join '.fabro' 'scripts')
-    # no tracker store is staged: the resolvable-id tier reads the work
-    # tracker's legacy labels through the gh census (absolute, any cwd —
-    # cutover stage 5, denkhaus/work#988), so a dead id reds and a real
-    # migrated id resolves without any .seeds in the fixture root
+    # deterministic census: stage the known legacy ids for the lint's
+    # census-file seam — no tracker store, no gh, no network. Only the
+    # real migrated id resolves; the DEAD concatenation never lands here.
+    ($REAL + "\n") | save --force ($root | path join 'census.txt')
     $root
 }
 
@@ -58,7 +61,10 @@ def write-fixture [root: string, file: string, body: string]: nothing -> nothing
 }
 
 def run-lint [root: string]: nothing -> record {
-    let res = (do { ^nu -c $"cd '($root)'; nu '($LINT)'" } | complete)
+    # route the lint at the root's staged census through the seam, so the
+    # resolvable-id tier is LIVE in every check below, deterministically
+    let census = ($root | path join 'census.txt')
+    let res = (do { with-env {PROMPT_LINT_CENSUS_FILE: $census} { ^nu -c $"cd '($root)'; nu '($LINT)'" } } | complete)
     {code: $res.exit_code, out: ($res.stdout + $res.stderr)}
 }
 

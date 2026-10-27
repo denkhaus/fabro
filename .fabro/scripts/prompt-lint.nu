@@ -139,7 +139,23 @@ def trailing-newline-errors [f] {
 # an API failure throws/returns nonzero — in that case the tier suspends
 # (null) instead of erroring, and every other check still runs. A missing
 # external is NOT captured by `complete` (it raises), so guard with `try`.
+#
+# Census-file seam (deterministic gate): when PROMPT_LINT_CENSUS_FILE is
+# set, its lines (one legacy id per line, blanks ignored) are the known
+# set and the gh call is skipped — the fixture battery
+# (prompt-lint-fixtures.nu) pins this tier's behavior without a forge
+# client or network, so the battery cannot rot with the host's gh
+# availability. Same fail-open: an unreadable census file suspends the
+# tier instead of erroring.
 def tracker-known-ids [] {
+    if ('PROMPT_LINT_CENSUS_FILE' in $env) {
+        let ids = (try { open --raw $env.PROMPT_LINT_CENSUS_FILE | lines | where {|l| ($l | str trim) != ''} } catch { null })
+        if $ids == null {
+            print -e $"prompt-lint: census file unreadable — resolvable-id tier suspended this run: ($env.PROMPT_LINT_CENSUS_FILE)"
+            return null
+        }
+        return $ids
+    }
     let run = (try {
         do { gh api --paginate 'repos/denkhaus/work/issues?state=all&labels=project%3Afabro&per_page=100' --jq '.[].labels[].name' } | complete
     } catch {|err|
