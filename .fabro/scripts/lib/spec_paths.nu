@@ -22,7 +22,7 @@ export def loop-asset? [p: string]: nothing -> bool {
     # product-code edit. Every other lib/ path stays out of lane.
     if ($p | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
     let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $p | str starts-with $q})
-    ($prefix_hit) or ($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])
+    ($prefix_hit) or ($p == "justfile")
 }
 
 # Pure: expand every `{a,b,...}` comma group of a brace-form citation

@@ -199,14 +199,11 @@ def check-workspace-compiles [] {
 #   product lane (develop tester): a diff touching loop assets REDs the
 #     gate — loop assets are the meta lane's surface, never the product
 #     implementer's. Exemptions: .fabro/journal/** (the stage-journal
-#     hook's own writes, hook-owned per fabro-b6c5) and
-#     .seeds/issues.jsonl + .seeds/config.yaml (tracker bookkeeping:
-#     planner claim, close, and the seeds CLI's config rewrite on store
-#     ops — fabro-28d8, user decision 2026-10-03).
+#     hook's own writes, hook-owned per fabro-b6c5). The .seeds tracker
+#     paths left these lists with the fs-envelope sweep (denkhaus/work#990).
 #   loop lane (loop tester calls `check-run-scope loop`): the diff may
 #     touch ONLY the loop assets the loop implementer's fs_write pins
-#     (.fabro/**, scripts/**, justfile, .seeds/issues.jsonl,
-#     .seeds/config.yaml) — a loop
+#     (.fabro/**, scripts/**, justfile) — a loop
 #     run editing lib/ or docs/ is out of lane and REDs.
 #
 # Determinism: the CALLING GRAPH fixes the lane (the script line lives in
@@ -221,16 +218,14 @@ def check-workspace-compiles [] {
 source ../.fabro/scripts/lib/spec_paths.nu
 
 # Pure: one path against the product-lane deny-list — EXACTLY develop's
-# implementer fs_hide set (.fabro/**, .seeds/**, .agents/**, scripts/**,
-# justfile) minus the hook-owned journal and the tracker bookkeeping
-# write. `.mulch/**` is deliberately NOT denied: develop's implementer
+# implementer fs_hide set (.fabro/**, .agents/**, scripts/**,
+# justfile) minus the hook-owned journal. `.mulch/**` is deliberately NOT denied: develop's implementer
 # has a mandatory lesson-capture contract (`ml record` writes the
 # git-tracked expertise files) — refusing it would false-red every
 # lesson-recording product run (fabro-70b5 spec review).
 def product-denied? [p: string]: nothing -> bool {
     if ($p | str starts-with ".fabro/journal/") { return false }
-    if ($p in [".seeds/issues.jsonl" ".seeds/config.yaml"]) { return false }
-    let prefix_hit = ([".fabro/" ".agents/" ".seeds/" "scripts/"] | any {|q| $p | str starts-with $q})
+    let prefix_hit = ([".fabro/" ".agents/" "scripts/"] | any {|q| $p | str starts-with $q})
     ($prefix_hit) or ($p == "justfile")
 }
 

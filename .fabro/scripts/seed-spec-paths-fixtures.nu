@@ -39,9 +39,11 @@ expect-extraction "In `scripts/qualitygate.nu`, extend the loop-asset tier. Also
 ]
 # Globs and bare directory prefixes are dropped: the diff lists files,
 # a glob or prefix can never match one — keeping them would false-RED
-# every spec that names a root sweep (`.fabro/**`).
-expect-extraction "Sweep `.fabro/**` and `scripts/` plus .seeds/issues.jsonl" [
-    ".seeds/issues.jsonl"
+# every spec that names a root sweep (`.fabro/**`). (The historical
+# example cited .seeds/issues.jsonl — a loop path until denkhaus/work#990
+# swept the tracker out of the envelope.)
+expect-extraction "Sweep `.fabro/**` and `scripts/` plus .fabro/scripts/stage-journal.nu" [
+    ".fabro/scripts/stage-journal.nu"
 ]
 # fabro-48f3: a bare DIRECTORY token drops even without a trailing
 # slash — the prefix rule only caught the `scripts/` spelling, and a

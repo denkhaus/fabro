@@ -115,7 +115,8 @@ def main [] {
         fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
     }
 
-    # 7. closeout closes through the tool grant; evidence is work-item-fed
+    # 7. closeout files and closes through the capability channel; the
+    # evidence node runs --work-item with the packet on stdin
     if not ($code | any {|l| ($l | str contains 'evidence.nu --work-item')}) {
         fail 'evidence script line missing --work-item — the capture must read the granted-item packet mode'
     }
@@ -124,12 +125,15 @@ def main [] {
     let cout_end = ($lines | enumerate | where {|e| $e.index > $cout_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
     if $cout_end == null { fail 'closeout node block not terminated' }
     let cout_block = ($lines | skip ($cout_start + 1) | take ($cout_end - $cout_start - 1))
-    if not ($cout_block | any {|l| ($l | str contains 'fabro_work_close')}) {
-        fail 'closeout node missing the fabro_work_close grant — the close is a tool call (ADR-0032), never a host script'
+    if not ($cout_block | any {|l| ($l | str contains 'closeout.nu --work-item')}) {
+        fail 'closeout node must run closeout.nu --work-item — the deterministic channel form (denkhaus/work#990)'
     }
-    if not ($cout_block | any {|l| ($l | str contains 'prompt=')}) {
-        fail 'closeout node must be a prompt (agent) node — host scripts cannot reach the tracker'
+    if not ($cout_block | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
+        fail 'closeout stdin_source lost current_item_json — the packet must reach the close node too'
+    }
+    if ($cout_block | any {|l| ($l | str contains 'prompt=')}) {
+        fail 'closeout must NOT be an agent node anymore — the channel carries the tracker calls (denkhaus/work#990)'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout closes through tools'
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout files and closes through the channel'
 }

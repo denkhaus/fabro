@@ -24,12 +24,10 @@
 #      --assignee loop with stdin_source=current_item_json (the
 #      granted-item packet; --assignee drives the bd55 lane-scoped
 #      envelope_risk); evidence carries --lane loop --work-item with
-#      stdin_source=current_item_json; closeout is the ADR-0032 agent
-#      form — prompt @prompts/closeout.md, the
-#      fabro_work_close/create/list tool surface, and the prompt's plan
-#      command carries closeout.nu --work-item --plan-only --lane loop
-#      (the lane label routes filed residuals back into THIS lane's
-#      queue).
+#      stdin_source=current_item_json; closeout is the denkhaus/work#990
+#      script form — closeout.nu --work-item --lane loop with the
+#      packet on stdin, the channel carrying every tracker call (the
+#      lane label routes filed residuals back into THIS lane's queue).
 #   6b. The planner forwards the granted-item packet: x.context_allow_keys
 #      names current_item_json (the evidence and preflight stages read
 #      it from stdin; the e47c allow-keys lint drops undeclared keys — a
@@ -59,7 +57,7 @@
 #      never as a tester battery bounce.
 
 const GRAPH = ('.fabro/workflows/loop/workflow.fabro' | path expand)
-const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,.seeds/issues.jsonl,.seeds/config.yaml,lib/components/fabro-dot/src/snapshots/**"'
+const FS_WRITE_EXPECTED = 'x.fs_write=".fabro/**,scripts/**,justfile,lib/components/fabro-dot/src/snapshots/**"'
 
 def fail [what: string]: nothing -> nothing {
     print -e $"loop graph-contract-smoke: FAIL — ($what)"
@@ -133,20 +131,27 @@ def main [] {
     if not ($eblock | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
         fail 'evidence stdin_source lost current_item_json (the packet plumbing)'
     }
-    # closeout agent form (ADR-0032 phase 3): prompt + work tools on the
-    # node, the plan command with --lane loop in the prompt file
-    if not ($lines | any {|l| ($l | str contains 'closeout') and ($l | str contains '@prompts/closeout.md')}) {
-        fail 'closeout node lost @prompts/closeout.md (agent form is the ADR-0032 wiring)'
+    # closeout script form (denkhaus/work#990): the capability channel
+    # carries the tracker calls — closeout.nu --work-item --lane loop on
+    # the node with the packet on stdin; NO prompt, NO fabro_tools, and
+    # the agent prompt file is GONE (a reappearing one would mean the
+    # retired choreography crept back)
+    let cstart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'closeout ['} | get -o index | first | default null)
+    if $cstart == null { fail 'closeout node not found' }
+    let cend = ($lines | enumerate | where {|e| ($e.index > $cstart) and (($e.item | str trim) == ']')} | get -o index | first | default null)
+    if $cend == null { fail 'closeout node block not terminated' }
+    let cblock = ($lines | skip ($cstart + 1) | take ($cend - $cstart - 1))
+    if not ($cblock | any {|l| ($l | str contains 'closeout.nu --work-item --lane loop')}) {
+        fail 'closeout node must run closeout.nu --work-item --lane loop — the deterministic channel form (denkhaus/work#990)'
     }
-    if not ($lines | any {|l| ($l | str contains 'x.fabro_tools="fabro_work_close,fabro_work_create,fabro_work_list"')}) {
-        fail 'closeout node lost the fabro_work_close/create/list tool surface'
+    if not ($cblock | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
+        fail 'closeout stdin_source lost current_item_json — the packet must reach the close node'
+    }
+    if ($cblock | any {|l| ($l | str contains 'prompt=') or ($l | str contains 'fabro_tools')}) {
+        fail 'closeout must NOT be an agent node anymore — the channel carries the tracker calls'
     }
     let closeout_prompt = ('.fabro/workflows/loop/prompts/closeout.md' | path expand)
-    if not ($closeout_prompt | path exists) { fail $"closeout prompt missing: ($closeout_prompt)" }
-    let ptext = (open --raw $closeout_prompt)
-    if not (($ptext | str contains 'closeout.nu --work-item --plan-only --lane loop')) {
-        fail 'closeout prompt lost the plan command (--work-item --plan-only --lane loop — residuals would file @fabro or land unlaned)'
-    }
+    if ($closeout_prompt | path exists) { fail $"the closeout agent prompt must stay deleted: ($closeout_prompt)" }
 
     # 6b. planner packet plumbing
     let pstart = ($lines | enumerate | where {|e| ($e.item | str trim) == 'planner ['} | get -o index | first | default null)

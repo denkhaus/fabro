@@ -1,10 +1,10 @@
 #!/usr/bin/env nu
-# Deterministic already-landed preflight (fabro-a32f): runs BEFORE the
-# planner LLM lap and greps the merge-target base history for the top
-# `seeds ready --assignee fabro` candidates, reusing dup-run-check.nu's
-# landed-implementation classification verbatim (filed-only revisor
+# Deterministic already-landed preflight (fabro-a32f): the --work-item
+# mode (ADR-0032, the only live mode since denkhaus/work#990) validates
+# the granted-item packet against dup-run-check.nu's landed-implementation
+# classification verbatim (filed-only revisor
 # commits never count; Fabro-Run trailer identity via --self; a landed
-# true-merge or squash `(#n)` commit implementing the seed counts).
+# true-merge or squash `(#n)` commit implementing the item counts).
 #
 # Motivation (run 01M2Q2Q2NY211PVV0E44YDAAQN, PR #207): the planner's
 # ALREADY LANDED arm re-derived a sub-second greppable fact (manual fix
@@ -51,8 +51,9 @@
 # Usage (node invocation; also drivable standalone for dry-runs):
 #   echo <run-id> | nu planner-preflight.nu [--base origin/denkhaus]
 #   nu planner-preflight.nu --candidates fabro-x,fabro-y --report-only
-#     --candidates  comma-separated override of the seeds ready candidate
-#                   list (dry-run / fixture path; skips seeds ready)
+#     --candidates  comma-separated candidate ids (dry-run / fixture
+#                   path; no tracker fetch — descriptions degrade to
+#                   empty, the live mode is --work-item)
 #     --report-only skip the closure side effects — report the landing
 #                   verdict without closing anything (dry-run / fixtures)
 #     --top N       how many top candidates to check (default 5)
@@ -354,7 +355,7 @@ const SCRIPT_DIR = (path self | path dirname)
 # the primary surface is repo-visible); the loop lane flags PRODUCT
 # surfaces (the misroute detector the loop planner's surface router
 # adjudicates).
-def main [--base: string = "origin/denkhaus", --candidates: string, --top: int = 5, --assignee: string = "fabro", --work-item]: nothing -> nothing {
+def main [--base: string = "origin/denkhaus", --candidates: string, --candidates-file: string, --top: int = 5, --assignee: string = "fabro", --work-item]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
     # degrades the self-closure identity to a no-op exclusion.
@@ -422,41 +423,30 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --top: int =
     mut mode = "checked"
     mut degraded_reason = ""
 
-    # Candidate list: --candidates override, else the top of seeds ready.
-    # Candidates carry their description so cited file:line anchors can
-    # be verified (fabro-7daf); a description that cannot be fetched
-    # degrades per-candidate to "no anchors", never to a script failure.
-    let cand = (if $candidates != null {
+    # Candidate list (denkhaus/work#990): --candidates-file carries
+    # [{id, description}] records for fixtures and dry-runs (the
+    # state-file pattern — the seeds-ready leg and its tracker fetch
+    # died with the tracker; the live mode is --work-item above).
+    # --candidates stays for bare id lists; descriptions degrade to
+    # empty, cited-file anchors degrade to "no anchors" per-candidate,
+    # never to a script failure.
+    let cand = (if not ($candidates_file | default "" | str trim | is-empty) {
+        let parsed = (try { open --raw $candidates_file | from json } catch { [] })
+        $parsed | each {|c| {id: ($c | get -o id | default "" | str trim), description: ($c | get -o description | default "")}} | where {|c| not ($c.id | is-empty)}
+    } else if $candidates != null {
         $candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)} | each {|id|
-            let r = (do { seeds show $id --format json } | complete)
-            {id: $id, description: (if $r.exit_code != 0 { "" } else { (try { $r.stdout | from json | get -o issue.description | default "" } catch { "" }) })}
+            {id: $id, description: ""}
         }
     } else {
-        let r = (do { seeds ready --assignee $assignee --limit 200 --format json } | complete)
-        if $r.exit_code != 0 {
-            $mode = "degraded"
-            $degraded_reason = $"seeds ready failed: ($r.stderr | str trim | str substring 0..200)"
-            []
-        } else {
-            let parsed = (try { $r.stdout | from json } catch { null })
-            if $parsed == null {
-                $mode = "degraded"
-                $degraded_reason = "seeds ready output not valid JSON"
-                []
-            } else {
-                # seeds ready --format json: {success, command, issues: [...]}
-                # (issues is absent/empty when nothing is ready)
-                $parsed | get -o issues | default [] | each {|i| {id: ($i | get -o id | default ""), description: ($i | get -o description | default "")}} | where {|c| not ($c.id | is-empty)}
-            }
-        }
+        []
     })
 
-    # Empty candidate list is a legitimate degraded park (tracker empty is
-    # the PLANNER's verdict to make, never this script's) — never dead-end.
+    # Empty candidate list is a legitimate degraded park (no work is the
+    # PLANNER's verdict to make, never this script's) — never dead-end.
     if ($cand | is-empty) {
         if $mode != "degraded" {
             $mode = "degraded"
-            $degraded_reason = "no candidates (empty override or empty seeds ready)"
+            $degraded_reason = "no candidates (empty override — the live mode is --work-item)"
         }
         {"outcome": "succeeded",
          "preferred_next_label": "Preflight done",

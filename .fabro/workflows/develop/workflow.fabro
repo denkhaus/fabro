@@ -164,7 +164,7 @@ digraph Develop {
         // server-side mutex), so the planner writes NOTHING to the tree
         // anymore. The frozen tracker file goes back behind the hide
         // list; every loop asset stays hidden.
-        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
+        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile",
         // fabro-900e (envelope write side): the planner's context_updates
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
@@ -265,7 +265,7 @@ digraph Develop {
         // the primary code areas (README,
         // fixtures). Gate
         // re-runs keep working through the shell escape hatch.
-        x.fs_hide=".fabro/**,.seeds/**,.agents/**,scripts/**,justfile",
+        x.fs_hide=".fabro/**,.agents/**,scripts/**,justfile",
                 // fabro-900e: stable context_updates contract (see planner).
         // lesson_capture (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
@@ -436,39 +436,22 @@ digraph Develop {
     // scans run branches for journals. Delivery is
     // intrinsic — no exit-bound path can miss it.
 
-    // Closeout: post-approval bookkeeping (ADR-0010). ADR-0032 phase 3
-    // makes it an AGENT node: closing is fabro_work_close and filing is
-    // fabro_work_create — engine-mediated tools no host script can call
-    // (scrubbed worker env), so the deterministic-form axiom gives way
-    // to deterministic-CORE: the nu script stays the decision engine
-    // (closeout.nu --work-item --plan-only derives the filing plan from
-    // the stage journal mechanically — titles, labels, deferred markers,
-    // exemptions), and this low-effort stage only EXECUTES the plan
-    // through the tools: the fork-8 fresh filing-time dedupe
-    // (fabro_work_list query=<run-id> — the freshness IS the race guard,
-    // replacing the retired closeout-race.nu), fabro_work_create per
-    // surviving plan item, then fabro_work_close on EXACTLY this run's
-    // item key (the merger's close is NOT duplicated). One item per
-    // run; exits "Seed closed".
+    // Closeout: post-approval bookkeeping (ADR-0010), deterministic
+    // again since denkhaus/work#990 — the capability channel carries
+    // the tracker calls (`fabro work` over FABRO_RUN_CHANNEL_SOCK with
+    // the run's principal, claim-bound by #991), so the fork-7/8 agent
+    // split (plan-only script + a tool-executing closeout stage)
+    // collapses back into the script: granted-item packet on stdin,
+    // PARK gate (channel-resolved title), the three advisory sweeps as
+    // direct filings with the deterministic fork-8 dedupe, then the
+    // claim-bound close. One item per run; exits "Item closed".
     closeout [
         label="Closeout",
-        prompt="@prompts/closeout.md",
-        output_schema="routing",
-        output_retries=2,
-        max_visits=3,
-        retry_policy="standard",
-        reasoning_effort="low",
-        x.preamble_stages_ignore="planner,implementer,reviewer,closeout",
-        // Read-only + shell (runs the plan script, greps the journal);
-        // writes stay denied — the tracker mutations are all tools.
-        x.tools="read_file,grep,glob,shell",
-        x.fs_hide=".fabro/**,.mulch/**,.agents/**,scripts/**,justfile,.seeds/**",
-        x.fabro_tools="fabro_work_close,fabro_work_create,fabro_work_list",
-        // Inputs: the claimed item trio + packet, plus the implementer's
-        // summary and the reviewer verdict (the plan script reads the
-        // journal itself; the verdict's approval is why this node runs).
-        x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,current_item_json,implementation_summary,review_verdict",
-        x.context_allow_keys="journal"
+        shape=parallelogram,
+        script="nu .fabro/workflows/develop/scripts/closeout.nu --work-item",
+        stdin_source="current_item_json",
+        timeout="3m",
+        max_retries=1
     ]
 
     // Claim-contract gate (fabro-c42f stopgap + fabro-4c81 path gate):
@@ -598,6 +581,6 @@ digraph Develop {
     // seed is closed the run EXITS — natural completion, publish-eligible
     // (the work passed gate + review). The next seed is the next run's
     // job; bounded runs give the revisor a single-seed working field.
-    closeout -> exit [label="Seed closed"]
-    closeout -> exit [x.kind="soft", label="Closeout failed (seed stays open)", condition="outcome=failed"]
+    closeout -> exit [label="Item closed"]
+    closeout -> exit [x.kind="soft", label="Closeout failed (item stays open)", condition="outcome=failed"]
 }

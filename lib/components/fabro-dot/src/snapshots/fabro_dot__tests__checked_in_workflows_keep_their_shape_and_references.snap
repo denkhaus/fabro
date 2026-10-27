@@ -53,7 +53,6 @@ expression: report
   file:prompt:prompts/planner.md@planner
   file:prompt:prompts/implementer.md@implementer
   file:prompt:prompts/reviewer.md@reviewer
-  file:prompt:prompts/closeout.md@closeout
 .fabro/workflows/gh-list/workflow.fabro: GhList nodes=4 edges=3
   goal-inline
 .fabro/workflows/gh-triage/workflow.fabro: GhTriage nodes=3 edges=2
@@ -88,7 +87,6 @@ expression: report
   file:prompt:prompts/planner.md@planner
   file:prompt:prompts/implementer.md@implementer
   file:prompt:prompts/reviewer.md@reviewer
-  file:prompt:prompts/closeout.md@closeout
 .fabro/workflows/merge-upstream/workflow.fabro: MergeUpstream nodes=4 edges=7
   goal-inline
   file:prompt:prompts/merge.md@merge

@@ -427,28 +427,111 @@ if ($bad_capped.omitted | length) != 0 {
     fail $"capped-diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_capped.omitted)"
 }
 
-# ADR-0032 phase 3 work-item mode pin: the --work-item invocation reads
-# the granted-item packet on stdin — a valid packet produces a capture
-# whose header names the item key (subprocess run, read-only against the
-# real repo), and a malformed packet hard-fails with exit 1 (the
-# wrong-item capture class guard). Positive AND negative arm, per the
-# edited-script dry-run rule.
-let wi_ok = (do { echo '{"itemKey":"denkhaus/work#1","title":"T","body":"Edit lib/a.rs"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item } | complete)
-if $wi_ok.exit_code != 0 {
-    fail $"evidence --work-item positive run failed: ($wi_ok.stderr | str substring 0..200)"
-}
-if not ($wi_ok.stdout | str contains "seed=denkhaus/work#1: T") {
-    fail "evidence --work-item header must name the packet's item key and title"
-}
-let wi_bad = (do { echo 'not-json' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item } | complete)
-if $wi_bad.exit_code == 0 {
-    fail "evidence --work-item must hard-fail on a malformed packet — a silent fallback would reintroduce the wrong-item capture class"
-}
-if not ($wi_bad.stderr | str contains "granted-item packet") {
-    fail $"evidence --work-item negative run must name the packet problem: ($wi_bad.stderr | str substring 0..160)"
+# Direct work-item mode through the channel shim (denkhaus/work#990):
+# the capture's integrity check is the pin — the CHANNEL resolves the
+# item (show) and THIS run's live claim must name it (claims). A temp
+# git repo shaped like a run plus a shim state file make every arm
+# deterministic; nothing here may ever touch a real server. Positive
+# AND negative arms, per the edited-script dry-run rule.
+const RUN_ID = "01SMOKE0000000000000000000"
+const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
+let orig_cwd = (pwd)
+let erepo = (mktemp -d -t evidence-e2e.XXXXXX)
+try {
+    cd $erepo
+    git init -q -b $"fabro/run/($RUN_ID)" .
+    git config user.email smoke@localhost
+    git config user.name closeout-smoke
+    echo base | save -f base.txt
+    git add base.txt
+    git commit -qm "initial"
+
+    def shim-env [state: string]: nothing -> record {
+        {FABRO_BIN: $SHIM, FABRO_SERVER: "http://127.0.0.1:1", FABRO_WORK_SHIM_STATE: $state}
+    }
+
+    # (a) Positive: the run holds a live claim on the item -> the capture's
+    # header names the CHANNEL-resolved key and title.
+    let ok_state = ($erepo | path join 'ok-state.json')
+    {items: [{itemKey: "denkhaus/work#1", title: "Channel resolved title", body: "Edit lib/a.rs", state: "open", labels: []}],
+     claims: [{claimId: "c1", itemKey: "denkhaus/work#1", runId: $RUN_ID, lane: "", state: "granted"}],
+     nextKey: 8001, log: []} | to json --raw | save -f $ok_state
+    let ev_ok = (do {
+        with-env (shim-env $ok_state) {
+            echo '{"itemKey":"denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
+        }
+    } | complete)
+    if $ev_ok.exit_code != 0 {
+        fail $"evidence --work-item positive run failed: ($ev_ok.stderr | str substring 0..240)"
+    }
+    if not ($ev_ok.stdout | str contains "seed=denkhaus/work#1: Channel resolved title") {
+        fail "evidence header must name the channel-resolved item key and title"
+    }
+
+    # (b) Foreign claim: another run holds the item -> hard-fail.
+    let foreign_state = ($erepo | path join 'foreign-state.json')
+    {items: [{itemKey: "denkhaus/work#1", title: "T", body: "b", state: "open", labels: []}],
+     claims: [{claimId: "c9", itemKey: "denkhaus/work#1", runId: "01FOREIGN00000000000000000", lane: "loop", state: "active"}],
+     nextKey: 8001, log: []} | to json --raw | save -f $foreign_state
+    let ev_foreign = (do {
+        with-env (shim-env $foreign_state) {
+            echo '{"itemKey":"denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
+        }
+    } | complete)
+    if $ev_foreign.exit_code == 0 {
+        fail "a run without a live claim on the item must hard-fail (the integrity check)"
+    }
+    if not ($ev_foreign.stderr | str contains "no live claim") {
+        fail $"the foreign-claim refusal must name the missing claim: ($ev_foreign.stderr | str substring 0..160)"
+    }
+
+    # (c) Unresolvable item: the channel cannot show it -> hard-fail.
+    let ghost_state = ($erepo | path join 'ghost-state.json')
+    {items: [], claims: [{claimId: "c2", itemKey: "denkhaus/work#404", runId: $RUN_ID, lane: "", state: "granted"}], nextKey: 8001, log: []} | to json --raw | save -f $ghost_state
+    let ev_ghost = (do {
+        with-env (shim-env $ghost_state) {
+            echo '{"itemKey":"denkhaus/work#404"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
+        }
+    } | complete)
+    if $ev_ghost.exit_code == 0 {
+        fail "an unresolvable item must hard-fail (the channel is the resolver)"
+    }
+
+    # (d) Malformed packet -> hard-fail before ANY channel call.
+    let bad_state = ($erepo | path join 'bad-state.json')
+    {items: [], claims: [], nextKey: 8001, log: []} | to json --raw | save -f $bad_state
+    let ev_bad = (do {
+        with-env (shim-env $bad_state) { echo 'not-json' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item }
+    } | complete)
+    if $ev_bad.exit_code == 0 {
+        fail "evidence --work-item must hard-fail on a malformed packet — a silent fallback would reintroduce the wrong-item capture class"
+    }
+    if not ($ev_bad.stderr | str contains "granted-item packet") {
+        fail $"the malformed-packet refusal must name the packet: ($ev_bad.stderr | str substring 0..160)"
+    }
+    let bad_log = (open --raw $bad_state | from json).log
+    if ($bad_log | length) != 0 {
+        fail "a malformed packet must not reach the channel"
+    }
+
+    # (e) A missing FABRO_SERVER is refused loudly.
+    let ev_noserver = (do {
+        with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $bad_state} {
+            hide-env FABRO_SERVER
+            echo '{"itemKey":"denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
+        }
+    } | complete)
+    if $ev_noserver.exit_code != 1 {
+        fail "a missing FABRO_SERVER must be refused loudly (exit 1)"
+    }
+} finally {
+    # fail-exits bypass this (nu cannot catch exit); mktemp -t keeps any
+    # leak in the system temp dir, never the worktree
+    cd $orig_cwd
+    rm -rf $erepo
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note/work-item-packet verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note/channel-resolve-and-claim-integrity verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

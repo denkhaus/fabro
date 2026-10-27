@@ -12,7 +12,7 @@ in the journal, never silently work around it.
   rarely `apps/` for the web UI.
 - Loop-asset paths — the dev loop's own machinery, hidden from FILE TOOLS by
   the per-node `fs_hide` envelope (ADR-0009 stage-envelope
-  family): `.fabro/`, `.seeds/`, `.mulch/`, `.agents/`, `scripts/`,
+  family): `.fabro/`, `.mulch/`, `.agents/`, `scripts/`,
   `justfile`. FILE TOOLS (read_file, write_file, edit_file, glob discovery)
   fail on them — reads and writes both; the shell is unaffected (reads AND
   writes succeed through grep, sed, cat, python3 heredocs — the documented

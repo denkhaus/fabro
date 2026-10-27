@@ -41,16 +41,17 @@ def expect-violations [paths: list<string>, lane: string, expected: list<string>
 # Loop assets violate (shell-staged escape hatch class — the checkpoint
 # envelope does NOT see them: the product implementer has no fs_write
 # pin).
-expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md" ".seeds/other.jsonl"] "product" [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md" ".seeds/other.jsonl"]
+expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"] "product" [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"]
 
 # .mulch passes for the PRODUCT lane on purpose: develop's lesson-capture
 # contract writes the git-tracked expertise files there (ml record).
 expect-violations [".mulch/expertise/rust.jsonl"] "product" []
 
-# The exemptions pass: hook-owned journal, tracker bookkeeping — the
-# tracker CONFIG included (fabro-28d8: the seeds CLI rewrites it on
-# store ops; user decision: checks relax, the CLI owns its config).
-expect-violations [".fabro/journal/01X.jsonl" ".seeds/issues.jsonl" ".seeds/config.yaml"] "product" []
+# The hook-owned journal exemption passes. The .seeds tracker paths left
+# the lists with the fs-envelope sweep (denkhaus/work#990) — they are
+# neither denied nor allowed anymore, plain dead paths in a live tree
+# without the tracker.
+expect-violations [".fabro/journal/01X.jsonl"] "product" []
 
 # Repo code passes untouched.
 expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "docs/public/api.yaml" "README.md"] "product" []
@@ -59,11 +60,12 @@ expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "d
 # Loop assets pass (the meta lane's surface); the fabro-dot snapshot dir
 # passes too (fabro-9973 — mechanically derived from .fabro/workflows
 # graphs, part of the loop lane's one-unit graph edit).
-expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".seeds/issues.jsonl" ".seeds/config.yaml" ".fabro/journal/01X.jsonl" "lib/components/fabro-dot/src/snapshots/fabro_dot__tests__x.snap"] "loop" []
+expect-violations [".fabro/workflows/loop/workflow.fabro" "scripts/qualitygate.nu" "justfile" ".fabro/journal/01X.jsonl" "lib/components/fabro-dot/src/snapshots/fabro_dot__tests__x.snap"] "loop" []
 
 # Everything else violates (out of lane) — including lib/ paths OUTSIDE
-# the snapshot dir (adjacent product code stays out of lane).
-expect-violations ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"] "loop" ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl"]
+# the snapshot dir (adjacent product code stays out of lane) and the
+# dead tracker paths (not loop assets since denkhaus/work#990).
+expect-violations ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl" ".seeds/issues.jsonl"] "loop" ["lib/apps/fabro-cli/src/main.rs" "lib/components/fabro-dot/src/tests.rs" "docs/internal/x.md" "apps/fabro-web/src/x.ts" "Cargo.toml" ".agents/skills/x/SKILL.md" ".mulch/expertise/rust.jsonl" ".seeds/other.jsonl" ".seeds/issues.jsonl"]
 
 # Empty diff: green for both lanes.
 expect-violations [] "product" []
@@ -95,8 +97,8 @@ expect-drops [" mode change 100755 => 100644 a.sh" " mode change 100644 => 10075
 # loop graph-contract smoke pins the graph side).
 const PIN_PREFIXES = '[".fabro/" "scripts/"] | any {|q| $path | str starts-with $q}'
 const PIN_PREFIXES_LIB = '[".fabro/" "scripts/"] | any {|q| $p | str starts-with $q}'
-const PIN_EXACT_EVIDENCE = '($path in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
-const PIN_EXACT_LIB = '($p in ["justfile" ".seeds/issues.jsonl" ".seeds/config.yaml"])'
+const PIN_EXACT_EVIDENCE = '($path == "justfile")'
+const PIN_EXACT_LIB = '($p == "justfile")'
 let evidence_src = (open --raw ($SCRIPT_DIR | path join '../workflows/develop/scripts/evidence.nu'))
 let lib_src = (open --raw ($SCRIPT_DIR | path join 'lib/spec_paths.nu'))
 if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str contains $PIN_EXACT_EVIDENCE) {

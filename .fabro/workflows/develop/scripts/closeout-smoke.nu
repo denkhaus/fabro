@@ -130,14 +130,9 @@ if ($ft | str length) > 140 {
     fail "finding-title unbounded excerpt"
 }
 
-# Residual label (fabro-2ab8): the sweep's seeds create args carry the
-# `residual` label so machine-filed provenance is visible in the pool.
-if (residual-seed-labels) != ["residual"] {
-    fail $"residual-seed-labels wrong: (residual-seed-labels | to json -r)"
-}
-
 # Regression guard (fabro-22fa): finding-title and the null path stay
-# unchanged next to the new label helper.
+# unchanged next to the channel filing (labels ride the create call,
+# pinned by the end-to-end arms below).
 if (finding-title "Short finding" "fabro-22fa") != "Reviewer residual \(non-blocking\) from fabro-22fa: Short finding" {
     fail "finding-title shape drifted"
 }
@@ -326,43 +321,176 @@ if ($eft | str length) > 140 {
     fail "exemption-title unbounded excerpt"
 }
 
-# Labels: the ops class plus machine-filed residual provenance.
-if (exemption-seed-labels) != ["ops" "residual"] {
-    fail $"exemption-seed-labels wrong: (exemption-seed-labels | to json -r)"
+# --- Direct work-item mode through the channel shim (denkhaus/work#990) --
+# The full-script path IS the pin: a temp git repo (deterministic diff
+# for the PARK gate), a shim state file, a fixture journal — and the
+# subprocess run proves the packet validation, the sweeps' DIRECT
+# filings (title, body-on-stdin, comma-joined labels), the deterministic
+# fork-8 dedupe, the PARK arm, and the claim-shaped close call. Positive
+# AND negative arms, per the edited-script dry-run rule. The shim path
+# resolves ABSOLUTE from the smoke's own location — the subprocess runs
+# in the temp repo, a relative path would not exist there.
+const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
+
+def shim-env [state: string]: nothing -> record {
+    {FABRO_BIN: $SHIM, FABRO_SERVER: "http://127.0.0.1:1", FABRO_WORK_SHIM_STATE: $state}
 }
 
-# ADR-0032 phase 3 plan-only mode pin: --work-item --plan-only derives
-# the filing plan mechanically — a valid invocation prints ONE JSON plan
-# naming the item key (subprocess run, read-only journal read), the
-# missing --item-key arm is a usage error (exit 2), and the mode without
-# --plan-only refuses (never a half-close). Positive AND negative arms,
-# per the edited-script dry-run rule.
-let po_ok = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --plan-only --item-key "denkhaus/work#1" --run-id "01SMOKE0000000000000000000" } | complete)
-if $po_ok.exit_code != 0 {
-    fail $"closeout --work-item --plan-only positive run failed: ($po_ok.stderr | str substring 0..200)"
+def fresh-state [path: string, title: string]: nothing -> nothing {
+    {items: [{itemKey: "denkhaus/work#1", title: $title, body: "the item body", state: "open", labels: []}],
+     claims: [],
+     nextKey: 8001,
+     log: []} | to json --raw | save -f $path
 }
-let po_plan = (try { $po_ok.stdout | from json } catch { null })
-if not ($po_plan | describe | str starts-with "record") {
-    fail "closeout plan-only must print ONE JSON plan object"
-}
-if ($po_plan | get -o itemKey | default "") != "denkhaus/work#1" {
-    fail $"closeout plan must name the item key: ($po_ok.stdout | str substring 0..160)"
-}
-for arm in ["findings" "deferred" "exemptions"] {
-    if (($po_plan | get -o $arm | default null) == null) {
-        fail $"closeout plan missing the ($arm) array"
+
+# Temp git repo shaped like a RUN: branch fabro/run/<id>, an initial
+# commit, then the checkpoint commit whose subject carries the run-id
+# marker (run-base anchors on it) with the title tokens in its diff.
+const RUN_ID = "01SMOKE0000000000000000000"
+let orig_cwd = (pwd)
+let repo = (mktemp -d -t closeout-e2e.XXXXXX)
+try {
+    cd $repo
+    git init -q -b $"fabro/run/($RUN_ID)" .
+git config user.email smoke@localhost
+    git config user.name closeout-smoke
+    mkdir .fabro/journal
+    echo initial | save -f base.txt
+    git add base.txt
+    git commit -qm "initial"
+    "frobnicator queue bounded: the deterministic implementing change" | save -f impl.txt
+    git add impl.txt
+    git commit -qm $"fabro\(($RUN_ID)\): the fixture implementing checkpoint"
+
+    # (a) PARK arm: title tokens absent from the diff -> no close, item
+    # stays open, ZERO tracker mutations in the log.
+    let park_state = ($repo | path join 'park-state.json')
+    fresh-state $park_state "Rewrite the quantum flux capacitor harness"
+    let park_run = (do {
+        with-env (shim-env $park_state) {
+            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
+        }
+    } | complete)
+    if $park_run.exit_code != 0 {
+        fail $"PARK arm must exit 0 \(a park is a hold, not a failure\): ($park_run.stderr | str substring 0..200)"
     }
-}
-let po_nokey = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --plan-only } | complete)
-if $po_nokey.exit_code != 2 {
-    fail "closeout --plan-only without --item-key must be a usage error (exit 2)"
-}
-let po_noplan = (do { nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item --item-key "denkhaus/work#1" } | complete)
-if $po_noplan.exit_code != 2 {
-    fail "closeout --work-item without --plan-only must refuse (exit 2) — the close is the agent's tool call"
+    if not ($park_run.stdout | str contains "PARK") {
+        fail $"PARK arm must print the park note: ($park_run.stdout | str substring 0..200)"
+    }
+    let park_state_after = (open --raw $park_state | from json)
+    if (($park_state_after.log | where {|e| $e.argv.1 != "show"} | length) != 0) {
+        fail "PARK arm must not mutate the tracker (only the title show is allowed)"
+    }
+    if (($park_state_after.items | where state == "open") | length) != 1 {
+        fail "PARK arm must leave the item open"
+    }
+
+    # (b) Happy path: title tokens present, a journal carrying one finding,
+    # one deferred action, one exemption -> three DIRECT filings with the
+    # right labels, then the close.
+    let happy_state = ($repo | path join 'happy-state.json')
+    fresh-state $happy_state "Make the frobnicator queue bounded"
+    [
+        '{"node":"reviewer","data":{"observations":["Non-blocking: the cache key could collide under retries, harmless today."]}}'
+        '{"node":"implementer","data":{"observations":["deferred-action: regen the TS client locally (no java in sandbox)"]}}'
+        '{"node":"planner","data":{"observations":["exemption: run just image-release plus tofu apply (infra action)"]}}'
+    ] | str join "\n" | save -f $"($repo)/.fabro/journal/($RUN_ID).jsonl"
+    let happy_run = (do {
+        with-env (shim-env $happy_state) {
+            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
+        }
+    } | complete)
+    if $happy_run.exit_code != 0 {
+        fail $"happy path failed: ($happy_run.stderr | str substring 0..300)"
+    }
+    let happy_after = (open --raw $happy_state | from json)
+    let filed = ($happy_after.items | where {|it| $it.itemKey != "denkhaus/work#1"})
+    if ($filed | length) != 3 {
+        fail $"happy path must file exactly three follow-ups, got: ($filed | get itemKey | to json -r)"
+    }
+    let residual_filed = ($filed | where {|it| ("residual" in $it.labels) and not ("ops" in $it.labels)})
+    if ($residual_filed | length) != 2 {
+        fail $"finding + deferred filings must carry the residual label: ($residual_filed | to json -r)"
+    }
+    let ops_filed = ($filed | where {|it| "ops" in $it.labels})
+    if ($ops_filed | length) != 1 {
+        fail "the exemption filing must carry the ops label"
+    }
+    if not ($ops_filed.0.body | str contains "image-release") {
+        fail "the exemption filing body must carry the arm text"
+    }
+    if not ($happy_run.stdout | str contains "closed denkhaus/work#1") {
+        fail $"happy path must close the claimed item: ($happy_run.stdout | str substring 0..300)"
+    }
+    let close_calls = ($happy_after.log | where {|e| $e.argv.1 == "close"})
+    if ($close_calls | length) != 1 {
+        fail "exactly one close call"
+    }
+    if not ($close_calls.0.flags.reason | str contains $"run \(($RUN_ID)\) after reviewer approval") {
+        fail $"the close reason must name the run and the approval: ($close_calls.0.flags.reason | str substring 0..160)"
+    }
+    # The filings' bodies travelled on STDIN (never on a command line).
+    for f in $filed {
+        if ($f.body | is-empty) { fail "a filed item lost its body (stdin transport broken)" }
+    }
+
+    # (c) Dedupe arm: a state already carrying the finding's title -> the
+    # sweep skips it, exactly one NEW filing lands.
+    let dedupe_state = ($repo | path join 'dedupe-state.json')
+    fresh-state $dedupe_state "Make the frobnicator queue bounded"
+    {items: [
+        {itemKey: "denkhaus/work#1", title: "Make the frobnicator queue bounded", body: "the item body", state: "open", labels: []}
+        {itemKey: "denkhaus/work#7999", title: (finding-title "Non-blocking: the cache key could collide under retries, harmless today." "denkhaus/work#1"), body: $"Prior filing from this run. Basis: run \(($RUN_ID)\), closed item denkhaus/work#1", state: "open", labels: ["residual"]}
+    ], claims: [], nextKey: 8001, log: []} | to json --raw | save -f $dedupe_state
+    let dedupe_run = (do {
+        with-env (shim-env $dedupe_state) {
+            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
+        }
+    } | complete)
+    if $dedupe_run.exit_code != 0 {
+        fail $"dedupe arm failed: ($dedupe_run.stderr | str substring 0..300)"
+    }
+    if not ($dedupe_run.stdout | str contains "skipped already-filed reviewer residual") {
+        fail $"dedupe arm must skip the already-filed finding: ($dedupe_run.stdout | str substring 0..300)"
+    }
+    let dedupe_after = (open --raw $dedupe_state | from json)
+    if (($dedupe_after.items | where {|it| $it.itemKey not-in ["denkhaus/work#1" "denkhaus/work#7999"]}) | length) != 2 {
+        fail "dedupe arm must file exactly the two NEW follow-ups (deferred + exemption), not the finding again"
+    }
+
+    # (d) Negative arms: no --work-item is a usage error; an empty stdin
+    # packet and a malformed packet each hard-fail.
+    let neg_state = ($repo | path join 'neg-state.json')
+    fresh-state $neg_state "Make the frobnicator queue bounded"
+    let no_flag = (do {
+        with-env (shim-env $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") }
+    } | complete)
+    if $no_flag.exit_code != 2 { fail "closeout without --work-item must be a usage error (exit 2)" }
+    let empty_stdin = (do {
+        with-env (shim-env $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
+    } | complete)
+    if $empty_stdin.exit_code != 1 { fail "empty stdin packet must hard-fail (exit 1)" }
+    let bad_packet = (do {
+        with-env (shim-env $neg_state) { echo "not json" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
+    } | complete)
+    if $bad_packet.exit_code != 1 { fail "malformed packet must hard-fail (exit 1)" }
+    let no_server = (do {
+        with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $neg_state} {
+            # the ambient shell may carry FABRO_SERVER (direnv) — the arm
+            # must test the ABSENCE, so drop it for the child
+            hide-env FABRO_SERVER
+            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
+        }
+    } | complete)
+    if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+} finally {
+    # fail-exits bypass this (nu cannot catch exit); mktemp -t keeps any
+    # leak in the system temp dir, never the worktree
+    cd $orig_cwd
+    rm -rf $repo
 }
 
-print "closeout-smoke: ok — reviewer-journal, deferred-action and exemption-arm sweep logic, plan-only work-item arms verified"
+print "closeout-smoke: ok — sweep logic plus the direct work-item arms through the channel shim (park, filings, dedupe, close, negatives)"
 
 
 # Sourcing closeout.nu imports its `def main`; nu auto-invokes it after

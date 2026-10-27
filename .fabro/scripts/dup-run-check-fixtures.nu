@@ -92,11 +92,27 @@ def check [script: path, id: string, self: string] {
 # the cutover, the self-exclusion in the in-flight arm never fired, and
 # case (j) regressed to naming the invoking run's own branch (the newest
 # unmerged claimant) instead of the live foreign run.
-# Read one seed from the scratch seeds tracker via seeds (parsed issue
-# record; null on failure) — never parse .seeds/issues.jsonl by hand.
-def sd-stat [id: string] {
-    let r = (do { seeds show $id --format json } | complete)
-    if $r.exit_code != 0 { null } else { $r.stdout | from json | get issue }
+# denkhaus/work#990: descriptions travel in a candidates FILE (the
+# state-file pattern — the tracker left the fs envelope, no seeds CLI).
+# The file is projected from the same scratch rows this fixture seeds,
+# so every arm's data flow is unchanged.
+def preflight [script: path, candidates: string, self: string] {
+    let ids = ($candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)})
+    let rows = (if ('.seeds/issues.jsonl' | path exists) {
+        open --raw .seeds/issues.jsonl | lines | compact | each {|l| do -i { $l | from json } } | where {|r| $r != null}
+    } else { [] })
+    let recs = ($ids | each {|id|
+        let hit = ($rows | where {|r| ($r | get -o id | default '') == $id} | get -o 0 | default null)
+        {id: $id, description: (if $hit == null { "" } else { $hit | get -o description | default "" })}
+    })
+    let cf = '.preflight-candidates.json'
+    $recs | to json --raw | save -f $cf
+    let out = (do { with-env {FABRO_RUN_ID: $self} { nu $script --base origin/main --candidates-file $cf } } | complete)
+    if ($out.exit_code != 0) {
+        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
+        exit 1
+    }
+    $out.stdout | lines | last | from json
 }
 
 # Fabricate one scratch-tracker row: the exact compact-JSON-per-line
@@ -108,15 +124,6 @@ def fixture-row [id: string, status: string] {
     # concat, not $"($id)" interpolation: the literal parentheses around
     # the id are part of the expected description body.
     {id: $id, title: ("fixture " + $id), status: $status, type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: ("fixture body (" + $id + ")")} | to json --raw
-}
-
-def preflight [script: path, candidates: string, self: string] {
-    let out = (do { with-env {FABRO_RUN_ID: $self} { nu $script --base origin/main --candidates $candidates } } | complete)
-    if ($out.exit_code != 0) {
-        print -e $"planner-preflight exited ($out.exit_code): ($out.stderr)"
-        exit 1
-    }
-    $out.stdout | lines | last | from json
 }
 
 def main [] {

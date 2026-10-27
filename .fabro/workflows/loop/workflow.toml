@@ -48,8 +48,9 @@ timeout = "15s"
 
 # ── Runtime contract ──────────────────────────────────────────────────
 # Mirrors develop (fabro-03ef): starts go through `just run loop` which
-# passes --environment toolchain (the loop battery needs nu/just/seeds
-# and the prebuilt fabro CLI). Placement is server-managed.
+# passes --environment toolchain (the loop battery needs nu/just and
+# the prebuilt fabro CLI — the tracker went to the work channel with
+# denkhaus/work#990). Placement is server-managed.
 #
 # No [run.environment] pin here, twice over (fabro-3ab2): (a) the CLI
 # always sends an explicit intent environment id and the intent's

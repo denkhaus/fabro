@@ -40,7 +40,7 @@ Hard rules:
 
 ## Lesson capture — journal only
 
-The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml record` writes would die at checkpoint. Loop lessons land as `journal.painpoints`/`observations` instead; the revisor workflow files them as seeds with a basis. There is NO lesson_capture key in your output contract — do not emit one.
+The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml record` writes would die at checkpoint. Loop lessons land as `journal.painpoints`/`observations` instead; the revisor workflow files them as work items with a basis. There is NO lesson_capture key in your output contract — do not emit one.
 
 ## Inline verification report — required in every summary
 
@@ -61,7 +61,7 @@ Report through `context_updates.journal` on EVERY pass:
 
 - `painpoints`: friction in the loop lane itself. `[]` when nothing hurt.
 - `observations`: at least one entry; `"none"` is valid.
-- `deferred-action:` marker: every deferred human follow-up you disclose in `implementation_summary` must ALSO be a journal observation starting with `deferred-action: ` — one per action, self-contained after the marker. Closeout sweeps exactly those into open seeds before closing.
+- `deferred-action:` marker: every deferred human follow-up you disclose in `implementation_summary` must ALSO be a journal observation starting with `deferred-action: ` — one per action, self-contained after the marker. Closeout sweeps exactly those into open work items before closing.
 
 ## Artifact hygiene
 

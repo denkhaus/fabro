@@ -67,7 +67,7 @@ digraph Revisor {
         // kept as the declared intent.
         project_memory=false,
         x.preamble_stages_ignore="select,analyze,file",
-        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write="",
         x.fabro_tools="fabro_run_search,fabro_run_set_title",
         // Read window (e47c pattern): selection re-derives from the run
@@ -102,7 +102,7 @@ digraph Revisor {
         // self-contained prompt; inert until fabro-9588 (see select).
         project_memory=false,
         x.preamble_stages_ignore="select,analyze,file",
-        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write=".fabro/reviews/**",
         x.fabro_tools="fabro_ask,fabro_work_list,fabro_work_show,fabro_work_release",
         // Read window: the CURRENT target trio (+wall) and journal;
@@ -138,7 +138,7 @@ digraph Revisor {
         // the tracker leaves the fs envelope entirely; the write
         // allowlist shrinks to the artifact trees. petri's checkpoint
         // envelope judges the staged set, not the tool.
-        x.fs_hide="lib/**,apps/**,docs/**,.seeds/**",
+        x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write=".fabro/revisions/**",
         x.fabro_tools="fabro_work_create,fabro_work_list,fabro_work_show,fabro_work_close",
         // Read window: current target + current findings ONLY. Filing,

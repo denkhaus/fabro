@@ -8,9 +8,11 @@ never silently work around it.
 
 - Primary work surface — where loop-item work lands: the loop's own
   machinery (ADR-0008 one-unit): `.fabro/workflows/**` (graphs, prompts,
-  schemas, scripts), `.fabro/scripts/**`, root `scripts/**`, `justfile`,
-  and the tracker assets under `.seeds/` (the frozen legacy tracker file
-  the deterministic nodes still read during the ADR-0032 transition) —
+  schemas, scripts), `.fabro/scripts/**`, root `scripts/**`, `justfile`
+  (the legacy `.seeds/` tracker left the tree with the cutover — its
+  frozen history lives in the tracker repo under
+  `denkhaus/work/archive/denkhaus-fabro/`; nothing reads it since
+  denkhaus/work#990) —
   plus ONE lib/ exception: `lib/components/fabro-dot/src/snapshots/**`,
   the snapshot file mechanically derived from the workflow graphs (accept
   it with `cargo insta accept` when the dot-snapshot gate tier goes RED

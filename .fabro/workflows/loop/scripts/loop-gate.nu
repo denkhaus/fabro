@@ -21,8 +21,9 @@
 #      in the runner and only there — a red battery REDs this gate and
 #      the product gate alike; the lists can no longer drift.
 #   3. `nu scripts/qualitygate.nu check-run-scope loop` — the run diff
-#      touches ONLY loop assets (.fabro/**, scripts/**, justfile,
-#      .seeds/issues.jsonl); a loop run editing lib/, docs/, apps/ is
+#      touches ONLY loop assets (.fabro/**, scripts/**, justfile — the
+#      .seeds tracker paths left the list with denkhaus/work#990); a loop
+#      run editing lib/, docs/, apps/ is
 #      out of lane and REDs.
 #   4. `nu scripts/qualitygate.nu check-mode-preservation` — no exec-bit
 #      drop (100755 => 100644) rides the run diff (fabro-9569); granting

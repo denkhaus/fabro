@@ -5,7 +5,7 @@
 # often with the claimed content quoted right after the anchor
 # ("at planner-preflight.nu:135 the declaration 'mut closed = ...'").
 # Anchor rot — file gone, lines shifted out of range, cited content
-# rewritten — is a strong dead-seed signal the planner previously had to
+# rewritten — is a strong dead-item signal the planner previously had to
 # re-derive by hand. These helpers extract and verify anchors so the
 # preflight verdict table can carry an `anchors_ok` field mechanically.
 #
@@ -23,13 +23,13 @@ export def norm-ws [s: string] {
     $s | str replace --all --regex '\s+' ' ' | str trim
 }
 
-# Extract {path, start, end, claim} anchor records from a seed
+# Extract {path, start, end, claim} anchor records from an item
 # description. The optional claim is the first backtick/single-quoted
 # snippet of >= 8 chars within 240 chars AFTER the anchor — the usual
 # "at path:N the code 'foo = bar'" citation shape. A claim is only
 # paired when its quote appears BEFORE any other anchor citation in the
 # scan window (positional bleed guard), so multi-anchor descriptions do
-# not attach one seed's quote to another anchor.
+# not attach one item's quote to another anchor.
 export def extract-anchors [desc: string] {
     if ($desc | is-empty) { [] } else {
         let q = "[\u{60}']"
@@ -57,7 +57,7 @@ export def extract-anchors [desc: string] {
     }
 }
 
-# Workspace member src/ roots (fabro-7611): seed bodies often cite paths
+# Workspace member src/ roots (fabro-7611): item bodies often cite paths
 # crate-relative (`operations/create.rs:556`, meaningful inside
 # lib/components/fabro-workflow/src/), so a root-only join flags them
 # missing_file falsely and planners cannot tell 'file gone' from 'wrong
@@ -90,10 +90,10 @@ export def member-src-roots [root: string] {
 # when the path exists nowhere — the caller then reports missing_file
 # knowing the file is gone, not merely cited against the wrong base.
 # Workflow-relative fallback roots: every workflow dir under
-# .fabro/workflows/* is a resolution base, because seed bodies cite
+# .fabro/workflows/* is a resolution base, because item bodies cite
 # their assets workflow-relative ("prompts/planner.md:31",
-# "scripts/planner-preflight.nu") no matter which lane filed the seed
-# (the loop lane's seeds cite loop assets; develop's preflight checks
+# "scripts/planner-preflight.nu") no matter which lane filed the item
+# (the loop lane's items cite loop assets; develop's preflight checks
 # them too). Labeled by repo-relative path. Fail-open: any surprise
 # degrades to [].
 export def workflow-dirs [root: string] {
@@ -149,7 +149,7 @@ export def check-anchor [a: record, root: string] {
 }
 
 # Bare repo-path extraction (fabro-9ec3 arm 1 — closes fabro-4c81's gap
-# that fabro-7daf left open): seed bodies also cite paths WITHOUT a line
+# that fabro-7daf left open): item bodies also cite paths WITHOUT a line
 # anchor ("the publish step of .fabro/workflows/develop/workflow.fabro"),
 # and path-only citations were never existence-checked — exactly the
 # wrong-path class that drove run 01M2NA1Z3HS7QPQR8AEWZR3GDB's planner
@@ -197,7 +197,7 @@ export def check-bare-paths [desc: string, root: string] {
 }
 
 # Creation-intent window (fabro-f2eb): a path named immediately after a
-# creation verb is the file the seed proposes to CREATE, not evidence it
+# creation verb is the file the item proposes to CREATE, not evidence it
 # claims exists. Shared by claim-check's blocking arm and the preflight's
 # bare-path arm so proposed-file citations stop generating false
 # missing_file flags. Plain const string (never interpolated:
@@ -238,7 +238,7 @@ export def creation-named? [desc: string, needle: string]: nothing -> bool {
 }
 
 # Filter arm for flag assemblies: drop missing_file bare-path flags whose
-# path is creation-named in the description (the seed's own proposed
+# path is creation-named in the description (the item's own proposed
 # target file). Everything else passes through untouched.
 export def drop-proposed [desc: string, flags: list]: nothing -> list {
     $flags | where {|f|
@@ -282,7 +282,7 @@ export def basis-commit-resolves [sha: string, root: string]: nothing -> any {
 # the LANE'S implementer fs envelope cannot write.
 #   - product lane (develop/any non-loop): loop-asset or external-tool
 #     surfaces in the body (the historic tokens — unlandable there).
-#   - loop lane: PRODUCT surfaces (the misroute detector — a @loop seed
+#   - loop lane: PRODUCT surfaces (the misroute detector — a @loop item
 #     whose primary surface is repo-visible belongs to @fabro).
 # Advisory in both directions: a body may cite the foreign surface as
 # BASIS while the primary fix surface is in-lane — the legend and the

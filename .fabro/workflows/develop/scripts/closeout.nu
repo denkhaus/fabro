@@ -1,22 +1,59 @@
 #!/usr/bin/env nu
-# Closeout (ADR-0010): deterministic post-approval bookkeeping.
+# Closeout (ADR-0010, ADR-0032, denkhaus/work#990): deterministic
+# post-approval bookkeeping.
 #
 # The reviewer's Approved edge lands HERE. This script closes EXACTLY the
-# seed this run worked on — delivered by the engine via stdin
-# (stdin_source="current_seed_id" on the node). One seed per run: after a
-# successful close the run exits; the next seed is the next run's job
-# (user directive 2026-09-04 — bounded runs give the revisor a clear,
-# single-seed working field and keep run cost predictable).
+# work item this run claimed — delivered by the engine via stdin
+# (stdin_source="current_item_json" on the node, the planner-forwarded
+# granted-item packet). One item per run: after a successful close the
+# run exits; the next item is the next run's job (user directive
+# 2026-09-04 — bounded runs give the revisor a clear, single-item
+# working field and keep run cost predictable).
 #
-# The seed id comes from CONTEXT, never from "first in_progress seed":
+# The item comes from CONTEXT, never from "first claimed item":
 # the tracker carries parallel claims (stale or live), and run
-# 01M1NK4V3YG3AQAMEKDJ6V471F closed two WRONG stale seeds
-# that way before this fix.
+# 01M1NK4V3YG3AQAMEKDJ6V471F closed two WRONG stale items that way
+# before this fix.
+#
+# Since denkhaus/work#990 the tracker calls go through the per-run
+# capability channel: `fabro work …` routes over FABRO_RUN_CHANNEL_SOCK
+# with the run's worker principal, and the claim-bound authorization
+# (denkhaus/work#991) makes closing a FOREIGN item impossible by
+# construction — stronger than any seeds-era gate. No agent stage, no
+# plan manifest: the script IS the executor again.
 #
 # Never an LLM: run 01M0… measured planner@2 at 21s / $0.021 / ~7% of wall
-# time for exactly these mechanical actions. Failure keeps the seed open —
-# the next run re-enters the review cycle; an approved-but-unclosed seed is
+# time for exactly these mechanical actions. Failure keeps the item open —
+# the next run re-enters the review cycle; an approved-but-unclosed item is
 # re-approvable harmlessly.
+
+# ---------------------------------------------------------------------------
+# Work facade through the capability channel (denkhaus/work#990).
+#
+# The binary resolves through FABRO_BIN so host-side batteries can shim
+# it (state-file pattern — the channel only exists inside a run
+# sandbox); FABRO_SERVER names the server the transport targets (set by
+# the run's channel mount in-sandbox, refused loudly when absent so a
+# host invocation never silently routes to a wrong default).
+# MIRRORED into evidence.nu — reuse this shape, do not invent a new one.
+# ---------------------------------------------------------------------------
+def work-server []: nothing -> string {
+    let server = ($env.FABRO_SERVER? | default '' | str trim)
+    if ($server | is-empty) {
+        print -e "closeout: FABRO_SERVER is not set — the work channel needs it (run sandboxes carry it via the channel mount)"
+        exit 1
+    }
+    $server
+}
+
+# One outbound work-facade call: the args list carries the subcommand
+# and ITS flags verbatim (a rest-param would eat `--project` as THIS
+# command's flag), the helper adds the binary and the server. Returns
+# the complete-wrapped result record.
+def work-call [args: list<string>]: nothing -> any {
+    let bin = ($env.FABRO_BIN? | default 'fabro')
+    do { ^$bin work --server (work-server) ...$args } | complete
+}
 
 # ---------------------------------------------------------------------------
 # Dockerfile-touch warning (fabro-6f6e)
@@ -161,16 +198,32 @@ def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
     $tokens | any {|t| $patch | str contains $t }
 }
 
-# Best-effort visibility verdict for THIS seed against the run diff
-# (claim-base anchored, fallback run base). Never blocks on git/seeds
-# failure — degrades to visible.
-def seed-demand-visible [seed_id: string]: nothing -> bool {
-    let base = (seed-claim-base $seed_id (run-base))
-    let diff_res = (do { git diff $base.base -- . ':(exclude).seeds' ':(exclude).fabro/journal' } | complete)
+# Best-effort visibility verdict for THIS item against the run diff
+# (claim-base anchored, fallback run base — work-item claims are
+# server-side, so the .seeds-history claim anchor falls back to the run
+# base by construction, flagged in the base itself). Never blocks on
+# git/channel failure — degrades to visible.
+def item-demand-visible [item_key: string]: nothing -> bool {
+    let base = (seed-claim-base $item_key (run-base))
+    let diff_res = (do { git diff $base.base -- . ':(exclude).fabro/journal' } | complete)
     if $diff_res.exit_code != 0 { return true }
-    let title = (do -i { seeds show $seed_id --format json | from json | get issue.title } | default '')
+    let title = (do -i { work-item-title $item_key } | default '')
     let tokens = (do -i { demand-tokens $title } | default [])
     demand-visible $tokens $diff_res.stdout
+}
+
+# The item's title through the channel (denkhaus/work#990): show is the
+# authoritative resolver — the packet only NAMES the item. Degrades to ''
+# WITH a stderr trace (the PARK gate then degrades to the non-empty-patch
+# check) — a channel outage must never disarm the gate silently.
+def work-item-title [item_key: string]: nothing -> string {
+    let res = (work-call [show --project fabro $item_key --json])
+    if $res.exit_code != 0 {
+        print -e $"closeout: WARNING — work show \($item_key\) failed, the PARK gate degrades to the non-empty-patch check: ($res.stderr | str trim | str substring 0..160)"
+        return ''
+    }
+    let item = (try { $res.stdout | from json } catch { null })
+    if ($item | describe | str starts-with "record") { $item | get -o title | default '' } else { '' }
 }
 
 # ---------------------------------------------------------------------------
@@ -229,31 +282,61 @@ def current-run-id []: nothing -> string {
 }
 
 # Pure: filed-seed title — short finding excerpt plus provenance.
-def finding-title [finding: string, seed_id: string]: nothing -> string {
+def finding-title [finding: string, item_key: string]: nothing -> string {
     let excerpt = (if ($finding | str length) > 70 { $finding | str substring 0..69 } else { $finding })
-    $"Reviewer residual \(non-blocking\) from ($seed_id): ($excerpt)"
+    $"Reviewer residual \(non-blocking\) from ($item_key): ($excerpt)"
 }
 
-# Pure: labels for a residual seed filed by the advisory sweep. Marks
-# machine-filed provenance so the planner pool can tell a residual from
-# user-assigned work (fabro-2ab8); `seeds create` takes comma-labels.
-def residual-seed-labels []: nothing -> list<string> {
-    ["residual"]
+# Deterministic filing through the channel (denkhaus/work#990): create
+# with the body on STDIN (tracker text never travels on a command
+# line), labels as repeated --label. Returns the complete-wrapped
+# result record; callers own the advisory failure handling.
+def work-create [title: string, body: string, item_type: string, ...labels: string]: nothing -> any {
+    let bin = ($env.FABRO_BIN? | default 'fabro')
+    # One comma-joined --label: the work CLI accepts it in exactly this
+    # form (repeatable OR comma-separated), and it keeps the argv flat.
+    let args = ([work --server (work-server) --project fabro create --title $title --body-file - --type $item_type --label ($labels | str join ",")])
+    do { $body | ^$bin ...$args } | complete
 }
 
-# Advisory sweep: file each non-blocking reviewer finding as an open
-# seed (type bug, assignee fabro so the develop line can pick it up,
-# labels `residual` so the planner sees the machine-filed provenance).
-# Never raises: caller wraps in `do -i`; internal seeds failures print to
-# stderr and continue.
-def sweep-reviewer-findings [seed_id: string, run_id: string, journal_path: string, residual_assignee: string]: nothing -> nothing {
+# The fork-8 filing-time dedupe, deterministic since #990 (the agent
+# stage that owned it is gone): titles of OPEN items that already cite
+# this run — a re-run closeout skips re-filing what an earlier visit
+# filed. Degrades to [] (dedupe off) on channel failure, like every
+# advisory arm.
+def filed-titles [run_id: string]: nothing -> list<string> {
+    if ($run_id | is-empty) { return [] }
+    let res = (work-call [list --project fabro --query $run_id --json])
+    if $res.exit_code != 0 {
+        print -e $"closeout: WARNING — work list query failed, the dedupe degrades to OFF for this close: ($res.stderr | str trim | str substring 0..160)"
+        return []
+    }
+    let parsed = (try { $res.stdout | from json } catch { null })
+    let items = (if ($parsed | describe | str starts-with "record") { $parsed | get -o data | default [] } else { $parsed })
+    let kind = ($items | describe)
+    if ($kind | str starts-with "list") or ($kind | str starts-with "table") {
+        $items | get -o title | default []
+    } else { [] }
+}
+
+# Advisory sweep: file each non-blocking reviewer finding as a work item
+# (type bug, labels `residual` + the lane labels) BEFORE the close, so
+# the finding survives the item's closure traceably. Never raises:
+# caller wraps in `do -i`; channel failures print to stderr and never
+# block the close.
+def sweep-reviewer-findings [item_key: string, run_id: string, journal_path: string, lane_labels: list<string>, already_filed: list<string>]: nothing -> nothing {
     for finding in (journal-nonblocking $journal_path) {
-        let desc = $"Residual defect the reviewer explicitly flagged as non-blocking while approving ($seed_id).\n\nFinding text: \"($finding)\"\n\nOrigin: closed seed ($seed_id), reviewer journal ($journal_path).\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { seeds create --title (finding-title $finding $seed_id) --description $desc --type bug --assignee $residual_assignee --labels (residual-seed-labels | str join ",") } | complete)
+        let title = (finding-title $finding $item_key)
+        if ($title in $already_filed) {
+            print $"closeout: skipped already-filed reviewer residual: ($title)"
+            continue
+        }
+        let desc = $"Reviewer non-blocking residual from ($item_key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($finding)\"\n\nOrigin: reviewer journal of run ($run_id), closed item ($item_key).\nBasis: run ($run_id), closed item ($item_key)"
+        let res = (work-create $title $desc "bug" ...(["residual"] | append $lane_labels))
         if $res.exit_code != 0 {
-            print -e $"closeout: WARNING — could not file reviewer finding as a seed \(non-blocking, from ($seed_id)\): ($res.stderr | str trim)"
+            print -e $"closeout: WARNING — could not file reviewer finding \(non-blocking, from ($item_key)\): ($res.stderr | str trim)"
         } else {
-            print $"closeout: filed reviewer finding \(non-blocking\) as open seed: ($res.stdout | str trim)"
+            print $"closeout: filed reviewer residual as work item: ($res.stdout | str trim)"
         }
     }
 }
@@ -325,9 +408,9 @@ def journal-deferred [journal_path: string]: nothing -> list<string> {
 }
 
 # Pure: filed-seed title — bounded action excerpt plus provenance.
-def deferred-title [action: string, seed_id: string]: nothing -> string {
+def deferred-title [action: string, item_key: string]: nothing -> string {
     let excerpt = (if ($action | str length) > 70 { $action | str substring 0..69 } else { $action })
-    $"Deferred follow-up from ($seed_id): ($excerpt)"
+    $"Deferred follow-up from ($item_key): ($excerpt)"
 }
 
 # Pure: is a stripped action text a no-op payload — empty or exactly
@@ -340,24 +423,28 @@ def deferred-action-empty [text: string]: nothing -> bool {
     ($t == "") or ($t == "none")
 }
 
-# Advisory sweep: file each deferred human follow-up as an open seed
-# (type task, assignee fabro so the develop line can pick it up, labels
-# `residual` for machine-filed provenance — same pool semantics as
-# sweep-reviewer-findings). Never raises: caller wraps in `do -i`;
-# internal seeds failures print to stderr and continue.
-def sweep-deferred-actions [seed_id: string, run_id: string, journal_path: string, residual_assignee: string]: nothing -> nothing {
+# Advisory sweep: file each deferred human follow-up as a work item
+# (type task, labels `residual` + the lane labels — same pool semantics
+# as sweep-reviewer-findings). Never raises: caller wraps in `do -i`;
+# channel failures print to stderr and never block the close.
+def sweep-deferred-actions [item_key: string, run_id: string, journal_path: string, lane_labels: list<string>, already_filed: list<string>]: nothing -> nothing {
     for action in (journal-deferred $journal_path) {
         let text = (deferred-text $action)
         if (deferred-action-empty $text) {
-            print $"closeout: skipped empty/none deferred-action marker observation \(from ($seed_id)\)"
+            print $"closeout: skipped empty/none deferred-action marker observation \(from ($item_key)\)"
             continue
         }
-        let desc = $"Deferred human follow-up the implementer disclosed while implementing ($seed_id)\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), implementer journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { seeds create --title (deferred-title $text $seed_id) --description $desc --type task --assignee $residual_assignee --labels (residual-seed-labels | str join ",") } | complete)
+        let title = (deferred-title $text $item_key)
+        if ($title in $already_filed) {
+            print $"closeout: skipped already-filed deferred action: ($title)"
+            continue
+        }
+        let desc = $"Deferred human follow-up the implementer disclosed while implementing ($item_key).\n\nAction: \"($text)\"\n\nOrigin: implementer journal of run ($run_id), deferred-action marker observation.\nBasis: run ($run_id), closed item ($item_key)"
+        let res = (work-create $title $desc "task" ...(["residual"] | append $lane_labels))
         if $res.exit_code != 0 {
-            print -e $"closeout: WARNING — could not file deferred action as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
+            print -e $"closeout: WARNING — could not file deferred action \(from ($item_key)\): ($res.stderr | str trim)"
         } else {
-            print $"closeout: filed deferred action as open seed: ($res.stdout | str trim)"
+            print $"closeout: filed deferred action as work item: ($res.stdout | str trim)"
         }
     }
 }
@@ -436,147 +523,134 @@ def journal-exemptions [journal_path: string]: nothing -> list<string> {
 }
 
 # Pure: filed-seed title — bounded arm excerpt plus provenance.
-def exemption-title [arm: string, seed_id: string]: nothing -> string {
+def exemption-title [arm: string, item_key: string]: nothing -> string {
     let excerpt = (if ($arm | str length) > 70 { $arm | str substring 0..69 } else { $arm })
-    $"EXEMPTION arm from ($seed_id): ($excerpt)"
+    $"EXEMPTION arm from ($item_key): ($excerpt)"
 }
 
-# Pure: labels for an EXEMPTION-arm seed. `ops` marks the user-action
-# class, `residual` the machine-filed provenance (fabro-2ab8);
-# `seeds create` takes comma-labels.
-def exemption-seed-labels []: nothing -> list<string> {
-    ["ops" "residual"]
-}
-
-# Advisory sweep: file each brief EXEMPTION arm as a NEW open seed
-# (type task, NO assignee — a user action stays unassigned until the
-# user claims it, per the backlog-assignment policy). Never raises:
-# caller wraps in `do -i`; internal seeds failures print to stderr and
-# continue.
-def sweep-exemption-arms [seed_id: string, run_id: string, journal_path: string]: nothing -> nothing {
+# Advisory sweep: file each brief EXEMPTION arm as a work item (type
+# task, labels `ops,residual` + the lane labels; NO lane of its own
+# beyond that — an EXEMPTION arm is by definition a user action, and
+# routing backlog items is the user's decision). Never raises: caller
+# wraps in `do -i`; channel failures print to stderr and never block
+# the close.
+def sweep-exemption-arms [item_key: string, run_id: string, journal_path: string, lane_labels: list<string>, already_filed: list<string>]: nothing -> nothing {
     for arm in (journal-exemptions $journal_path) {
         let text = (exemption-text $arm)
-        let desc = $"Deferred user/infra action the run exempted while implementing ($seed_id) — the run could not land this arm itself.\n\nAction: \"($text)\"\n\nOrigin: closed seed ($seed_id), EXEMPTION bullet in its brief, planner journal ($journal_path), marker observation.\nBasis: run ($run_id), closed seed ($seed_id)"
-        let res = (do { seeds create --title (exemption-title $text $seed_id) --description $desc --type task --labels (exemption-seed-labels | str join ",") } | complete)
+        let title = (exemption-title $text $item_key)
+        if ($title in $already_filed) {
+            print $"closeout: skipped already-filed EXEMPTION arm: ($title)"
+            continue
+        }
+        let desc = $"Deferred user/infra action the run exempted while implementing ($item_key) — the run could not land this arm itself.\n\nAction: \"($text)\"\n\nOrigin: planner journal of run ($run_id), EXEMPTION marker observation.\nBasis: run ($run_id), closed item ($item_key)"
+        let res = (work-create $title $desc "task" ...(["ops" "residual"] | append $lane_labels))
         if $res.exit_code != 0 {
-            print -e $"closeout: WARNING — could not file EXEMPTION arm as a seed \(from ($seed_id)\): ($res.stderr | str trim)"
+            print -e $"closeout: WARNING — could not file EXEMPTION arm \(from ($item_key)\): ($res.stderr | str trim)"
         } else {
-            print $"closeout: filed EXEMPTION arm as open seed: ($res.stdout | str trim)"
+            print $"closeout: filed EXEMPTION arm as work item: ($res.stdout | str trim)"
         }
     }
 }
 
 # Lane parameter (fabro-70b5): product (default, develop) or loop. The
-# lane fixes the assignee residual/deferred sweeps file under — residuals
-# from a loop run are loop-asset follow-ups (@loop); product residuals
-# stay @fabro. Passed by the calling graph's script line; deterministic
-# via the run's workflow spec.
-def main [--lane: string = "", --work-item, --plan-only, --item-key: string, --run-id: string]: nothing -> nothing {
-    # ADR-0032 phase 3 (develop, fork 7 + fork 8): PLAN-ONLY mode — the
-    # tracker mutations (fabro_work_create / fabro_work_close) are
-    # engine-mediated tools a host script cannot call (scrubbed worker
-    # env), so this script stays the deterministic DECISION core and the
-    # closeout agent stage EXECUTES the plan through the tools. The plan
-    # derives mechanically from the stage journal (the same pure helpers
-    # the seeds-mode sweeps use): non-blocking reviewer residuals,
-    # deferred-action markers, EXEMPTION arms — titles, bodies, labels
-    # ready for fabro_work_create. The agent owns the fork-8 fresh
-    # filing-time dedupe (fabro_work_list query=<run-id>) and the close.
-    # Lane labels: a lane that passes --lane <name> gets
-    # lane:<name> on every filed plan entry, so its residuals re-enter
-    # THAT lane's work_next queue (the tracker grant filter requires the
-    # lane label). An empty --lane (develop's default) files unlaned —
-    # human triage, the landed develop behavior.
-    if $work_item {
-        if not $plan_only {
-            print -e "closeout: --work-item without --plan-only is not a thing — work-item mode only derives the plan (the closeout agent executes it via fabro_work_* tools)"
-            exit 2
-        }
-        let key = ($item_key | default "" | str trim)
-        if ($key | is-empty) {
-            print -e "closeout: --work-item --plan-only needs --item-key (this run's granted item)"
-            exit 2
-        }
-        let lane_labels = (if ($lane | is-empty) { [] } else { [$"lane:($lane)"] })
-        let rid = (if ($run_id | default "" | str trim | is-empty) { current-run-id } else { $run_id | str trim })
-        let journal_path = $".fabro/journal/($rid).jsonl"
-        let findings = (journal-nonblocking $journal_path)
-        let deferred = (journal-deferred $journal_path | each {|a| deferred-text $a} | where {|t| not (deferred-action-empty $t)})
-        let exemptions = (journal-exemptions $journal_path)
-        let plan = {itemKey: $key,
-                    runId: $rid,
-                    journal: $journal_path,
-                    findings: ($findings | each {|f| {title: (finding-title $f $key), body: $"Reviewer non-blocking residual from ($key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($f)\"\n\nOrigin: reviewer journal of run ($rid), closed item ($key).\nBasis: run ($rid), closed item ($key)", labels: (["residual"] | append $lane_labels)}}),
-                    deferred: ($deferred | each {|a| {title: (deferred-title $a $key), body: $"Deferred human follow-up disclosed while implementing ($key).\n\nAction: \"($a)\"\n\nOrigin: implementer journal of run ($rid), deferred-action marker observation.\nBasis: run ($rid), closed item ($key)", labels: (["residual"] | append $lane_labels)}}),
-                    exemptions: ($exemptions | each {|arm|
-                        let etext = (exemption-text $arm)
-                        {title: (exemption-title $etext $key),
-                         body: $"Deferred user/infra action the run exempted while implementing ($key).\n\nAction: \"($etext)\"\n\nOrigin: planner journal of run ($rid), EXEMPTION marker observation.\nBasis: run ($rid), closed item ($key)",
-                         labels: (["ops" "residual"] | append $lane_labels)}})}
-        $plan | to json --raw | print
-        return
+# lane fixes the labels the advisory sweeps file under — residuals from
+# a loop run re-enter that lane's queue (lane:loop); develop filings
+# stay unlaned (human triage). Passed by the calling graph's script
+# line; deterministic via the run's workflow spec.
+def main [--lane: string = "", --work-item]: nothing -> nothing {
+    # ADR-0032 fork 7/8 shipped a plan-only mode whose plan an AGENT
+    # stage executed through the engine-mediated run tools — the
+    # capability channel (denkhaus/work#990) retires that split: the
+    # script files and closes DIRECTLY, `fabro work` over
+    # FABRO_RUN_CHANNEL_SOCK with the run's worker principal, and the
+    # claim-bound authorization (denkhaus/work#991) is the gate — a
+    # foreign item's close is refused by construction, stronger than
+    # any seeds-era script check. --work-item is the ONLY mode (the
+    # seeds stdin leg died with the tracker); the graphs wire the node
+    # with stdin_source="current_item_json", the granted-item packet.
+    if not $work_item {
+        print -e "closeout: --work-item is the only mode (the seeds stdin leg died with the tracker; the graphs deliver the granted-item packet)"
+        exit 2
     }
-    let residual_assignee = (if $lane == "loop" { "loop" } else { "fabro" })
     # Non-tty stdin: nu 0.115's `input` only works on a tty and raises an
     # I/O error on pipes (run 01M1PVMS7B6N39MG0041C5F7P6) — the engine pipes
     # the context value, so read it through an external `cat`, which inherits
     # the piped stdin.
-    let raw = (cat | str join)
-    let seed_id = ($raw | str trim)
-    if ($seed_id | is-empty) {
-        print -e "closeout: stdin carried no seed id (stdin_source misconfigured?)"
+    let raw = (cat | str join | str trim)
+    if ($raw | is-empty) {
+        print -e "closeout: stdin carried no granted-item packet (current_item_json missing — planner context_updates drop)"
         exit 1
     }
+    let pkt = (try { $raw | from json } catch { null })
+    if not ($pkt | describe | str starts-with "record") {
+        print -e $"closeout: granted-item packet is not a JSON object: ($raw | str substring 0..120)"
+        exit 1
+    }
+    let key = ($pkt | get -o itemKey | default "" | str trim)
+    if ($key | is-empty) {
+        print -e "closeout: granted-item packet carries no itemKey"
+        exit 1
+    }
+    let lane_labels = (if ($lane | is-empty) { [] } else { [$"lane:($lane)"] })
+    let rid = (do -i { current-run-id } | default '')
+    let journal_path = $".fabro/journal/($rid).jsonl"
 
     # Dockerfile-touch warning (fabro-6f6e): advisory only — `do -i` plus
     # the per-call complete wrappers above guarantee no failure here can
     # reach the close below. No Dockerfile touched: byte-identical close
-    # semantics (stdin validation, seeds close, exit codes).
-    do -i { warn-dockerfile-diff $seed_id } | ignore
+    # semantics (packet validation, work close, exit codes).
+    do -i { warn-dockerfile-diff $key } | ignore
 
     # Closure-discipline gate (fabro-02c4): PARK instead of closing when
-    # the run diff shows no implementing change for the seed's demand.
-    # Seed stays open; exit 0 — a park is a deliberate hold for the next
-    # cycle, not a stage failure.
-    if not (do -i { seed-demand-visible $seed_id } | default true) {
-        let park = $"closeout: PARK — \($seed_id\) NOT closed: the run diff \(claim-base anchored, tracker/journal bookkeeping excluded\) shows no implementing change for the seed's demand. fabro-9967 class: closed 2026-09-09 with no implementing diff, caught in run 01M23J61HH8Z. Seed left OPEN — re-enter the review cycle or route Blocked."
+    # the run diff shows no implementing change for the item's demand
+    # (the title resolves through the channel; the diff anchors on the
+    # run base — work-item claims are server-side, no tracker-file
+    # transition to anchor on). Item stays open; exit 0 — a park is a
+    # deliberate hold for the next cycle, not a stage failure.
+    if not (do -i { item-demand-visible $key } | default true) {
+        let park = $"closeout: PARK — \(($key)\) NOT closed: the run diff \(run-base anchored, journal bookkeeping excluded\) shows no implementing change for the item's demand. fabro-9967 class: an approval with no implementing diff must not close. Item left OPEN — re-enter the review cycle."
         print -e $park
         print $park
         exit 0
     }
 
+    # The fork-8 filing-time dedupe, deterministic since #990: titles of
+    # open items that already cite THIS run — an earlier closeout visit
+    # of the same run does not double-file.
+    let already_filed = (do -i { filed-titles $rid } | default [])
+
     # Reviewer-journal sweep (fabro-22fa): re-file explicitly non-blocking
-    # reviewer findings as open seeds BEFORE the close, labeled `residual`
-    # (fabro-2ab8) so their provenance is machine-visible in the planner
-    # pool. Advisory only —
-    # `do -i` plus the complete-wrapped seeds calls inside guarantee no
-    # failure here can reach the close below. After the PARK gate so a
-    # parked (still-open) seed does not double-file on its re-run's
-    # close. Null path: no findings -> zero seeds create calls.
-    let run_id = (do -i { current-run-id } | default '')
-    do -i { sweep-reviewer-findings $seed_id $run_id $".fabro/journal/($run_id).jsonl" $residual_assignee } | ignore
+    # reviewer findings BEFORE the close, labeled `residual` (fabro-2ab8)
+    # so their provenance is machine-visible. Advisory only — `do -i`
+    # plus the complete-wrapped channel calls inside guarantee no failure
+    # here can reach the close below. After the PARK gate so a parked
+    # (still-open) item does not double-file on its re-run's closeout.
+    # Null path: no findings -> zero create calls.
+    do -i { sweep-reviewer-findings $key $rid $journal_path $lane_labels $already_filed } | ignore
 
     # Deferred-action sweep (fabro-7aac): re-file deferred human
     # follow-ups the implementer disclosed as `deferred-action:` journal
-    # observations (marker contract in implementer.md) as open seeds
-    # BEFORE the close. Advisory only — same wrapping discipline as the
-    # reviewer sweep above, also after the PARK gate. Null path: no
-    # marker observations -> zero seeds create calls.
-    do -i { sweep-deferred-actions $seed_id $run_id $".fabro/journal/($run_id).jsonl" $residual_assignee } | ignore
+    # observations (marker contract in implementer.md) BEFORE the close.
+    # Advisory only — same wrapping discipline, also after the PARK gate.
+    # Null path: no marker observations -> zero create calls.
+    do -i { sweep-deferred-actions $key $rid $journal_path $lane_labels $already_filed } | ignore
 
     # EXEMPTION-arm sweep (fabro-534e): re-file brief EXEMPTION bullets
-    # — deferred user/infra arms the run exempted — that the planner
-    # mirrored as `exemption:` journal observations (marker contract in
-    # planner.md) as open, UNASSIGNED ops seeds BEFORE the close.
-    # Advisory only — same wrapping discipline as the sweeps above, also
-    # after the PARK gate. Null path: no marker observations -> zero
-    # seeds create calls.
-    do -i { sweep-exemption-arms $seed_id $run_id $".fabro/journal/($run_id).jsonl" } | ignore
+    # the planner mirrored as `exemption:` journal observations
+    # (marker contract in planner.md) as ops work items BEFORE the
+    # close. Advisory only — same wrapping discipline, also after the
+    # PARK gate. Null path: no marker observations -> zero create calls.
+    do -i { sweep-exemption-arms $key $rid $journal_path $lane_labels $already_filed } | ignore
 
-    let res = (do { seeds close $seed_id } | complete)
+    # The close itself: claim-bound by construction (denkhaus/work#991)
+    # — the channel's worker principal may close exactly THIS run's
+    # claimed item; a mismatched packet is refused by the engine, not
+    # by a script-side gate.
+    let reason = $"Closed by run \(($rid)\) after reviewer approval — one item per run. The closeout gate verified the item's demand visible in the run-anchored diff; residuals, deferred actions, and EXEMPTION arms were re-filed before this close — see the closeout report in the run output."
+    let res = (work-call [close --project fabro $key --reason $reason])
     if $res.exit_code != 0 {
-        print -e $"closeout: seeds close ($seed_id) failed: ($res.stderr | str trim)"
+        print -e $"closeout: work close ($key) failed: ($res.stderr | str trim)"
         exit 1
     }
-    print $"closeout: closed ($seed_id) — one seed per run, exiting"
+    print $"closeout: closed ($key) — one item per run, exiting"
 }
