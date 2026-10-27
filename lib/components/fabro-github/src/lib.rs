@@ -628,8 +628,34 @@ pub(crate) enum InstallationLookup {
     Found(u64),
     /// 404: the App cannot see the repository (or is not installed at all).
     NotFound,
-    /// Any other non-200 status.
-    Failed(u16),
+    /// Any other non-200 status, with the endpoint and response body.
+    ///
+    /// The body distinguishes "bad credentials" from rate-limit or abuse
+    /// responses that arrive as 401 with the credentials correct, and the
+    /// endpoint names WHICH lookup failed (repos-installation); a bare
+    /// status cannot do either (2026-10-27: a secondary-rate-limit 401 was
+    /// diagnosed for hours because the error pointed only at app_id/key).
+    Failed {
+        status:   u16,
+        endpoint: String,
+        body:     String,
+    },
+}
+
+impl InstallationLookup {
+    /// One-line `{endpoint} answered {status}: {body}` detail for error
+    /// messages, so every failure arm carries the response body the way the
+    /// mint 422 arm does. An empty body still names the endpoint and status.
+    #[must_use]
+    pub(crate) fn failure_detail(endpoint: &str, status: u16, body: &str) -> String {
+        let body = body.trim();
+        let body = if body.is_empty() {
+            "<empty response body>"
+        } else {
+            body
+        };
+        format!("{endpoint} answered {status}: {body}")
+    }
 }
 
 /// Look up the App installation covering `owner/repo` and parse its id.
@@ -660,7 +686,11 @@ pub(crate) async fn lookup_installation(
             Ok(InstallationLookup::Found(installation.id))
         }
         404 => Ok(InstallationLookup::NotFound),
-        status => Ok(InstallationLookup::Failed(status)),
+        status => Ok(InstallationLookup::Failed {
+            status,
+            endpoint,
+            body: resp.text().to_string(),
+        }),
     }
 }
 
@@ -696,20 +726,39 @@ async fn mint_installation_token_with_jwt(
                  include {owner}/{primary_repo}. Check repository access at {install_url}"
             );
         }
-        InstallationLookup::Failed(403) => {
+        InstallationLookup::Failed {
+            status: 403,
+            endpoint,
+            body,
+        } => {
             bail!(
-                "GitHub App installation is suspended. \
-                 Re-enable it in your organization's GitHub App settings."
+                "GitHub App installation lookup refused ({}). A suspended \
+                 installation is one cause; a rate-limit or abuse response in the \
+                 body is another — check the body before re-enabling anything.",
+                InstallationLookup::failure_detail(&endpoint, 403, &body)
             );
         }
-        InstallationLookup::Failed(401) => {
+        InstallationLookup::Failed {
+            status: 401,
+            endpoint,
+            body,
+        } => {
             bail!(
-                "GitHub App authentication failed. \
-                 Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
+                "GitHub App authentication failed ({}). Check that app_id and \
+                 GITHUB_APP_PRIVATE_KEY are correct — but if the body above names a \
+                 rate limit or abuse detection, the credentials are NOT the cause.",
+                InstallationLookup::failure_detail(&endpoint, 401, &body)
             );
         }
-        InstallationLookup::Failed(status) => {
-            bail!("Unexpected status {status} looking up GitHub App installation");
+        InstallationLookup::Failed {
+            status,
+            endpoint,
+            body,
+        } => {
+            bail!(
+                "Unexpected status looking up GitHub App installation ({})",
+                InstallationLookup::failure_detail(&endpoint, status, &body)
+            );
         }
     };
 
@@ -776,14 +825,16 @@ pub(crate) async fn mint_installation_token_for_id_with_jwt(
         }
         401 => {
             bail!(
-                "GitHub App authentication failed. \
-                 Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
+                "GitHub App authentication failed ({}). Check that app_id and \
+                 GITHUB_APP_PRIVATE_KEY are correct — but if the body above names a \
+                 rate limit or abuse detection, the credentials are NOT the cause.",
+                InstallationLookup::failure_detail(&token_url, 401, token_resp.text())
             );
         }
-        _ => {
+        status => {
             bail!(
-                "Unexpected status {} creating installation access token",
-                token_resp.status
+                "Unexpected status creating installation access token ({})",
+                InstallationLookup::failure_detail(&token_url, status, token_resp.text())
             );
         }
     }
@@ -1318,16 +1369,35 @@ pub async fn check_app_installed(
     match lookup {
         InstallationLookup::Found(_) => Ok(true),
         InstallationLookup::NotFound => Ok(false),
-        InstallationLookup::Failed(401) => bail!(
-            "GitHub App authentication failed. \
-             Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
+        InstallationLookup::Failed {
+            status: 401,
+            endpoint,
+            body,
+        } => bail!(
+            "GitHub App authentication failed ({}). Check that app_id and \
+             GITHUB_APP_PRIVATE_KEY are correct — but if the body above names a \
+             rate limit or abuse detection, the credentials are NOT the cause.",
+            InstallationLookup::failure_detail(&endpoint, 401, &body)
         ),
-        InstallationLookup::Failed(403) => bail!(
-            "GitHub App installation is suspended. \
-             Re-enable it in your organization's GitHub App settings."
+        InstallationLookup::Failed {
+            status: 403,
+            endpoint,
+            body,
+        } => bail!(
+            "GitHub App installation lookup refused ({}). A suspended \
+             installation is one cause; a rate-limit or abuse response in the \
+             body is another — check the body before re-enabling anything.",
+            InstallationLookup::failure_detail(&endpoint, 403, &body)
         ),
-        InstallationLookup::Failed(status) => {
-            bail!("Unexpected status {status} checking GitHub App installation")
+        InstallationLookup::Failed {
+            status,
+            endpoint,
+            body,
+        } => {
+            bail!(
+                "Unexpected status checking GitHub App installation ({})",
+                InstallationLookup::failure_detail(&endpoint, status, &body)
+            )
         }
     }
 }
@@ -1351,12 +1421,17 @@ pub async fn get_authenticated_app(
         200 => {}
         401 => {
             bail!(
-                "GitHub App authentication failed. \
-                 Check that app_id and GITHUB_APP_PRIVATE_KEY are correct."
+                "GitHub App authentication failed ({}). Check that app_id and \
+                 GITHUB_APP_PRIVATE_KEY are correct — but if the body above names a \
+                 rate limit or abuse detection, the credentials are NOT the cause.",
+                InstallationLookup::failure_detail(&url, 401, resp.text())
             );
         }
         status => {
-            bail!("Unexpected status {status} fetching GitHub App info");
+            bail!(
+                "Unexpected status fetching GitHub App info ({})",
+                InstallationLookup::failure_detail(&url, status, resp.text())
+            );
         }
     }
 
@@ -2822,14 +2897,61 @@ mod tests {
 
     #[tokio::test]
     async fn create_iat_auth_failed() {
-        let mock =
-            MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 401, "");
+        // A 401 from secondary rate limiting has correct credentials; the
+        // error must carry the endpoint and GitHub's body so the diagnosis
+        // does not point only at app_id/private key (work#1024).
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Get,
+            "/repos/owner/repo/installation",
+            401,
+            r#"{"message":"You have exceeded a secondary rate limit"}"#,
+        );
 
         let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
             .await
             .unwrap_err()
             .to_string();
         assert!(err.contains("authentication failed"), "got: {err}");
+        assert!(
+            err.contains("/repos/owner/repo/installation"),
+            "endpoint missing: {err}"
+        );
+        assert!(
+            err.contains("secondary rate limit"),
+            "response body missing: {err}"
+        );
+        assert!(
+            err.contains("GITHUB_APP_PRIVATE_KEY"),
+            "credentials hint missing: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_iat_mint_auth_failed_carries_body() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Get,
+                "/repos/owner/repo/installation",
+                200,
+                r#"{"id": 1}"#,
+            )
+            .on(
+                HttpMethod::Post,
+                "/app/installations/1/access_tokens",
+                401,
+                r#"{"message":"Bad credentials"}"#,
+            );
+
+        let err = create_installation_access_token(&mock, "jwt", "owner", "repo", "")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("authentication failed"), "got: {err}");
+        assert!(
+            err.contains("/app/installations/1/access_tokens"),
+            "token-mint endpoint missing: {err}"
+        );
+        assert!(err.contains("Bad credentials"), "body missing: {err}");
     }
 
     // -----------------------------------------------------------------------
@@ -3013,17 +3135,24 @@ mod tests {
 
     #[tokio::test]
     async fn check_app_installed_returns_error_on_401() {
-        let mock =
-            MockHttpClient::new().on(HttpMethod::Get, "/repos/owner/repo/installation", 401, "");
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Get,
+            "/repos/owner/repo/installation",
+            401,
+            r#"{"message":"You have exceeded a secondary rate limit"}"#,
+        );
 
         let result = check_app_installed(&mock, "test-jwt", "owner", "repo", "").await;
         assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("authentication failed"), "expected auth error");
         assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("authentication failed"),
-            "expected auth error"
+            err.contains("/repos/owner/repo/installation"),
+            "endpoint missing: {err}"
+        );
+        assert!(
+            err.contains("secondary rate limit"),
+            "response body missing: {err}"
         );
     }
 
@@ -3049,17 +3178,19 @@ mod tests {
 
     #[tokio::test]
     async fn get_authenticated_app_auth_failure() {
-        let mock = MockHttpClient::new().on(HttpMethod::Get, "/app", 401, "");
+        let mock = MockHttpClient::new().on(
+            HttpMethod::Get,
+            "/app",
+            401,
+            r#"{"message":"Bad credentials"}"#,
+        );
 
         let result = get_authenticated_app(&mock, "bad-jwt", "").await;
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("authentication failed"),
-            "expected auth error"
-        );
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("authentication failed"), "expected auth error");
+        assert!(err.contains("/app"), "endpoint missing: {err}");
+        assert!(err.contains("Bad credentials"), "body missing: {err}");
     }
 
     // -----------------------------------------------------------------------

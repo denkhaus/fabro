@@ -175,8 +175,14 @@ impl GitHubRepositoryAccess {
                     "the GitHub App installation cannot see repository {slug}; add it to the \
                      installation's repository access"
                 ),
-                InstallationLookup::Failed(status) => bail!(
-                    "unexpected status {status} looking up the GitHub App installation for {slug}"
+                InstallationLookup::Failed {
+                    status,
+                    endpoint,
+                    body,
+                } => bail!(
+                    "unexpected status looking up the GitHub App installation for \
+                     {slug} ({})",
+                    InstallationLookup::failure_detail(&endpoint, status, &body)
                 ),
             };
             match &shared {
