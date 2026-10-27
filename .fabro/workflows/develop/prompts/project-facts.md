@@ -36,8 +36,9 @@ in the journal, never silently work around it.
   `fabro_work_release`. No tracker CLI, no tracker file, no forge client
   (ADR-0019). Item keys are provider-stable and look like
   `<owner>/<repo>#<n>` — copy them verbatim, never truncated. The
-  develop line claims lane `fabro` — the lane is the ownership switch
-  (ADR-0018's assignee, carried into ADR-0032's lane labels).
+  develop line claims lane `develop` — the tracker label is
+  `lane:develop` (ADR-0032's lane labels; the old @fabro assignee has
+  no lane equivalent, unlaned items are the human-triage backlog).
 - Quality gate: `just qualitygate` — a `qualitygate` recipe in the project
   justfile. The workflow stays agnostic about what the gate checks.
 - Rust toolchain pin (fmt/clippy run on the pinned nightly; tests run
