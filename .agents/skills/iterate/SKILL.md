@@ -209,6 +209,15 @@ stores it belongs to; reach them by phase need:
   stays possible only as an explicit user-routed exception. This session
   still orients, grills pivotal forks (writing the agreed design INTO the
   seed before implementation), reviews, reflects, reports.
+  EXTENSION (user directive 2026-10-27, sprint 58): until the
+  re-armed line is PROVEN reliable (work items verifiably worked by
+  runs, the #990 supervised laps green), propose NO lane moves and NO
+  line assignments at all — not even as recommendations; the session
+  works every work item locally in sprint order, and the cycle
+  report's ASSIGNMENT PENDING section recommends LOCAL work (next
+  sprint candidates) instead of `@fabro` assignments. Lane assignment
+  resumes only on an explicit user decision after reliability is
+  proven.
 
 ## Phase 2 — Build (local-first; delegation only by explicit choice)
 
