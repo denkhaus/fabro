@@ -135,11 +135,19 @@ def trailing-newline-errors [f] {
 # (host, read-only, paginated — the facade's legacy-id seam ships with
 # fork.26; until then label membership is the same answer, cutover
 # stage 5, denkhaus/work#988).
-def tracker-known-ids []: nothing -> list<string> {
-    let run = (do { gh api --paginate 'repos/denkhaus/work/issues?state=all&labels=project%3Afabro&per_page=100' --jq '.[].labels[].name' } | complete)
+# Fail-open: this is a guard-internal data fetch. A missing `gh` binary or
+# an API failure throws/returns nonzero — in that case the tier suspends
+# (null) instead of erroring, and every other check still runs. A missing
+# external is NOT captured by `complete` (it raises), so guard with `try`.
+def tracker-known-ids [] {
+    let run = (try {
+        do { gh api --paginate 'repos/denkhaus/work/issues?state=all&labels=project%3Afabro&per_page=100' --jq '.[].labels[].name' } | complete
+    } catch {|err|
+        {exit_code: 1, stdout: '', stderr: $"census unavailable: ($err.msg)"}
+    })
     if $run.exit_code != 0 {
-        print -e $"prompt-lint: tracker census failed: ($run.stderr | str trim | str substring 0..160)"
-        exit 1
+        print -e $"prompt-lint: tracker census failed — resolvable-id tier suspended this run: ($run.stderr | str trim | str substring 0..160)"
+        return null
     }
     $run.stdout
     | lines
@@ -239,6 +247,14 @@ def main [] {
         if ($declared and $is_battery) {
             let skipped = (seed-ids-in $text)
             print $"note: ($f) declares synthetic fixture ids — resolvable-id check skipped for ($skipped | length) ids: ($skipped | str join ', ')"
+        } else if $known_ids == null {
+            # census failed open — the resolvable-id tier is suspended for
+            # this run (warned in tracker-known-ids); do not fabricate
+            # "does not resolve" errors from an empty known set
+            let skipped = (seed-ids-in $text)
+            if not ($skipped | is-empty) {
+                print $"note: ($f): resolvable-id check skipped for ($skipped | length) ids this run"
+            }
         } else {
             for full in (seed-ids-in $text) {
                 if not ($full in $known_ids) {
