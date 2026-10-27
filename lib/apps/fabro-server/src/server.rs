@@ -4098,7 +4098,7 @@ fn worker_launch_spec(
         WorkerScopeSet::run_worker()
     };
     let worker_token = issue_worker_token_with_scopes(state.worker_token_keys(), &run_id, scopes)
-        .map_err(|_| anyhow::anyhow!("failed to sign worker token"))?;
+        .context("signing the worker launch token")?;
     let log_destination = resolved_log_destination(state)?;
     let fabro_log = if (state.env_lookup)(EnvVars::FABRO_LOG).is_none() {
         state.server_settings().server.logging.level.clone()

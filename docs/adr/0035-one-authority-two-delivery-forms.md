@@ -34,10 +34,10 @@
   `/run/fabro` (a directory bind survives a crash-rest re-bind) plus
   `FABRO_SERVER=/run/fabro/channel.sock`, Host gains the env only,
   Daytona stays honestly absent, and NO bearer material ever enters
-  the sandbox env (the worker token crosses to the worker as
-  `FABRO_RUN_CHANNEL_SOCK` and stops there — the variable carries the
-  socket PATH, never a token; no secret value crosses the process
-  boundary). Evidence: five inline
+  the sandbox env (the only channel value that crosses to the sandbox
+  is `FABRO_RUN_CHANNEL_SOCK`, and it carries the socket PATH, never a
+  token; the run's worker token is minted server-side and stamped
+  internally — no secret value crosses the process boundary). Evidence: five inline
   mount pins (Docker env+bind, binds append, Host, Daytona,
   no-bearer), the production-spawn IT (layout, health, kill switch,
   env override, awaited stale stop before respawn) and the CLI

@@ -34,6 +34,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use axum::extract::Request;
 use axum::http::HeaderValue;
 use axum::http::header::AUTHORIZATION;
@@ -58,6 +59,10 @@ use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
 pub(crate) struct RegisteredChannel {
     shutdown:    watch::Sender<bool>,
     socket_path: PathBuf,
+    /// The run this channel serves — the join-failure log below is
+    /// per-run and unidentifiable without it (logging strategy:
+    /// attach structured ID fields).
+    run_id:      RunId,
     /// The serve task itself: `stop` awaits it before removing the
     /// socket, so a respawn for the same run (launch, resume, retry)
     /// binds AFTER the old listener is gone — never racing a removal
@@ -72,7 +77,11 @@ impl RegisteredChannel {
     async fn stop(self) {
         let _ = self.shutdown.send(true);
         if let Err(join_error) = self.served.await {
-            tracing::warn!(?join_error, "run channel serve task ended with an error");
+            tracing::warn!(
+                run_id = %self.run_id,
+                ?join_error,
+                "run channel serve task ended with an error"
+            );
         }
         let _ = fs::remove_file(&self.socket_path).await;
     }
@@ -171,6 +180,7 @@ pub(crate) async fn spawn_for_run(state: &Arc<AppState>, run_id: RunId) -> Optio
         Ok(_channel) => Some(socket_path),
         Err(error) => {
             tracing::error!(
+                run_id = %run_id,
                 ?error,
                 "run channel spawn failed; the run launches without a channel"
             );
@@ -207,7 +217,7 @@ impl RunChannel {
             &run_id,
             WorkerScopeSet::run_worker_with_agent_run_tools(),
         )
-        .map_err(|error| anyhow::anyhow!("signing the run channel worker token: {error:?}"))?;
+        .context("signing the run channel worker token")?;
         // The same surface the agent's run tools reach — routes the
         // extractors already gate per principal.
         let router = build_router(Arc::clone(&state), auth_mode);
@@ -259,12 +269,17 @@ impl RunChannel {
                 })
                 .await;
             if let Err(error) = served {
-                tracing::warn!(%error, "run channel server ended with an error");
+                tracing::warn!(
+                    run_id = %run_id,
+                    %error,
+                    "run channel server ended with an error"
+                );
             }
         });
         state.run_channels.insert(run_id, RegisteredChannel {
             shutdown,
             socket_path: socket_path.clone(),
+            run_id,
             served,
         });
         Ok(Self {
@@ -395,6 +410,7 @@ mod tests {
         registry.insert(run_id, super::RegisteredChannel {
             shutdown,
             socket_path: std::path::PathBuf::from("/tmp/never-removed-by-this-test.sock"),
+            run_id,
             served: tokio::spawn(std::future::ready(())),
         });
 

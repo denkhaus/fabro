@@ -232,6 +232,20 @@ impl IntoResponse for ApiError {
     }
 }
 
+/// The chain-member contract (denkhaus/work#992): `ApiError` is the
+/// crate's error currency at HTTP boundaries — `Display` renders the
+/// detail and the `Error` impl (no deeper source; the detail is
+/// already the rendered projection) lets call sites context-wrap it
+/// with `.context(...)` instead of interpolating the detail into a new
+/// string (docs/internal/error-handling-strategy.md).
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.detail())
+    }
+}
+
+impl std::error::Error for ApiError {}
+
 #[cfg(test)]
 mod tests {
     use axum::body::to_bytes;
@@ -320,6 +334,44 @@ mod tests {
                     "detail": "Authentication required."
                 }]
             })
+        );
+    }
+
+    /// denkhaus/work#992: an `ApiError` is a chain member — a context
+    /// wrap keeps it as the chain's source, it is never flattened into
+    /// the wrapping message (docs/internal/error-handling-strategy.md).
+    #[test]
+    fn api_error_is_a_chain_member_not_a_flattened_string() {
+        use std::error::Error as _;
+
+        let signing = ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to sign worker token: the key was rejected",
+        );
+        assert_eq!(
+            signing.to_string(),
+            "failed to sign worker token: the key was rejected",
+            "Display renders the detail"
+        );
+        assert!(
+            signing.source().is_none(),
+            "the detail is the rendered projection — no deeper source"
+        );
+
+        let wrapped = anyhow::Error::new(signing).context("signing the run channel worker token");
+        assert_eq!(
+            wrapped.to_string(),
+            "signing the run channel worker token",
+            "the context line is the message"
+        );
+        assert_eq!(
+            wrapped.source().map(std::string::ToString::to_string),
+            Some("failed to sign worker token: the key was rejected".to_string()),
+            "the ApiError stays the chain's source after the wrap"
+        );
+        assert!(
+            format!("{wrapped:#}").contains("the key was rejected"),
+            "the chain rendering walks down to the underlying cause: {wrapped:#}"
         );
     }
 }

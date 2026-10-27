@@ -149,7 +149,12 @@ async fn seed_project(state: &Arc<AppState>, id: &str, target_repo: &str) {
         ))
         .expect("project request builds");
     let response = app.oneshot(request).await.expect("project upsert");
-    fabro_test::assert_axum_status(response, axum::http::StatusCode::OK, "project upsert").await;
+    fabro_test::assert_axum_status(
+        response,
+        axum::http::StatusCode::OK,
+        "PUT /api/v1/projects/fabro (user seed)",
+    )
+    .await;
 }
 
 /// Grant the run's own claim on the fixture item through the user
@@ -174,7 +179,7 @@ async fn grant_own_claim(state: &Arc<AppState>, run_id: &RunId) {
     fabro_test::assert_axum_status(
         response,
         axum::http::StatusCode::OK,
-        "grant the run's own claim",
+        "POST /api/v1/projects/fabro/claims (own run)",
     )
     .await;
 }
@@ -198,8 +203,12 @@ async fn seed_foreign_claim(state: &Arc<AppState>, foreign_run: &RunId) {
         ))
         .expect("foreign claim request builds");
     let response = app.oneshot(request).await.expect("foreign claim grant");
-    fabro_test::assert_axum_status(response, axum::http::StatusCode::OK, "foreign claim seed")
-        .await;
+    fabro_test::assert_axum_status(
+        response,
+        axum::http::StatusCode::OK,
+        "POST /api/v1/projects/fabro/claims (foreign run seed)",
+    )
+    .await;
 }
 
 /// Run the compiled CLI against the channel socket — the sandbox's
