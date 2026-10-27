@@ -218,6 +218,14 @@ stores it belongs to; reach them by phase need:
   sprint candidates) instead of `@fabro` assignments. Lane assignment
   resumes only on an explicit user decision after reliability is
   proven.
+  VET BEFORE WORKING (user directive 2026-10-27 evening, born in the
+  #990 laps): every item considered for work — lap, lane, or local
+  sprint — gets a RELEVANCE TEST against the CURRENT codebase first:
+  does the cited path/mechanism still exist, is the demand overtaken
+  by landed work? Migration-era items are presumed stale until vetted
+  (median open age ~50d; the laps caught two such artifacts live: the
+  project-facts lane bug and a zombie doc item #347). A vetting pass
+  over the lane pools is standing backlog work, not ceremony.
 
 ## Phase 2 — Build (local-first; delegation only by explicit choice)
 
