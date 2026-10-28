@@ -9,7 +9,7 @@
 # known legacy ids itself — the real migrated id below resolves, a dead
 # fixture id reds, and the fixture files are the only lint targets in
 # scope. The lint's own fail-open (census unavailable -> tier suspended)
-# is not pinned here; this battery pins the tier LIVE.
+# is pinned here too (check 7, sprint 60).
 #
 #   nu .fabro/scripts/prompt-lint-fixtures.nu
 #
@@ -141,5 +141,18 @@ def main [] {
     if ($six_green.out | str contains 'tracker-CLI') { fail $"a loop-script vendor literal was flagged despite the scripts/ exclusion: ($six_green.out)" }
     print 'ok: loop scripts stay out of scope and a clean loop prompt stays silent'
 
-    print 'prompt-lint-fixtures: green — 6 checks, loop vendor-CLI scope pinned'
+    # 7. the lint's own FAIL-OPEN (spec-review follow-up, sprint 60; the
+    # run journal asked for this pin): an unreadable census suspends the
+    # resolvable-id tier — exit 0 with the suspension note — instead of
+    # killing the gate run. The same fixture body as check 1 (which REDS
+    # with a live census) must pass with a dead census: suspend, never
+    # fail-closed. The gh-less run sandbox (ADR-0019) rides this arm.
+    let r7 = (new-root $base 'failopen')
+    write-fixture $r7 'plain-fixtures.nu' $"# fixture\n# ($DEAD)\n"
+    let seven = (do { with-env {PROMPT_LINT_CENSUS_FILE: ($r7 | path join 'no-such-census.txt')} { ^nu -c $"cd '($r7)'; nu '($LINT)'" } } | complete)
+    if $seven.exit_code != 0 { fail $"an unreadable census killed the lint instead of suspending the tier: ($seven.stderr)" }
+    if not (($seven.stdout + $seven.stderr) | str contains 'tier suspended') { fail $"the suspension note is missing: ($seven.stdout + $seven.stderr)" }
+    print 'ok: an unreadable census suspends the tier (fail-open, exit 0)'
+
+    print 'prompt-lint-fixtures: green — 7 checks, loop vendor-CLI scope + census fail-open pinned'
 }

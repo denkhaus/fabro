@@ -646,13 +646,36 @@ impl InstallationLookup {
     /// One-line `{endpoint} answered {status}: {body}` detail for error
     /// messages, so every failure arm carries the response body the way the
     /// mint 422 arm does. An empty body still names the endpoint and status.
+    ///
+    /// Body carriage is a deliberate #1024 decision (a secondary-rate-limit
+    /// 401 was undiagnosable without it) under the stated assumption that
+    /// GitHub error bodies are `{message, documentation_url}` JSON with no
+    /// credentials; the cap below bounds the failure mode of a non-GitHub
+    /// intermediary answering instead (an HTML error page must not flood
+    /// logs/journals).
     #[must_use]
     pub(crate) fn failure_detail(endpoint: &str, status: u16, body: &str) -> String {
+        const BODY_CAP: usize = 1024;
         let body = body.trim();
         let body = if body.is_empty() {
-            "<empty response body>"
+            "<empty response body>".to_string()
+        } else if body.chars().count() > BODY_CAP {
+            // char-boundary-safe cut: byte slicing could split a
+            // multi-byte character and panic
+            let cut = body
+                .char_indices()
+                .map(|(i, _)| i)
+                .nth(BODY_CAP)
+                .unwrap_or(body.len());
+            let total = body.chars().count();
+            format!(
+                "{}…[truncated, {} of {} chars]",
+                &body[..cut],
+                BODY_CAP,
+                total
+            )
         } else {
-            body
+            body.to_string()
         };
         format!("{endpoint} answered {status}: {body}")
     }
@@ -3679,5 +3702,34 @@ mod tests {
             ),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn failure_detail_caps_oversized_bodies() {
+        // A non-GitHub intermediary (proxy, captive portal) answering with
+        // an HTML error page must not flood logs/journals through the
+        // #1024 body carriage; the cut must land on a char boundary even
+        // for multi-byte text (sprint-60 standards review).
+        let oversized = "ü".repeat(3000);
+        let detail = InstallationLookup::failure_detail("/x", 401, &oversized);
+        assert!(
+            detail.contains("[truncated, 1024 of 3000 chars]"),
+            "got: {detail}"
+        );
+        assert!(
+            detail.len() < 2200,
+            "cap did not bite: {} bytes",
+            detail.len()
+        );
+
+        let normal = r#"{"message":"secondary rate limit"}"#;
+        let detail = InstallationLookup::failure_detail("/x", 401, normal);
+        assert_eq!(
+            detail,
+            "/x answered 401: {\"message\":\"secondary rate limit\"}"
+        );
+
+        let detail = InstallationLookup::failure_detail("/x", 401, "  ");
+        assert_eq!(detail, "/x answered 401: <empty response body>");
     }
 }
