@@ -4,6 +4,9 @@ use crate::support::run_output_filters;
 
 #[test]
 fn dry_run_branching() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("branching.fabro");
     let mut cmd = context.run_cmd();
@@ -38,6 +41,9 @@ fn dry_run_branching() {
 
 #[test]
 fn dry_run_conditions() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("conditions.fabro");
     let mut cmd = context.run_cmd();
@@ -70,6 +76,9 @@ fn dry_run_conditions() {
 
 #[test]
 fn dry_run_parallel() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("parallel.fabro");
     let mut cmd = context.run_cmd();
@@ -108,6 +117,9 @@ fn dry_run_parallel() {
 
 #[test]
 fn dry_run_styled() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("styled.fabro");
     let mut cmd = context.run_cmd();
@@ -141,6 +153,9 @@ fn dry_run_styled() {
 
 #[test]
 fn dry_run_inferred_command() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("inferred_command.fabro");
     let mut cmd = context.run_cmd();

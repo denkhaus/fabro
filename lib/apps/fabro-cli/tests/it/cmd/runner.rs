@@ -255,6 +255,9 @@ fn worker_requires_fabro_worker_token_env() {
 
 #[test]
 fn runner_uses_cached_graph_after_source_deleted() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = auth_context();
     let workflow_path = context.temp_dir.join("workflow.fabro");
 
@@ -308,6 +311,9 @@ digraph CachedGraph {
 
 #[test]
 fn runner_local_dry_runs_ignore_github_app_configuration() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = auth_context();
     let workflow_path = context.temp_dir.join("workflow.fabro");
 
@@ -369,6 +375,9 @@ digraph GitHubApp {
 
 #[test]
 fn runner_runs_without_run_json_when_run_id_is_explicit() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = auth_context();
     let workflow_path = context.temp_dir.join("workflow.fabro");
 
@@ -553,6 +562,9 @@ methods = ["dev-token"]
 
 #[test]
 fn runner_resume_rejects_completed_run_without_mutating_it() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = auth_context();
     context.write_temp(
         "workflow.fabro",

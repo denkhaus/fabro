@@ -319,11 +319,13 @@ mod next_item {
     const RUN_A: &str = "01JNQVR7M0EJ5GKAT2SC4ERS1Z";
     const RUN_B: &str = "01JNQVR7M0EJ5GKAT2SC4ERS20";
 
-    /// A scripted tracker: fixed items, recorded claim projections.
+    /// A scripted tracker: fixed items, recorded claim projections and
+    /// the filters every list call received.
     struct FakeTracker {
         items:   Mutex<Vec<WorkItem>>,
         claims:  AsyncMutex<Vec<(String, String)>>,
         cleared: AsyncMutex<Vec<(String, String)>>,
+        filters: AsyncMutex<Vec<WorkItemFilter>>,
     }
 
     impl FakeTracker {
@@ -332,6 +334,7 @@ mod next_item {
                 items:   Mutex::new(items),
                 claims:  AsyncMutex::new(Vec::new()),
                 cleared: AsyncMutex::new(Vec::new()),
+                filters: AsyncMutex::new(Vec::new()),
             })
         }
     }
@@ -356,6 +359,7 @@ mod next_item {
             _project: &WorkProject,
             filter: WorkItemFilter,
         ) -> anyhow::Result<Vec<WorkItem>> {
+            self.filters.lock().await.push(filter.clone());
             let mut items: Vec<WorkItem> = self
                 .items
                 .lock()
@@ -670,6 +674,53 @@ mod next_item {
             !keys.contains(&"denkhaus/work#10"),
             "non-matching items stay out: {keys:?}"
         );
+    }
+
+    /// The label census seam (denkhaus/work#1001): `label` and `page`
+    /// query params reach the tracker filter — `label` beside the
+    /// project/lane labels, `page` as the 1-based results page.
+    #[tokio::test]
+    async fn label_and_page_query_params_reach_the_tracker_filter() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 2)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api(
+                        "/projects/fabro/work-items?label=arch&page=2&limit=100",
+                    ))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        response_json(response, StatusCode::OK, "labeled paged list").await;
+
+        let filters = tracker.filters.lock().await;
+        assert_eq!(filters.len(), 1, "one list call reached the tracker");
+        assert_eq!(filters[0].label.as_deref(), Some("arch"));
+        assert_eq!(filters[0].page, 2);
+        assert_eq!(filters[0].limit, 100);
+
+        // The default stays page 1 with no label filter.
+        drop(filters);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api("/projects/fabro/work-items"))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        response_json(response, StatusCode::OK, "plain list").await;
+        let filters = tracker.filters.lock().await;
+        assert_eq!(filters[1].label, None);
+        assert_eq!(filters[1].page, 1);
     }
 
     #[tokio::test]

@@ -239,6 +239,7 @@ pub fn apply_test_isolation(cmd: &mut std::process::Command, home_dir: &Path) {
 
 #[must_use]
 pub fn isolated_env(home_dir: &Path) -> HashMap<String, String> {
+    write_isolated_gitconfig(home_dir);
     let mut env = HashMap::new();
     if let Some(coverage) =
         std::env::var_os(EnvVars::LLVM_PROFILE_FILE).and_then(|value| value.into_string().ok())
@@ -289,6 +290,7 @@ fn apply_test_isolation_with_lookup(
     lookup: impl Fn(&str) -> Option<std::ffi::OsString>,
 ) {
     cmd.env_clear();
+    write_isolated_gitconfig(home_dir);
     if let Some(coverage) = lookup(EnvVars::LLVM_PROFILE_FILE) {
         cmd.env(EnvVars::LLVM_PROFILE_FILE, coverage);
     }
@@ -316,6 +318,30 @@ fn apply_test_isolation_with_lookup(
     cmd.env(EnvVars::FABRO_SERVER_MAX_CONCURRENT_RUNS, "64");
     cmd.env(EnvVars::FABRO_TEST_IN_MEMORY_STORE, "1");
     cmd.env(FABRO_TEST_ASSUME_LLM_READY, "1");
+    apply_git_safe_directory(cmd);
+}
+
+/// Let the subprocess's Git (CLI and libgit2) inspect every checkout,
+/// regardless of which user owns it.
+///
+/// A test checkout can be owned by a different user than the test process
+/// (run sandboxes, root-less CI containers); Git then refuses to inspect
+/// the worktree ("dubious ownership") when the CLI bundles a repo fixture,
+/// even though the fixture content is trusted by construction. Both
+/// mechanisms below accept every path: the `GIT_CONFIG_*` env config (what
+/// Git and libgit2 read first) and a `~/.gitconfig` in the isolated home.
+fn apply_git_safe_directory(cmd: &mut std::process::Command) {
+    cmd.env("GIT_CONFIG_COUNT", "1")
+        .env("GIT_CONFIG_KEY_0", "safe.directory")
+        .env("GIT_CONFIG_VALUE_0", "*");
+}
+
+/// Write a `~/.gitconfig` that marks every checkout path safe for the
+/// isolated home's owner (see [`apply_git_safe_directory`]).
+fn write_isolated_gitconfig(home_dir: &Path) {
+    std::fs::create_dir_all(home_dir).expect("isolated test home should exist");
+    std::fs::write(home_dir.join(".gitconfig"), "[safe]\n\tdirectory = *\n")
+        .expect("isolated test home should accept a .gitconfig");
 }
 
 /// Create a fresh tempdir containing an empty `storage/` subdirectory, for

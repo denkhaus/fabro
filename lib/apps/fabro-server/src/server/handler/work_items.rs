@@ -402,6 +402,8 @@ async fn list_work_items(
             lane:  params.lane,
             limit: params.limit.unwrap_or(50).clamp(1, 100) as usize,
             query: params.query,
+            label: params.label,
+            page:  params.page.unwrap_or(1).max(1) as usize,
         })
         .await
         .map_err(tracker_failed)?;
@@ -416,6 +418,11 @@ struct WorkItemQuery {
     lane:  Option<String>,
     limit: Option<u32>,
     query: Option<String>,
+    /// Raw tracker label name, filtered beside the project/lane labels
+    /// (denkhaus/work#1001).
+    label: Option<String>,
+    /// 1-based results page; `limit` is the page size (denkhaus/work#1001).
+    page:  Option<u32>,
 }
 
 async fn create_work_item(
@@ -560,6 +567,8 @@ async fn claim_next(
             lane:  Some(request.lane.clone()),
             limit: 50,
             query: None,
+            label: None,
+            page:  1,
         })
         .await
         .map_err(tracker_failed)?;

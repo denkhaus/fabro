@@ -259,6 +259,9 @@ fn ps_quiet_outputs_run_ids_only() {
 
 #[test]
 fn ps_filters_by_workflow_and_label() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let simple = context.temp_dir.join("simple.fabro");
     let branching = context.temp_dir.join("branching.fabro");

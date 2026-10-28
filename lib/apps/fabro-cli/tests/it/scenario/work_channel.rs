@@ -33,8 +33,11 @@ use serde_json::json;
 use tower::ServiceExt;
 
 /// The scripted tracker behind the channel's work routes: one open
-/// item, create mirrors the draft, close always lands.
-struct ChannelCliFakeTracker;
+/// item, create mirrors the draft, close always lands, and every list
+/// call's filter is recorded (the label/page seam, denkhaus/work#1001).
+struct ChannelCliFakeTracker {
+    filters: std::sync::Mutex<Vec<WorkItemFilter>>,
+}
 
 fn fixture_item(key: &str, title: &str) -> WorkItem {
     WorkItem {
@@ -49,13 +52,23 @@ fn fixture_item(key: &str, title: &str) -> WorkItem {
     }
 }
 
+impl ChannelCliFakeTracker {
+    fn recorded_filters(&self) -> Vec<WorkItemFilter> {
+        self.filters.lock().expect("filter recorder lock").clone()
+    }
+}
+
 #[async_trait]
 impl TrackerProvider for ChannelCliFakeTracker {
     async fn list(
         &self,
         _project: &WorkProject,
-        _filter: WorkItemFilter,
+        filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
+        self.filters
+            .lock()
+            .expect("filter recorder lock")
+            .push(filter);
         Ok(vec![fixture_item("denkhaus/work#1", "channel fixture")])
     }
 
@@ -252,8 +265,11 @@ fn stderr_of(output: &Output) -> String {
 /// the CLI child blocks a worker with its synchronous wait.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
+    let tracker = Arc::new(ChannelCliFakeTracker {
+        filters: std::sync::Mutex::new(Vec::new()),
+    });
     let state = TestAppStateBuilder::new()
-        .work_tracker(Arc::new(ChannelCliFakeTracker) as Arc<dyn TrackerProvider>)
+        .work_tracker(Arc::clone(&tracker) as Arc<dyn TrackerProvider>)
         .build();
     seed_project(&state, "fabro", "denkhaus/fabro").await;
     seed_project(&state, "other", "denkhaus/unrelated").await;
@@ -275,6 +291,35 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
         "the scripted item is served to the CLI: {}",
         stdout_of(&list)
     );
+
+    // the label/page seam (denkhaus/work#1001): --label and --page travel
+    // the channel and reach the tracker's filter — a census can slice by
+    // any label and walk past the first 100 items.
+    let labeled = cli_over_channel(
+        &socket,
+        &[
+            "work",
+            "list",
+            "--project",
+            "fabro",
+            "--label",
+            "arch",
+            "--page",
+            "2",
+        ],
+        None,
+    );
+    assert!(
+        labeled.status.success(),
+        "work list --label --page through the channel: {}",
+        stderr_of(&labeled)
+    );
+    let filters = tracker.recorded_filters();
+    let seam = filters
+        .iter()
+        .find(|filter| filter.label.as_deref() == Some("arch"))
+        .expect("the label filter reached the tracker");
+    assert_eq!(seam.page, 2, "the page flag reached the tracker");
 
     // show: the bare number resolves against the project and renders
     let show = cli_over_channel(
