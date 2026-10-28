@@ -483,6 +483,28 @@ git config user.email smoke@localhost
         }
     } | complete)
     if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+
+    # The real-parser argv pin (run 01M60NX9W7N65DEPXYN09CE9BR lost its
+    # deferred-action filing to this): the work shim is position-blind
+    # (nu binds declared flags wherever they appear), so the create argv
+    # is pinned by driving closeout.nu END TO END with the REAL fabro
+    # binary against a dead server — the park gate degrades open, the
+    # dedupe degrades off, the sweeps still fire, and a clap parse error
+    # ('unexpected argument', the pre-fix --project-before-the-verb
+    # shape) is distinguishable from the expected transport failure.
+    do {
+        let dead_env = {FABRO_BIN: (which fabro | get 0.path), FABRO_SERVER: "http://127.0.0.1:1"}
+        let parse_run = (do {
+            with-env $dead_env {
+                echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
+            }
+        } | complete)
+        let combined = ($parse_run.stdout + $parse_run.stderr)
+        if ($combined | str contains 'unexpected argument') {
+            fail $"an outbound work argv drifted out of the real parser's grammar: ($combined | str substring 0..240)"
+        }
+        print 'ok: every outbound work argv parses against the real CLI grammar'
+    }
 } finally {
     # fail-exits bypass this (nu cannot catch exit); mktemp -t keeps any
     # leak in the system temp dir, never the worktree

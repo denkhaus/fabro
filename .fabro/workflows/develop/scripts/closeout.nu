@@ -295,7 +295,13 @@ def work-create [title: string, body: string, item_type: string, ...labels: stri
     let bin = ($env.FABRO_BIN? | default 'fabro')
     # One comma-joined --label: the work CLI accepts it in exactly this
     # form (repeatable OR comma-separated), and it keeps the argv flat.
-    let args = ([work --server (work-server) --project fabro create --title $title --body-file - --type $item_type --label ($labels | str join ",")])
+    # `--project` belongs to CREATE (flags after the subcommand): at the
+    # `work` level clap only knows --server, and a pre-subcommand
+    # --project makes clap eat the verb as --server's value — the run
+    # 01M60NX9W7N65DEPXYN09CE9BR deferred-action loss (the shim is
+    # position-blind, so the smoke pins this shape against the real
+    # parser).
+    let args = ([work --server (work-server) create --project fabro --title $title --body-file - --type $item_type --label ($labels | str join ",")])
     do { $body | ^$bin ...$args } | complete
 }
 
