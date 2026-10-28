@@ -250,7 +250,17 @@ stores it belongs to; reach them by phase need:
   (grep -c == 1, or anchor on surrounding context): the sprint-54
   reverse sed rewrote `#[arg(long, value_enum)]` in THREE sibling
   commands while restoring one and reddened unrelated worker_auth ITs
-  (caught only because the test filter matched them).
+  (caught only because the test filter matched them). Two sprint-60
+  (2026-10-28) pin traps extend this: (a) a bare nu block `{ ... }` as
+  a statement is a CLOSURE VALUE, never executed — a pin arm written
+  that way reads as green while it never ran (the first closeout
+  parse-pin was doubly blind: unexecuted AND a hardcoded argv copy);
+  executable arms need `do { ... }`. (b) A lenient shim (nu parses
+  declared flags wherever they appear) is POSITION-BLIND and can never
+  pin an argv grammar — pin CLI invocation shapes by driving the real
+  script END TO END with the REAL binary against a dead server and
+  asserting the failure is transport, not a clap parse error (the
+  work-create `--project`-before-the-verb loss, run 01M60NX9W7N6).
 - A NEW-flag IT failing with clap's "unexpected argument" is a FLAG-NAME
   mismatch until proven otherwise (2026-10-26, work#995 handoff): clap
   derives `--<snake_case_field>` when no explicit `long =` is set, so a
