@@ -273,9 +273,18 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
         # denkhaus/work#988): the migrated item's `seeds:fabro-xxxx` label
         # resolves the id, gh reads the issue state — label search works
         # today; the facade's legacy-id seam (fork.26) can replace the gh
-        # call later. Unknown stays fail-open (a broken lookup must not
-        # fake a verdict).
-        let gh_state = (do { gh api --method GET 'search/issues' -f q=('repo:denkhaus/work is:issue label:"seeds:' + $id + '"') -f per_page=1 --jq '.items | if (length) > 0 then .[0].state else "missing" end' } | complete)
+        # call later (work#1030 direction, 2026-10-28: the toolchain goes
+        # gh-free — the tracker arm moves onto the channel via the shim /
+        # agent tools). Unknown stays fail-open (a broken lookup must not
+        # fake a verdict). A MISSING external raises nu::shell::
+        # external_command, which do|complete does NOT capture — guard
+        # with try so a gh-less run sandbox (ADR-0019 toolchain, the
+        # work#1030 deadlock) fails open instead of killing the script.
+        let gh_state = (try {
+            do { gh api --method GET 'search/issues' -f q=('repo:denkhaus/work is:issue label:"seeds:' + $id + '"') -f per_page=1 --jq '.items | if (length) > 0 then .[0].state else "missing" end' } | complete
+        } catch {|err|
+            {exit_code: 1, stdout: '', stderr: $"tracker lookup unavailable: ($err.msg)"}
+        })
         if $gh_state.exit_code == 0 {
             let state = ($gh_state.stdout | str trim)
             if $state in ['open' 'closed'] {

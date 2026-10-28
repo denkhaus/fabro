@@ -163,6 +163,28 @@ def main [] {
         expect 'b: self trailer without --self verdict' $b.verdict 'duplicate'
         expect 'b: self trailer without --self closure' ($b.implementation_matches | first | get closure) 'foreign'
 
+        # (b2) work#1030 sandbox pin: a PATH without gh — every run
+        # sandbox (ADR-0019 toolchain carries no gh) — must fail OPEN:
+        # tracker degrades to unknown with the lookup-failed note and the
+        # verdict stays history-driven (same as case b). A missing
+        # external RAISES and do|complete does not catch it, so this pins
+        # the tracker arm's try/catch (the prompt-lint 3f1625ba1 class;
+        # the pre-fix script died here with exit 1 for fabro-fix-0001 and
+        # deadlocked the loop lap run 01M5ZG7FY0V4 at its tester).
+        # Wrapper scripts, not symlinks (the gh shim's own pattern): the
+        # #! line is absolute, so the child PATH carries ONLY these.
+        let nogh_bin = ($scratch | path join 'nogh-bin')
+        mkdir $nogh_bin
+        for exe in ['nu' 'git' 'sh'] {
+            let real = (which $exe | first | get path)
+            $"#!/bin/sh\nexec ($real) \"$@\"\n" | save -f ($nogh_bin | path join $exe)
+            ^chmod +x ($nogh_bin | path join $exe)
+        }
+        let b2 = (with-env {PATH: $nogh_bin} { check $script 'fabro-fix-0001' '' })
+        expect 'b2: gh-less tracker degrades to unknown' $b2.tracker_status 'unknown'
+        expect 'b2: gh-less tracker carries the note' ($b2.tracker_note | str contains 'tracker lookup failed') true
+        expect 'b2: gh-less verdict stays history-driven' $b2.verdict 'duplicate'
+
         # Case (c): foreign trailer + --self -> duplicate
         let c = (check $script 'fabro-fix-0002' 'RUN-SELF')
         expect 'c: foreign trailer with --self verdict' $c.verdict 'duplicate'
