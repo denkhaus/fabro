@@ -66,7 +66,7 @@ def main [
         null
     })
     if $claims == null {
-        print $"GATE REFUSED: claims view unreachable on ($server) — the gate fails closed (e829 fork 4)"
+        print $"GATE REFUSED: claims view unreachable on ($server) — the gate fails closed, e829 fork 4"
         exit 1
     }
     let blocking = ($claims | where {|c| ($c | get -o state | default '') in ['granted' 'active' 'awaiting_merge'] })

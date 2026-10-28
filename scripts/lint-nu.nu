@@ -84,14 +84,51 @@ def paren-comma-bare [line: string] {
     }
 }
 
+# Prose-paren check (user directive 2026-10-28, the ~100th sighting: run
+# 01M621RW4YPD, verify.nu:292 — `$"... (full crate suite: ...)"` executed
+# `full` as a command): a paren group of THREE OR MORE bare tokens with NO
+# expression sigil ($ " ' | ^ = anywhere inside is prose, not an
+# interpolation — it dies at runtime with 'Command <first word> not found'.
+# Two bare tokens stay legal (that is `(date now)`, `(path self)`, real
+# no-arg calls); a sigil anywhere marks a real expression (`(total $n)`,
+# `(if $x {...})`). Escaped \( groups are the literal idiom and pass.
+def paren-prose-bare [line: string] {
+    let spans = ($line | parse --regex `(?P<s>\$["'][^"']*["'])`)
+    if ($spans | is-empty) { false } else {
+        ($spans | get s | any {|s|
+            # two passes OR'd: the FLAT pass sees prose groups with no
+            # nesting; the STRIPPED pass reduces inner complete groups to a
+            # marker first so a nested shape (prose shell around a real
+            # interpolation) leaves its outer group testable. Stripping
+            # alone would destroy flat groups before they match — hence
+            # both.
+            let neutral = ($s | str replace -ar `\\[()]` 'X')
+            let flat_groups = ($neutral | parse --regex `\(([^()]*)\)`)
+            let stripped = ($neutral | str replace -ar `\([^()]*\)` 'X')
+            let outer_groups = ($stripped | parse --regex `\(([^()]*)\)`)
+            let groups = ($flat_groups | append $outer_groups)
+            ($groups | any {|g|
+                let inner = $g.capture0
+                # an expression carries a sigil or an operator anywhere;
+                # prose shells carry none. The X marker from stripping is
+                # NOT in the class — it must not exempt the shell.
+                (($inner | parse --regex "[$\"'|^=+*/%<>!-]" | is-not-empty) == false) and (
+                    # three or more whitespace-separated bare tokens
+                    ($inner | split row ' ' | where {|t| ($t | str trim) != ''} | length) >= 3
+                )
+            })
+        })
+    }
+}
+
 def bare-paren-check [file: string] {
     let text = (open --raw $file)
     let hits = ($text | lines | enumerate | where {|it|
-        (($it.item | str trim | str starts-with '#') == false) and (($it.item | str contains '$"') and (paren-comma-bare $it.item))
+        (($it.item | str trim | str starts-with '#') == false) and (($it.item | str contains '$"') and ((paren-comma-bare $it.item) or (paren-prose-bare $it.item)))
     })
     if ($hits | is-not-empty) {
         for h in $hits {
-            print $"bare-paren FAILED: ($file):($h.index + 1) — comma paren group inside an interpolated string is list syntax, not text"
+            print $"bare-paren FAILED: ($file):($h.index + 1) — paren group inside an interpolated string is text, not an expression; escape the parens or build by concatenation"
             print $"  ($h.item | str trim)"
         }
         false

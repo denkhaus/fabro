@@ -289,7 +289,7 @@ def stage-implementer [] {
             }
             print $"verify: PASS nextest ($c)"
         } else {
-            print $"== nextest -p ($c) (full crate suite: ($tm.reason)) =="
+            print $"== nextest -p ($c) — full crate suite: ($tm.reason) =="
             let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
             if $res.exit_code != 0 {
                 print (output-tail ($res.stdout + $res.stderr) 3000)

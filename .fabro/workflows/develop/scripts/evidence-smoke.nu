@@ -93,7 +93,7 @@ let fixture = [
     {add: "-"  del: "5" path: "logo.png"}
     {add: "3"  del: "1" path: "docs/b.md"}
 ]
-if (total $fixture "add") != 13 { fail $"total add (binary as 0): (total $fixture 'add')" }
+if (total $fixture "add") != 13 { fail $"total add, binary as 0: (total $fixture 'add')" }
 if (total $fixture "del") != 8  { fail $"total del: (total $fixture 'del')" }
 if (total [] "add") != 0 { fail "total empty must be 0" }
 
