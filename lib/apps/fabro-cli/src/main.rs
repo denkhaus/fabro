@@ -1627,14 +1627,20 @@ destination = "{destination}"
 
     #[test]
     fn parse_settings_command() {
-        let cli = Cli::try_parse_from(["fabro", "settings"]).expect("should parse");
-        assert_eq!(cli.command.as_ref().unwrap().name(), "settings");
-        match *cli.command.unwrap() {
-            Commands::Settings(args) => {
-                assert!(args.target.server.is_none());
+        // Same env discipline as parse_auth_logout_all: `--server` is
+        // env-backed (FABRO_SERVER, e.g. injected by the run sandbox), and
+        // an inherited value would turn the is_none() assertion into an
+        // environment artifact instead of a regression signal.
+        with_var(fabro_static::EnvVars::FABRO_SERVER, None::<&str>, || {
+            let cli = Cli::try_parse_from(["fabro", "settings"]).expect("should parse");
+            assert_eq!(cli.command.as_ref().unwrap().name(), "settings");
+            match *cli.command.unwrap() {
+                Commands::Settings(args) => {
+                    assert!(args.target.server.is_none());
+                }
+                _ => panic!("unexpected command variant"),
             }
-            _ => panic!("unexpected command variant"),
-        }
+        });
     }
 
     #[test]

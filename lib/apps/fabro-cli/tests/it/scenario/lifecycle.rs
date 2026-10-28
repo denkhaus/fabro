@@ -185,6 +185,9 @@ fn dry_run_create_start_attach_works_with_default_run_lookup() {
 
 #[test]
 fn dry_run_detach_attach_works_with_default_run_lookup() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     context.ensure_home_server_auth_methods();
     let workflow = context.install_fixture("simple.fabro");

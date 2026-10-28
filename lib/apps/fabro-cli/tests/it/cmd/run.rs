@@ -878,6 +878,9 @@ include = ["assets/**"]
 
 #[test]
 fn dry_run_simple() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     let context = test_context!();
     let workflow = context.install_fixture("simple.fabro");
     let mut cmd = context.run_cmd();
@@ -910,6 +913,9 @@ fn dry_run_simple() {
 
 #[test]
 fn dry_run_with_goal_file_reads_contents_into_goal() {
+    if !fabro_test::docker_available() {
+        return;
+    }
     // Regression test for the `--goal-file` flag that was previously
     // being silently ignored in the v2 path. The file content must reach
     // the server-authoritative run specification.
