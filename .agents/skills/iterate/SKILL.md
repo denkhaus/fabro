@@ -342,6 +342,12 @@ stores it belongs to; reach them by phase need:
   (`.fabro/scripts/`, `just lint-nu` for new nu scripts; prompts keep only
   the call + verdict routing). Never write and execute an edited script in
   one shell call.
+- WORKFLOW CHANGES ARE BENCH-TESTABLE (user directive 2026-10-28, sprint
+  61): every `.fabro/workflows/**` change lands with a bench surface in
+  the fabro-test repo that exercises it — a dedicated probe/scenario, or
+  an existing row that provably drives the changed asset. The cycle report
+  names the surface; a change without one files the fabro-test follow-up
+  in the same session (the #1044 pattern).
 - Probe rigs: workspace-relative hook/stage scripts resolve against the
   RUN TARGET checkout — land the probe on the target branch first or
   create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
