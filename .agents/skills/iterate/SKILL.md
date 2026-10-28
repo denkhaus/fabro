@@ -348,6 +348,16 @@ stores it belongs to; reach them by phase need:
   an existing row that provably drives the changed asset. The cycle report
   names the surface; a change without one files the fabro-test follow-up
   in the same session (the #1044 pattern).
+- BENCH PHILOSOPHY: TARGETED SINGLE-ASPECT PROBES THAT COMPOSE (user
+  directive 2026-10-28, sprint 62): the bench tests punktual aspects in
+  fixture twins — the REAL lane graphs are deliberately NOT bench material
+  (they need work items + LLM stages). Compose: shape x fold (probe-26),
+  environment property x fail-open arms (probe-27 gh-absent), argv grammar
+  x the toolchain CLI (probe-28). And NEVER rerun the FULL bench for one
+  facet's red (user directive 2026-10-27, re-violated 2026-10-28): the
+  single-probe mode is the default; a red facet gets `workbench.nu probe
+  <name>` plus, for the mini legs, probe mini + a direct
+  publish-bridge.nu drive.
 - Probe rigs: workspace-relative hook/stage scripts resolve against the
   RUN TARGET checkout — land the probe on the target branch first or
   create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
