@@ -1807,13 +1807,17 @@ impl Client {
     /// The project's work items: open-only when `query` is absent,
     /// title+body text search including closed items when it is set (the
     /// duplicate check before filing needs the closed half). Optionally
-    /// lane-filtered and limit-capped (the API clamps 1..=100).
+    /// lane-filtered and limit-capped (the API clamps 1..=100), with a
+    /// raw `label` filter beside the project/lane labels and a 1-based
+    /// `page` (denkhaus/work#1001) — `limit` is the page size.
     pub async fn list_work_items(
         &self,
         project_id: &str,
         lane: Option<&str>,
         limit: Option<u32>,
         query: Option<&str>,
+        label: Option<&str>,
+        page: Option<u32>,
     ) -> Result<Vec<types::WorkItem>> {
         let response = self
             .send_api(|client| async move {
@@ -1826,6 +1830,12 @@ impl Client {
                 }
                 if let Some(query) = query {
                     request = request.query(query.to_string());
+                }
+                if let Some(label) = label {
+                    request = request.label(label.to_string());
+                }
+                if let Some(page) = page {
+                    request = request.page(page);
                 }
                 request.send().await
             })

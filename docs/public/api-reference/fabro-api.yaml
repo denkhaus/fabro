@@ -6641,10 +6641,29 @@ paths:
         - name: limit
           in: query
           required: false
-          description: Maximum items to return (1-100).
+          description: Maximum items to return (1-100); also the page size.
           schema:
             type: integer
             format: int32
+        - name: label
+          in: query
+          required: false
+          description: >-
+            Raw tracker label name (e.g. `prio:p0`); filters by this label
+            in addition to the project (and lane) labels, in both list and
+            search modes.
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: >-
+            1-based results page of the listing or search (default 1);
+            `limit` is the page size — a full census walks pages.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
       responses:
         "200":
           description: Work items (open-only list, or search results incl. closed)

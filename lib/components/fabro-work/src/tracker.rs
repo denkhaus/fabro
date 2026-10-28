@@ -45,6 +45,13 @@ pub struct WorkItemFilter {
     /// closed half). When set, the provider searches instead of listing
     /// open items and relevance replaces the priority ordering.
     pub query: Option<String>,
+    /// Raw tracker label name (e.g. `prio:p0`), filtered in addition to
+    /// the project (and lane) labels in both list and search modes —
+    /// the label census seam (denkhaus/work#1001).
+    pub label: Option<String>,
+    /// 1-based results page; `limit` is the page size. Providers that
+    /// cannot page ignore it (denkhaus/work#1001).
+    pub page:  usize,
 }
 
 /// The forge-agnostic tracker port. Implemented per forge; the work store

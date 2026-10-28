@@ -180,6 +180,8 @@ impl GitHubTracker {
                     lane:  None,
                     limit: 5,
                     query: None,
+                    label: None,
+                    page:  1,
                 },
                 &format!("label:\"{label}\""),
             )
@@ -193,7 +195,10 @@ impl GitHubTracker {
         }
     }
 
-    fn project_lane_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
+    /// The labels every list/search carries: the project label, the
+    /// lane's label when a lane is filtered, and the raw label filter
+    /// (denkhaus/work#1001).
+    fn filter_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
         let mut labels = vec![project.project_label.clone()];
         if let Some(lane) = filter.lane.as_deref() {
             let label = project
@@ -202,6 +207,9 @@ impl GitHubTracker {
                 .cloned()
                 .unwrap_or_else(|| format!("lane:{lane}"));
             labels.push(label);
+        }
+        if let Some(label) = filter.label.as_deref() {
+            labels.push(label.to_string());
         }
         labels
     }
@@ -275,13 +283,14 @@ impl GitHubTracker {
         filter: &WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
         let limit = filter.limit.clamp(1, 100);
-        let encoded_labels = Self::project_lane_labels(project, filter)
+        let page = filter.page.max(1);
+        let encoded_labels = Self::filter_labels(project, filter)
             .iter()
             .map(|label| utf8_percent_encode(label, NON_ALPHANUMERIC).to_string())
             .collect::<Vec<_>>()
             .join(",");
         let url = format!(
-            "{}?state=open&labels={encoded_labels}&per_page={limit}",
+            "{}?state=open&labels={encoded_labels}&per_page={limit}&page={page}",
             self.url("issues")
         );
         let response = self.request(Method::GET, &url).send().await?;
@@ -308,20 +317,21 @@ impl GitHubTracker {
         query: &str,
     ) -> anyhow::Result<Vec<WorkItem>> {
         let limit = filter.limit.clamp(1, 100);
+        let page = filter.page.max(1);
         let trimmed = query.trim();
         if trimmed.is_empty() {
             anyhow::bail!("work item search query must not be blank");
         }
         let mut terms = vec![format!("repo:{}", self.repo), "is:issue".to_string()];
         terms.extend(
-            Self::project_lane_labels(project, filter)
+            Self::filter_labels(project, filter)
                 .into_iter()
                 .map(|label| format!("label:\"{label}\"")),
         );
         terms.push(trimmed.to_string());
         let encoded = utf8_percent_encode(&terms.join(" "), NON_ALPHANUMERIC).to_string();
         let url = format!(
-            "{}/search/issues?q={encoded}&per_page={limit}",
+            "{}/search/issues?q={encoded}&per_page={limit}&page={page}",
             self.base_url
         );
         let response = self.request(Method::GET, &url).send().await?;
@@ -603,7 +613,8 @@ mod tests {
                         "q",
                         "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"lane:loop\" watchdog",
                     )
-                    .query_param("per_page", "25");
+                    .query_param("per_page", "25")
+                    .query_param("page", "1");
                 then.status(200).json_body(serde_json::json!({
                     "total_count": 2,
                     "items": [
@@ -623,6 +634,8 @@ mod tests {
                 lane:  Some("loop".to_string()),
                 limit: 25,
                 query: Some("watchdog".to_string()),
+                label: None,
+                page:  1,
             })
             .await
             .expect("the search arm resolves");
@@ -642,6 +655,8 @@ mod tests {
                 lane:  None,
                 limit: 50,
                 query: Some("   ".to_string()),
+                label: None,
+                page:  1,
             })
             .await
             .expect_err("a blank query must fail");
@@ -659,7 +674,8 @@ mod tests {
                     .path("/repos/denkhaus/work/issues")
                     .query_param("state", "open")
                     .query_param("labels", "project:fabro,lane:loop")
-                    .query_param("per_page", "50");
+                    .query_param("per_page", "50")
+                    .query_param("page", "1");
                 then.status(200).json_body(serde_json::json!([]));
             })
             .await;
@@ -669,11 +685,79 @@ mod tests {
                 lane:  Some("loop".to_string()),
                 limit: 50,
                 query: None,
+                label: None,
+                page:  1,
             })
             .await
             .expect("the open-list arm resolves");
         listed.assert_calls_async(1).await;
         assert!(items.is_empty());
+    }
+
+    /// The label census seam (denkhaus/work#1001): a raw label filter
+    /// rides beside the project/lane labels and `page` paginates the
+    /// listing — `limit` stays the page size.
+    #[tokio::test]
+    async fn label_filter_and_page_reach_the_issue_list_call() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "open")
+                    .query_param("labels", "project:fabro,arch")
+                    .query_param("per_page", "100")
+                    .query_param("page", "3");
+                then.status(200).json_body(serde_json::json!([]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        tracker
+            .list(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 100,
+                query: None,
+                label: Some("arch".to_string()),
+                page:  3,
+            })
+            .await
+            .expect("the labeled paged list resolves");
+        listed.assert_calls_async(1).await;
+    }
+
+    /// The same seam on the search arm: the raw label becomes a label
+    /// qualifier and `page` paginates the search results.
+    #[tokio::test]
+    async fn label_filter_and_page_reach_the_issue_search_call() {
+        let server = httpmock::MockServer::start_async().await;
+        let searched = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .header("User-Agent", "fabro")
+                    .query_param(
+                        "q",
+                        "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"prio:p0\" census",
+                    )
+                    .query_param("per_page", "100")
+                    .query_param("page", "2");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 0, "items": []
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        tracker
+            .list(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 100,
+                query: Some("census".to_string()),
+                label: Some("prio:p0".to_string()),
+                page:  2,
+            })
+            .await
+            .expect("the labeled paged search resolves");
+        searched.assert_calls_async(1).await;
     }
 
     fn search_hit(number: u64, label: &str) -> serde_json::Value {
@@ -701,7 +785,8 @@ mod tests {
                         "q",
                         "repo:denkhaus/work is:issue label:\"project:fabro\" label:\"seeds:fabro-d5f0\"",
                     )
-                    .query_param("per_page", "5");
+                    .query_param("per_page", "5")
+                    .query_param("page", "1");
                 then.status(200).json_body(serde_json::json!({
                     "total_count": 1,
                     "items": [search_hit(42, "seeds:fabro-d5f0")]

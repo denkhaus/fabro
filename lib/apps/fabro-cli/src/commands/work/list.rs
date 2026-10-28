@@ -23,6 +23,8 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
             args.lane.as_deref(),
             args.limit,
             args.query.as_deref(),
+            args.label.as_deref(),
+            args.page,
         )
         .await?;
 

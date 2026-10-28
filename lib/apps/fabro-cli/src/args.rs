@@ -2183,6 +2183,13 @@ pub(crate) struct WorkListArgs {
     /// Search title and body for these words, closed items included
     #[arg(long)]
     pub(crate) query:   Option<String>,
+    /// Filter by a raw tracker label name (e.g. prio:p0), beside the
+    /// project/lane labels
+    #[arg(long)]
+    pub(crate) label:   Option<String>,
+    /// 1-based results page (limit is the page size)
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+    pub(crate) page:    Option<u32>,
 }
 
 #[derive(Args)]
