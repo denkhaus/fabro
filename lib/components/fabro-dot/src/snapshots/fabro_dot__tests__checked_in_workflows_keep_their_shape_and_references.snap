@@ -1,5 +1,6 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
+assertion_line: 256
 expression: report
 ---
 .fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
@@ -53,11 +54,6 @@ expression: report
   file:prompt:prompts/planner.md@planner
   file:prompt:prompts/implementer.md@implementer
   file:prompt:prompts/reviewer.md@reviewer
-.fabro/workflows/gh-list/workflow.fabro: GhList nodes=4 edges=3
-  goal-inline
-.fabro/workflows/gh-triage/workflow.fabro: GhTriage nodes=3 edges=2
-  goal-inline
-  inline@triage
 .fabro/workflows/goal/workflow.fabro: Goal nodes=6 edges=8
   goal-inline
   file:prompt:prompts/continue.md@work
@@ -66,11 +62,6 @@ expression: report
 .fabro/workflows/hello/workflow.fabro: Hello nodes=3 edges=2
   goal-inline
   inline@greet
-.fabro/workflows/implement-issue/workflow.fabro: ImplementIssue nodes=4 edges=3
-  goal-inline
-  stylesheet-inline
-  inline@plan
-  child:../implement-plan/workflow.fabro@implement
 .fabro/workflows/implement-plan/workflow.fabro: ImplementPlan nodes=11 edges=14
   goal-inline
   inline@fix_lints
