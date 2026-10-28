@@ -533,13 +533,26 @@ digraph Develop {
 
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
     // Structural gate-guard (fabro-6baf): third consecutive red routes to
-    // the human instead of another implementer round.
-    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="nodes.tester.generation >= 3"]
+    // the human instead of another implementer round. UNCONDITIONAL by
+    // engine requirement (attractor.all_conditional_edges: every node
+    // needs one fallback edge) AND by design — it doubles as the
+    // impossible-state guard: every reachable tester outcome matches an
+    // explicit edge (succeeded -> evidence, failed -> Gate red,
+    // generation >= 3 -> deadlock), so the fallback only fires for
+    // outcomes no explicit edge covers, routing them to the human
+    // instead of looping.
+    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds or unroutable outcome, needs a human)"]
     // fabro-56f4 / ADR-0032 phase 3: the red bounce re-enters the
     // implementer directly; the known-bug lookup is the implementer's
     // fabro_work_list query step (the deterministic gatebounce node is
     // retired — no host-side tracker reads).
-    tester -> implementer [label="Gate red"]
+    // EXPLICIT conditional (work#1029, run 01M5ZEWKAMMZ): an
+    // unconditional bounce edge made the b00c fake-green fold downgrade
+    // this exact completed run to failed/workflow_error while the
+    // engine concluded success — status split, publish skipped, work
+    // salvaged by hand. The bounce is deliberate control flow and must
+    // declare itself.
+    tester -> implementer [label="Gate red", condition="outcome=failed"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     // Explicit outcome condition: an unconditional fallback edge makes the

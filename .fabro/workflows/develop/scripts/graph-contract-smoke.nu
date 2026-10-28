@@ -135,5 +135,14 @@ def main [] {
         fail 'closeout must NOT be an agent node anymore — the channel carries the tracker calls (denkhaus/work#990)'
     }
 
+    # 7. gate-red bounce edge is EXPLICIT conditional (work#1029): an
+    # unconditional bounce makes the b00c fake-green fold downgrade a
+    # completed run to failed/workflow_error while the engine said
+    # success (run 01M5ZEWKAMMZ: status split, publish path skipped,
+    # work salvaged by hand).
+    if not ($lines | any {|l| ($l | str contains 'tester -> implementer') and ($l | str contains 'Gate red') and ($l | str contains 'condition="outcome=failed"')}) {
+        fail 'tester -> implementer ("Gate red") must carry condition="outcome=failed" — an unconditional bounce edge re-splits engine success from the platform record (work#1029, the b00c fold)'
+    }
+
     print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout files and closes through the channel'
 }

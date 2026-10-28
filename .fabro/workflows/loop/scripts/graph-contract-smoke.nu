@@ -176,9 +176,15 @@ def main [] {
         fail 'implementer x.fs_hide lost .agents/ — the meta lane must still NOT see/edit session-level skills'
     }
 
-    # 8. gate-red bounce edge
+    # 8. gate-red bounce edge — EXPLICIT conditional (work#1029): an
+    # unconditional bounce makes the b00c fake-green fold downgrade a
+    # recovered run to failed/workflow_error while the engine said
+    # success (run 01M5ZEWKAMMZ: status split, publish skipped).
     if not ($lines | any {|l| ($l | str contains 'tester -> implementer') and ($l | str contains 'Gate red')}) {
         fail 'tester -> implementer ("Gate red") edge missing — red bounces would dead-end'
+    }
+    if not ($lines | any {|l| ($l | str contains 'tester -> implementer') and ($l | str contains 'Gate red') and ($l | str contains 'condition="outcome=failed"')}) {
+        fail 'tester -> implementer ("Gate red") must carry condition="outcome=failed" — an unconditional bounce edge re-splits engine success from the platform record (work#1029, the b00c fold)'
     }
 
     # 9. tester runs the loop gate, never the product gate

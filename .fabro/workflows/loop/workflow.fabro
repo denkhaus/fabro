@@ -256,11 +256,21 @@ digraph Loop {
     implementer -> tester   [label="Implemented"]
 
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
-    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds, needs a human)", condition="nodes.tester.generation >= 3"]
+    // UNCONDITIONAL by engine requirement (attractor.all_conditional_edges)
+    // AND by design: every reachable tester outcome matches an explicit
+    // edge (succeeded -> evidence, failed -> Gate red, generation >= 3 ->
+    // deadlock), so this fallback only fires for unroutable outcomes,
+    // routing them to the human instead of looping.
+    tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds or unroutable outcome, needs a human)"]
     // No gatebounce node in the loop lane: the implementer reads the
     // tester stage section directly (preamble keeps tester) and the
     // battery output is small enough to inline.
-    tester -> implementer [label="Gate red"]
+    // EXPLICIT conditional (work#1029, run 01M5ZEWKAMMZ): an
+    // unconditional bounce edge made the b00c fake-green fold downgrade
+    // a completed develop run to failed/workflow_error while the engine
+    // concluded success — status split, publish skipped. The bounce is
+    // deliberate control flow and must declare itself.
+    tester -> implementer [label="Gate red", condition="outcome=failed"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     evidence -> exit [x.kind="soft", label="Capture failed (next run re-enters)"]

@@ -468,4 +468,59 @@ mod tests {
         assert_eq!(branch_slot("branch:fan@7:x:review"), None);
         assert_eq!(branch_slot("child:0"), None);
     }
+
+    /// work#1029 (run 01M5ZEWKAMMZ): the lane graphs' gate-red bounce
+    /// must be an EXPLICIT conditional edge — a tester red routed onward
+    /// as declared control flow never feeds the b00c refusal, while the
+    /// unconditional bounce shape (the pre-fix graphs) made the fold
+    /// downgrade a completed run to failed/workflow_error with the
+    /// publish path skipped. The engine requires one unconditional
+    /// fallback per node (attractor.all_conditional_edges); the deadlock
+    /// exit carries it, and a failure the fallback would consume still
+    /// refuses green (the unrecovered invariant).
+    #[test]
+    fn the_gate_red_bounce_edge_condition_decides_the_refusal() {
+        let visits = [
+            FinalVisit {
+                seq:     1,
+                node:    "start".to_string(),
+                failed:  false,
+                failure: None,
+            },
+            FinalVisit {
+                seq:     2,
+                node:    "tester".to_string(),
+                failed:  true,
+                failure: Some("script exited with status 1".to_string()),
+            },
+            FinalVisit {
+                seq:     3,
+                node:    "implementer".to_string(),
+                failed:  false,
+                failure: None,
+            },
+        ];
+        let pre_fix = r#"digraph G {
+    start -> tester
+    tester -> implementer [label="Gate red"]
+    tester -> exit [label="Gate green", condition="outcome=succeeded"]
+    tester -> exit [x.kind="deadlock", label="Gate deadlock"]
+}"#;
+        let post_fix = r#"digraph G {
+    start -> tester
+    tester -> implementer [label="Gate red", condition="outcome=failed"]
+    tester -> exit [label="Gate green", condition="outcome=succeeded"]
+    tester -> exit [x.kind="deadlock", label="Gate deadlock"]
+}"#;
+        assert_eq!(
+            catch_all_leg_failure(&visits, pre_fix, None),
+            Some("script exited with status 1".to_string()),
+            "the unconditional bounce (the pre-fix lane graphs) is a catch-all the refusal names"
+        );
+        assert_eq!(
+            catch_all_leg_failure(&visits, post_fix, None),
+            None,
+            "the explicit conditional bounce is control flow and never refuses green"
+        );
+    }
 }

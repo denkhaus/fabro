@@ -10,6 +10,16 @@
 //! The second arm pins the invariant the fix must not weaken: a catch-all
 //! failure no later visit supersedes still refuses the green conclusion
 //! (fabro-b00c, user decision 2026-09-25).
+//!
+//! The third arm pins the terminal-status split (work#1029, run
+//! 01M5ZEWKAMMZ): a gate red the graph routes onward over an EXPLICIT
+//! conditional bounce edge is control flow — the tester's FINAL visit
+//! stays red, the run still reaches exit, the engine concludes success,
+//! and the projection must keep that green. The lane graphs' "Gate red"
+//! bounce carries condition="outcome=failed" for exactly this reason; an
+//! unconditional bounce edge re-splits engine success from the platform
+//! record (the run landed failed/workflow_error with the publish path
+//! skipped while its event stream said succeeded).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -74,6 +84,33 @@ const UNRECOVERED_GATE_WORKFLOW: &str = r#"digraph UnrecoveredGate {
     tester -> exit [label="Gate green", condition="outcome=succeeded"]
     implementer -> exit [label="Give up"]
 }"#;
+
+/// The work#1029 shape: the tester's red rides an EXPLICIT conditional
+/// bounce edge (the lane graphs' fixed `Gate red` form) and the tester's
+/// FINAL visit stays failed — no repair round revisits it; the
+/// implementer delivers and the run reaches exit. The engine concludes
+/// success; the projection must agree (routed control flow, not a
+/// catch-all fake-green). The unconditional deadlock edge mirrors the
+/// lane graphs: the engine requires one fallback edge per node
+/// (attractor.all_conditional_edges), and the deadlock exit doubles as
+/// the unroutable-outcome guard.
+fn routed_red_bounce_workflow(marker: &Path) -> String {
+    format!(
+        r#"digraph RoutedRedBounce {{
+    graph [goal="Route one gate red explicitly and deliver"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    tester [shape=parallelogram, script="test -f {marker}"]
+    implementer [shape=parallelogram, script="touch {marker}"]
+    start -> tester
+    tester -> implementer [label="Gate red", condition="outcome=failed"]
+    tester -> exit [label="Gate green", condition="outcome=succeeded"]
+    tester -> exit [x.kind="deadlock", label="Unroutable outcome, needs a human"]
+    implementer -> exit [label="Delivered"]
+}}"#,
+        marker = marker.display()
+    )
+}
 
 /// A fresh in-memory database with every table the projection touches.
 fn pool() -> DbPool {
@@ -173,9 +210,10 @@ async fn run_and_project(graph: &str) -> fabro_types::RunProjection {
     options.echo = false;
     options.run_key = Some(RunKey::new(run_id.to_string()));
     let rt = runtime.store(store).options(options);
-    let lowered = rt
-        .check(&workflow, None, None, &CompileInputs::new())
-        .expect("the workflow file loads");
+    let lowered = match rt.check(&workflow, None, None, &CompileInputs::new()) {
+        Ok(lowered) => lowered,
+        Err(error) => panic!("the workflow file loads: {error:#}"),
+    };
     let host_run =
         HostRun::new(lowered.graph.expect("the workflow lowers")).with_children(lowered.children);
     let report = host::run_configured(&rt, host_run, |_, _| {})
@@ -184,7 +222,7 @@ async fn run_and_project(graph: &str) -> fabro_types::RunProjection {
     assert_eq!(
         report.status,
         PetriRunStatus::Success,
-        "the engine finishes success in both arms: {:?}",
+        "the engine finishes success in all three arms: {:?}",
         report.state.errors()
     );
     projector.settle(run_id).await;
@@ -257,5 +295,41 @@ async fn an_unrecovered_gate_red_still_refuses_the_green_conclusion() {
     assert!(
         conclusion.failure.is_some(),
         "the downgrade names the failure"
+    );
+}
+
+/// work#1029's routed arm: a gate red bounced over an EXPLICIT
+/// conditional edge — the tester's final visit stays failed, no repair
+/// revisits it, the run reaches exit and the engine concludes success —
+/// concludes succeeded with no failure, exactly as the engine did for
+/// run 01M5ZEWKAMMZ before the projection split it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_explicitly_routed_gate_red_concludes_succeeded() {
+    let marker = tempfile::tempdir().expect("a temp dir");
+    let stored = run_and_project(&routed_red_bounce_workflow(
+        &marker.path().join("delivered"),
+    ))
+    .await;
+
+    // No recovery: the tester's FINAL (and only) visit stays red — this
+    // is what separates the routed arm from the recovered one.
+    assert_eq!(
+        stored
+            .stage(&StageId::new("tester", 1))
+            .expect("tester@1")
+            .state,
+        StageState::Failed,
+        "the tester's final visit stays red; the explicit edge routed it onward"
+    );
+    assert!(
+        matches!(stored.status, RunStatus::Succeeded { reason } if reason == fabro_types::SuccessReason::Completed),
+        "a red routed over an explicit conditional edge ends green: {:?}",
+        stored.status
+    );
+    let conclusion = stored.conclusion.as_ref().expect("the run concluded");
+    assert!(
+        conclusion.failure.is_none(),
+        "no failure survives an explicitly routed red: {:?}",
+        conclusion.failure
     );
 }
