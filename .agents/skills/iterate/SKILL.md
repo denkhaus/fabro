@@ -358,6 +358,16 @@ stores it belongs to; reach them by phase need:
   single-probe mode is the default; a red facet gets `workbench.nu probe
   <name>` plus, for the mini legs, probe mini + a direct
   publish-bridge.nu drive.
+- BENCH CROSS-CHECK VIA ROOTPRINT (user directive 2026-10-28, urgent):
+  after every bench/probe round, query rootprint for the window's
+  WARN/ERROR (service_name:fabro-lokal for the local stack, the fabro
+  service for production laps) and reconcile the patterns against the
+  green table — green tests are only one side of the coin; the log side
+  names what the asserts never saw (the #1050 projector-replay finding
+  and the title-gen EOF flake were invisible to a green bench). Beware
+  the stale ROOTPRINT_TOKEN env override shadowing the config's gopass
+  path (#1031's close): resolve through `env -u ROOTPRINT_TOKEN` when a
+  401 PERSONAL_KEY_INVALID appears.
 - Probe rigs: workspace-relative hook/stage scripts resolve against the
   RUN TARGET checkout — land the probe on the target branch first or
   create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
