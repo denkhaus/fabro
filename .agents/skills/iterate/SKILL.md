@@ -368,6 +368,12 @@ stores it belongs to; reach them by phase need:
   the stale ROOTPRINT_TOKEN env override shadowing the config's gopass
   path (#1031's close): resolve through `env -u ROOTPRINT_TOKEN` when a
   401 PERSONAL_KEY_INVALID appears.
+- RE-ARM SEQUENCE (user directive 2026-10-29): NO general re-arm yet —
+  first work the named items (#1050 projector replay, #1043 security
+  Mediums, #1033 audit; #1055 pyyaml is the user's call), then ONE
+  manually-triggered run on the LOOP lane AND ONE on the DEVELOP lane
+  (rootprint cross-checked after each), and only then the scheduler
+  re-enable decision. Every test in between gets its rootprint query.
 - Probe rigs: workspace-relative hook/stage scripts resolve against the
   RUN TARGET checkout — land the probe on the target branch first or
   create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
