@@ -342,38 +342,34 @@ stores it belongs to; reach them by phase need:
   (`.fabro/scripts/`, `just lint-nu` for new nu scripts; prompts keep only
   the call + verdict routing). Never write and execute an edited script in
   one shell call.
-- WORKFLOW CHANGES ARE BENCH-TESTABLE (user directive 2026-10-28, sprint
-  61): every `.fabro/workflows/**` change lands with a bench surface in
-  the fabro-test repo that exercises it — a dedicated probe/scenario, or
-  an existing row that provably drives the changed asset. The cycle report
-  names the surface; a change without one files the fabro-test follow-up
-  in the same session (the #1044 pattern).
+- WORKFLOW CHANGES ARE BENCH-TESTABLE (user directive 2026-10-28): every
+  `.fabro/workflows/**` change lands with a bench surface in the fabro-test
+  repo that exercises it — a dedicated probe/scenario, or an existing row
+  that provably drives the changed asset. The cycle report names the
+  surface; a change without one files the fabro-test follow-up in the same
+  session.
 - BENCH PHILOSOPHY: TARGETED SINGLE-ASPECT PROBES THAT COMPOSE (user
-  directive 2026-10-28, sprint 62): the bench tests punktual aspects in
-  fixture twins — the REAL lane graphs are deliberately NOT bench material
-  (they need work items + LLM stages). Compose: shape x fold (probe-26),
-  environment property x fail-open arms (probe-27 gh-absent), argv grammar
-  x the toolchain CLI (probe-28). And NEVER rerun the FULL bench for one
-  facet's red (user directive 2026-10-27, re-violated 2026-10-28): the
-  single-probe mode is the default; a red facet gets `workbench.nu probe
-  <name>` plus, for the mini legs, probe mini + a direct
-  publish-bridge.nu drive.
-- BENCH CROSS-CHECK VIA ROOTPRINT (user directive 2026-10-28, urgent):
-  after every bench/probe round, query rootprint for the window's
-  WARN/ERROR (service_name:fabro-lokal for the local stack, the fabro
-  service for production laps) and reconcile the patterns against the
-  green table — green tests are only one side of the coin; the log side
-  names what the asserts never saw (the #1050 projector-replay finding
-  and the title-gen EOF flake were invisible to a green bench). Beware
-  the stale ROOTPRINT_TOKEN env override shadowing the config's gopass
-  path (#1031's close): resolve through `env -u ROOTPRINT_TOKEN` when a
-  401 PERSONAL_KEY_INVALID appears.
-- RE-ARM SEQUENCE (user directive 2026-10-29): NO general re-arm yet —
-  first work the named items (#1050 projector replay, #1043 security
-  Mediums, #1033 audit; #1055 pyyaml is the user's call), then ONE
-  manually-triggered run on the LOOP lane AND ONE on the DEVELOP lane
-  (rootprint cross-checked after each), and only then the scheduler
-  re-enable decision. Every test in between gets its rootprint query.
+  directive 2026-10-28): the bench tests punktual aspects in fixture
+  twins — the real lane graphs are deliberately NOT bench material (they
+  need work items + LLM stages). Compose aspects rather than replaying
+  whole lanes: a graph shape against its fold, an environment property
+  against the arms that depend on it, an invocation grammar against the
+  runtime CLI. And NEVER rerun the full bench for one facet's red: the
+  single-probe mode is the default; a red facet gets its targeted probe
+  plus, for integration legs, a direct manual drive of the leg's script.
+- BENCH CROSS-CHECK VIA PLATFORM LOGS (user directive 2026-10-28): after
+  every test round — bench, probe, or supervised lap — query the log
+  platform for the window's WARN/ERROR and reconcile the patterns against
+  the green table. Green tests are only one side of the coin; the log side
+  names what the asserts never saw. Query-mechanics details (service
+  filters, auth quirks) live in mulch and the rootprint skill, not here.
+- RE-ARM IS A RELIABILITY CHAIN, NEVER A DEFAULT (user directive
+  2026-10-29): a line re-arm (scheduler/automation re-enable) is the
+  user's explicit call, and it follows the same chain every time — the
+  named blocker items are landed, ONE manual supervised lap per lane has
+  run green (each log-cross-checked), and only then the user decides. The
+  concrete item list of the moment lives in the tracker/handoff, never in
+  this skill.
 - Probe rigs: workspace-relative hook/stage scripts resolve against the
   RUN TARGET checkout — land the probe on the target branch first or
   create with `--target OWNER/REPO@<probe-branch>`. Nu verify scripts get
@@ -692,7 +688,11 @@ stores it belongs to; reach them by phase need:
    pattern|decision|reference|guide>` — type is required, failures also
    need `--description` and `--resolution`; then `ml sync` — real
    insights only); durable preferences to memory. No finding stays
-   unrecorded.
+   unrecorded. A skill edit carries the ABSTRACT RULE only (user
+   directive 2026-10-29): session state, live item numbers, and incident
+   debugging detail belong in the ledger note, the tracker, or mulch —
+   never here. A skill full of stale session specifics erodes trust in
+   every other line (this file describes the dev cycle, generally).
 2. New demands become seeds (`seeds create`), searched-first for
    duplicates. Ownership per ADR-0018: unassigned by default; `@fabro`
    only as a proposal for clearly-line work; design forks and
