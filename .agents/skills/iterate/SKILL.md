@@ -161,6 +161,14 @@ stores it belongs to; reach them by phase need:
 - Pick the highest-value open seed respecting family order (ADR-0009:
   900e -> 47b5 -> e47c -> e804 -> ba96), blockers (`!`), and the user's
   focus.
+- Sprint composition (user directive 2026-10-29): a sprint carries TWO
+  to THREE work items, selected together in this phase — the count
+  scales with the items' scope and the sprint's diff (one large
+  multi-file item may fill the sprint; three small ones may share it).
+  A one-item sprint makes the per-sprint code review overkill: the
+  review cost is per sprint, so batches amortize it. Grill each item's
+  design on its own; work the batch sequentially, closing each item
+  with its own evidence.
 - EVERY decision point is grilled BEFORE implementation (user directive
   2026-10-12, Grundsatz-review; procedure directive 2026-10-18: run the
   ACTUAL grill-with-docs skill, never an ad-hoc single-shot presentation):
@@ -384,7 +392,11 @@ stores it belongs to; reach them by phase need:
 
 - Run the code-review skill on the diff since the base point (standards
   axis = rust-style-guide + strategy docs; spec axis). Freeze the diff to
-  a patch file first; both axes review the frozen snapshot.
+  a patch file first; both axes review the frozen snapshot. ONE review
+  per sprint, which batches 2-3 items (2026-10-29): it covers the
+  batch's whole accumulated diff since the previous sprint's tip, not
+  each item separately — per-item discipline (language gate, batteries,
+  verification commands) still runs at every close.
 - Language gate (ADR-0033): every reviewed artifact is English — docs,
   comments, workflow prompts, seed notes, commit messages, PR bodies. A
   German paragraph or a mixed-language file in the diff is a FINDING,
@@ -704,9 +716,12 @@ stores it belongs to; reach them by phase need:
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
    a one-line @fabro recommendation. Categorize every revisor seed.
 5. Sprint ledger update (session-LOCAL): counting rule
-  (user directive 2026-10-02 evening): ONLY closures this session worked
-  LOCALLY with a substantive diff count 1 sprint; docs-only, row-only,
-  and verify-only closures count 0. LINE closures (loop lane, delegated
+  (user directives 2026-10-02 evening, amended 2026-10-29): a SPRINT is
+  one batch of 2-3 work items (Phase 1 composition) and counts ONCE when
+  it closes at least one item this session worked LOCALLY with a
+  substantive diff — the batch's other closures ride the same sprint, they
+  do not each increment the counter. Docs-only, row-only, and verify-only
+  closures never increment. LINE closures (loop lane, delegated
   develop runs) NEVER count — the line is not inside a sprint. Historical
   note: the bootstrap-era count of 3 includes develop-lane closures under
   the superseded lane-blind rule; kept as history, not recounted.
