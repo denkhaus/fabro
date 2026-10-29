@@ -532,15 +532,20 @@ digraph Develop {
     implementer -> tester   [label="Implemented"]
 
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
-    // Structural gate-guard (fabro-6baf): third consecutive red routes to
-    // the human instead of another implementer round. UNCONDITIONAL by
-    // engine requirement (attractor.all_conditional_edges: every node
-    // needs one fallback edge) AND by design — it doubles as the
-    // impossible-state guard: every reachable tester outcome matches an
-    // explicit edge (succeeded -> evidence, failed -> Gate red,
-    // generation >= 3 -> deadlock), so the fallback only fires for
-    // outcomes no explicit edge covers, routing them to the human
-    // instead of looping.
+    // Structural gate-guard (fabro-6baf, restored denkhaus/work#1057):
+    // the third consecutive red routes to the human instead of another
+    // implementer round — the bounce below excludes generation >= 2, so
+    // the third red matches no conditional edge and lands here on the
+    // UNCONDITIONAL fallback the engine requires
+    // (attractor.all_conditional_edges), which also catches unroutable
+    // outcomes (skipped, partial) the same way. #1029's fallback
+    // resolution had silently dropped the generation guard: conditions
+    // outrank unconditional edges, so a bare outcome=failed bounce
+    // swallowed every red including the third. The cap sits at 2, not
+    // 3: the circuit breaker (loop_restart_signature_limit=3) cuts the
+    // third loop signature workflow_error BEFORE a >= 3 guard can fire
+    // (probe-30, bench repo, run 01M636T77HA3QSKK4F6G93AQFV — two
+    // bounces then workflow_error at the third red).
     tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds or unroutable outcome, needs a human)"]
     // fabro-56f4 / ADR-0032 phase 3: the red bounce re-enters the
     // implementer directly; the known-bug lookup is the implementer's
@@ -551,8 +556,11 @@ digraph Develop {
     // this exact completed run to failed/workflow_error while the
     // engine concluded success — status split, publish skipped, work
     // salvaged by hand. The bounce is deliberate control flow and must
-    // declare itself.
-    tester -> implementer [label="Gate red", condition="outcome=failed"]
+    // declare itself. The generation cap (work#1057) keeps the guard
+    // above reachable: a red at generation >= 2 matches no conditional
+    // edge and exits to the human instead of another round (`&&`
+    // composition as on the reviewer's Verification-blocked edge).
+    tester -> implementer [label="Gate red", condition="outcome=failed && nodes.tester.generation < 2"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     // Explicit outcome condition: an unconditional fallback edge makes the

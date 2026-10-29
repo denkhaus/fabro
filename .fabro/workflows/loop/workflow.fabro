@@ -256,11 +256,15 @@ digraph Loop {
     implementer -> tester   [label="Implemented"]
 
     tester -> evidence    [label="Gate green", condition="outcome=succeeded"]
-    // UNCONDITIONAL by engine requirement (attractor.all_conditional_edges)
-    // AND by design: every reachable tester outcome matches an explicit
-    // edge (succeeded -> evidence, failed -> Gate red, generation >= 3 ->
-    // deadlock), so this fallback only fires for unroutable outcomes,
-    // routing them to the human instead of looping.
+    // Structural gate-guard (fabro-6baf, restored denkhaus/work#1057):
+    // the third consecutive red routes to the human — the bounce below
+    // excludes generation >= 2 (cap 2, not 3: the circuit breaker cuts
+    // the third loop signature before a >= 3 guard fires — probe-30),
+    // so the third red matches no conditional edge and lands here on
+    // the UNCONDITIONAL fallback the engine requires
+    // (attractor.all_conditional_edges), which also catches unroutable
+    // outcomes the same way. #1029's fallback resolution had silently
+    // dropped the generation guard.
     tester -> exit [x.kind="deadlock", label="Gate deadlock (3 reds or unroutable outcome, needs a human)"]
     // No gatebounce node in the loop lane: the implementer reads the
     // tester stage section directly (preamble keeps tester) and the
@@ -269,8 +273,11 @@ digraph Loop {
     // unconditional bounce edge made the b00c fake-green fold downgrade
     // a completed develop run to failed/workflow_error while the engine
     // concluded success — status split, publish skipped. The bounce is
-    // deliberate control flow and must declare itself.
-    tester -> implementer [label="Gate red", condition="outcome=failed"]
+    // deliberate control flow and must declare itself. The generation
+    // cap (work#1057) keeps the deadlock guard above reachable: a red at
+    // generation >= 2 matches no conditional edge and exits to the human
+    // (`&&` composition as on the reviewer's Verification-blocked edge).
+    tester -> implementer [label="Gate red", condition="outcome=failed && nodes.tester.generation < 2"]
 
     evidence -> reviewer [label="Evidence ready", condition="outcome=succeeded"]
     evidence -> exit [x.kind="soft", label="Capture failed (next run re-enters)"]

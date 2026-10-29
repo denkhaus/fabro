@@ -139,9 +139,32 @@ def main [] {
     # unconditional bounce makes the b00c fake-green fold downgrade a
     # completed run to failed/workflow_error while the engine said
     # success (run 01M5ZEWKAMMZ: status split, publish path skipped,
-    # work salvaged by hand).
-    if not ($lines | any {|l| ($l | str contains 'tester -> implementer') and ($l | str contains 'Gate red') and ($l | str contains 'condition="outcome=failed"')}) {
-        fail 'tester -> implementer ("Gate red") must carry condition="outcome=failed" — an unconditional bounce edge re-splits engine success from the platform record (work#1029, the b00c fold)'
+    # work salvaged by hand). The generation cap (work#1057) keeps the
+    # 3-reds deadlock guard reachable: without it the bounce conditional
+    # outranks the unconditional fallback and swallows the third red too
+    # (the fabro-6baf regression).
+    # One binding, one truth: the condition literal serves the predicate
+    # and the fail message (a copy drifted once already — the review
+    # caught >= 3 prose beside a < 2 condition, work#1057).
+    let gate_red_cond = 'condition="outcome=failed && nodes.tester.generation < 2"'
+    if not ($lines | any {|l| ($l | str contains 'tester -> implementer') and ($l | str contains 'Gate red') and ($l | str contains $gate_red_cond)}) {
+        fail $"tester -> implementer Gate red must carry ($gate_red_cond) — an unconditional bounce re-splits engine success from the platform record (work#1029), and a bounce without the generation cap retires the 3-reds human guard (work#1057)"
+    }
+    # The fallback's own contracts (work#1057): EXACTLY one tester -> exit
+    # edge (a second plain route breaks fabro-843d sole_exit_route and
+    # leaves the deadlock finish unclassified — probe-30 drive 2), it
+    # carries x.kind="deadlock", and it stays UNCONDITIONAL (the third
+    # red and unroutable outcomes fall through to it).
+    let tester_exits = ($lines | where {|l| ($l | str contains 'tester -> exit')})
+    if (($tester_exits | length) != 1) {
+        fail $"tester must have exactly ONE edge to exit, found ($tester_exits | length) — a second plain exit route breaks the sole-exit-route classification; probe-30 drive 2 landed succeeded, work#1057"
+    }
+    let exit_line = ($tester_exits | first)
+    if not ($exit_line | str contains 'x.kind="deadlock"') {
+        fail 'the tester -> exit fallback must carry x.kind="deadlock" — without it the third red exits unclassified (work#1057)'
+    }
+    if ($exit_line | str contains 'condition=') {
+        fail 'the tester deadlock fallback must stay UNCONDITIONAL — a condition on it would leave the third red and unroutable outcomes with no edge (work#1057)'
     }
 
     print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout files and closes through the channel'
