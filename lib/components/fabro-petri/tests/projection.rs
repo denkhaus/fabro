@@ -40,7 +40,7 @@ use petri_runtime::RunOptions;
 use petri_runtime::executor::Retention;
 use petri_runtime::frontend::CompileInputs;
 use petri_runtime::ir::RunStatus as PetriRunStatus;
-use petri_store::{RunKey, RunStore};
+use petri_store::{Access, OwnerId, RunKey, RunStore};
 use tokio::fs;
 use tokio::time::sleep;
 
@@ -990,6 +990,38 @@ async fn a_torn_tail_holds_the_view_and_reports_the_run_incomplete() {
         json(&before),
         json(&after),
         "the projection stands where it was"
+    );
+}
+
+/// A run exists the way the platform creates it — its platform records are
+/// committed and Petri's run row is leased — while no worker has begun and
+/// no coordinator record exists. The first pass over that create-to-start
+/// window folds the platform side and reports the run as merely unfinished,
+/// not as a replay failure (denkhaus/work#1050: the fresh replay's error
+/// over the empty coordinator log became a warn on every run and a false
+/// health reason in the stored view).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pass_over_a_run_that_has_not_started_reports_it_unfinished_not_broken() {
+    let scenario = command_scenario().await;
+    let store = SqliteRunStore::new(scenario.pool.clone());
+    let key = RunKey::new(scenario.run_id.to_string());
+    drop(
+        store
+            .open(&key, Access::Create {
+                owner: OwnerId::new("worker"),
+            })
+            .await
+            .expect("the run's Petri row is created"),
+    );
+
+    let projector = Projector::new(scenario.pool.clone(), scenario.pool.clone());
+    let report = committed_pass(&projector, scenario.run_id).await;
+    assert!(!report.skipped, "the platform records fold");
+    assert!(!report.health.complete, "an unfinished run is not complete");
+    assert_eq!(
+        report.health.incomplete,
+        ["the run has not recorded its finish".to_string()],
+        "the create-to-start window is not a replay failure"
     );
 }
 
