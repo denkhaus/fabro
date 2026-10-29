@@ -300,9 +300,9 @@ async fn an_unrecovered_gate_red_still_refuses_the_green_conclusion() {
 
 /// work#1029's routed arm: a gate red bounced over an EXPLICIT
 /// conditional edge — the tester's final visit stays failed, no repair
-/// revisits it, the run reaches exit and the engine concludes success —
-/// concludes succeeded with no failure, exactly as the engine did for
-/// run 01M5ZEWKAMMZ before the projection split it.
+/// revisits it, the run reaches exit and the engine concludes succeeded
+/// with no failure, exactly as the engine did for run 01M5ZEWKAMMZ
+/// before the projection split it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_explicitly_routed_gate_red_concludes_succeeded() {
     let marker = tempfile::tempdir().expect("a temp dir");

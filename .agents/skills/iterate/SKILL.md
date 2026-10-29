@@ -349,7 +349,7 @@ stores it belongs to; reach them by phase need:
   surface; a change without one files the fabro-test follow-up in the same
   session.
 - BENCH PHILOSOPHY: TARGETED SINGLE-ASPECT PROBES THAT COMPOSE (user
-  directive 2026-10-28): the bench tests punktual aspects in fixture
+  directive 2026-10-28): the bench tests targeted single aspects in fixture
   twins — the real lane graphs are deliberately NOT bench material (they
   need work items + LLM stages). Compose aspects rather than replaying
   whole lanes: a graph shape against its fold, an environment property
