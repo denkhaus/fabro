@@ -34,10 +34,12 @@
   `/run/fabro` (a directory bind survives a crash-rest re-bind) plus
   `FABRO_SERVER=/run/fabro/channel.sock`, Host gains the env only,
   Daytona stays honestly absent, and NO bearer material ever enters
-  the sandbox env (the only channel value that crosses to the sandbox
-  is `FABRO_RUN_CHANNEL_SOCK`, and it carries the socket PATH, never a
-  token; the run's worker token is minted server-side and stamped
-  internally — no secret value crosses the process boundary). Evidence: five inline
+  the sandbox env (the channel values that cross to the sandbox are
+  the socket PATH and, since the work#1043 amendment below, the
+  per-run HANDSHAKE token — an opaque transport credential that never
+  authorizes on its own; the run's worker bearer is minted server-side
+  and stamped internally — no bearer value crosses the process
+  boundary). Evidence: five inline
   mount pins (Docker env+bind, binds append, Host, Daytona,
   no-bearer), the production-spawn IT (layout, health, kill switch,
   env override, awaited stale stop before respawn) and the CLI
@@ -162,7 +164,7 @@ parity principle assumes away by isolation).
 
 Each spawn therefore mints a per-run HANDSHAKE token
 (`FABRO_RUN_CHANNEL_TOKEN`, hex, transport credential only): the serve
-refuses any client whose first message does not carry it on
+refuses any client whose request does not carry it on
 `x-fabro-run-channel-token`, and the token enters ONLY the owning run's
 environment — the worker's launch spec and the sandbox mount alike (a
 remote sandbox that cannot reach the socket gains neither). The worker

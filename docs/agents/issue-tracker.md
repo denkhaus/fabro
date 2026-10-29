@@ -57,6 +57,11 @@ migrated items keep a `seeds:fabro-xxxx` label as their legacy anchor
   mechanism still exists and no landed work covers the demand. Never
   bulk-assign the migration-era pool; the backlog relevance pass
   closes the dead items and keeps only the hand-checked ones.
+- **Lanes hold tranches, not pools** (user directive 2026-10-29): at
+  most five hand-picked items per lane, selected for the current
+  situation under the vetted-admission rule; when a tranche is worked
+  through, a new one is selected and assigned — the same selection
+  discipline as the sprint batch. The backlog lives unlaned.
 - **Read**: `list --project fabro [--lane develop] [--limit N]
   [--query text]` (list is open-only; `--query` is the road to closed
   items) · `show --project fabro <selector>` (head + body verbatim;

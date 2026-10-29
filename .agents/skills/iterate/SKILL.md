@@ -163,12 +163,19 @@ stores it belongs to; reach them by phase need:
   focus.
 - Sprint composition (user directive 2026-10-29): a sprint carries TWO
   to THREE work items, selected together in this phase — the count
-  scales with the items' scope and the sprint's diff (one large
-  multi-file item may fill the sprint; three small ones may share it).
-  A one-item sprint makes the per-sprint code review overkill: the
-  review cost is per sprint, so batches amortize it. Grill each item's
-  design on its own; work the batch sequentially, closing each item
-  with its own evidence.
+  scales down with the items' scope (a large item shares the sprint
+  with at most one small companion; never a one-item sprint, whose
+  review is pure overhead). The review cost is per sprint, so batches
+  amortize it. Grill each item's design on its own; work the batch
+  sequentially, closing each item with its own evidence.
+- Lane tranches (user directive 2026-10-29): the lanes hold AT MOST
+  FIVE work items each — a hand-picked tranche selected for the
+  CURRENT situation under the same discipline as the sprint batch
+  (relevance-vetted per the lane-admission rule, family order,
+  blockers, user focus; the user hand-picks with the session). When a
+  tranche is worked through, select and assign the NEXT one; never
+  backfill a lane wholesale from the backlog. The backlog lives
+  unlaned; a lane is a tranche, not a pool.
 - EVERY decision point is grilled BEFORE implementation (user directive
   2026-10-12, Grundsatz-review; procedure directive 2026-10-18: run the
   ACTUAL grill-with-docs skill, never an ad-hoc single-shot presentation):
