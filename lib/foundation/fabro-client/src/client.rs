@@ -2841,6 +2841,9 @@ fn connect_target_transport(
         Some(token) => apply_bearer_token_auth(builder, token)?,
         None => builder,
     };
+    // The channel handshake rides every UDS client (work#1043) — one
+    // attach site in fabro-http, so no client can drift out of it.
+    let builder = fabro_http::with_run_channel_handshake(builder);
     let http_client = builder.build()?;
     Ok((http_client, "http://fabro".to_string()))
 }

@@ -4077,9 +4077,9 @@ fn worker_launch_spec(
     mode: RunExecutionMode,
     run_dir: &std::path::Path,
     agent_fabro_tools_enabled: bool,
-    github_app_private_key: Option<String>,
     hook_assets: Option<std::path::PathBuf>,
     run_channel_socket: Option<std::path::PathBuf>,
+    run_channel_token: Option<String>,
 ) -> anyhow::Result<WorkerLaunchSpec> {
     let current_exe = std::env::current_exe().context("reading current executable path")?;
     let executable =
@@ -4117,13 +4117,15 @@ fn worker_launch_spec(
         log_destination,
         fabro_log,
         active_config_path: state.active_config_path().to_path_buf(),
-        github_app_private_key,
         fabro_home: fabro_config::Home::from_env().root().to_path_buf(),
         hook_assets,
         // The capability channel (ADR-0035): the caller spawned it in
         // the async launch context before building this spec, so the
         // socket exists ahead of the first sandbox spec.
         run_channel_socket,
+        // Its handshake half (work#1043 finding 1): the serve refuses
+        // any client that cannot present this from the run's env.
+        run_channel_token,
     })
 }
 
@@ -4467,22 +4469,11 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
         return;
     }
 
-    // The worker reads the Daytona key from the vault itself; only the
-    // GitHub App key crosses on its command.
-    let github_app_private_key = match state.vault_secret(EnvVars::GITHUB_APP_PRIVATE_KEY).await {
-        Ok(value) => value,
-        Err(err) => {
-            fail_run_before_execution(
-                &state,
-                run_id,
-                FailureReason::WorkflowError,
-                "Loading worker secrets failed".to_string(),
-            )
-            .await;
-            tracing::error!(run_id = %run_id, error = ?err, "Loading worker secrets failed");
-            return;
-        }
-    };
+    // The worker reads its integration keys (Daytona, GitHub App) from
+    // the vault itself at consumption time — nothing authority-bearing
+    // crosses on its command anymore (work#1043 finding 2: the GitHub
+    // App PEM had no worker consumer; the allowlist already excludes it
+    // and spawn_env's leak test pins that).
     // Hook-declared files stage host-side before the worker launches, so a
     // `sandbox = false` hook executes them from FABRO_HOOK_ASSETS instead
     // of embedding their bytes in the hook command.
@@ -4504,8 +4495,13 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
     let run_dir_for_build = run_dir.clone();
     // The capability channel (ADR-0035): spawned HERE — in the async
     // launch context, before the worker can build its first sandbox
-    // spec — and handed to the worker as its socket path.
-    let run_channel_socket = run_channel::spawn_for_run(&state, run_id).await;
+    // spec — and handed to the worker as its socket path plus the
+    // handshake token its env must carry (work#1043 finding 1).
+    let (run_channel_socket, run_channel_token) = run_channel::spawn_for_run(&state, run_id)
+        .await
+        .map_or((None, None), |endpoint| {
+            (Some(endpoint.socket), Some(endpoint.token))
+        });
     let start_result = spawn_blocking(move || {
         worker_launch_spec(
             &state_for_build,
@@ -4513,9 +4509,9 @@ async fn execute_run_subprocess(state: Arc<AppState>, run_id: RunId) {
             execution_mode,
             &run_dir_for_build,
             agent_fabro_tools_enabled,
-            github_app_private_key,
             hook_assets,
             run_channel_socket,
+            run_channel_token,
         )
     })
     .await

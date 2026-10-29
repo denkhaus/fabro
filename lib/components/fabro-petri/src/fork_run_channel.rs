@@ -25,11 +25,15 @@
 //! ([`crate::fork_stage_env`]): the engine's value OVERRIDES any
 //! caller-supplied `FABRO_SERVER`, never trusts one.
 //!
-//! Per-run isolation is the security boundary: each mount names only
-//! its own run's directory, because a process reaching ANOTHER run's
-//! socket would be served under that run's principal (ADR-0035's
-//! principal-confusion case). The unit pins below prove the per-run
-//! paths; the in-container proof (real sibling containers, cross-run
+//! Per-run isolation is the security boundary, held by TWO facts
+//! (denkhaus/work#1043 finding 1): each mount names only its own run's
+//! directory AND carries that run's per-spawn HANDSHAKE token in its
+//! env — on the host provider every run shares the uid, so the path
+//! alone would let a sibling open ANOTHER run's socket and be served
+//! under that run's principal (ADR-0035's principal-confusion case;
+//! the serve refuses a client that cannot present the token). The unit
+//! pins below prove the per-run paths and the token carriage; the
+//! in-container proof (real sibling containers, cross-run
 //! reachability) is denkhaus/work#1010.
 //!
 //! This file is fork-owned (new file, `fork_` prefix): an upstream
@@ -60,14 +64,20 @@ pub const CHANNEL_SOCKET_FILE: &str = "channel.sock";
 #[derive(Clone, Debug)]
 pub struct RunChannelMount {
     host_socket: PathBuf,
+    /// The run's per-spawn handshake token (work#1043 finding 1): hex,
+    /// injected into the sandbox env ONLY for docker and host kinds —
+    /// the serve refuses any client that cannot present it.
+    token:       String,
 }
 
 impl RunChannelMount {
-    /// A mount for a channel socket served at `host_socket`.
+    /// A mount for a channel socket served at `host_socket`, guarded by
+    /// the handshake `token` the owning run's env must carry.
     #[must_use]
-    pub fn new(host_socket: impl Into<PathBuf>) -> Self {
+    pub fn new(host_socket: impl Into<PathBuf>, token: impl Into<String>) -> Self {
         Self {
             host_socket: host_socket.into(),
+            token:       token.into(),
         }
     }
 
@@ -101,18 +111,31 @@ impl RunChannelMount {
                     fabro_static::EnvVars::FABRO_SERVER.to_owned(),
                     CONTAINER_CHANNEL_SOCKET.to_owned(),
                 );
+                self.push_token(spec);
             }
             "host" => {
                 spec.env.insert(
                     fabro_static::EnvVars::FABRO_SERVER.to_owned(),
                     self.host_socket.to_string_lossy().into_owned(),
                 );
+                self.push_token(spec);
             }
             // Remote providers (Daytona) have no filesystem path to
             // the socket: no bind, no env — the channel stays absent
-            // rather than pretending to reach it.
+            // rather than pretending to reach it (the handshake token
+            // is channel material too: it goes where the channel does).
             _ => {}
         }
+    }
+
+    /// The handshake credential the serve requires (work#1043): only
+    /// kinds that gain the channel gain the token — never a remote
+    /// sandbox that cannot reach the socket.
+    fn push_token(&self, spec: &mut SandboxSpec) {
+        spec.env.insert(
+            fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN.to_owned(),
+            self.token.clone(),
+        );
     }
 
     /// Append the per-run directory bind to the Docker provider
@@ -154,8 +177,16 @@ mod tests {
         CHANNEL_SOCKET_FILE, CONTAINER_CHANNEL_DIR, CONTAINER_CHANNEL_SOCKET, RunChannelMount,
     };
 
+    /// Hex of 32 random bytes: the shape a handshake token has in
+    /// production (work#1043) — structurally incapable of looking like
+    /// a JWT or a bearer.
+    const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
     fn mount() -> RunChannelMount {
-        RunChannelMount::new(format!("/tmp/run-channels/run_1/{CHANNEL_SOCKET_FILE}"))
+        RunChannelMount::new(
+            format!("/tmp/run-channels/run_1/{CHANNEL_SOCKET_FILE}"),
+            TOKEN,
+        )
     }
 
     fn spec_with_env() -> sandbox_driver::SandboxSpec {
@@ -249,29 +280,59 @@ mod tests {
         assert!(spec.provider_config.is_null());
     }
 
-    /// The ADR-0035 acceptance half the mount owns: the sandbox env
-    /// gains the ADDRESS and nothing else — no bearer, no token, no
-    /// Authorization anywhere (the worker token never leaves the
-    /// server process; the connection is the authority).
+    /// The ADR-0035 acceptance half the mount owns, as amended by
+    /// work#1043: the sandbox env gains the ADDRESS and the OWNING
+    /// run's HANDSHAKE token — and nothing else. No bearer, no JWT, no
+    /// Authorization anywhere: the worker bearer never leaves the
+    /// server process; the handshake token is opaque hex, the
+    /// connection alone is no authority on the host provider.
     #[test]
-    fn the_mount_injects_no_bearer_material() {
+    fn the_mount_injects_address_and_handshake_only() {
         for kind in ["docker", "host"] {
             let mut spec = spec_with_env();
             mount().apply(kind, &mut spec);
 
             assert_eq!(
                 spec.env.len(),
-                1,
-                "{kind}: exactly FABRO_SERVER is injected, got {:?}",
+                2,
+                "{kind}: exactly FABRO_SERVER and the handshake token, got {:?}",
                 spec.env.keys().collect::<Vec<_>>()
             );
             assert!(spec.env.contains_key("FABRO_SERVER"));
+            let token = spec
+                .env
+                .get(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN)
+                .unwrap_or_else(|| panic!("{kind}: the handshake token is injected"));
+            assert_eq!(token, TOKEN, "{kind}: the owning run's own token");
+            // JWT/bearer shape is checked on the TOKEN alone — the
+            // FABRO_SERVER value is a path and may contain dots.
+            assert!(
+                !token.contains('.') && !token.contains("eyJ") && !token.contains("Bearer"),
+                "{kind}: the handshake token is opaque, never bearer-shaped"
+            );
             for value in spec.env.values() {
                 assert!(
                     !value.contains("eyJ") && !value.contains("Bearer"),
-                    "{kind}: no token material in the sandbox env"
+                    "{kind}: no bearer or JWT material in the sandbox env"
                 );
             }
         }
+    }
+
+    /// Remote sandboxes stay channel-free — including the token: a
+    /// value that cannot reach the socket must not travel to where it
+    /// cannot be used (work#1043: the token goes where the channel
+    /// does).
+    #[test]
+    fn the_remote_kind_gains_no_token() {
+        let mut spec = spec_with_env();
+        mount().apply("daytona", &mut spec);
+
+        assert!(
+            !spec
+                .env
+                .contains_key(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN),
+            "a remote sandbox carries no channel handshake"
+        );
     }
 }

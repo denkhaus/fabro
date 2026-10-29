@@ -233,6 +233,7 @@ fn connect_cli_target_transport(
         Some(token) => apply_bearer_token_auth(builder, token)?,
         None => builder,
     };
+    let builder = fabro_http::with_run_channel_handshake(builder);
     let http_client = builder
         .build()
         .context("Failed to build Unix-socket HTTP client for fabro server")?;
@@ -265,6 +266,7 @@ fn build_authed_unix_socket_http_client(
     } else {
         builder
     };
+    let builder = fabro_http::with_run_channel_handshake(builder);
 
     builder
         .build()
@@ -272,9 +274,10 @@ fn build_authed_unix_socket_http_client(
 }
 
 fn build_unix_socket_probe_client(path: &Path) -> Result<fabro_http::HttpClient> {
-    cli_http_client_builder()
-        .unix_socket(path)
-        .no_proxy()
+    // The probe MUST carry the handshake too (work#1043): the serve
+    // answers its readiness check 403 without the token, and a 403
+    // would read as "no server" and trigger a doomed auto-start.
+    fabro_http::with_run_channel_handshake(cli_http_client_builder().unix_socket(path).no_proxy())
         .build()
         .context("Failed to build Unix-socket HTTP client for fabro server")
 }

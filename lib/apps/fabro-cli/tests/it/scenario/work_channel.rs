@@ -1,9 +1,10 @@
 //! The ADR-0035 acceptance (denkhaus/work#989): the compiled `fabro`
 //! binary — the process shape a sandbox runs — reaches the engine ONLY
 //! through the run's capability channel socket. The child gets
-//! `FABRO_SERVER=<socket path>` and NOTHING else: no token, no
-//! Authorization, exactly the env a sandbox-side stage script would
-//! see through the mount.
+//! `FABRO_SERVER=<socket path>` and the run's HANDSHAKE token
+//! (`FABRO_RUN_CHANNEL_TOKEN`, work#1043 — exactly what the mount
+//! gives a sandbox-side stage script) and NOTHING else: no bearer, no
+//! Authorization — the server stamps those itself.
 //!
 //! The server half runs in this test process (test-support AppState,
 //! production `spawn_for_run`), the CLI half in the child — two
@@ -225,13 +226,20 @@ async fn seed_foreign_claim(state: &Arc<AppState>, foreign_run: &RunId) {
 }
 
 /// Run the compiled CLI against the channel socket — the sandbox's
-/// environment: the socket path, the upgrade-check suppression, and
+/// environment: the socket path, the run's handshake token (work#1043:
+/// the serve refuses without it), the upgrade-check suppression, and
 /// nothing that could authenticate a request by itself.
-fn cli_over_channel(socket: &std::path::Path, args: &[&str], stdin_body: Option<&str>) -> Output {
+fn cli_over_channel(
+    socket: &std::path::Path,
+    token: &str,
+    args: &[&str],
+    stdin_body: Option<&str>,
+) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_fabro"));
     command
         .args(args)
         .env("FABRO_SERVER", socket)
+        .env(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN, token)
         .env("FABRO_NO_UPGRADE_CHECK", "true")
         .env_remove("FABRO_RUN_CHANNEL_SOCK")
         .stdout(Stdio::piped())
@@ -274,13 +282,18 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     seed_project(&state, "fabro", "denkhaus/fabro").await;
     seed_project(&state, "other", "denkhaus/unrelated").await;
     let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
-    let socket = spawn_for_run_for_test(&state, run_id)
+    let (socket, token) = spawn_for_run_for_test(&state, run_id)
         .await
         .expect("the run's channel spawns");
     grant_own_claim(&state, &run_id).await;
 
     // list: the fixture item renders, exit 0, no token anywhere
-    let list = cli_over_channel(&socket, &["work", "list", "--project", "fabro"], None);
+    let list = cli_over_channel(
+        &socket,
+        &token,
+        &["work", "list", "--project", "fabro"],
+        None,
+    );
     assert!(
         list.status.success(),
         "work list through the channel: {}",
@@ -297,6 +310,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     // any label and walk past the first 100 items.
     let labeled = cli_over_channel(
         &socket,
+        &token,
         &[
             "work",
             "list",
@@ -324,6 +338,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     // show: the bare number resolves against the project and renders
     let show = cli_over_channel(
         &socket,
+        &token,
         &["work", "show", "denkhaus/work#1", "--project", "fabro"],
         None,
     );
@@ -341,6 +356,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     // create: the draft travels over the socket and the new key returns
     let create = cli_over_channel(
         &socket,
+        &token,
         &[
             "work",
             "create",
@@ -367,6 +383,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     // close: the run's own claim, closed through the channel
     let close = cli_over_channel(
         &socket,
+        &token,
         &[
             "work",
             "close",
@@ -386,7 +403,12 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
 
     // beyond scope: another project than the run's target repository —
     // the worker principal is project-bound and is refused server-side.
-    let refusal = cli_over_channel(&socket, &["work", "list", "--project", "other"], None);
+    let refusal = cli_over_channel(
+        &socket,
+        &token,
+        &["work", "list", "--project", "other"],
+        None,
+    );
     assert!(
         !refusal.status.success(),
         "a foreign project is refused for the channel's principal"
@@ -404,6 +426,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     seed_foreign_claim(&state, &RunId::new()).await;
     let close_refusal = cli_over_channel(
         &socket,
+        &token,
         &[
             "work",
             "close",

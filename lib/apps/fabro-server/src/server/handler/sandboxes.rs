@@ -8,7 +8,7 @@ use fabro_types::{SandboxInfo, SandboxListResponse, SandboxProviderKind};
 
 use super::super::AppState;
 use crate::error::ApiError;
-use crate::principal_middleware::RequiredRunManagementActor;
+use crate::principal_middleware::RequiredUser;
 use crate::sandbox_access::SandboxLookupError;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
@@ -17,9 +17,13 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/sandboxes/{id}", get(retrieve_sandbox))
 }
 
+// User-only (denkhaus/work#1043 finding 3): the inventory lists EVERY
+// run's sandbox metadata, and no worker-side caller exists — a worker
+// principal must not read cross-run ids and states. A future real
+// worker need gets a run-scoped route, not this one.
 async fn list_sandboxes(
     State(state): State<Arc<AppState>>,
-    _auth: RequiredRunManagementActor,
+    _auth: RequiredUser,
 ) -> Json<SandboxListResponse> {
     Json(state.sandbox_inventory().list_managed().await)
 }
@@ -27,7 +31,7 @@ async fn list_sandboxes(
 async fn retrieve_sandbox(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    _auth: RequiredRunManagementActor,
+    _auth: RequiredUser,
 ) -> Result<Json<SandboxInfo>, ApiError> {
     state
         .sandbox_inventory()

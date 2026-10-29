@@ -506,11 +506,16 @@ fn build_health_client(bind: &Bind) -> Result<(String, fabro_http::HttpClient)> 
             {
                 Ok((
                     "http://fabro".to_string(),
-                    fabro_http::HttpClientBuilder::new()
-                        .unix_socket(path)
-                        .no_proxy()
-                        .timeout(SERVER_START_HEALTH_PROBE_TIMEOUT)
-                        .build()?,
+                    // The handshake rides the health probe as well
+                    // (work#1043): without it the guard answers 403
+                    // and a healthy server would read as broken.
+                    fabro_http::with_run_channel_handshake(
+                        fabro_http::HttpClientBuilder::new()
+                            .unix_socket(path)
+                            .no_proxy()
+                            .timeout(SERVER_START_HEALTH_PROBE_TIMEOUT),
+                    )
+                    .build()?,
                 ))
             }
             #[cfg(not(unix))]

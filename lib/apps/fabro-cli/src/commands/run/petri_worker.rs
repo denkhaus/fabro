@@ -644,12 +644,27 @@ async fn runtime_spec(
     let hook_secrets: Option<Arc<dyn HookSecretProvider>> =
         Some(Arc::new(VaultSecrets::from_vault(&*vault.read().await)));
     // The capability channel (ADR-0035): the server spawned this run's
-    // socket at launch and passed its path in the worker environment;
-    // the mount rides every sandbox spec the runtime creates.
-    let run_channel = crate::process_env_var(EnvVars::FABRO_RUN_CHANNEL_SOCK)
-        .filter(|value| !value.trim().is_empty())
-        .map(RunChannelMount::new)
-        .map(Arc::new);
+    // socket at launch and passed its path AND handshake token in the
+    // worker environment; the mount rides every sandbox spec the
+    // runtime creates. A socket without its token mounts NOTHING —
+    // the serve refuses every client that cannot present the token
+    // (work#1043), so a channel that could never authenticate stays
+    // absent rather than pretending (the remote-provider discipline).
+    let channel_socket = crate::process_env_var(EnvVars::FABRO_RUN_CHANNEL_SOCK)
+        .filter(|value| !value.trim().is_empty());
+    let channel_token = crate::process_env_var(EnvVars::FABRO_RUN_CHANNEL_TOKEN)
+        .filter(|value| !value.trim().is_empty());
+    let run_channel = match (channel_socket, channel_token) {
+        (Some(socket), Some(token)) => Some(Arc::new(RunChannelMount::new(socket, token))),
+        (Some(socket), None) => {
+            warn!(
+                socket = %socket,
+                "run channel socket without its handshake token; no channel mounts (work#1043)"
+            );
+            None
+        }
+        (None, _) => None,
+    };
     Ok(RuntimeSpec {
         sandbox: SandboxProviderConfig::from_lookup(daytona, crate::process_env_var),
         settings_toml: None,

@@ -1,8 +1,9 @@
 //! The per-run capability channel (ADR-0035): one Unix socket serving
 //! the application router with the run's worker principal stamped
-//! internally. This IT pins the scope matrix and the stamping
-//! discipline over the wire the sandbox CLI will speak — bearer-less
-//! HTTP over the socket.
+//! internally. This IT pins the scope matrix, the stamping
+//! discipline, and the HANDSHAKE (work#1043: the owning run's token on
+//! every request) over the wire the sandbox CLI will speak —
+//! bearer-less HTTP over the socket.
 
 use std::sync::Arc;
 
@@ -118,12 +119,14 @@ impl TrackerProvider for ChannelFakeTracker {
 }
 
 /// Minimal HTTP/1.1 over the channel socket — exactly the wire a
-/// sandbox-side client speaks: no Authorization header anywhere.
-/// Async (tokio) so the channel's server task progresses while the
-/// test reads — a blocking std read would park a single-threaded test
-/// runtime and deadlock against the accept loop.
+/// sandbox-side client speaks: the handshake token header (work#1043)
+/// and no Authorization anywhere. Async (tokio) so the channel's
+/// server task progresses while the test reads — a blocking std read
+/// would park a single-threaded test runtime and deadlock against the
+/// accept loop.
 async fn uds_request(
     socket: &std::path::Path,
+    token: &str,
     request_line: &str,
     extra_headers: &[(&str, &str)],
     body: Option<&str>,
@@ -131,11 +134,10 @@ async fn uds_request(
     let mut stream = tokio::net::UnixStream::connect(socket)
         .await
         .expect("connect to the channel socket");
-    let headers: String = extra_headers
-        .iter()
-        .fold(String::new(), |acc, (name, value)| {
-            acc + name + ": " + value + "\r\n"
-        });
+    let headers: String = extra_headers.iter().fold(
+        format!("{}: {}\r\n", fabro_static::RUN_CHANNEL_TOKEN_HEADER, token),
+        |acc, (name, value)| acc + name + ": " + value + "\r\n",
+    );
     let raw = match body {
         Some(body) => format!(
             "{request_line} HTTP/1.1\r\nHost: run-channel\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -168,12 +170,14 @@ async fn uds_request(
 /// JSON-specific.
 async fn uds_json(
     socket: &std::path::Path,
+    token: &str,
     path: &str,
     payload: &serde_json::Value,
 ) -> (u16, String) {
     let payload = serde_json::to_string(payload).expect("payload serializes");
     uds_request(
         socket,
+        token,
         &format!("POST {path}"),
         &[("Content-Type", "application/json")],
         Some(&payload),
@@ -302,14 +306,21 @@ async fn the_channel_serves_the_worker_scope_and_refuses_user_surfaces() {
     .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
+    let token = channel.handshake_token().to_string();
 
     // health is unauthenticated everywhere — the channel is no exception
-    let (health, _) = uds_request(&socket, "GET /health", &[], None).await;
+    let (health, _) = uds_request(&socket, &token, "GET /health", &[], None).await;
     assert_eq!(health, 200, "health through the channel");
 
     // work reads pass on the worker principal (the run-tools surface)
-    let (list_status, list_body) =
-        uds_request(&socket, "GET /api/v1/projects/fabro/work-items", &[], None).await;
+    let (list_status, list_body) = uds_request(
+        &socket,
+        &token,
+        "GET /api/v1/projects/fabro/work-items",
+        &[],
+        None,
+    )
+    .await;
     assert_eq!(
         list_status, 200,
         "work list through the channel: {list_body}"
@@ -325,6 +336,7 @@ async fn the_channel_serves_the_worker_scope_and_refuses_user_surfaces() {
     // body-carrying variant lives in the create IT below.
     let (create_status, _) = uds_request(
         &socket,
+        &token,
         "POST /api/v1/projects/fabro/work-items",
         &[("Content-Type", "application/json")],
         None,
@@ -339,13 +351,24 @@ async fn the_channel_serves_the_worker_scope_and_refuses_user_surfaces() {
     // the worker token is not a user credential, so the auth layer
     // answers auth_rejection (unauthenticated) before any permission
     // check runs — never a 403, never served
-    let (projects_status, _) = uds_request(&socket, "GET /api/v1/projects", &[], None).await;
+    let (projects_status, _) =
+        uds_request(&socket, &token, "GET /api/v1/projects", &[], None).await;
     assert_eq!(
         projects_status, 401,
         "project registry listing is user-only (auth_rejection)"
     );
+    // The sandbox inventory is user-only too (work#1043 finding 3):
+    // pre-fix a worker read every run's sandbox ids and states through
+    // RequiredRunManagementActor.
+    let (sandbox_status, _) =
+        uds_request(&socket, &token, "GET /api/v1/sandboxes", &[], None).await;
+    assert_eq!(
+        sandbox_status, 401,
+        "the sandbox inventory refuses the worker principal (work#1043 finding 3)"
+    );
     let (upsert_status, _) = uds_request(
         &socket,
+        &token,
         "PUT /api/v1/projects/fabro",
         &[("Content-Type", "application/json")],
         None,
@@ -378,11 +401,13 @@ async fn a_client_supplied_authorization_header_is_replaced_not_honored() {
     .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
+    let token = channel.handshake_token().to_string();
 
     // A forged bearer must neither escalate nor break the request: the
     // stamping layer replaces it with the run's worker token.
     let (status, body) = uds_request(
         &socket,
+        &token,
         "GET /api/v1/projects/fabro/work-items",
         &[("Authorization", "Bearer forged-by-the-sandbox")],
         None,
@@ -408,9 +433,16 @@ async fn create_reaches_the_tracker_with_the_channel_body() {
     .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
+    let token = channel.handshake_token().to_string();
 
     let payload = json!({"title": "filed by a deterministic script", "body": "through the channel", "labels": []});
-    let (status, body) = uds_json(&socket, "/api/v1/projects/fabro/work-items", &payload).await;
+    let (status, body) = uds_json(
+        &socket,
+        &token,
+        "/api/v1/projects/fabro/work-items",
+        &payload,
+    )
+    .await;
     assert_eq!(status, 201, "create through the channel is created: {body}");
     assert!(
         body.contains("denkhaus/work#2"),
@@ -439,9 +471,10 @@ async fn the_terminal_drain_stops_the_socket_and_a_redrain_is_a_no_op() {
     .await;
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
+    let token = channel.handshake_token().to_string();
 
     // alive before the drain
-    let (health, _) = uds_request(&socket, "GET /health", &[], None).await;
+    let (health, _) = uds_request(&socket, &token, "GET /health", &[], None).await;
     assert_eq!(health, 200, "the channel serves before the drain");
 
     // The drain runs the removal in a spawned task (the production
@@ -502,7 +535,8 @@ async fn a_stale_socket_file_from_a_crash_is_self_healed() {
         &run_id,
         socket.clone(),
     );
-    let (health, _) = uds_request(&socket, "GET /health", &[], None).await;
+    let token = channel.handshake_token().to_string();
+    let (health, _) = uds_request(&socket, &token, "GET /health", &[], None).await;
     assert_eq!(
         health, 200,
         "the stale file was replaced by a serving socket"
@@ -581,10 +615,17 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
 
     let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
     let socket = channel.socket_path().to_path_buf();
+    let token = channel.handshake_token().to_string();
 
     // (a) a foreign project — reads included, not just writes
-    let (status, body) =
-        uds_request(&socket, "GET /api/v1/projects/other/work-items", &[], None).await;
+    let (status, body) = uds_request(
+        &socket,
+        &token,
+        "GET /api/v1/projects/other/work-items",
+        &[],
+        None,
+    )
+    .await;
     assert_eq!(
         status, 403,
         "a foreign project read is beyond the run's scope: {body}"
@@ -597,6 +638,7 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
     // (b) a foreign body runId on grant — refused loudly, never stamped
     let (status, body) = uds_json(
         &socket,
+        &token,
         "/api/v1/projects/fabro/claims",
         &json!({
             "itemKey": "denkhaus/work#1",
@@ -617,6 +659,7 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
     // (c) another run's claim — release refused before any mutation
     let (status, body) = uds_json(
         &socket,
+        &token,
         &format!("/api/v1/claims/{foreign_claim_id}/release"),
         &json!({"reason": "should never land"}),
     )
@@ -626,14 +669,67 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
         "releasing a foreign run's claim is refused: {body}"
     );
     assert!(
-        body.contains("belongs to run"),
-        "the refusal names the owning run: {body}"
+        body.contains("held by another run") && !body.contains("01JRANCH"),
+        "the refusal names the condition only — no run ids (work#1043 finding 4): {body}"
     );
     let state_after = claim_state_via_user(&state, &foreign_claim_id).await;
     assert_ne!(
         state_after, "released",
         "the refused release mutated nothing, the claim is still {state_after}"
     );
+
+    channel.stop().await;
+}
+
+/// The handshake end to end over the real socket (work#1043 finding
+/// 1): a client without the OWNING run's token never reaches a route —
+/// a sibling run on the host provider can open the socket but cannot
+/// present the token, so the principal-confusion case dies at the
+/// guard. The unit tests pin the layer's shapes; this pins the wire.
+#[tokio::test]
+async fn a_client_without_the_owning_handshake_token_is_refused() {
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+    let channel = spawn_test_run_channel(Arc::clone(&state), &run_id);
+    let socket = channel.socket_path().to_path_buf();
+
+    // No token at all: refused before any route — the work list would
+    // answer 200 with the token (proven by the scope-matrix test).
+    let mut stream = tokio::net::UnixStream::connect(&socket)
+        .await
+        .expect("connect to the channel socket");
+    stream
+        .write_all(
+            b"GET /api/v1/projects/fabro/work-items HTTP/1.1\r\nHost: run-channel\r\nConnection: close\r\n\r\n",
+        )
+        .await
+        .expect("write the tokenless request");
+    let mut bare = String::new();
+    stream.read_to_string(&mut bare).await.expect("read");
+    assert!(
+        bare.starts_with("HTTP/1.1 403"),
+        "no token, no channel: {bare}"
+    );
+    assert!(
+        bare.contains("handshake token"),
+        "the refusal names the condition only: {bare}"
+    );
+    assert!(
+        !bare.contains(&run_id.to_string()),
+        "the refusal leaks no run id: {bare}"
+    );
+
+    // A SIBLING's wrong token refuses identically.
+    let (wrong, _) = uds_request(&socket, "not-the-owning-token", "GET /health", &[], None).await;
+    assert_eq!(wrong, 403, "a sibling's token opens nothing");
 
     channel.stop().await;
 }
@@ -648,7 +744,7 @@ async fn beyond_the_runs_scope_is_refused_with_the_scope_in_the_message() {
 async fn the_production_spawn_layouts_serves_switches_and_respawns() {
     let state = TestAppStateBuilder::new().build();
     let run_id = RunId::new();
-    let socket = spawn_for_run_for_test(&state, run_id)
+    let (socket, token) = spawn_for_run_for_test(&state, run_id)
         .await
         .expect("the default settings spawn a channel");
     assert!(
@@ -659,14 +755,18 @@ async fn the_production_spawn_layouts_serves_switches_and_respawns() {
         socket.display()
     );
     assert!(socket.exists(), "the socket file is bound");
-    let (health, _) = uds_request(&socket, "GET /health", &[], None).await;
+    let (health, _) = uds_request(&socket, &token, "GET /health", &[], None).await;
     assert_eq!(health, 200, "the production-spawned channel serves health");
 
-    let again = spawn_for_run_for_test(&state, run_id)
+    let (again, token_again) = spawn_for_run_for_test(&state, run_id)
         .await
         .expect("a respawn succeeds");
     assert_eq!(again, socket, "the layout is deterministic");
-    let (health_again, _) = uds_request(&socket, "GET /health", &[], None).await;
+    assert_ne!(
+        token_again, token,
+        "every spawn mints a fresh handshake token"
+    );
+    let (health_again, _) = uds_request(&socket, &token_again, "GET /health", &[], None).await;
     assert_eq!(
         health_again, 200,
         "the respawned channel serves — the stale stop completed before the re-bind"
@@ -709,7 +809,7 @@ enabled = false
         })
         .build();
     let relocated_run = RunId::new();
-    let socket2 = spawn_for_run_for_test(&relocated, relocated_run)
+    let (socket2, _token2) = spawn_for_run_for_test(&relocated, relocated_run)
         .await
         .expect("the env override still spawns");
     assert!(

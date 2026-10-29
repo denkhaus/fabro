@@ -201,11 +201,26 @@ pub struct AppInfo {
 }
 
 /// Credentials for authenticating as a GitHub App.
-#[derive(Clone, Debug)]
+///
+/// Hand-written [`Debug`](std::fmt::Debug), not derived
+/// (denkhaus/work#1043 finding 6): a derived one renders the raw
+/// private key — one `{:?}` away from a log leak. Every other field
+/// stays visible.
+#[derive(Clone)]
 pub struct GitHubAppCredentials {
     pub app_id:          String,
     pub private_key_pem: String,
     pub slug:            Option<String>,
+}
+
+impl std::fmt::Debug for GitHubAppCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitHubAppCredentials")
+            .field("app_id", &self.app_id)
+            .field("private_key_pem", &"<redacted>")
+            .field("slug", &self.slug)
+            .finish()
+    }
 }
 
 impl GitHubAppCredentials {
@@ -2121,6 +2136,33 @@ mod tests {
     fn decode_pem_env_accepts_raw_pem() {
         let pem = "-----BEGIN TEST KEY-----\nabc\n-----END TEST KEY-----";
         assert_eq!(decode_pem_env("GITHUB_APP_PRIVATE_KEY", pem).unwrap(), pem);
+    }
+
+    /// The hand-written Debug (work#1043 finding 6): the PEM never
+    /// renders — a derived Debug would put it one `{:?}` from a log —
+    /// while the identifying fields stay visible.
+    #[test]
+    fn debug_never_renders_the_private_key() {
+        let creds = GitHubAppCredentials {
+            app_id:          "4217".to_string(),
+            private_key_pem:
+                "-----BEGIN PRIVATE KEY-----\nsecret-material\n-----END PRIVATE KEY-----"
+                    .to_string(),
+            slug:            Some("acme".to_string()),
+        };
+        let rendered = format!("{creds:?}");
+        assert!(
+            rendered.contains("<redacted>") && rendered.contains("GitHubAppCredentials"),
+            "the redaction names what it hides: {rendered}"
+        );
+        assert!(
+            !rendered.contains("secret-material") && !rendered.contains("PRIVATE KEY"),
+            "no PEM material in the rendered Debug: {rendered}"
+        );
+        assert!(
+            rendered.contains("4217") && rendered.contains("acme"),
+            "the useful fields stay visible: {rendered}"
+        );
     }
 
     #[test]

@@ -976,6 +976,13 @@ impl TestRunChannel {
         self.inner.socket_path()
     }
 
+    /// The handshake token this channel requires (work#1043): ITs put
+    /// it on `x-fabro-run-channel-token` — the wire the sandbox speaks.
+    #[must_use]
+    pub fn handshake_token(&self) -> &str {
+        self.inner.handshake_token()
+    }
+
     pub async fn stop(self) {
         self.inner.stop().await;
     }
@@ -1002,12 +1009,15 @@ pub fn drain_test_run_channel(state: &AppState, run_id: &fabro_types::RunId) -> 
 /// The PRODUCTION spawn path (denkhaus/work#989) exposed for ITs:
 /// spawn the run's channel through the settings/env switch and the
 /// `<root>/<run>/channel.sock` layout exactly as the run launch does,
-/// returning the socket path or `None` when the kill switch is off.
+/// returning the socket path AND its handshake token (work#1043), or
+/// `None` when the kill switch is off.
 pub async fn spawn_for_run_for_test(
     state: &Arc<AppState>,
     run_id: fabro_types::RunId,
-) -> Option<std::path::PathBuf> {
-    server::run_channel::spawn_for_run(state, run_id).await
+) -> Option<(std::path::PathBuf, String)> {
+    server::run_channel::spawn_for_run(state, run_id)
+        .await
+        .map(|endpoint| (endpoint.socket, endpoint.token))
 }
 
 /// Spawn the channel ON A GIVEN socket path — the crash-path ITs own

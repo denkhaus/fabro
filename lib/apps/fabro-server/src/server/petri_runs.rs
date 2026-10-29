@@ -729,7 +729,7 @@ pub(crate) async fn execute(state: Arc<AppState>, run_id: RunId) {
     let mut runtime = runtime;
     runtime.run_channel = super::run_channel::spawn_for_run(&state, run_id)
         .await
-        .map(RunChannelMount::new)
+        .map(|endpoint| RunChannelMount::new(endpoint.socket, endpoint.token))
         .map(Arc::new);
     let request = RunRequest {
         run_id: run_id.to_string(),

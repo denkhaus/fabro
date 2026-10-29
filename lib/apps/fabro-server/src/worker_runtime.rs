@@ -37,32 +37,36 @@ impl WorkerRef {
 }
 
 pub(crate) struct WorkerLaunchSpec {
-    pub(crate) executable:             PathBuf,
-    pub(crate) server_target:          String,
-    pub(crate) storage_dir:            PathBuf,
-    pub(crate) run_dir:                PathBuf,
-    pub(crate) run_id:                 RunId,
-    pub(crate) mode:                   &'static str,
-    pub(crate) worker_token:           String,
-    pub(crate) log_destination:        LogDestination,
-    pub(crate) fabro_log:              Option<String>,
-    pub(crate) active_config_path:     PathBuf,
-    pub(crate) github_app_private_key: Option<String>,
+    pub(crate) executable:         PathBuf,
+    pub(crate) server_target:      String,
+    pub(crate) storage_dir:        PathBuf,
+    pub(crate) run_dir:            PathBuf,
+    pub(crate) run_id:             RunId,
+    pub(crate) mode:               &'static str,
+    pub(crate) worker_token:       String,
+    pub(crate) log_destination:    LogDestination,
+    pub(crate) fabro_log:          Option<String>,
+    pub(crate) active_config_path: PathBuf,
     /// The Fabro home the server resolved, so a Petri run's skills step
     /// reads the same home whatever the worker's environment says.
-    pub(crate) fabro_home:             PathBuf,
+    pub(crate) fabro_home:         PathBuf,
     /// Host-side directory holding the run's hook-declared files, exported
     /// to the worker as `FABRO_HOOK_ASSETS` so host-side hooks execute the
     /// staged bytes instead of embedding them in the hook command. `None`
     /// leaves the variable unset and hook scripts fall back to
     /// workspace-relative paths.
-    pub(crate) hook_assets:            Option<PathBuf>,
+    pub(crate) hook_assets:        Option<PathBuf>,
     /// The path of this run's capability channel socket (ADR-0035),
     /// exported to the worker as `FABRO_RUN_CHANNEL_SOCK` (the
     /// `FABRO_HOOK_ASSETS` transport pattern) so the worker's
     /// `RuntimeSpec` mounts it into the run's sandboxes. `None` when
     /// the operator's kill switch is off or the spawn failed.
-    pub(crate) run_channel_socket:     Option<PathBuf>,
+    pub(crate) run_channel_socket: Option<PathBuf>,
+    /// The channel's per-spawn HANDSHAKE token (ADR-0035 as amended by
+    /// work#1043 finding 1), exported as `FABRO_RUN_CHANNEL_TOKEN` —
+    /// the serve refuses any client whose env does not carry it.
+    /// Present exactly when `run_channel_socket` is.
+    pub(crate) run_channel_token:  Option<String>,
 }
 
 pub(crate) struct StartedWorker {
@@ -118,14 +122,21 @@ impl LocalWorkerRuntime {
         cmd.env(EnvVars::FABRO_CONFIG, &spec.active_config_path);
         cmd.env_remove(EnvVars::FABRO_WORKER_TOKEN);
         cmd.env(EnvVars::FABRO_WORKER_TOKEN, &spec.worker_token);
-        if let Some(pem) = spec.github_app_private_key.as_deref() {
-            cmd.env(EnvVars::GITHUB_APP_PRIVATE_KEY, pem);
-        }
+        // The GitHub App PEM is deliberately NOT injected (work#1043
+        // finding 2: no worker consumer — the allowlist already
+        // excludes it and spawn_env's leak test pins that; nothing
+        // authority-bearing crosses on the worker's command).
         if let Some(hook_assets) = spec.hook_assets.as_deref() {
             cmd.env(EnvVars::FABRO_HOOK_ASSETS, hook_assets);
         }
         if let Some(socket) = spec.run_channel_socket.as_deref() {
             cmd.env(EnvVars::FABRO_RUN_CHANNEL_SOCK, socket);
+        }
+        // The handshake half of the same channel (work#1043 finding 1):
+        // the serve refuses a client whose env does not carry the
+        // owning run's token.
+        if let Some(token) = spec.run_channel_token.as_deref() {
+            cmd.env(EnvVars::FABRO_RUN_CHANNEL_TOKEN, token);
         }
         // The worker's storage anchor for host-side artifacts (the
         // judgment stream): the worker knows its storage dir as an

@@ -150,3 +150,22 @@ claim, run lifecycle NO, foreign projects/claims NO.
   get replaced.
 - Host scripts keep the bearer-token CLI (the host is a trusted
   actor); only sandbox transport changes.
+
+## Amendment (2026-10-29, denkhaus/work#1043): one handshake token in the owning run's env
+
+The Decision's "no secret material anywhere in the sandbox" holds for
+BEAR material and needs one named exception for transport: on the host
+provider every run shares the filesystem and the server's uid, so the
+connection alone is no authority — run A could open run B's socket and
+be served under B's worker principal (the principal-confusion case the
+parity principle assumes away by isolation).
+
+Each spawn therefore mints a per-run HANDSHAKE token
+(`FABRO_RUN_CHANNEL_TOKEN`, hex, transport credential only): the serve
+refuses any client whose first message does not carry it on
+`x-fabro-run-channel-token`, and the token enters ONLY the owning run's
+environment — the worker's launch spec and the sandbox mount alike (a
+remote sandbox that cannot reach the socket gains neither). The worker
+BEARER keeps its original rule unchanged: minted server-side, stamped
+server-side, never leaving the server process; client Authorization is
+still replaced, never honored.

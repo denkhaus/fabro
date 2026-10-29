@@ -888,10 +888,13 @@ fn bind_claim_to_caller(
         if claim.run_id != *run_id {
             return Err(ApiError::new(
                 StatusCode::FORBIDDEN,
-                format!(
-                    "claim {} belongs to run {} — run {run_id} may only touch its own claims",
-                    claim.claim_id, claim.run_id
-                ),
+                // Kind-only (work#1043 finding 4): the refusal names
+                // the condition — no run ids, no claim ids — so a
+                // sibling run learns nothing enumerable about who holds
+                // the claim (error-handling strategy: curated public
+                // messages).
+                "this claim is held by another run; a run may only touch its own claims"
+                    .to_string(),
             ));
         }
     }

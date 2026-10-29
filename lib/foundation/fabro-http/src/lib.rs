@@ -197,6 +197,49 @@ pub fn http_client() -> Result<HttpClient, HttpClientBuildError> {
     HttpClientBuilder::new().build()
 }
 
+/// The run channel handshake (denkhaus/work#1043): the ONE attach site
+/// for `x-fabro-run-channel-token`. Every Unix-socket client builder
+/// runs through here, so no client can drift out of the channel's
+/// handshake — a process carrying the owning run's
+/// `FABRO_RUN_CHANNEL_TOKEN` gets the header; every other process is
+/// untouched. A value that cannot form a header is dropped: the serve
+/// then refuses loudly instead of this client panicking.
+#[must_use]
+pub fn with_run_channel_handshake(builder: HttpClientBuilder) -> HttpClientBuilder {
+    let token = std::env::var(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN).ok();
+    apply_run_channel_handshake(builder, token.as_deref())
+}
+
+/// The pure seam of [`with_run_channel_handshake`]: the env read is the
+/// only impure step, so the shape logic is unit-tested here — tests
+/// never mutate the process env (server-secrets strategy).
+fn apply_run_channel_handshake(
+    builder: HttpClientBuilder,
+    token: Option<&str>,
+) -> HttpClientBuilder {
+    let Some(header) = handshake_header(token) else {
+        return builder;
+    };
+    let mut headers = HeaderMap::new();
+    headers.insert(header.0, header.1);
+    // reqwest merges default headers per key (verified against the
+    // vendored source), so a bearer applied earlier survives.
+    builder.default_headers(headers)
+}
+
+/// The header a handshake `token` produces: `None` for absent or
+/// empty tokens and for values that cannot form a header value.
+fn handshake_header(token: Option<&str>) -> Option<(HeaderName, HeaderValue)> {
+    let token = token?.trim();
+    if token.is_empty() {
+        return None;
+    }
+    let name = fabro_static::RUN_CHANNEL_TOKEN_HEADER
+        .parse::<HeaderName>()
+        .ok()?;
+    Some((name, HeaderValue::from_str(token).ok()?))
+}
+
 pub fn test_http_client() -> Result<HttpClient, HttpClientBuildError> {
     HttpClientBuilder::new()
         .proxy_policy(ProxyPolicy::Disabled)
@@ -216,6 +259,26 @@ pub fn blocking_test_http_client() -> Result<BlockingHttpClient, HttpClientBuild
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The handshake header's shapes (work#1043): a real token forms
+    /// the named header; absent, empty, whitespace-only, and
+    /// header-hostile values produce nothing (the serve refuses such a
+    /// client loudly instead of this client panicking).
+    #[test]
+    fn handshake_header_shapes() {
+        let header = handshake_header(Some("0123456789abcdef")).expect("a token forms a header");
+        assert_eq!(header.0.as_str(), "x-fabro-run-channel-token");
+        assert_eq!(header.1, "0123456789abcdef");
+
+        assert_eq!(handshake_header(None), None, "absent token");
+        assert_eq!(handshake_header(Some("")), None, "empty token");
+        assert_eq!(handshake_header(Some("   ")), None, "whitespace token");
+        assert_eq!(
+            handshake_header(Some("bad\r\nvalue")),
+            None,
+            "a header-hostile value is dropped, never panics"
+        );
+    }
 
     #[test]
     fn proxy_policy_defaults_to_system() {

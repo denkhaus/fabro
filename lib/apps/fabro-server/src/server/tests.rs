@@ -2294,7 +2294,7 @@ fn worker_command_opt_in_token_includes_agent_run_tools_scope() {
 
 #[cfg(unix)]
 #[test]
-fn worker_command_forwards_github_app_private_key_from_vault() {
+fn worker_command_never_forwards_the_github_app_private_key() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let spec = worker_launch_spec(
@@ -2303,16 +2303,20 @@ fn worker_command_forwards_github_app_private_key_from_vault() {
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
-        Some("test-private-key".to_string()),
+        None,
         None,
         None,
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
 
+    // work#1043 finding 2: the PEM has no worker consumer — the launch
+    // never puts it on the command, whatever the vault holds. The
+    // inverse of the old forward pin: restoring the injection reddens
+    // this arm with EnvOverride::Set.
     assert_eq!(
         command_env_value(&cmd, EnvVars::GITHUB_APP_PRIVATE_KEY),
-        EnvOverride::Set("test-private-key".to_string())
+        EnvOverride::Unchanged
     );
     assert_eq!(
         command_env_value(&cmd, EnvVars::DAYTONA_API_KEY),
@@ -2331,8 +2335,8 @@ fn worker_command_exports_hook_assets_dir_when_staged() {
         RunExecutionMode::Start,
         storage_dir.path(),
         false,
-        None,
         Some(std::path::PathBuf::from("/run/hook-assets")),
+        None,
         None,
     )
     .unwrap();
@@ -2559,13 +2563,14 @@ destination = "file"
     assert!(message.contains("stdot"));
 }
 
-/// The capability channel reaches the worker as its socket path in the
-/// environment (ADR-0035, denkhaus/work#989 — the FABRO_HOOK_ASSETS
-/// transport pattern): the server spawns the channel, the worker
-/// reads this variable and mounts the path into its sandbox specs.
+/// The capability channel reaches the worker as its socket path AND its
+/// handshake token in the environment (ADR-0035 as amended by
+/// work#1043): the server spawns the channel, the worker reads both
+/// variables — the socket path mounts into its sandbox specs, the token
+/// authenticates every client to the serve.
 #[cfg(unix)]
 #[test]
-fn worker_command_forwards_the_run_channel_socket() {
+fn worker_command_forwards_the_run_channel_socket_and_token() {
     let storage_dir = tempfile::tempdir().unwrap();
     let state = worker_command_test_state(storage_dir.path(), &["dev-token"], Some(TEST_DEV_TOKEN));
     let spec = worker_launch_spec(
@@ -2575,10 +2580,10 @@ fn worker_command_forwards_the_run_channel_socket() {
         storage_dir.path(),
         false,
         None,
-        None,
         Some(std::path::PathBuf::from(
             "/tmp/run-channels/run_1/channel.sock",
         )),
+        Some("0123456789abcdef".to_string()),
     )
     .unwrap();
     let cmd = LocalWorkerRuntime::command_for_spec(&spec);
@@ -2586,6 +2591,11 @@ fn worker_command_forwards_the_run_channel_socket() {
     assert_eq!(
         command_env_value(&cmd, EnvVars::FABRO_RUN_CHANNEL_SOCK),
         EnvOverride::Set("/tmp/run-channels/run_1/channel.sock".to_string())
+    );
+    assert_eq!(
+        command_env_value(&cmd, EnvVars::FABRO_RUN_CHANNEL_TOKEN),
+        EnvOverride::Set("0123456789abcdef".to_string()),
+        "the handshake token rides the worker env beside the socket (work#1043)"
     );
 }
 

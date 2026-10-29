@@ -43,6 +43,14 @@ impl EnvVars {
     /// transport variable — sandbox processes see `FABRO_SERVER`
     /// instead, through the mount itself.
     pub const FABRO_RUN_CHANNEL_SOCK: &'static str = "FABRO_RUN_CHANNEL_SOCK";
+    /// The run's channel HANDSHAKE token (denkhaus/work#1043 finding 1):
+    /// a per-spawn random value carried ONLY by the owning run (worker
+    /// env, mount env) and required on the channel's first message — on
+    /// the host provider every run shares the uid, so the socket path
+    /// alone cannot tell the owning run from a sibling. Transport
+    /// credential, never a bearer: the server still stamps its own
+    /// worker bearer on every request.
+    pub const FABRO_RUN_CHANNEL_TOKEN: &'static str = "FABRO_RUN_CHANNEL_TOKEN";
     pub const FABRO_SERVER: &'static str = "FABRO_SERVER";
     pub const FABRO_SERVER_MAX_CONCURRENT_RUNS: &'static str = "FABRO_SERVER_MAX_CONCURRENT_RUNS";
     pub const FABRO_SLACK_APP_TOKEN: &'static str = "FABRO_SLACK_APP_TOKEN";

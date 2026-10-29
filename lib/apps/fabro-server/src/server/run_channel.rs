@@ -16,9 +16,18 @@
 //! consumer (the cutover, ADR-0032); they define nothing about the
 //! channel's shape.
 //!
-//! The token is minted at spawn and never leaves the server process:
-//! the sandbox side carries no secret material, the connection is the
-//! authority, and closing the socket at run terminal revokes it.
+//! TWO credentials, one per purpose (denkhaus/work#1043 finding 1): the
+//! WORKER BEARER is minted at spawn and never leaves the server process
+//! — it is stamped on every request server-side, so the sandbox side
+//! carries no bearer material. A separate per-spawn HANDSHAKE token
+//! rides only the OWNING run's environment (`FABRO_RUN_CHANNEL_TOKEN`:
+//! the worker's launch spec and the stage mount alike) and must be
+//! presented on `x-fabro-run-channel-token` before any request is
+//! served: on the host provider every run shares the uid and the
+//! filesystem, so the socket path alone cannot tell the owning run from
+//! a sibling (the ADR-0035 principal-confusion case; the connection is
+//! authority only where the provider isolates runs). Closing the socket
+//! at run terminal revokes both.
 
 // The production SPAWN caller (denkhaus/work#989) is
 // `spawn_for_run` below; the IT under tests/it/api/run_channel.rs
@@ -40,6 +49,7 @@ use axum::http::HeaderValue;
 use axum::http::header::AUTHORIZATION;
 use axum::middleware;
 use axum::middleware::Next;
+use axum::response::IntoResponse as _;
 use axum::routing::Router;
 use fabro_petri::fork_run_channel::CHANNEL_SOCKET_FILE;
 use fabro_static::EnvVars;
@@ -49,6 +59,7 @@ use tokio::net::UnixListener;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
+use crate::error::ApiError;
 use crate::jwt_auth::AuthMode;
 use crate::server::{AppState, build_router};
 use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
@@ -131,10 +142,19 @@ pub(crate) fn cleanup_run_channel_for_run(state: &AppState, run_id: RunId) -> bo
     true
 }
 
+/// What a successful spawn hands the launch (denkhaus/work#1043
+/// finding 1): the socket path for the sandbox mount, and the
+/// per-spawn handshake token the OWNING run's environment must carry —
+/// the serve task refuses any client that cannot present it.
+pub(crate) struct RunChannelEndpoint {
+    pub(crate) socket: PathBuf,
+    pub(crate) token:  String,
+}
+
 /// The spawn caller of ADR-0035 (denkhaus/work#989): start the run's
 /// channel BEFORE the launch builds anything the sandbox will see, so
 /// the socket exists by the time the spec gains its bind. Returns the
-/// socket path for the run's worker (`RuntimeSpec::run_channel`), or
+/// endpoint for the run's worker (`RuntimeSpec::run_channel`), or
 /// `None` when the operator's kill switch disables the channel
 /// (`[server.run_channel] enabled = false`, work#989 grill R2.4).
 ///
@@ -145,7 +165,10 @@ pub(crate) fn cleanup_run_channel_for_run(state: &AppState, run_id: RunId) -> bo
 /// server and daemon alike (compose pins the root into the server
 /// container unchanged), and a crash-rest re-bind (a new inode) stays
 /// visible through the directory the container holds.
-pub(crate) async fn spawn_for_run(state: &Arc<AppState>, run_id: RunId) -> Option<PathBuf> {
+pub(crate) async fn spawn_for_run(
+    state: &Arc<AppState>,
+    run_id: RunId,
+) -> Option<RunChannelEndpoint> {
     if !state.server_settings().server.run_channel.enabled {
         return None;
     }
@@ -177,7 +200,10 @@ pub(crate) async fn spawn_for_run(state: &Arc<AppState>, run_id: RunId) -> Optio
         run_id,
         socket_path.clone(),
     ) {
-        Ok(_channel) => Some(socket_path),
+        Ok(channel) => Some(RunChannelEndpoint {
+            socket: socket_path,
+            token:  channel.handshake_token().to_owned(),
+        }),
         Err(error) => {
             tracing::error!(
                 run_id = %run_id,
@@ -198,6 +224,10 @@ pub(crate) struct RunChannel {
     socket_path: PathBuf,
     state:       Arc<AppState>,
     run_id:      RunId,
+    /// The per-spawn handshake token this serve requires
+    /// (denkhaus/work#1043 finding 1) — handed to the launch for the
+    /// owning run's env, never logged, never stamped.
+    handshake:   String,
 }
 
 impl RunChannel {
@@ -218,10 +248,17 @@ impl RunChannel {
             WorkerScopeSet::run_worker_with_agent_run_tools(),
         )
         .context("signing the run channel worker token")?;
+        // The handshake credential (work#1043): hex, so it is
+        // structurally JWT- and bearer-shaped impossible — the launch
+        // hands it to the owning run's env only.
+        let handshake = hex::encode(rand::random::<[u8; 32]>());
         // The same surface the agent's run tools reach — routes the
-        // extractors already gate per principal.
+        // extractors already gate per principal. The handshake guard is
+        // OUTSIDE the stamping: a client that cannot present the
+        // owning run's token never reaches the stamped router.
         let router = build_router(Arc::clone(&state), auth_mode);
         let stamped = stamp_run_worker_bearer(router, &token);
+        let guarded = require_channel_handshake(stamped, handshake.clone());
 
         if let Some(parent) = socket_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -240,6 +277,19 @@ impl RunChannel {
                     return Err(bind_error.into());
                 }
                 std::fs::remove_file(&socket_path)?;
+                // Re-verify after the removal (work#1043 finding 5): a
+                // fresh listener may have won the path between the
+                // probe above and this removal. A connect that SUCCEEDS
+                // now means someone serves the re-bound path — leave it
+                // alone and fail OUR spawn (never unlink a serving
+                // socket); a refusal means the path is clear, and a
+                // bind that still reports EADDRINUSE fails the spawn
+                // too (fail closed, no second unlink loop).
+                if std::os::unix::net::UnixStream::connect(&socket_path).is_ok() {
+                    return Err(anyhow::anyhow!(
+                        "the run channel path was re-bound while clearing the stale socket; refusing to unlink a serving socket"
+                    ));
+                }
                 UnixListener::bind(&socket_path)?
             }
             Err(error) => return Err(error.into()),
@@ -263,7 +313,7 @@ impl RunChannel {
         // serving and the registration claims it in the very next
         // statement — nothing fails between the two.
         let served = tokio::spawn(async move {
-            let served = axum::serve(listener, stamped)
+            let served = axum::serve(listener, guarded)
                 .with_graceful_shutdown(async move {
                     let _ = shutdown_rx.changed().await;
                 })
@@ -286,7 +336,14 @@ impl RunChannel {
             socket_path,
             state,
             run_id,
+            handshake,
         })
+    }
+
+    /// The handshake token this serve requires — for the launch to put
+    /// into the owning run's environment.
+    pub(crate) fn handshake_token(&self) -> &str {
+        &self.handshake
     }
 
     /// The socket path, for the sandbox driver's bind mount.
@@ -324,14 +381,59 @@ fn stamp_run_worker_bearer(router: Router, token: &str) -> Router {
     }))
 }
 
+/// The handshake guard (denkhaus/work#1043 finding 1): every request
+/// reaching the channel socket must carry the OWNING run's per-spawn
+/// token on `x-fabro-run-channel-token`. A sibling run on the host
+/// provider (shared uid, shared filesystem) can open the socket but
+/// cannot present this token — the principal-confusion case dies here.
+/// The refusal names the condition only: no run ids, no material
+/// (error-handling strategy: curated public messages).
+fn require_channel_handshake(router: Router, expected: String) -> Router {
+    router.layer(middleware::from_fn(move |req: Request, next: Next| {
+        let expected = expected.clone();
+        async move {
+            let provided = req
+                .headers()
+                .get(fabro_static::RUN_CHANNEL_TOKEN_HEADER)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            if !handshake_matches(&expected, provided) {
+                return ApiError::forbidden_with_code(
+                    "the run channel handshake token is missing or wrong",
+                    "run_channel_handshake",
+                )
+                .into_response();
+            }
+            next.run(req).await
+        }
+    }))
+}
+
+/// Folds every byte pair without an early return, so WHERE a mismatch
+/// sits leaks nothing. The token LENGTH is not secret (hex of 32
+/// bytes), which is all the pre-check gives away — honestly documented.
+fn handshake_matches(expected: &str, provided: &str) -> bool {
+    if expected.len() != provided.len() {
+        return false;
+    }
+    expected
+        .bytes()
+        .zip(provided.bytes())
+        .fold(0u8, |acc, (left, right)| acc | (left ^ right))
+        == 0
+}
+
 #[cfg(test)]
 mod tests {
     //! The channel's scope matrix (work routes pass, user-only surfaces
-    //! refuse the worker principal, bearer-less connects work) is pinned
-    //! by the IT under `tests/it/api/run_channel.rs`, which owns a real
-    //! AppState with the scripted work tracker. Unit-level, the stamping
-    //! layer's discipline (client Authorization headers are replaced,
-    //! never honored) is covered there too.
+    //! refuse the worker principal, bearer-less connects work — the
+    //! stamping fills the bearer) is pinned by the IT under
+    //! `tests/it/api/run_channel.rs`, which owns a real AppState with
+    //! the scripted work tracker. Unit-level, the stamping layer's
+    //! discipline (client Authorization headers are replaced, never
+    //! honored) and the HANDSHAKE guard (work#1043: token required
+    //! before any route) are covered below; the IT carries the
+    //! header end to end.
 
     use fabro_types::RunId;
 
@@ -397,6 +499,90 @@ mod tests {
             "Bearer run-token",
             "a bearer-less request gets the run's token stamped in"
         );
+    }
+
+    /// The handshake guard as a UNIT (work#1043 finding 1): the owning
+    /// run's token passes; a missing or a sibling's wrong token is
+    /// refused with the condition-only detail, BEFORE any route runs.
+    #[tokio::test]
+    async fn the_handshake_refuses_without_the_owning_token() {
+        use axum::Router;
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use axum::routing::get;
+        use tower::ServiceExt as _;
+
+        async fn reach() -> &'static str {
+            "reached"
+        }
+        let guarded = super::require_channel_handshake(
+            Router::new().route("/", get(reach)),
+            "owning-run-token".to_owned(),
+        );
+
+        let bare = guarded
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("the guard answers");
+        assert_eq!(bare.status(), StatusCode::FORBIDDEN, "no token, no channel");
+        let body = axum::body::to_bytes(bare.into_body(), usize::MAX)
+            .await
+            .expect("body reads");
+        let detail = String::from_utf8(body.to_vec()).expect("utf-8");
+        assert!(
+            detail.contains("handshake token"),
+            "the refusal names the condition only: {detail}"
+        );
+
+        let sibling = guarded
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(fabro_static::RUN_CHANNEL_TOKEN_HEADER, "sibling-run-token")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("the guard answers");
+        assert_eq!(
+            sibling.status(),
+            StatusCode::FORBIDDEN,
+            "a sibling run's token opens nothing"
+        );
+
+        let owning = guarded
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(fabro_static::RUN_CHANNEL_TOKEN_HEADER, "owning-run-token")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("the guard answers");
+        assert_eq!(
+            owning.status(),
+            StatusCode::OK,
+            "the owning run's token passes"
+        );
+    }
+
+    /// The compare folds every byte pair: equal, tail-differing,
+    /// prefix, and length shapes behave as documented (no early return
+    /// on WHERE the mismatch sits; length is honestly not hidden).
+    #[test]
+    fn handshake_matches_folds_every_shape() {
+        assert!(super::handshake_matches("abc123", "abc123"));
+        assert!(!super::handshake_matches("abc123", "abc12X"));
+        assert!(!super::handshake_matches("abc123", "abc12"));
+        assert!(!super::handshake_matches("abc123", "abc1234"));
     }
 
     /// The registry IS the idempotency: one take claims the
