@@ -39,6 +39,7 @@ domains:
   failure: {}
   test: {}
   pattern: {}
+  rootprint: {}
 governance:
   max_entries: 100
   warn_entries: 150
