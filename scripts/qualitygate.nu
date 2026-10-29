@@ -84,9 +84,20 @@ def touched-crates [] {
 # identical on the host, where the default is stable.
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
+# The engine injects FABRO_SERVER=/run/fabro/channel.sock into every shell
+# a run spawns (ADR-0035); the CLI's env-attuned --server default turns it
+# into args.target.server = Some and breaks env-attuned parse tests plus
+# any tool reading the env without its own scrub (run 01M621RW4YPD's gate
+# analysis, work#1054 — verified on the untouched parent 38c801372). The
+# gate's CARGO tiers run with the var scrubbed; the channel calls (work
+# facade tiers) keep it. One seam, both lanes' gates.
+def cargo-env [block: closure]: nothing -> any {
+    with-env {FABRO_SERVER: null} { do $block }
+}
+
 def check-fmt [] {
     print "== cargo fmt --check --all =="
-    let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' fmt --check --all } | complete)
+    let res = (cargo-env { do { ^cargo $'+($PINNED_TOOLCHAIN)' fmt --check --all } | complete })
     if $res.exit_code != 0 {
         print ($res.stdout | str trim -r -c "\n")
         print ($res.stderr | str trim -r -c "\n")
@@ -133,7 +144,7 @@ def check-clippy [crates: list<string>] {
     # cargo a package name with a leading space (run-2 gate crash).
     let pkgs = ($crates | each {|c| ['-p' $c] } | flatten)
     print $"== cargo clippy ($crates | str join ', ') -D warnings =="
-    let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' clippy ...$pkgs --all-targets -- -D warnings } | complete)
+    let res = (cargo-env { do { ^cargo $'+($PINNED_TOOLCHAIN)' clippy ...$pkgs --all-targets -- -D warnings } | complete })
     if $res.exit_code != 0 {
         print ($res.stdout | str trim -r -c "\n" | lines | last 30)
         print ($res.stderr | str trim -r -c "\n")
@@ -147,7 +158,7 @@ def check-tests [crates: list<string>] {
     if ($crates | is-empty) { return true }
     let pkgs = ($crates | each {|c| ['-p' $c] } | flatten)
     print $"== cargo nextest ($crates | str join ', ') — retries ($NEXTEST_RETRIES) =="
-    let res = (do { ^cargo nextest run ...$pkgs --no-fail-fast --retries $NEXTEST_RETRIES } | complete)
+    let res = (cargo-env { do { ^cargo nextest run ...$pkgs --no-fail-fast --retries $NEXTEST_RETRIES } | complete })
     if $res.exit_code != 0 {
         print ($res.stdout | str trim -r -c "\n" | lines | where {|l| ($l | str contains 'FAIL') or ($l | str contains 'Summary')} | last 20)
         print ($res.stderr | str trim -r -c "\n")
@@ -166,7 +177,7 @@ def check-tests [crates: list<string>] {
 def build-renderer-if-needed [crates: list<string>] {
     if not ('fabro-server' in $crates) { return true }
     print '== building fabro CLI renderer binary (fabro-server graph-render tests invoke it) =='
-    let res = (do { ^cargo build -p fabro-cli --bin fabro } | complete)
+    let res = (cargo-env { do { ^cargo build -p fabro-cli --bin fabro } | complete })
     if $res.exit_code != 0 {
         print ($res.stderr | str trim -r -c "\n" | lines | last 30)
         return false
@@ -179,7 +190,7 @@ def build-renderer-if-needed [crates: list<string>] {
 # (clippy+tests on all 52 crates would blow the tester timeout).
 def check-workspace-compiles [] {
     print '== cargo check --workspace — root manifest changed =='
-    let res = (do { ^cargo check --workspace } | complete)
+    let res = (cargo-env { do { ^cargo check --workspace } | complete })
     if $res.exit_code != 0 {
         print ($res.stderr | str trim -r -c "\n" | lines | last 30)
         return false
@@ -264,7 +275,7 @@ def check-dot-snapshot [base: record]: nothing -> bool {
         return true
     }
     print $"== cargo nextest -p fabro-dot checked_in_workflows — diff touches \(($graphs | length)\) workflow graph\(s\) =="
-    let res = (do { ^cargo nextest run -p fabro-dot checked_in_workflows --retries $NEXTEST_RETRIES } | complete)
+    let res = (cargo-env { do { ^cargo nextest run -p fabro-dot checked_in_workflows --retries $NEXTEST_RETRIES } | complete })
     if $res.exit_code != 0 {
         print ($res.stdout | str trim -r -c "\n" | lines | where {|l| ($l | str contains 'FAIL') or ($l | str contains 'Summary')} | last 20)
         print ($res.stderr | str trim -r -c "\n" | lines | last 10)
