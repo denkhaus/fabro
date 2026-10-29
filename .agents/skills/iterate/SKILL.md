@@ -234,6 +234,13 @@ stores it belongs to; reach them by phase need:
   (median open age ~50d; the laps caught two such artifacts live: the
   project-facts lane bug and a zombie doc item #347). A vetting pass
   over the lane pools is standing backlog work, not ceremony.
+  LANE ADMISSION (user directive 2026-10-29, extending the test):
+  an item enters a lane ONLY after that check passes for THAT item,
+  individually — never bulk-assign the migration-era pool, whose
+  premises most restructures have overtaken. Unvetted pool entries
+  are how a re-armed picker burns runs on dead premises. The backlog
+  relevance pass executes this: close the dead items with evidence,
+  keep only the hand-checked, high-quality ones.
 
 ## Phase 2 — Build (local-first; delegation only by explicit choice)
 

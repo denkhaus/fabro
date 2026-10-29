@@ -51,6 +51,12 @@ migrated items keep a `seeds:fabro-xxxx` label as their legacy anchor
   pool; `lane:loop` = the loop line. The user moves items between lanes
   or closes them — that is the veto. Agents file unlaned unless told
   otherwise; the line only works its own lane.
+- **Lane admission is vetted, one item at a time** (user directive
+  2026-10-29): an item joins a lane only after an individual relevance
+  check against the CURRENT codebase passes — its cited path or
+  mechanism still exists and no landed work covers the demand. Never
+  bulk-assign the migration-era pool; the backlog relevance pass
+  closes the dead items and keeps only the hand-checked ones.
 - **Read**: `list --project fabro [--lane develop] [--limit N]
   [--query text]` (list is open-only; `--query` is the road to closed
   items) · `show --project fabro <selector>` (head + body verbatim;
