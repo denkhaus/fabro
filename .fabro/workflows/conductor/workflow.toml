@@ -17,14 +17,6 @@ graph = "workflow.fabro"
 [run.agent]
 fabro_tools = true
 
-[[run.hooks]]
-name = "stage-journal"
-event = "stage_complete"
-script = "nu .fabro/scripts/stage-journal.nu"
-blocking = false
-timeout = "10s"
-sandbox = true
-
 # Judgment-shadow host hook (fabro-8e13, ADR-0022 wave 1; transport
 # fabro-091b): sandbox = false keeps OPENROUTER_API_KEY in the server env,
 # never in a run sandbox. The script file rides the workflow closure

@@ -24,6 +24,25 @@ auto_stop = "30m"
 [environments.fabro-dev.labels]
 repo = "fabro-sh/fabro"
 
+# Stage journal (denkhaus/work#1060): one durable JSON line per stage
+# execution, engine provenance, checkpointed with the run. Non-blocking;
+# failures must never affect the run. ONE project-level entry replaces
+# the six former per-workflow copies (architect, conductor, develop,
+# loop, merge-upstream, revisor): the engine layers merge settings under
+# project under workflow, and the `id` makes any higher-layer re-add
+# REPLACE this entry instead of appending a duplicate (combine_hooks
+# replaces by id, appends id-less entries).
+[[run.hooks]]
+id = "stage-journal"
+name = "stage-journal"
+event = "stage_complete"
+script = "nu .fabro/scripts/stage-journal.nu"
+blocking = false
+timeout = "10s"
+sandbox = true
+
+# Example hook block (kept as documentation): see the petri FORMAT.md
+# hooks row for the layer merge rules.
 # [[run.hooks]]
 # id = "cargo-fmt"
 # name = "cargo-fmt"

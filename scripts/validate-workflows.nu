@@ -164,17 +164,45 @@ def conductor_develop_schema_probe [] {
 }
 
 # Class-level inspects-coverage lint (fabro-e907): every workflow whose
-# workflow.toml carries the stage-journal hook must appear in some
-# graph's inspects list — else a journal-producing run has no consumer
-# and its journals are silently lost (fabro-905d blind-spot class).
-# Always runs over ALL graphs, never just a named target.
+# journals have a consumer must appear in some graph's inspects list —
+# else a journal-producing run has no consumer and its journals are
+# silently lost (fabro-905d blind-spot class). Always runs over ALL
+# graphs, never just a named target.
+#
+# denkhaus/work#1060: the stage-journal hook lives ONCE in
+# .fabro/project.toml (engine layer merge: settings < project <
+# workflow), so EVERY workflow journals — including demo/toy workflows
+# no one inspects. Coverage is therefore required for the workflows
+# whose journals the loop line CONSUMES (conductor's and revisor's
+# inspects lists, the loop digest, the salvage arms) plus any workflow
+# that re-declares its own [[run.hooks]] copy — and the project-layer
+# hook's presence is itself asserted: losing it silently stops every
+# journal in the repo.
+const JOURNAL_CONSUMED_WORKFLOWS = [
+    architect, conductor, develop, loop, merge-upstream, revisor
+]
+
 def stage_journal_coverage_check [] {
-    let journal_workflows = (glob .fabro/workflows/*/workflow.toml | each {|m|
+    # Project-layer hook presence (the one copy, denkhaus/work#1060).
+    let project_toml = ".fabro/project.toml"
+    # (no `do -i` fail-open here: a project.toml that cannot be read
+    # breaks every run — the open error must fail the battery loudly)
+    let project_hooks = (open $project_toml | get -o run | get -o hooks | default [])
+    let project_has_journal = ($project_hooks | any {|h|
+        ($h | get -o id | default ($h | get -o name | default "")) == "stage-journal"
+    })
+    if not $project_has_journal {
+        print -e $"validate-workflows: ($project_toml) carries no stage-journal hook — every workflow's journal silently stopped \(denkhaus/work#1060\)"
+        exit 1
+    }
+    let journal_workflows = ([ $JOURNAL_CONSUMED_WORKFLOWS ] | flatten | uniq | append (glob .fabro/workflows/*/workflow.toml | each {|m|
         let hooks = (open $m | get -o run | get -o hooks | default [])
-        if ($hooks | any {|h| ($h | get -o name | default "") == "stage-journal" }) {
+        if ($hooks | any {|h|
+            ($h | get -o id | default ($h | get -o name | default "")) == "stage-journal"
+        }) {
             $m | path dirname | path basename
         }
-    } | compact)
+    } | compact) | uniq)
     let covered = (glob .fabro/workflows/*/workflow.fabro | each {|g|
         open --raw $g | parse --regex 'inspects\s*=\s*"(?<slugs>[^"]*)"'
     } | flatten | get -o slugs | default [] | each {|row| $row | split row "," } | flatten
@@ -184,7 +212,7 @@ def stage_journal_coverage_check [] {
         print -e $"validate-workflows: stage-journal workflows missing from every inspects list: ($uncovered | str join ', ')"
         exit 1
     }
-    print $"validate-workflows: inspects coverage ok \(($journal_workflows | length) stage-journal workflow\)"
+    print $"validate-workflows: inspects coverage ok \(($journal_workflows | length) stage-journal workflow, project-layer hook present\)"
 }
 
 # Resolve the target (or all workflows) to a list of graph file paths.
