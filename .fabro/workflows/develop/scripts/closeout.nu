@@ -86,9 +86,10 @@ def dockerfile-hits [paths: list<string>]: nothing -> list<string> {
     $paths | where {|p| ($p | split row "/" | any {|seg| $seg | str starts-with "Dockerfile"})}
 }
 
-# --- diff-anchor helpers: MIRRORED from evidence.nu (run-base
-# anchoring — claims are server-side, denkhaus/work#1056) — reuse that
-# anchoring scheme, do not invent a new one.
+# --- diff-anchor helpers: MIRRORED from evidence.nu (the
+# current-branch/run-base pair; run-base anchoring — claims are
+# server-side, denkhaus/work#1056) — reuse that anchoring scheme, do
+# not invent a new one.
 
 def current-branch []: nothing -> string {
     git branch --show-current | str trim

@@ -187,19 +187,16 @@ def stage_journal_coverage_check [] {
     let project_toml = ".fabro/project.toml"
     # (no `do -i` fail-open here: a project.toml that cannot be read
     # breaks every run — the open error must fail the battery loudly)
+    let is_stage_journal = {|h| ($h | get -o id | default ($h | get -o name | default "")) == "stage-journal" }
     let project_hooks = (open $project_toml | get -o run | get -o hooks | default [])
-    let project_has_journal = ($project_hooks | any {|h|
-        ($h | get -o id | default ($h | get -o name | default "")) == "stage-journal"
-    })
+    let project_has_journal = ($project_hooks | any $is_stage_journal)
     if not $project_has_journal {
         print -e $"validate-workflows: ($project_toml) carries no stage-journal hook — every workflow's journal silently stopped \(denkhaus/work#1060\)"
         exit 1
     }
-    let journal_workflows = ([ $JOURNAL_CONSUMED_WORKFLOWS ] | flatten | uniq | append (glob .fabro/workflows/*/workflow.toml | each {|m|
+    let journal_workflows = ($JOURNAL_CONSUMED_WORKFLOWS | append (glob .fabro/workflows/*/workflow.toml | each {|m|
         let hooks = (open $m | get -o run | get -o hooks | default [])
-        if ($hooks | any {|h|
-            ($h | get -o id | default ($h | get -o name | default "")) == "stage-journal"
-        }) {
+        if ($hooks | any $is_stage_journal) {
             $m | path dirname | path basename
         }
     } | compact) | uniq)

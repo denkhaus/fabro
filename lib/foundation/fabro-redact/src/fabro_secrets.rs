@@ -44,7 +44,7 @@ static RUN_CHANNEL_TOKEN_HEADER_VALUE: LazyLock<Regex> = LazyLock::new(|| {
 /// Regions covering the VALUE of every fabro-named credential form in
 /// `s` (the name stays visible, mirroring the gitleaks layer's
 /// `key=REDACTED` rendering).
-pub(crate) fn find_regions(s: &str) -> Vec<Region> {
+pub(crate) fn find_fabro_secret_regions(s: &str) -> Vec<Region> {
     let mut regions = Vec::new();
     for pattern in [
         &*RUN_CHANNEL_TOKEN_ASSIGNMENT,
@@ -64,7 +64,7 @@ pub(crate) fn find_regions(s: &str) -> Vec<Region> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::redact_string;
+    use crate::redact_string;
 
     /// A hex value low-entropy enough that the entropy layer lets it
     /// through — only the NAME rule can catch this shape.

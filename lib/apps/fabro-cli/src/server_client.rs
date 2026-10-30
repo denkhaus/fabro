@@ -523,6 +523,56 @@ mod tests {
         );
     }
 
+    /// The 403 variant (work#1074's spec names it beside ENOENT): a
+    /// listener that ANSWERS but refuses (the handshake-refusal shape
+    /// the fork.26 CLI hit against the fork.27 serve) must surface the
+    /// status in the rendered error, not swallow it into the autostart.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn managed_socket_error_surfaces_a_handshake_refused_403() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("refusing.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let _ = stream
+                    .write_all(b"HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\n\r\n")
+                    .await;
+                // Hold the stream open until the client closes it —
+                // dropping after write races the client into a broken
+                // pipe before it reads the response.
+                let mut buf = [0u8; 1024];
+                while matches!(stream.read(&mut buf).await, Ok(n) if n > 0) {}
+            }
+        });
+
+        let storage_dir = dir.path().join("storage");
+        std::fs::create_dir_all(&storage_dir).unwrap();
+        let missing_config = dir.path().join("missing-settings.toml");
+
+        let Err(error) = connect_managed_unix_socket_api_client_bundle(
+            &socket_path,
+            &storage_dir,
+            &missing_config,
+        )
+        .await
+        else {
+            panic!("a 403-refusing socket with a missing config must fail");
+        };
+        server.abort();
+
+        let rendered = format!("{error:#}");
+        assert!(
+            rendered.contains("403"),
+            "the refused status must surface, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("no server answered first"),
+            "the connect half must be named, got: {rendered}"
+        );
+    }
+
     #[tokio::test]
     async fn http_target_transport_times_out_when_peer_accepts_without_http_response() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
