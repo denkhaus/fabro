@@ -66,3 +66,20 @@ now lives on the tracker.
   items never get one, and once the migration window closes the seam and the
   acceptance go together. The live proof of that resolution waits for the
   import, which is the step that writes the labels.
+
+## Closure radius
+
+The set of a work item's open CHILDREN. A parent's closure radius is
+empty when every painpoint item born from it is closed; the `work
+close` verb refuses while the radius is open (an explicit override
+names the children). Tranche selection prefers closing open radii
+before opening new themes — a preference, never a gate.
+
+## Parent / Child (work item)
+
+One work-item relationship, carried as a GitHub sub-issue link, with
+one meaning: the child documents its ORIGIN (the run that worked the
+parent produced it) AND gates the parent's closure. The parent of a
+painpoint is the run's claimed item; a theme epic may parent manually.
+Children found after the parent closed anchor to the next open anchor
+— they never reopen a closed parent.
