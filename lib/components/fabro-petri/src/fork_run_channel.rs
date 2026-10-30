@@ -61,13 +61,26 @@ pub const CHANNEL_SOCKET_FILE: &str = "channel.sock";
 /// process binds it and the sandbox daemon resolves the bind source
 /// (one path by config discipline: compose pins the host directory
 /// into the server container unchanged).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RunChannelMount {
     host_socket: PathBuf,
     /// The run's per-spawn handshake token (work#1043 finding 1): hex,
     /// injected into the sandbox env ONLY for docker and host kinds —
     /// the serve refuses any client that cannot present it.
     token:       String,
+}
+
+// Hand-written so the handshake token never renders raw (work#1077 F2,
+// mirroring the GitHubAppCredentials precedent from work#1043's
+// finding 6): one `tracing::debug!("{mount:?}")` away from a log leak
+// is one debug render too close.
+impl std::fmt::Debug for RunChannelMount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RunChannelMount")
+            .field("host_socket", &self.host_socket)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl RunChannelMount {
@@ -333,6 +346,22 @@ mod tests {
                 .env
                 .contains_key(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN),
             "a remote sandbox carries no channel handshake"
+        );
+    }
+
+    /// The handshake token must never render raw through Debug
+    /// (work#1077 F2, the finding-6 precedent): one debug render away
+    /// from a log leak is one render too close.
+    #[test]
+    fn debug_renders_the_token_redacted() {
+        let rendered = format!("{:?}", mount());
+        assert!(
+            rendered.contains("<redacted>"),
+            "Debug must redact the token, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains(TOKEN),
+            "Debug must not carry the raw token, got: {rendered}"
         );
     }
 }

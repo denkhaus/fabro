@@ -2602,6 +2602,7 @@ name = "fabro-redact"
 version = "0.362.0-fork.27"
 dependencies = [
  "aho-corasick",
+ "fabro-static",
  "fabro-util",
  "pebble-coding-agent",
  "ref-cast",

@@ -99,25 +99,42 @@ async fn connect_managed_unix_socket_api_client_bundle(
         .or_else(|| dev_token::read_dev_token_file(&runtime_token_path).map(Credential::DevToken));
     let pre_spawn_bearer = pre_spawn_credential.as_ref().map(Credential::bearer_token);
 
-    let (http_client, credential) = if let Ok(http_client) =
-        try_connect_unix_socket_http_client(path, pre_spawn_bearer).await
+    let (http_client, credential) = match try_connect_unix_socket_http_client(
+        path,
+        pre_spawn_bearer,
+    )
+    .await
     {
-        (http_client, pre_spawn_credential)
-    } else {
-        start::ensure_server_running_on_socket(path, active_config_path, storage_dir)
-            .await
-            .with_context(|| format!("Failed to start fabro server for {}", path.display()))?;
-        let post_spawn_credential = match resolve_target_credential(&target)? {
-            Some(credential) => Some(credential),
-            None => Some(Credential::DevToken(
-                wait_for_runtime_dev_token(&runtime_token_path).await?,
-            )),
-        };
-        let post_spawn_bearer = post_spawn_credential.as_ref().map(Credential::bearer_token);
-        let http_client = connect_unix_socket_http_client(path, post_spawn_bearer)
-            .await
-            .with_context(|| format!("Failed to connect to fabro server at {}", path.display()))?;
-        (http_client, post_spawn_credential)
+        Ok(http_client) => (http_client, pre_spawn_credential),
+        Err(connect_error) => {
+            start::ensure_server_running_on_socket(path, active_config_path, storage_dir)
+                .await
+                .with_context(|| {
+                    // The connect failure and the start failure are
+                    // alternatives, not cause and effect: the context
+                    // keeps the established prefix and renders the
+                    // connect chain once (work#1074 — the #1073
+                    // diagnosis burned hours because this reason was
+                    // dropped and only the doomed autostart showed).
+                    format!(
+                        "Failed to start fabro server for {} — no server answered first: {connect_error:#}",
+                        path.display()
+                    )
+                })?;
+            let post_spawn_credential = match resolve_target_credential(&target)? {
+                Some(credential) => Some(credential),
+                None => Some(Credential::DevToken(
+                    wait_for_runtime_dev_token(&runtime_token_path).await?,
+                )),
+            };
+            let post_spawn_bearer = post_spawn_credential.as_ref().map(Credential::bearer_token);
+            let http_client = connect_unix_socket_http_client(path, post_spawn_bearer)
+                .await
+                .with_context(|| {
+                    format!("Failed to connect to fabro server at {}", path.display())
+                })?;
+            (http_client, post_spawn_credential)
+        }
     };
     let oauth_session = refreshable_oauth(&target, credential.as_ref());
 
@@ -460,6 +477,50 @@ mod tests {
             "Unix socket health probe should return its own timeout error instead of hanging"
         );
         assert!(result.unwrap().is_err());
+    }
+
+    /// work#1074: when the socket connect fails and the managed
+    /// fallback dies too, the rendered error must name WHY the connect
+    /// failed — the #1073 diagnosis burned hours because only the
+    /// doomed autostart's settings ENOENT showed while the real reason
+    /// (a refused connect) was dropped.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn managed_socket_error_names_the_connect_reason_beside_the_start_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let socket_path = dir.path().join("dead.sock");
+        // Bind and drop: the socket FILE remains, nobody listens —
+        // connects are refused, the exact #1073 shape.
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        drop(listener);
+
+        let storage_dir = dir.path().join("storage");
+        std::fs::create_dir_all(&storage_dir).unwrap();
+        let missing_config = dir.path().join("missing-settings.toml");
+
+        let Err(error) = connect_managed_unix_socket_api_client_bundle(
+            &socket_path,
+            &storage_dir,
+            &missing_config,
+        )
+        .await
+        else {
+            panic!("a refused socket with a missing config must fail");
+        };
+
+        let rendered = format!("{error:#}");
+        assert!(
+            rendered.contains("no server answered first"),
+            "the connect half must be named, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("Failed to start fabro server"),
+            "the autostart half must stay named, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("os error") || rendered.contains("Connection refused"),
+            "the underlying connect reason must surface, got: {rendered}"
+        );
     }
 
     #[tokio::test]
