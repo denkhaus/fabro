@@ -6776,6 +6776,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-items/lane:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: laneWorkItem
+      tags: [Work Items]
+      summary: Assign a work item to a lane, or clear its lane
+      description: >-
+        The tranche-model session operation (denkhaus/work#1065): moves an
+        item between the project's declared lanes or removes it from every
+        lane (`lane` omitted/null). The lane name is validated against the
+        project's laneLabels like `lane` on create. User-only: a run
+        worker principal is refused — lane moves are the human surface,
+        never an agent-run capability.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemLaneRequest"
+      responses:
+        "200":
+          description: Work item with its lane moved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body or unknown lane
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not move lanes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/projects/{projectId}/work-item:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -18740,6 +18798,23 @@ components:
         body:
           type: string
           description: New body, wholesale (the caller re-emits the full corrected body); omitted leaves it unchanged.
+
+    WorkItemLaneRequest:
+      description: >-
+        Move a work item to a declared lane, or clear its lane. `null`
+        (or an omitted `lane`) removes every lane label — the tranche
+        model's unassign.
+      type: object
+      required:
+        - itemKey
+      properties:
+        itemKey:
+          type: string
+        lane:
+          type: [string, "null"]
+          description: >-
+            Lane name as declared in the project's laneLabels; omitted or
+            `null` clears the item's lane.
 
     WorkClaimNextRequest:
       description: Grant the next free work item to a run.

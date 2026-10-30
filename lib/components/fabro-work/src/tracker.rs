@@ -93,6 +93,21 @@ pub trait TrackerProvider: Send + Sync {
         body: Option<&str>,
     ) -> anyhow::Result<WorkItem>;
 
+    /// Move an item to a lane, or clear its lane (denkhaus/work#1065):
+    /// the tranche model makes lane moves a routine session operation.
+    /// `lane` is the lane NAME the project declares (the caller maps it
+    /// to the label); `None` removes every lane label. Providers return
+    /// the updated item.
+    async fn set_lane(
+        &self,
+        project: &crate::WorkProject,
+        item_key: &str,
+        lane: Option<&str>,
+    ) -> anyhow::Result<WorkItem> {
+        let _ = (project, item_key, lane);
+        anyhow::bail!("this tracker provider does not support lane assignment")
+    }
+
     async fn close(
         &self,
         project: &crate::WorkProject,

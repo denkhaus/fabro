@@ -1887,6 +1887,30 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// Move a work item to a declared lane, or clear its lane
+    /// (`lane` `None` unlans the item — denkhaus/work#1065).
+    pub async fn lane_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        lane: Option<&str>,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .lane_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemLaneRequest {
+                        item_key: item_key.to_string(),
+                        lane:     lane.map(str::to_string),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Close a work item with a reason comment.
     pub async fn close_work_item(
         &self,
