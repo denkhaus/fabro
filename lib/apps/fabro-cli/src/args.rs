@@ -1620,6 +1620,7 @@ impl Commands {
                 WorkCommand::Create(_) => "work create",
                 WorkCommand::Close(_) => "work close",
                 WorkCommand::Update(_) => "work update",
+                WorkCommand::Lane(_) => "work lane",
                 WorkCommand::Claims(_) => "work claims",
             },
             Self::Automations(ns) => match &ns.command {
@@ -2164,6 +2165,8 @@ pub(crate) enum WorkCommand {
     Close(WorkCloseArgs),
     /// Edit a work item's title and/or body
     Update(WorkUpdateArgs),
+    /// Assign a work item to a lane, or clear its lane (`--lane none`)
+    Lane(WorkLaneArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
 }
@@ -2253,6 +2256,19 @@ pub(crate) struct WorkCloseArgs {
     /// Closing reason, posted as the item's close comment
     #[arg(long)]
     pub(crate) reason:   String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkLaneArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+    /// Lane name to assign (validated against the project's declared
+    /// lanes), or `none` to clear the item's lane
+    #[arg(long)]
+    pub(crate) lane:     String,
 }
 
 #[derive(Args)]

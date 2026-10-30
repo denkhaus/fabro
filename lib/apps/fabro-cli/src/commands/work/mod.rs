@@ -10,6 +10,7 @@
 mod claims;
 mod close;
 mod create;
+mod lane;
 mod list;
 mod show;
 mod update;
@@ -34,6 +35,7 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Create(args) => create::create_command(&args, &ctx).await,
         WorkCommand::Close(args) => close::close_command(&args, &ctx).await,
         WorkCommand::Update(args) => update::update_command(&args, &ctx).await,
+        WorkCommand::Lane(args) => lane::lane_command(&args, &ctx).await,
         WorkCommand::Claims(args) => claims::claims_command(&args, &ctx).await,
     }
 }

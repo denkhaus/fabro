@@ -61,6 +61,7 @@ fn help() {
       create  File a new work item
       close   Close a work item with a reason
       update  Edit a work item's title and/or body
+      lane    Assign a work item to a lane, or clear its lane (`--lane none`)
       claims  List a project's live claims
       help    Print this message or the help of the given subcommand(s)
 
@@ -853,4 +854,135 @@ fn claims_reports_an_empty_ledger_without_failing() {
     ");
 
     claims.assert();
+}
+
+/// The tranche move (work#1065): a lane NAME travels to the server
+/// after the CLI validated it against the project's declared lanes —
+/// the same registry posture as `--lane` on create.
+#[test]
+fn lane_assigns_after_validating_the_lane_name() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop"), ("develop", "lane:develop")]).to_string());
+    });
+    let lane = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items/lane")
+            .body_includes("\"itemKey\":\"denkhaus/work#12\"")
+            .body_includes("\"lane\":\"loop\"");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#12", "a lane item", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "lane",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--lane",
+        "loop",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Moved denkhaus/work#12 to loop.
+    ");
+
+    project.assert();
+    lane.assert();
+}
+
+/// `--lane none` clears the lane without the registry lookup — the
+/// request carries no lane at all.
+#[test]
+fn lane_none_clears_the_lane_without_a_registry_lookup() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200);
+    });
+    let lane = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items/lane")
+            // The generated client omits a `None` lane from the payload —
+            // the unassign travels as the field's absence.
+            .body_includes("\"itemKey\":\"denkhaus/work#12\"")
+            .body_excludes("\"lane\"");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(item_json("denkhaus/work#12", "a lane item", "open").to_string());
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "lane",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--lane",
+        "none",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    ----- stderr -----
+    Moved denkhaus/work#12 to none.
+    ");
+
+    project.assert_calls(0);
+    lane.assert();
+}
+
+/// An unknown lane is refused before the server sees the move request.
+#[test]
+fn lane_refuses_an_unknown_lane_before_the_move() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let project = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/projects/fabro");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(project_json(&[("loop", "lane:loop")]).to_string());
+    });
+    let lane = server.mock(|when, then| {
+        when.method("POST")
+            .path("/api/v1/projects/fabro/work-items/lane");
+        then.status(200);
+    });
+    context.set_http_target(&server.base_url());
+
+    let mut cmd = context.command();
+    cmd.args([
+        "work",
+        "lane",
+        "--project",
+        "fabro",
+        "denkhaus/work#12",
+        "--lane",
+        "revisor",
+    ]);
+    fabro_snapshot!(context.filters(), cmd, @r#"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+    ----- stderr -----
+      × work project fabro declares no lane "revisor" (declared lanes: loop)
+    "#);
+
+    project.assert();
+    lane.assert_calls(0);
 }

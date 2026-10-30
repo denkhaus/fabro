@@ -450,6 +450,31 @@ mod next_item {
             Ok(entry.clone())
         }
 
+        async fn set_lane(
+            &self,
+            project: &WorkProject,
+            item_key: &str,
+            lane: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            let mut items = self
+                .items
+                .lock()
+                .expect("work-item test step should succeed");
+            let entry = items
+                .iter_mut()
+                .find(|item| item.item_key == item_key)
+                .ok_or_else(|| anyhow::anyhow!("work item {item_key} not found"))?;
+            // Mirrors the GitHub adapter: every declared lane label comes
+            // off, then the new one goes on — a move never leaves two
+            // lanes on one item.
+            let declared: Vec<String> = project.lane_labels.values().cloned().collect();
+            entry.labels.retain(|label| !declared.contains(label));
+            if let Some(label) = lane.and_then(|lane| project.lane_labels.get(lane)) {
+                entry.labels.push(label.clone());
+            }
+            Ok(entry.clone())
+        }
+
         async fn close(
             &self,
             _project: &WorkProject,
@@ -914,6 +939,96 @@ mod next_item {
             .await
             .expect("work-item test step should succeed");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn lane_moves_assign_and_clear_the_lane_label() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let moved = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/work-items/lane",
+            &json!({"itemKey": "denkhaus/work#1", "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(moved["itemKey"], "denkhaus/work#1");
+        assert_eq!(
+            moved["labels"],
+            json!(["project:fabro", "lane:loop"]),
+            "the lane label lands beside the project label"
+        );
+
+        // `null` clears the lane — the tranche model's unassign.
+        let cleared = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/work-items/lane",
+            &json!({"itemKey": "denkhaus/work#1", "lane": null}),
+        )
+        .await;
+        assert_eq!(
+            cleared["labels"],
+            json!(["project:fabro"]),
+            "a null lane removes every lane label"
+        );
+
+        // An unknown lane is refused, naming the declared lanes, before
+        // the tracker is touched.
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri(api("/projects/fabro/work-items/lane"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&json!({"itemKey": "denkhaus/work#1", "lane": "revisor"}))
+                    .expect("work-item test step should succeed"),
+            ))
+            .expect("work-item test step should succeed");
+        let response = app
+            .oneshot(request)
+            .await
+            .expect("work-item test step should succeed");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn lane_moves_refuse_run_workers() {
+        use fabro_server::test_support::{
+            TestAppStateBuilder, build_test_router, create_test_run_with_target,
+        };
+
+        let tracker = FakeTracker::with_items(vec![item(1, 1)]);
+        let state = TestAppStateBuilder::new()
+            .work_tracker(Arc::clone(&tracker) as Arc<dyn TrackerProvider>)
+            .build();
+        let app = build_test_router(state.clone());
+        put_project(&app).await;
+
+        // Even the run-tools capability must not move lanes: lane
+        // assignment is the user's tranche surface (work#1065), never an
+        // agent-run capability.
+        let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
+        let tools = state.test_issue_worker_token_with_run_tools(&run_id);
+        let refused = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/projects/fabro/work-items/lane"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("authorization", format!("Bearer {tools}"))
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "itemKey": "denkhaus/work#1",
+                            "lane": "loop"
+                        }))
+                        .expect("fixture serializes"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(refused.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

@@ -436,6 +436,46 @@ impl TrackerProvider for GitHubTracker {
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
 
+    async fn set_lane(
+        &self,
+        project: &WorkProject,
+        item_key: &str,
+        lane: Option<&str>,
+    ) -> anyhow::Result<WorkItem> {
+        let number = Self::issue_number(item_key)?;
+        // Read the item's current labels so the move is a swap, not an
+        // accumulate: every lane label the project declares comes off,
+        // then the new one goes on. A lane move must never leave two
+        // lanes on one item (the queues would double-count it).
+        let value = self.list_issue_json(project, number).await?;
+        let item = self
+            .json_item(&value)
+            .filter(|item| {
+                item.labels
+                    .iter()
+                    .any(|label| label == &project.project_label)
+            })
+            .ok_or_else(|| anyhow::anyhow!("work item {item_key} not found"))?;
+        for label in project.lane_labels.values() {
+            if item.labels.iter().any(|current| current == label) {
+                self.remove_label_from_issue(number, label).await?;
+            }
+        }
+        if let Some(lane) = lane {
+            let label = project.lane_labels.get(lane).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "work project {} declares no lane {lane:?}",
+                    project.project_id
+                )
+            })?;
+            self.ensure_label(label).await?;
+            self.add_label(number, label).await?;
+        }
+        let value = self.list_issue_json(project, number).await?;
+        self.json_item(&value)
+            .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
+    }
+
     async fn close(
         &self,
         _project: &WorkProject,

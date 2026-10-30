@@ -13,7 +13,7 @@ use fabro_api::types::{
     WorkClaimGrantOutcome, WorkClaimGrantRequest, WorkClaimGrantResponse, WorkClaimListResponse,
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
-    WorkItemCreateRequest, WorkItemListResponse, WorkItemUpdateRequest,
+    WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse, WorkItemUpdateRequest,
     WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{PlatformRecord, WorkClaimedRecord, WorkReleasedRecord};
@@ -50,6 +50,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/update",
             post(update_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/lane",
+            post(lane_work_item),
         )
         .route("/projects/{projectId}/next", post(claim_next))
         .route("/projects/{projectId}/work-item", get(retrieve_work_item))
@@ -533,6 +537,49 @@ async fn update_work_item(
         .filter(|value| !value.is_empty());
     let item = tracker
         .update(project, &request.item_key, title, body)
+        .await
+        .map_err(tracker_failed)?;
+    Ok(Json(api_item(item)).into_response())
+}
+
+/// The lane move is a USER operation (denkhaus/work#1065): the tranche
+/// model's session move, never an agent-run capability — a worker
+/// principal is refused before any store or tracker call, so the run
+/// tools never carry lane assignment.
+async fn lane_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemLaneRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("lane assignment is a user operation — run {run_id} may not move lanes"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    // Same validation posture as `--lane` on create (the CLI's
+    // `lane_label`): an unknown lane is refused, naming the declared
+    // lanes, so a typo never silently unlans the item.
+    if let Some(lane) = request.lane.as_deref() {
+        if !project.lane_labels.contains_key(lane) {
+            let declared = if project.lane_labels.is_empty() {
+                "none declared".to_string()
+            } else {
+                let mut lanes: Vec<&str> = project.lane_labels.keys().map(String::as_str).collect();
+                lanes.sort_unstable();
+                lanes.join(", ")
+            };
+            return Err(ApiError::bad_request(format!(
+                "work project {} declares no lane {lane:?} (declared lanes: {declared})",
+                project.project_id
+            )));
+        }
+    }
+    let tracker = tracker_for(&state, &project).await?;
+    let item = tracker
+        .set_lane(&project, &request.item_key, request.lane.as_deref())
         .await
         .map_err(tracker_failed)?;
     Ok(Json(api_item(item)).into_response())
