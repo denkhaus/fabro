@@ -142,6 +142,12 @@ install-cli:
 # holding /storage/.home/settings.toml is reused across refreshes.
 compose-up:
     docker compose up -d
+    # Run-channel bind source (work#1073): docker auto-creates the host
+    # dir root-owned on first use; the server drops to uid 1000 at the
+    # entrypoint and the channel spawn would fail with EACCES (the
+    # run then launches WITHOUT a channel — probe-31 reddens). One
+    # idempotent chown via the container's root heals any host state.
+    docker exec -u 0 fabro-lokal chown 1000:1000 /var/lib/fabro/run-channels
 
 # One-command install-mode recovery: print the install URL + token from
 # the running container's logs (the server logs the full URL on boot in

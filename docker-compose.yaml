@@ -27,6 +27,14 @@ services:
     volumes:
       - fabro-storage:/storage
       - /var/run/docker.sock:/var/run/docker.sock
+      # Run-channel root (work#989/#1011 discipline, work#1073): the
+      # sandbox binds this HOST path as the sibling-container source, so
+      # the server must see it at the identical path — the storage
+      # volume default (<storage>/run-channels) is container-internal
+      # and the daemon would bind an empty auto-created dir instead.
+      - /var/lib/fabro/run-channels:/var/lib/fabro/run-channels
+    environment:
+      FABRO_RUN_CHANNEL_DIR: /var/lib/fabro/run-channels
     env_file:
       - path: .env
         required: false
