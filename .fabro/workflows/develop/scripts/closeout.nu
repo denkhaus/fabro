@@ -86,8 +86,9 @@ def dockerfile-hits [paths: list<string>]: nothing -> list<string> {
     $paths | where {|p| ($p | split row "/" | any {|seg| $seg | str starts-with "Dockerfile"})}
 }
 
-# --- diff-anchor helpers: MIRRORED from evidence.nu (seed-claim-base
-# approach) — reuse that anchoring scheme, do not invent a new one.
+# --- diff-anchor helpers: MIRRORED from evidence.nu (run-base
+# anchoring — claims are server-side, denkhaus/work#1056) — reuse that
+# anchoring scheme, do not invent a new one.
 
 def current-branch []: nothing -> string {
     git branch --show-current | str trim
@@ -110,38 +111,13 @@ def run-base []: nothing -> record<base: string, short: string, grounded: bool> 
     }
 }
 
-def seed-status-at [commit: string, seed_id: string]: nothing -> any {
-    let res = (do { git show $"($commit):.seeds/issues.jsonl" } | complete)
-    if $res.exit_code != 0 { return null }
-    let rows = ($res.stdout | lines | compact | each {|l| do -i { $l | from json } })
-    let hit = ($rows | where {|r| $r != null and ($r | get -o id | default '') == $seed_id } | get -o 0 | default null)
-    if $hit == null { null } else { $hit | get -o status | default null }
-}
-
-# Newest commit where the seed TRANSITIONS to in_progress (in_progress at
-# C, not at C^); the claim commit itself is the base. Fallback: run base.
-# See evidence.nu seed-claim-base for the full rationale.
-def seed-claim-base [seed_id: string, run_base: record]: nothing -> record<base: string, short: string, grounded: bool, fallback: bool> {
-    for c in (do { git log --format=%H -- .seeds/issues.jsonl } | complete | get stdout | lines | compact) {
-        if ((seed-status-at $c $seed_id) == "in_progress") {
-            let parent = (do { git rev-parse $"($c)^" } | complete)
-            if $parent.exit_code == 0 {
-                let before = (seed-status-at ($parent.stdout | str trim) $seed_id)
-                if $before != "in_progress" {
-                    return {base: $c, short: (do { git rev-parse --short $c } | complete | get stdout | str trim), grounded: true, fallback: false}
-                }
-            }
-        }
-    }
-    {base: $run_base.base, short: $run_base.short, grounded: $run_base.grounded, fallback: true}
-}
-
-# Best-effort detection + warning: warn when the seed's diff (claim-base
-# anchored, fallback run base — flagged in the base itself) touches any
-# Dockerfile* path. Prints the warning to BOTH stderr and stdout (both are
-# captured into the stage journal / run output); never blocks the close.
-def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
-    let base = (seed-claim-base $seed_id (run-base))
+# Best-effort detection + warning: warn when the run diff (run-base
+# anchored — work-item claims are server-side, no tracker-file claim
+# anchor exists; denkhaus/work#1056) touches any Dockerfile* path.
+# Prints the warning to BOTH stderr and stdout (both are captured into
+# the stage journal / run output); never blocks the close.
+def warn-dockerfile-diff []: nothing -> nothing {
+    let base = (run-base)
     let res = (do { git diff --name-only $base.base } | complete)
     if $res.exit_code != 0 { return }
     let hits = (dockerfile-hits ($res.stdout | lines | compact))
@@ -160,7 +136,7 @@ def warn-dockerfile-diff [seed_id: string]: nothing -> nothing {
 # caught it only by accident while deduping (run 01M23J61HH8Z,
 # regression finding). Before its `seeds close`, this gate verifies the
 # run actually delivered a diff the seed's demand is visible in
-# (claim-base anchored — the same seed-claim-base/run-base helpers the
+# (run-base anchored — the same run-base helper the
 # Dockerfile warning uses). If not visible, the run does NOT close: the
 # seed stays OPEN and a PARK note goes to stdout AND stderr (both land
 # in the stage journal / run output) for the next cycle to act on.
@@ -199,12 +175,11 @@ def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
 }
 
 # Best-effort visibility verdict for THIS item against the run diff
-# (claim-base anchored, fallback run base — work-item claims are
-# server-side, so the .seeds-history claim anchor falls back to the run
-# base by construction, flagged in the base itself). Never blocks on
+# (run-base anchored — work-item claims are server-side, no tracker-file
+# claim transition to anchor on; denkhaus/work#1056). Never blocks on
 # git/channel failure — degrades to visible.
 def item-demand-visible [item_key: string]: nothing -> bool {
-    let base = (seed-claim-base $item_key (run-base))
+    let base = (run-base)
     let diff_res = (do { git diff $base.base -- . ':(exclude).fabro/journal' } | complete)
     if $diff_res.exit_code != 0 { return true }
     let title = (do -i { work-item-title $item_key } | default '')
@@ -605,7 +580,7 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
     # the per-call complete wrappers above guarantee no failure here can
     # reach the close below. No Dockerfile touched: byte-identical close
     # semantics (packet validation, work close, exit codes).
-    do -i { warn-dockerfile-diff $key } | ignore
+    do -i { warn-dockerfile-diff } | ignore
 
     # Closure-discipline gate (fabro-02c4): PARK instead of closing when
     # the run diff shows no implementing change for the item's demand

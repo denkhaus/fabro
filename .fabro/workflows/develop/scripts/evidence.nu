@@ -343,44 +343,11 @@ def claimed-item [work_item: bool]: nothing -> any {
     {id: $key, title: ($item | get -o title | default ""), description: ($item | get -o body | default "")}
 }
 
-# The seed's status as recorded in the tracker file at a given commit, or
-# null when the file or the seed is absent (or unparsable) there — squashed
-# or pre-tracker history degrades to null, never to a wrong status.
-def seed-status-at [commit: string, seed_id: string]: nothing -> any {
-    let res = (do { git show $"($commit):.seeds/issues.jsonl" } | complete)
-    if $res.exit_code != 0 { return null }
-    let rows = ($res.stdout | lines | compact | each {|l| do -i { $l | from json } })
-    let hit = ($rows | where {|r| $r != null and ($r | get -o id | default '') == $seed_id } | get -o 0 | default null)
-    if $hit == null { null } else { $hit | get -o status | default null }
-}
-
-# Diff anchor: the commit where the CURRENT seed was claimed — the newest
-# commit C in `.seeds/issues.jsonl` history where the seed's status
-# TRANSITIONS to in_progress (in_progress at C, not at C^). Transition-
-# based, so a re-plan visit (no status change) never re-anchors and every
-# earlier cycle of the seed stays visible; and it survives identical
-# checkpoint subjects. The claim commit ITSELF is the base, not its
-# parent: it carries only tracker churn and loop paths are filtered from
-# the diff anyway, so `git diff <claim>` covers exactly the post-claim
-# work. Fallback (no claim resolves — squashed history, claim predates
-# repo state): the run base, flagged as such — never a silent
-# mis-scoped diff.
-def seed-claim-base [seed_id: any, run_base: record]: nothing -> record<base: string, short: string, grounded: bool, fallback: bool> {
-    if $seed_id != null {
-        for c in (git log --format=%H -- .seeds/issues.jsonl | lines | compact) {
-            if ((seed-status-at $c $seed_id) == "in_progress") {
-                let parent = (do { git rev-parse $"($c)^" } | complete)
-                if $parent.exit_code == 0 {
-                    let before = (seed-status-at ($parent.stdout | str trim) $seed_id)
-                    if $before != "in_progress" {
-                        return {base: $c, short: (git rev-parse --short $c), grounded: true, fallback: false}
-                    }
-                }
-            }
-        }
-    }
-    {base: $run_base.base, short: $run_base.short, grounded: $run_base.grounded, fallback: true}
-}
+# Diff anchor: the run base. Work-item claims are server-side
+# (ADR-0032): no tracker-file claim transition exists to anchor on, so
+# the capture diffs against the run base directly — the former
+# .seeds/issues.jsonl claim walk could never match a work-item key and
+# only ever hit this run-base path (denkhaus/work#1056).
 
 # ---------------------------------------------------------------------------
 # section printers — one evidence section each (output text is contract)
@@ -398,8 +365,9 @@ def integrity-section [
 }
 
 # The header line naming both bases mechanically: the run base (numstat
-# and integrity counts stay run-scoped) and the seed-claim base the diff
-# section is anchored at. Reprinted at the end so it survives a
+# and integrity counts stay run-scoped) and the diff base the diff
+# section is anchored at (the run base — claims are server-side,
+# denkhaus/work#1056). Reprinted at the end so it survives a
 # tail-anchored truncation.
 def integrity-line [
     base_short: string
@@ -491,7 +459,7 @@ def walk-failure-note [failed: list]: nothing -> any {
 # in evidence-smoke.
 def zero-hunk-note [empty: list]: nothing -> string {
     if ($empty | is-empty) { return "" }
-    "\n(zero per-seed hunks against the claim base: " + ($empty | str join ', ') + " — listed above with no diff body by design; adjudicate the delta from the stat map and the tracker record)\n"
+    "\n(zero per-seed hunks against the diff base: " + ($empty | str join ', ') + " — listed above with no diff body by design; adjudicate the delta from the stat map and the tracker record)\n"
 }
 
 # `complete` keeps stdout as one raw string: the list-of-lines split +
@@ -499,8 +467,8 @@ def zero-hunk-note [empty: list]: nothing -> string {
 # once, never reproduced) — raw capture rules that class out.
 # COMPLETE, no fidelity budget: every seed-work file is included, whole,
 # source files first and docs last (diff-sort-key). The base is the
-# PER-SEED claim commit (seed-claim-base), not the run base — a capture
-# must show only the current seed's hunks, not every closed seed's.
+# run base (claims are server-side, denkhaus/work#1056) — anchored on
+# this run's own work, not every closed seed's.
 # Files whose per-seed diff is empty render no body; the section names
 # them in its zero-hunk note (fabro-e042) instead of a blank line — a
 # listed file under a "complete diff below" header must say why it has
@@ -510,7 +478,7 @@ def zero-hunk-note [empty: list]: nothing -> string {
 # eats documentation before source.
 # Shared per-seed diff walk behind the seed-work diff section (full
 # fidelity — seed work is never capped): diff each file against the
-# claim base, sanitize the body, skip files with no hunks (named in the
+# diff base, sanitize the body, skip files with no hunks (named in the
 # zero-hunk note, fabro-e042), stop
 # at the HARD_CAP and report what was cut. The churn sections use
 # capped-diff-walk (fabro-020b) instead.
@@ -631,7 +599,7 @@ def capped-diff-walk [base: string, rows: list]: nothing -> record<body: string,
 }
 
 def diff-section [base: string, seed_rows: list]: nothing -> string {
-    let head = "\n== seed work: complete diff (git diff -U3 against the per-seed claim base named in the header, files above; source before docs) ==\n"
+    let head = "\n== seed work: complete diff (git diff -U3 against the diff base named in the header, files above; source before docs) ==\n"
     let seed_files = ($seed_rows | get -o path | default [] | sort-by {|f| diff-sort-key $f })
     if ($seed_files | is-empty) {
         return ($head + "(no seed-work files to diff)\n")
@@ -658,11 +626,11 @@ def diff-section [base: string, seed_rows: list]: nothing -> string {
 # emitted when seed_rows is non-empty (loop churn stays counts-only) or
 # when both lists are empty.
 def loop-diff-section [base: string, churn_rows: list]: nothing -> string {
-    let head = "\n== loop work: changed files, numstat + first 30 changed lines each (churn-only seed — capped diff against the per-seed claim base named in the header; the FILE LIST is the review scope, source before docs) ==\n"
+    let head = "\n== loop work: changed files, numstat + first 30 changed lines each (churn-only seed — capped diff against the diff base named in the header; the FILE LIST is the review scope, source before docs) ==\n"
     let walk = (capped-diff-walk $base $churn_rows)
     let failure = (walk-failure-note $walk.failed)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
-        return ($head + ($failure | default "") + "(no loop-work hunks against the claim base)\n")
+        return ($head + ($failure | default "") + "(no loop-work hunks against the diff base)\n")
     }
     if ($walk.omitted | is-empty) {
         $head + $walk.body + ($failure | default "")
@@ -695,7 +663,7 @@ def anomaly-section [base: string, churn_rows: list]: nothing -> string {
     let walk = (capped-diff-walk $base $churn_rows)
     let failure = (walk-failure-note $walk.failed)
     if ($walk.omitted | is-empty) and ($walk.body | is-empty) {
-        return ($head + ($failure | default "") + "(no anomaly hunks against the claim base — loop files changed before the claim only)\n")
+        return ($head + ($failure | default "") + "(no anomaly hunks against the diff base — loop files changed before the base only)\n")
     }
     if ($walk.omitted | is-empty) {
         $head + $walk.body + ($failure | default "")
@@ -815,18 +783,13 @@ def main [--lane: string = "product", --work-item]: nothing -> nothing {
     let wt = (worktree-state)
     let seed_desc = (if $wip == null { "none-in-progress" } else { $"($wip.id): ($wip.title)" })
 
-    # Diff anchor: the commit where this seed was claimed. Only the diff
-    # scope changes — numstat rows, integrity counts, and the file list
-    # above stay run-scoped per spec (they are small). ADR-0032 phase 3:
-    # work-item claims are server-side — no tracker-file claim transition
-    # exists to anchor on, so the work-item mode diffs against the run
-    # base directly (fallback flagged in the header, never silent).
-    let claim = (seed-claim-base (if $work_item { null } else if $wip == null { null } else { $wip.id }) $base)
-    let diff_desc = (if $claim.fallback {
-        ($claim.short + " (NO ITEM-CLAIM BASE — claims are server-side in work-item mode, or no claim transition found in tracker history; diffing against run base)")
-    } else {
-        $claim.short
-    })
+    # Diff anchor: the run base. Only the diff scope changes — numstat
+    # rows, integrity counts, and the file list above stay run-scoped
+    # per spec (they are small). ADR-0032: work-item claims are
+    # server-side — no tracker-file claim transition exists to anchor
+    # on, so the capture diffs against the run base directly (flagged
+    # in the header, never silent).
+    let diff_desc = ($base.short + " (run base — claims are server-side, no tracker-file claim anchor)")
 
     # Fixed sections first, each under its own cap. The stat map rides
     # directly under the integrity header (fabro-b798): a tail-truncated
@@ -844,19 +807,19 @@ def main [--lane: string = "product", --work-item]: nothing -> nothing {
     # Churn-only seeds get a loop-work diff adjacent to the churn counts
     # (fabro-4b57); mixed or clean captures are unchanged.
     let loop_diff = (if ($seed_rows | is-empty) and (not ($churn_rows | is-empty)) {
-        loop-diff-section $claim.base $churn_rows
+        loop-diff-section $base.base $churn_rows
     } else { "" })
     # Mixed captures (seed work AND loop churn) get an anomaly section
     # (fabro-c0e5): loop paths changed alongside seed work are diffed,
     # not demoted to the counts-only churn above.
     let anomaly = (if (not ($seed_rows | is-empty)) and (not ($churn_rows | is-empty)) {
-        anomaly-section $claim.base $churn_rows
+        anomaly-section $base.base $churn_rows
     } else { "" })
     let worktree = (worktree-section $wt.lines)
 
     # …then the diff gets whatever remains under the hard output budget
     # (tail sections reserved so a cut lands in the diff, never in them).
-    let diff = (diff-section $claim.base $seed_rows)
+    let diff = (diff-section $base.base $seed_rows)
 
     # Critical-first emission. No size games: a large capture is the
     # engine's to demote (blobref link) and the agent reviewer's to read.
