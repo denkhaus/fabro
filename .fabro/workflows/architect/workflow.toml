@@ -11,17 +11,6 @@ graph = "workflow.fabro"
 # [run.agent] fabro_tools and no node grants: survey, analyze, and
 # file are shell + file-tool stages.
 
-# Stage journal (same contract as develop/revisor, seed fabro-176b): one
-# durable JSON line per stage execution, engine provenance, checkpointed
-# with the run. Non-blocking; failures must never affect the run.
-[[run.hooks]]
-name = "stage-journal"
-event = "stage_complete"
-script = "nu .fabro/scripts/stage-journal.nu"
-blocking = false
-timeout = "10s"
-sandbox = true
-
 # ── Reusability inputs (fabro-562a design point 5) ────────────────────
 # Scope hint: what the analyze question frames as in-scope. Override per
 # invocation with -I scope_hint="..." without touching this file.

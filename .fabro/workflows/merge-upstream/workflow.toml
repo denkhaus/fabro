@@ -14,14 +14,6 @@ graph = "workflow.fabro"
 [run.agent]
 fabro_tools = false
 
-[[run.hooks]]
-name = "stage-journal"
-event = "stage_complete"
-script = "nu .fabro/scripts/stage-journal.nu"
-blocking = false
-timeout = "10s"
-sandbox = true
-
 [run.model]
 provider = "zai"
 name = "glm-5.3"
