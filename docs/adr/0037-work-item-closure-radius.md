@@ -2,6 +2,12 @@
 
 ## Status
 
+Superseded by ADR-0038 (2026-10-30, same session): the closure radius
+survives, but its carrier changed — painpoints became platform records
+and the chain gained the intermediate painpoint node. The sub-issue
+carrier and the direct parent/child link below are REPLACED; the
+close-gate, timing, and preference decisions carried over.
+
 Accepted (2026-10-30, grilled design — two rounds, eleven decisions).
 
 ## Context
