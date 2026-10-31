@@ -59,11 +59,12 @@ use crate::server::{AppState, run_records};
 /// so this arm and the kind string must travel together.
 pub(crate) const OUTBOX_KIND: &str = "observation.filing";
 
-/// The output budget and deadline for one distillation call. The
-/// structured small default (zai glm-4.7) is ALWAYS-REASONING and
-/// reasoning tokens come out of the same budget — the floor mirrors the
-/// run-title lesson (fabro-d5b1: a starving cap empties every call).
-const FILING_MAX_OUTPUT_TOKENS: u32 = 2_048;
+/// The output budget for one distillation call. The structured small
+/// default (zai glm-4.7) is ALWAYS-REASONING and reasoning tokens come
+/// out of the same budget — the distillation reasons over several
+/// observations, so the floor doubles the title path's (the fabro-d5b1
+/// lesson: a starving cap empties every call).
+const FILING_MAX_OUTPUT_TOKENS: u32 = 4_096;
 const FILING_MIN_REASONING_SAFE_TOKENS: u32 = 512;
 const _: () = assert!(FILING_MAX_OUTPUT_TOKENS >= FILING_MIN_REASONING_SAFE_TOKENS);
 const FILING_TIMEOUT: Duration = Duration::from_mins(1);
@@ -410,10 +411,14 @@ async fn distill(
         .timeout(FILING_TIMEOUT)
         .build()
         .context("building the distillation request")?;
-    let completion = client
-        .complete_object(request, "observation_filing", response_schema())
-        .await
-        .context("the distillation call failed")?;
+    let completion = fabro_llm::complete_object_tolerant(
+        &client,
+        request,
+        "observation_filing",
+        response_schema(),
+    )
+    .await
+    .context("the distillation call failed")?;
     Ok(parse_candidates(&completion.object, fresh))
 }
 
