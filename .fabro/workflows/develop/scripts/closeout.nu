@@ -7,8 +7,8 @@
 # (stdin_source="current_item_json" on the node, the planner-forwarded
 # granted-item packet). One item per run: after a successful close the
 # run exits; the next item is the next run's job (user directive
-# 2026-09-04 — bounded runs give the revisor a clear, single-item
-# working field and keep run cost predictable).
+# 2026-09-04 — bounded runs keep the working field clear and single-item
+# and keep run cost predictable).
 #
 # The item comes from CONTEXT, never from "first claimed item":
 # the tracker carries parallel claims (stale or live), and run

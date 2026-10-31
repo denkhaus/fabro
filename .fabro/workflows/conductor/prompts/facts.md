@@ -18,7 +18,7 @@ report it in the journal, never silently work around it.
   Omitted targets inherit the parent's RUN BRANCH (a `fabro/run/…` ref
   where branch protection, the Dogfood Gate, and auto-merge do not exist).
 - Stage journal — `.fabro/journal/<run_id>.jsonl`: one JSON line per stage
-  completion; the seed id a run claimed is recoverable by grepping it for
-  the tracker's seed-id prefix.
+  completion; the item key a run claimed is recoverable by grepping it for
+  the claim grant record.
 - Revision markers — `.fabro/revisions/<run-id>.md`: a develop or
   merge-upstream run without a marker on the base branch is unrevised.

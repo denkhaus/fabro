@@ -71,14 +71,11 @@ When you write text that flows into context, wrap absolute paths in backticks. N
 
 ## Observations and journal — every pass answers
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry: category
-`painpoint` (friction in the loop lane itself — what hurt and a
+{% include "observations.md" %}
+
+Painpoints here: friction in the loop lane itself — what hurt and a
 concrete suggestion, self-contained: where, what happened, evidence,
-fix idea) or category `note` (context worth keeping; exactly one note
-reading "nothing durable to record" when nothing happened).
+fix idea.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report. Emit the key:

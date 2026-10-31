@@ -7,9 +7,10 @@ use fabro_types::settings::server::{
     ObjectStoreProvider, ObjectStoreSettings, SandboxPluginSettings, ServerApiSettings,
     ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod, ServerAuthSettings,
     ServerIntegrationsSettings, ServerListenSettings, ServerLoggingSettings, ServerNamespace,
-    ServerRetentionSettings, ServerRunChannelSettings, ServerSandboxProviderSettings,
-    ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
-    ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
+    ServerObservationsSettings, ServerRetentionSettings, ServerRunChannelSettings,
+    ServerSandboxProviderSettings, ServerSandboxProvidersSettings, ServerSandboxSettings,
+    ServerSchedulerSettings, ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings,
+    WebhookStrategy,
 };
 use fabro_util::Home;
 
@@ -67,6 +68,17 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .run_channel
                 .as_ref()
                 .and_then(|run_channel| run_channel.dir.clone()),
+        },
+        observations: ServerObservationsSettings {
+            filing_enabled: layer
+                .observations
+                .as_ref()
+                .and_then(|observations| observations.filing_enabled)
+                .expect("defaults.toml should provide server.observations.filing_enabled"),
+            filing_model:   layer
+                .observations
+                .as_ref()
+                .and_then(|observations| observations.filing_model.clone()),
         },
         logging: ServerLoggingSettings {
             level:       layer

@@ -34,6 +34,8 @@ pub struct ServerNamespace {
     pub retention:    ServerRetentionSettings,
     /// The per-run capability channel (ADR-0035, fork).
     pub run_channel:  ServerRunChannelSettings,
+    /// Observation-derived work-item filing (ADR-0038 stage 4, fork).
+    pub observations: ServerObservationsSettings,
     pub logging:      ServerLoggingSettings,
     pub integrations: ServerIntegrationsSettings,
 }
@@ -56,6 +58,7 @@ impl ServerNamespace {
             scheduler:    ServerSchedulerSettings::default(),
             retention:    ServerRetentionSettings::default(),
             run_channel:  ServerRunChannelSettings::default(),
+            observations: ServerObservationsSettings::default(),
             logging:      ServerLoggingSettings::default(),
             integrations: ServerIntegrationsSettings::default(),
         }
@@ -283,6 +286,23 @@ impl Default for ServerRunChannelSettings {
             dir:     None,
         }
     }
+}
+
+/// `[server.observations]` — observation-derived work-item filing
+/// (ADR-0038 stage 4): whether the run-end hook files work items from a
+/// terminal run's painpoint observations, and the fixed model the one
+/// distillation call per firing run uses. `filing_model` is
+/// `provider:model` (e.g. `zai:glm-4.7`); when absent the catalog's
+/// structured small default answers (the run-title posture). Filing is
+/// OFF by default: development and bench stacks record observations but
+/// never file — only an operator's `settings.toml` turns the hook on,
+/// which keeps workbench passes from flooding the tracker with
+/// fresh-identity painpoints link-dedupe cannot catch.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerObservationsSettings {
+    pub filing_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filing_model:   Option<String>,
 }
 
 #[derive(

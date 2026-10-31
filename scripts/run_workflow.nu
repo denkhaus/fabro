@@ -25,9 +25,10 @@
 #          auto-merge cannot engage; the leftover PR on GitHub can be
 #          closed as already-integrated)
 #
-# No ask-based improve review anymore (ADR-0015): the revisor workflow
-# owns run revisioning on the merged world — it embeds the improve
-# question itself and files seeds with a basis line.
+# No ask-based improve review anymore (ADR-0015): painpoint observations
+# file through the run-end hook (ADR-0038 stage 4; the revisor workflow
+# retired with it) — the observations are platform records and the hook
+# files items with a basis line.
 #
 # Any failure prints an ALARM block and exits 1; nothing is merged for a
 # red run.

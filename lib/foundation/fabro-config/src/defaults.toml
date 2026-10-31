@@ -53,6 +53,15 @@ max_run_age_days = 14
 [server.run_channel]
 enabled = true
 
+# Observation-derived work-item filing (ADR-0038 stage 4): the run-end
+# hook files work items from a terminal run's painpoint observations.
+# OFF by default — development and bench stacks record observations but
+# never file; an operator's settings.toml turns the hook on. The
+# distillation model is `provider:model`; empty takes the catalog's
+# structured small default (the run-title posture).
+[server.observations]
+filing_enabled = false
+
 [server.artifacts]
 provider = "local"
 prefix = ""

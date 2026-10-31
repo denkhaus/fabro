@@ -204,34 +204,32 @@ digraph Develop {
         assert_eq!(kinds.classify("success", Some("tester"), "exit"), None);
     }
 
-    /// The regression pin for fabro-8615 on the graph that exposed it
-    /// (`.fabro/workflows/revisor/workflow.fabro`): comment lines carry
-    /// `->` and `]`, and `start -> select` is a bare edge. Both shapes
-    /// used to swallow the plain `select -> exit` route, so a green
-    /// "Nothing to revise" pass classified as `Failed { SoftStop }` and
-    /// the run showed a misleading `failed` (fabro-79ba).
+    /// The regression pin for fabro-8615, originally on the revisor
+    /// graph that exposed it and ported to the conductor graph when the
+    /// revisor retired (ADR-0038 stage 4): comment lines carry `->` and
+    /// `]`, and bare edges sit beside them. Both shapes used to swallow
+    /// plain routes, so a green pass classified as `Failed { SoftStop }`
+    /// and the run showed a misleading `failed` (fabro-79ba).
     #[expect(
         clippy::disallowed_methods,
-        reason = "the regression test reads the checked-in revisor graph synchronously"
+        reason = "the regression test reads the checked-in conductor graph synchronously"
     )]
     #[test]
-    fn the_real_revisor_graph_keeps_its_plain_selector_exit() {
+    fn the_real_conductor_graph_keeps_its_plain_edges_against_comment_lines() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../.fabro/workflows/revisor/workflow.fabro");
+            .join("../../../.fabro/workflows/conductor/workflow.fabro");
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
         let kinds = ExitKinds::parse(&source);
-        assert_eq!(kinds.kind_of("select", "exit"), Some("soft"));
-        assert_eq!(kinds.kind_of("analyze", "exit"), Some("soft"));
-        assert_eq!(kinds.kind_of("file", "exit"), Some("soft"));
         assert!(
-            kinds.has_plain_edge("select", "exit"),
-            "the plain 'Nothing to revise' route survives the comment lines"
+            kinds.has_plain_edge("start", "survey"),
+            "the plain start edge survives the comment lines"
         );
+        assert_eq!(kinds.kind_of("survey", "exit"), Some("soft"));
         assert_eq!(
-            kinds.classify("success", Some("select"), "exit"),
+            kinds.classify("success", Some("survey"), "exit"),
             None,
-            "a green 'Nothing to revise' pass stays green"
+            "a green survey pass stays green beside the soft kind edge"
         );
         assert!(
             kinds

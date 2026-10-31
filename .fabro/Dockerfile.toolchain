@@ -217,7 +217,7 @@ RUN set -eux; \
 # NO gh in the toolchain image (ADR-0019 capability gate, user decision
 # 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
 # (fabro-05d0, PR #53) and REVERTED — an authenticated forge client in agent
-# shells bypasses every engine governance control (gate, revisor, auto-merge;
+# shells bypasses every engine governance control (gate, auto-merge;
 # the engine injects GITHUB_TOKEN + a git credential bridge into shell calls,
 # so gh would have been fully write-capable: merge, close, force-push,
 # branch delete). All forge reads/writes are engine-mediated; the guard uses

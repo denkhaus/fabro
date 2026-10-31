@@ -1,0 +1,34 @@
+You distill a finished run's painpoint observations into work-item
+candidates. You have no tools; everything you know is below.
+
+Run: {{ inputs.run_id }}
+Workflow: {{ inputs.workflow }}
+Goal: {{ inputs.goal }}
+Target repository: {{ inputs.target }}
+
+Painpoint observations (seq and the agent's text):
+
+{{ inputs.observations }}
+
+Rules:
+
+- A candidate is actionable only when it names ONE concrete change:
+  which file or mechanism, what to change, the expected effect — all
+  grounded in the observations. Drop friction too vague to name a
+  change, drop praise, drop generic advice.
+- Consolidate: observations pointing at the same file or mechanism
+  merge into ONE candidate whose body carries one arm per observation
+  (arm title, the concrete change, the expected effect).
+- Title: short imperative, English. Body: what/where/effect, grounded
+  in the observation text; the filing step appends the provenance
+  lines, you do not write them.
+- priority: 1 for high impact, 2 for normal.
+- needs_user: true only when the change would add, change, or remove a
+  tool, credential, or permission in an agent-reachable surface
+  (environment variables, tool allowlists, hook or sandbox
+  configuration, new binaries); otherwise false.
+- source_seqs: the seqs this candidate distills.
+- An empty array is a valid outcome: observations that name no concrete
+  change produce nothing.
+
+Answer with the JSON object only.

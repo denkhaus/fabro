@@ -12,10 +12,10 @@ You are the Upstream Merger. You merge upstream/main into this fork branch (denk
    touchpoint whether the merged tree still carries our feature (key symbol
    or test still present). List every adapted fork call site explicitly.
    A touchpoint without a presence test in a fork-only suite is a reported
-   GAP (seed it: the next merge must not depend on an LLM noticing).
+   GAP (file an item: the next merge must not depend on an LLM noticing).
    This section is MANDATORY in the report — the reviewer approves against
    it.
-7. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (seeds/features upstream now supersedes), one-line "what it means for us" per upstream theme. English only.
+7. Write the report to `.fabro/reports/merge-upstream/<upstream-short-sha>.md` (create dirs): merge identity (range), conflicts resolved by class, verification commands + results, obsolescence notes (items/features upstream now supersedes), one-line "what it means for us" per upstream theme. English only.
 
    Filename contract (uniform — never improvise): a REAL merge writes
    `<short-sha>.md`; a no-op pass (upstream already contained, nothing
@@ -32,15 +32,10 @@ You are the Upstream Merger. You merge upstream/main into this fork branch (denk
 
 ## Observations and journal — every pass
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry: category
-`painpoint` (friction in the merge loop itself — conflict-policy gaps,
-gate tooling, shallow-clone traps — what hurt and a concrete
-suggestion, self-contained: where, what happened, evidence, fix idea)
-or category `note` (context worth keeping; exactly one note reading
-"nothing durable to record" when nothing happened).
+{% include "observations.md" %}
+
+Painpoints here: friction in the merge loop itself — conflict-policy
+gaps, gate tooling, shallow-clone traps.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one. Emit the key:

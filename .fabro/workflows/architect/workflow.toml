@@ -20,7 +20,7 @@ graph = "workflow.fabro"
 scope_hint = "the whole repository and its development loop"
 threshold = 0.6
 
-# Default model (same as develop/revisor).
+# Default model (same as develop).
 [run.model]
 provider = "zai"
 name = "glm-5.3"
@@ -60,7 +60,7 @@ model = "zai:glm-4.7"
 # all forge operations with its own credentials; agent shells get no
 # GITHUB_TOKEN.
 
-# Terminal-failure visibility (same posture as revisor).
+# Terminal-failure visibility (same posture as the other lanes).
 [run.notifications.terminal]
 enabled = true
 provider = "slack"

@@ -497,8 +497,8 @@ stores it belongs to; reach them by phase need:
   stranded work vanish silently; never let a failed run close or lose a
   seed (closure follows the publish path — failed runs publish nothing).
 - Verify a reviewer's factual premise in code before fixing; the same for
-  revisor seed citations (check the cited seed's premise AND
-  implementation status). A closed seed whose demand is invisible in any
+  auto-filed item citations (check the cited item's premise AND
+  implementation status). A closed item whose demand is invisible in any
   diff: grep `.fabro/journal` + `.fabro/revisions` for the id before
   reporting it lost; an undocumented closure is itself a finding.
 - Tool-call misuse by agents is BOUNDARY evidence, not prompt material:
@@ -612,7 +612,7 @@ stores it belongs to; reach them by phase need:
 - Push policy: during the cycle, branch updates and read-only integration
   stay allowed; the PUSH direction is gated to one mechanical decision at
   the END: `nu .fabro/scripts/push-gate.nu` (exit 0 = open: no running
-  conductor/develop/revisor pass AND no open run PR). Check and push
+  conductor/develop pass AND no open run PR). Check and push
   share one cell, the gate runs UNPIPED, and the push itself is
   `git push origin denkhaus` — `&&` behind a pipe reads the pipe member's exit
   code, not the gate's (2026-10-02 23:00 incident: a
@@ -731,7 +731,7 @@ stores it belongs to; reach them by phase need:
 4. Cycle report: outcome, verification evidence (commands run), seeds
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned seed with
-   a one-line @fabro recommendation. Categorize every revisor seed.
+   a one-line @fabro recommendation. Categorize every auto-filed item.
 5. Sprint ledger update (session-LOCAL): counting rule
   (user directives 2026-10-02 evening, amended 2026-10-29): a SPRINT is
   one batch of 2-3 work items (Phase 1 composition) and counts ONCE when
@@ -879,7 +879,8 @@ stores it belongs to; reach them by phase need:
   surface, why the line cannot or should not take it, and the estimated
   effort; the user decides GO/no.
 - Ownership (ADR-0018): the line works ONLY `@fabro`-assigned seeds
-  (fail-closed picker). The revisor files seeds UNASSIGNED. Emergencies
+  (fail-closed picker). The run-end observation filing files items
+  UNASSIGNED. Emergencies
   bypass the picker: line down -> agent repairs directly with the user's
   knowledge, seed filed retroactively.
 - Line-health watchpoints: verify `on_overlap=skip` survived any

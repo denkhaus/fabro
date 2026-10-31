@@ -1,6 +1,5 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
-assertion_line: 256
 expression: report
 ---
 .fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
@@ -31,12 +30,11 @@ expression: report
   inline@implement_app
   inline@verify_app
   inline@fix_app
-.fabro/workflows/conductor/workflow.fabro: Conductor nodes=5 edges=13
+.fabro/workflows/conductor/workflow.fabro: Conductor nodes=4 edges=10
   goal-inline
   file:prompt:prompts/survey.md@survey
   file:output_schema:schemas/develop-output.schema.json@develop
   file:prompt:prompts/develop-leg.md@develop
-  file:prompt:prompts/revise-leg.md@revise
 .fabro/workflows/context-demo/workflow.fabro: ContextDemo nodes=3 edges=2
   goal-inline
   inline@emit
@@ -89,11 +87,6 @@ expression: report
 .fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
   goal-inline
   file:prompt:prompts/simplify.md@simplify
-.fabro/workflows/revisor/workflow.fabro: Revisor nodes=6 edges=11
-  goal-inline
-  file:prompt:prompts/select.md@select
-  file:prompt:prompts/analyze.md@analyze
-  file:prompt:prompts/file.md@file
 .fabro/workflows/sleeper/workflow.fabro: Sleeper nodes=3 edges=2
   goal-inline
   inline@nap

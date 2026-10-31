@@ -54,11 +54,9 @@ const SMOKES = [
     # the implementer envelope pin, the red bounce — the meta lane's
     # load-bearing contracts, same tier as the develop pin.
     '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
-    # Revisor graph-contract pin (fabro-2357): the meta lane stays a
-    # MANUAL fire lane, so the toolchain-placement guard is an operator
-    # path there too — first stage after start, POSIX sh, no bypass
-    # edge. The revisor had no graph-contract smoke before this.
-    '.fabro/workflows/revisor/scripts/graph-contract-smoke.nu'
+    # Revisor graph-contract pin (fabro-2357): RETIRED with the revisor
+    # workflow (ADR-0038 stage 4 — the run-end observation filing
+    # replaced it); its three fixture batteries left with it.
     # tracker-guard pure decision logic (fabro-0da8): RETIRED with
     # fabro-786a — tracker-guard.nu left the graphs when the loop moved
     # its drained-queue exit into the planner's work_next routing
@@ -122,19 +120,10 @@ const BATTERIES = [
     # planner-preflight anchor battery (fabro-83df report-only
     # end-to-end case included; 0.5s measured 2026-09-19)
     '.fabro/scripts/planner-preflight-anchor-fixtures.nu'
-    # revisor overflow-ledger battery (fabro-552a): fixture revision
-    # file with open + consumed overflows drives `open`/`consume`
-    # selection deterministically, plus the live real-tree invariant
-    # for the memoize entry in revision 01M2X8458MDWMRVBRVEMDX9W4J.
-    '.fabro/workflows/revisor/scripts/overflow-ledger-fixtures.nu'
-    # revisor filing-dedupe battery (ADR-0032 phase 3): closeout-race.nu
-    # retired (migration fork 8 — the freshness rule became a mandated
-    # prompt step), so these pins hold the protection the retired
-    # fixtures carried: the fresh query-by-run-id filing-time re-check in
-    # both prompts, the work-tool filing contract, no tracker-CLI
-    # vocabulary anywhere in the revisor prompts, and the item-key
-    # overflow consume.
-    '.fabro/workflows/revisor/scripts/filing-dedupe-fixtures.nu'
+    # Revisor overflow-ledger + filing-dedupe batteries (fabro-552a,
+    # ADR-0032 phase 3): RETIRED with the revisor workflow (ADR-0038
+    # stage 4) — the freshness/dedupe discipline they pinned lives in
+    # the server's observation-filing filer and its unit tests now.
     # run-scope fixtures (fabro-70b5 part D): the run-scope
     # classification RED both ways, both lanes, plus the git base
     # derivation — this tier proves the meta lane's diff boundary.

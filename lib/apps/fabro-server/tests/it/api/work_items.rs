@@ -774,10 +774,7 @@ mod next_item {
         .await;
         assert_eq!(closed["item"]["state"], "closed");
         assert_eq!(
-            closed["overriddenRadius"]
-                .as_array()
-                .map(Vec::len)
-                .unwrap_or(0),
+            closed["overriddenRadius"].as_array().map_or(0, Vec::len),
             0,
             "an unforced close with an empty radius overrides nothing"
         );

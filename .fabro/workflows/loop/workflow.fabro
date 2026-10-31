@@ -126,7 +126,7 @@ digraph Loop {
     // assets with file tools (the a9bb user decision: deterministic
     // protection means schema-parseability, never a write ban).
     // No lesson_capture contract: mulch is hidden, so loop lessons land
-    // as journal painpoints (the revisor files them as seeds).
+    // as painpoint observations (the run-end hook files them as items).
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",

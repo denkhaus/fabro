@@ -14,7 +14,7 @@
 # toolchain environment it passes in milliseconds and changes nothing.
 #
 # Usage: sh .fabro/scripts/toolchain-guard.sh <lane>
-#   lane  loop | develop | revisor — names the lane's fire command in
+#   lane  loop | develop — names the lane's fire command in
 #         the teaching error. Unknown lanes get the generic form.
 
 set -u
@@ -37,7 +37,6 @@ fi
 case "$lane" in
     loop)    refire="just run loop   (or: fabro run loop --environment toolchain)" ;;
     develop) refire="just run develop (or: fabro run develop --environment toolchain)" ;;
-    revisor) refire="just run revisor (or: fabro run revisor --environment toolchain)" ;;
     *)       refire="just run <$lane> (or: fabro run <$lane> --environment toolchain)" ;;
 esac
 

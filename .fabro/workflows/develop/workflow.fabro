@@ -616,7 +616,7 @@ digraph Develop {
     // One seed per run (user directive 2026-09-04): after the approved
     // seed is closed the run EXITS — natural completion, publish-eligible
     // (the work passed gate + review). The next seed is the next run's
-    // job; bounded runs give the revisor a single-seed working field.
+    // job; bounded runs keep the working field single-item.
     closeout -> exit [label="Item closed"]
     closeout -> exit [x.kind="soft", label="Closeout failed (item stays open)", condition="outcome=failed"]
 }

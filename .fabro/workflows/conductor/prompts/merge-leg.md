@@ -28,15 +28,11 @@ section carried is WRONG (omitted targets inherit the parent's RUN BRANCH
 and strand the work off the merge-target branch, pass 01M2E2805XB4).
 ## Journal — every pass
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract: call it AT LEAST once per pass; a stage
-that never calls it is INVALID (engine-validated at completion). One
-call per entry: category `painpoint` (friction in the orchestration
-loop itself — tool schema misses, wait semantics surprises — what hurt
-and a concrete suggestion, self-contained: where, what happened,
-evidence, fix idea; do not fix platform assets, record them here) or
-category `note` (context worth keeping; exactly one note reading
-"nothing durable to record" when nothing happened).
+{% include "observations.md" %}
+
+Painpoints here: friction in the orchestration loop itself (tool schema
+misses, wait semantics surprises). Do not fix platform assets — record
+them here.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one. Emit the key:

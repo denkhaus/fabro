@@ -83,18 +83,10 @@ When you write text that flows into context (briefs, feedback), wrap absolute pa
 
 ## Observations and journal — every pass answers
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry:
+{% include "observations.md" %}
 
-- category `painpoint`: friction in the dev loop itself (workflow,
-  scripts, gate) — what hurt and a concrete suggestion, self-contained:
-  where (file/line), what happened, evidence (run id), fix idea. Do not
-  fix loop assets — record them here.
-- category `note`: context worth keeping. When nothing durable happened,
-  record exactly one note reading "nothing durable to record" — the
-  call itself satisfies the contract.
+Painpoints here: friction in the dev loop itself (workflow, scripts,
+gate). Do not fix loop assets — record them here.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one — two full runs shipped zero

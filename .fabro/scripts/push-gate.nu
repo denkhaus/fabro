@@ -9,7 +9,7 @@
 # Two conditions, both must hold for OPEN on the line branch:
 #   (a) NO active run on the production server (status.kind not in the
 #       terminal set: succeeded/failed/canceled) — conductor, develop,
-#       revisor, architect, anything. NOTE: fabro ps --json carries
+#       architect, anything. NOTE: fabro ps --json carries
 #       status as {"kind": "..."} — a string compare against 'running'
 #       silently passes while runs are active (the 2026-09-17 violation).
 #   (b) NO live work claim on the line's project (ADR-0032 phase 3,

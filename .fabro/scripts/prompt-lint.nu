@@ -1,9 +1,9 @@
 #!/usr/bin/env nu
 # Prompt-lint for the loop workflows: prompt/graph/toml literals must not
-# rot (C3 guard — generalizes fabro-41de's revisor-only check to every
-# loop asset).
+# rot (C3 guard — generalizes fabro-41de's original revisor-only check,
+# retired with the revisor workflow, to every loop asset).
 #
-# Checks (.fabro/workflows/{conductor,develop,revisor}/ prompts + graph +
+# Checks (.fabro/workflows/{conductor,develop,loop}/ prompts + graph +
 # toml, plus .fabro/scripts/*.nu):
 #   1. every seed-id literal — short `fabro-<4>` and family
 #      `fabro-<prefix>-<hex>` shapes, via the shared `lib/seed_id.nu`
@@ -24,6 +24,11 @@
 #      final newline is POSIX-noncompliance rot that diff tools and
 #      editors surface as noise (reviewer residual of the tracker-commands
 #      split). Errors; empty files pass.
+#  10. every prompt of a graph carrying x.observations="required" must
+#      render the shared presence-contract include
+#      (`{% include "observations.md" %}`), and every workflow's
+#      `prompts/observations.md` is byte-identical — ONE teaching text,
+#      drift is a lint error, never silent (denkhaus/work#1087). Errors.
 #
 # Exit 1 on any error, 0 otherwise (warnings pass).
 
@@ -46,7 +51,6 @@ def lint-files [] {
     (glob .fabro/workflows/conductor/**/*)
     | append (glob .fabro/workflows/develop/**/*)
     | append (glob .fabro/workflows/loop/**/*)
-    | append (glob .fabro/workflows/revisor/**/*)
     | append (glob .fabro/scripts/*.nu)
     | where {|p| ([$p '.md' '.fabro' '.toml' '.nu'] | any {|ext| ($p | str ends-with $ext)})}
     | where {|p| ($p | path type) == 'file'}
@@ -210,6 +214,35 @@ def routing-field-schema-warnings [] {
     $warnings
 }
 
+
+# Prompts of graphs carrying x.observations="required" (ADR-0038): the
+# contract applies to every agent node, so every prompt the graph
+# references must render the shared include. Commented-out node blocks
+# whose prompt files still exist simply pass the same check.
+def contract-prompt-files [] {
+    glob .fabro/workflows/*/workflow.fabro | each {|g|
+        let raw = (open --raw $g)
+        if ($raw | str contains 'x.observations="required"') {
+            let wf = ($g | path dirname)
+            $raw | parse --regex 'prompt="@(?<p>prompts/[^"]+)"' | get -o p | default [] | each {|p|
+                $wf | path join $p
+            }
+        } else { [] }
+    } | flatten | uniq
+}
+
+# One teaching text (denkhaus/work#1087): every workflow's
+# prompts/observations.md must be byte-identical.
+def observation-include-parity-errors [] {
+    let files = (glob .fabro/workflows/*/prompts/observations.md)
+    if ($files | length) < 2 { return [] }
+    let hashes = ($files | each {|f| {f: $f, hash: (open --raw $f | hash sha256)} })
+    let reference = ($hashes | first)
+    $hashes | skip 1 | where {|h| $h.hash != $reference.hash } | each {|h|
+        $"prompt-lint: ($h.f): observations.md drifted from ($reference.f) — one teaching text, never two"
+    }
+}
+
 def main [] {
     let files = (lint-files)
     if ($files | is-empty) {
@@ -235,6 +268,16 @@ def main [] {
     for f in (vendor-cli-files) {
         $errors = ($errors | append (vendor-cli-errors $f))
     }
+
+    # 10. ADR-0038 presence contract + denkhaus/work#1087: a graph under
+    # the contract teaches it through the shared include, and the include
+    # is ONE text across workflows.
+    for f in (contract-prompt-files) {
+        if not ((open --raw $f) | str contains '{% include "observations.md" %}') {
+            $errors = ($errors | append $"prompt-lint: ($f): the graph requires observations but the prompt lost the observations.md include")
+        }
+    }
+    $errors = ($errors | append (observation-include-parity-errors))
 
     let justfile_lines = (if ('justfile' | path exists) { open --raw justfile | lines } else { [] })
     # one census for the whole run: the resolvable-id tier checks label

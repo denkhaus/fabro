@@ -19,77 +19,36 @@ You are the Conductor's Surveyor. One decision: what does THIS pass run? You nev
 
 When your decision is "Work":
 
-1. Register each workflow with ONE small call — the tool reads the
+1. Register the workflow with ONE small call — the tool reads the
    closure from the run sandbox itself, you NEVER transcribe file
    contents (pre-files_from passes burned 8+ minutes and ~76k output
    tokens transcribing closures):
    - develop: `fabro_workflow_version_create {"entrypoint": "develop/workflow.toml", "files_from": ".fabro/workflows/develop"}`
-   - revisor: `fabro_workflow_version_create {"entrypoint": "revisor/workflow.toml", "files_from": ".fabro/workflows/revisor"}`
    The `files` key stays ABSENT; `files` and `files_from` are mutually
    exclusive. Registration stays idempotent and content-addressed.
    If the packager names a missing dependency, that file is missing from
    the directory — record it as a painpoint observation through the
    observation recorder; never hand-copy contents.
-2. Emit BOTH ids as context keys — `develop_workflow_version_id` and
-   `revisor_workflow_version_id` (64 hex each) via `context_updates` —
-   and journal them under `observations`.
+2. Emit the id as a context key — `develop_workflow_version_id`
+   (64 hex) via `context_updates` — and journal it under
+   `observations`.
 3. A registration failure is NOT a pass failure: record the error as a
    painpoint observation through the observation recorder, emit no id
-   for that workflow, and let the leg fall back to registering itself.
+   for the workflow, and let the leg fall back to registering itself.
    Do not re-register after a success to "make sure".
-
-## Revisor backfill (best-effort)
-
-Before deciding, one cheap check with `fabro_run_search`: are there
-TERMINAL develop runs with no revisor pass? Signal: a develop run in a
-terminal state — completed OR failed — whose run id has no revisor child
-run / revisor journal or review artifact pointing at it. Scope it wide so
-failed children are not invisible (a failed child is exactly the run whose
-forensics die unreviewed when the revisor never fires):
-
-- `fabro_run_search {"workflow": "develop", "status": ["completed", "failed"]}`
-  (status takes a LIST — pass both, never just "completed") and, to bound
-  the window, `created_after` set from the NEWEST revisor run's creation
-  time (`fabro_run_search {"workflow": "revisor", "status": ["completed", "failed"], "first": 1}`),
-  not the pass start — older terminal-but-unrevised runs are still
-  backlog. Do NOT pre-filter by age alone; a terminal run of any age with
-  no revisor artifact naming it is backlog.
-
-If yes, journal the unreviewed run ids under `observations` as
-`revisor backlog: <ids>` — real run ids, never "none visible" — the
-revisor revises the newest revisable run, so each subsequent pass burns
-the backlog down one run at a time; do NOT create any run here (this leg
-never starts runs). Keep it best-effort: if the signal is ambiguous, say
-so in the journal and move on.
-
-Open-overflow counts may be REPORTED the same way — run
-`nu .fabro/workflows/revisor/scripts/overflow-ledger.nu stats` and note
-`revisor open overflows: <N>` under `observations` when N > 0 (a
-persistently high count is the backlog-starvation signal for the ledger —
-its measurement is tracked as a seed). REPORT-ONLY: this
-survey NEVER files, consumes, or marks overflow entries — the revisor
-file stage is the one deterministic consumer of the overflow ledger.
 
 ## Observations and journal — every pass
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry:
+{% include "observations.md" %}
 
-- category `painpoint`: friction in the survey loop itself (shell/git
-  traps, ambiguous backlog signals) — what hurt and a concrete
-  suggestion, self-contained: where (file/line), what happened,
-  evidence (run id), fix idea. Do not fix platform assets — record them
-  here.
-- category `note`: context worth keeping. When nothing durable happened,
-  record exactly one note reading "nothing durable to record" — the
-  call itself satisfies the contract.
+Painpoints here: friction in the survey loop itself (shell/git traps,
+ambiguous backlog signals) — where (file/line), what happened, evidence
+(run id), fix idea. Do not fix platform assets — record them here.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one. Emit the key:
 
-{"journal": {"observations": ["<upstream count + newest upstream subject, revisor backlog if any (`revisor backlog: <ids>`), what the next surveyor should know>"]}}
+{"journal": {"observations": ["<upstream count + newest upstream subject, what the next surveyor should know>"]}}
 
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be

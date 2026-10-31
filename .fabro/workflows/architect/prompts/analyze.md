@@ -18,7 +18,7 @@ Two adaptations for this headless context:
 
 ## Step 2 — explore (the skill's method, aimed at the loop AS A SYSTEM)
 
-The unit of review is the SYSTEM: all loop workflows (conductor, develop, revisor, architect, merge-upstream) and their interplay — context keys handed between stages, shared scripts and gate flows, the tracker as the coupling surface, the engine seams underneath. A single run is an INSTANCE, never the subject: every finding names a cross-workflow or system-level mechanism, and a genuinely local finding must state why it is system-relevant before it survives distillation.
+The unit of review is the SYSTEM: all loop workflows (conductor, develop, loop, architect, merge-upstream) and their interplay — context keys handed between stages, shared scripts and gate flows, the tracker as the coupling surface, the engine seams underneath. A single run is an INSTANCE, never the subject: every finding names a cross-workflow or system-level mechanism, and a genuinely local finding must state why it is system-relevant before it survives distillation.
 
 Apply the skill's Process step 1 with these groundings, in this order:
 - PRIMARY — `arch_loop_digest`: the aggregated painpoints of ALL workflows' runs (the survey clustered them). Recurring cross-workflow clusters are the system's friction signature; chase their mechanism, not their freshest instance.

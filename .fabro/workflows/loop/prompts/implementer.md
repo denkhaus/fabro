@@ -36,11 +36,11 @@ Hard rules:
    - Prompts stay project-agnostic: repo facts live in the workflow's `project-facts.md`.
    - The prompt-lint tier of the tester enforces this mechanically — self-check with `nu .fabro/scripts/prompt-lint.nu` before finishing.
 5. TESTING BELONGS TO THE TESTER STEP: you never run the loop gate, never the product gate, never a full battery. Your mechanical verification lane is exactly the cheap parse tier: `just lint-nu` and `nu .fabro/scripts/prompt-lint.nu` (parse-level, seconds) after your edits, plus `nu scripts/qualitygate.nu check-run-scope loop` when you want the scope verdict early. The deterministic tester step after you owns the full battery, including the seed-spec-paths tier (a spec-named loop-asset path missing from the diff dies there, never as a silent miss).
-6. Do NOT close the seed and do NOT review.
+6. Do NOT close the item and do NOT review.
 
 ## Lesson capture — observations and journal only
 
-The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml record` writes would die at checkpoint. Loop lessons land as observation records (category note or painpoint through the `fabro_observation_record` tool) and `journal.observations` instead. There is NO lesson_capture key in your output contract — do not emit one.
+The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `mulch record` writes would die at checkpoint. Loop lessons land as observation records (category note or painpoint through the `fabro_observation_record` tool) and `journal.observations` instead. There is NO lesson_capture key in your output contract — do not emit one.
 
 ## Inline verification report — required in every summary
 
@@ -55,14 +55,9 @@ Material semantic-risk observations (changed routing labels, envelope scope chan
 
 Routing-consistency self-check: re-read every routing instruction you wrote — each branch yields exactly ONE route.
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry: category
-`painpoint` (friction in the loop lane itself — what hurt and a
-concrete suggestion, self-contained: where, what happened, evidence,
-fix idea) or category `note` (context worth keeping; exactly one note
-reading "nothing durable to record" when nothing happened).
+{% include "observations.md" %}
+
+Painpoints here: friction in the loop lane itself.
 
 Report context through `context_updates.journal` on EVERY pass:
 
@@ -83,7 +78,7 @@ Report context through `context_updates.journal` on EVERY pass:
 ## Outcome contract
 
 - `succeeded`: implementation written, one-unit parts updated, parse-tier checks green, no artifacts left, ready for the deterministic tester.
-- `failed`: blocked — the seed cannot be implemented as specified (including a misroute into product or external-tool surfaces).
+- `failed`: blocked — the item cannot be implemented as specified (including a misroute into product or external-tool surfaces).
 
 End your response with exactly one JSON object:
 

@@ -3,7 +3,7 @@ digraph Architect {
         goal="Run a self-gated architecture pass: survey gates deterministically on the friction score (verdict architecture-due, no cooldown marker within 48h), builds a system exploration base (loop-wide painpoint digest, workflow interplay map, churn hot spots, seed digest, ADR/facts list), analyze reads the vendored improve-codebase-architecture skill and applies its method directly (headless) to the loop's system-wide interplay, file distills findings into seeds and writes the cooldown marker",
         rankdir=LR,
         max_node_visits=5,
-        // Same posture as revisor/develop: bounded preambles. Linear
+        // Same posture as develop/loop: bounded preambles. Linear
         // graph — no cycle counter needed (each node runs once).
         x.preamble_budget_kb=24
     ]
@@ -81,7 +81,8 @@ digraph Architect {
         x.context_allow_keys="architecture_findings,journal"
     ]
 
-    // File: deterministic bookkeeping per the revisor file-node pattern.
+    // File: deterministic bookkeeping per the retired revisor's
+    // file-node pattern.
     // seeds create per finding with Basis lines and labels; cooldown marker
     // .fabro/architecture/<date>-pass.md; commit exactly the artifact
     // paths. Self-parks (marker-only, files nothing) on < 2 candidates.

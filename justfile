@@ -202,8 +202,9 @@ verify stage='':
 
 # Run a workflow end to end: create+start+attach, wait, integrate the run
 # branch (ff-pull when auto-merge landed, else provisional squash-merge).
-# No ask-based review — the revisor workflow owns run revisioning
-# (ADR-0015). Thin wrapper — logic lives in scripts/run_workflow.nu.
+# No ask-based review — painpoint observations file through the run-end
+# hook (ADR-0038 stage 4; the revisor workflow retired with it).
+# Thin wrapper — logic lives in scripts/run_workflow.nu.
 # Examples:
 #   just run develop --goal "Implement product seed fabro-6a5a ..."
 #   just run develop --adopt 01M0WW
@@ -212,9 +213,9 @@ run *args:
 
 # One ADR-0015 qualification cycle, sequential by design (the
 # serialization principle): a develop run (implements the most relevant
-# open seed through gate+review), then a revisor run (revises exactly
-# that newest run, files seeds with a basis line). Extra args go to the
-# DEVELOP leg only (the revisor leg needs no goal). Examples:
+# open seed through gate+review). The revisor leg retired with the
+# run-end observation filing (ADR-0038 stage 4); the cycle is the
+# develop leg alone. Examples:
 #   just cycle
 #   just cycle --goal "'implement fabro-6a5a'"
 #
@@ -222,14 +223,11 @@ run *args:
 # /merge-upstream are the USER's manual entry points; this target (and
 # `just run`) is the AGENT-facing surface — local agent sessions invoke
 # it (background + heartbeat) when an iterate cycle delegates to the
-# workflow. Transition path (ADR-0015): manual invocations (by agents
-# or the user) until the revisor goes cron on a dedicated 24/7 host.
-# While a cycle is in flight, no other tracker consumer (agent session,
-# /iterate, upstream merge) may claim seeds — serialization principle:
-# one line, one executor.
+# workflow. While a cycle is in flight, no other tracker consumer (agent
+# session, /iterate, upstream merge) may claim items — serialization
+# principle: one line, one executor.
 cycle *args:
     nu scripts/run_workflow.nu develop {{ args }}
-    nu scripts/run_workflow.nu revisor
 
 # Validate workflow graphs without the ~7 min Rust test-harness cold
 # build: builds just the fabro CLI (fabro-cli subset) and runs the full

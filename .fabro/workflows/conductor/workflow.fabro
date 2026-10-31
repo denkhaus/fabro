@@ -1,7 +1,7 @@
 digraph Conductor {
     graph [
-        goal="Run the serialized fabro line: one pass = upstream merge (when the threshold is met, infra-only) OR one develop+revisor cycle; children are created only after the previous child merged",
-        x.inspects="develop,merge-upstream,revisor",
+        goal="Run the serialized fabro line: one pass = one develop cycle (children are created only after the previous child merged); painpoint observations file themselves through the run-end hook",
+        x.inspects="develop,merge-upstream",
         rankdir=LR,
         // fabro-0e11: legal blocking fabro_run_wait (60m) and long gate shells
         // must not trip the default 1800s stall watchdog.
@@ -30,8 +30,8 @@ digraph Conductor {
         x.preamble_stages_ignore="survey",
         x.fs_write="",
         // fabro_workflow_version_create (fabro-978d): the survey
-        // pre-registers the develop + revisor workflow versions while it
-        // has slack, so the legs pass only the content-addressed id
+        // pre-registers the develop workflow version while it has
+        // slack, so the leg passes only the content-addressed id
         // instead of transcribing ~118 KB of closure through tool
         // arguments on the critical path.
         x.fabro_tools="fabro_run_search,fabro_workflow_version_create,fabro_observation_record",
@@ -70,12 +70,12 @@ digraph Conductor {
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
         // fabro-3196: file schema (fabro-017f teeth pattern) — keeps
-        // the routing contract AND rejects a revise-handoff routing
-        // ('Develop integrated' / 'Gate stuck — revise anyway' /
-        // 'Develop child failed — revise anyway')
+        // the routing contract AND rejects a child-handoff routing
+        // ('Develop integrated' / 'Gate stuck — parked' /
+        // 'Develop child failed')
         // without a non-empty context_updates.child_run_id (run
-        // 01M2X6AT3V4CPSJC08SMCVB172 dropped it; the revise leg then
-        // failed pass continuity and the child went unreviewed).
+        // 01M2X6AT3V4CPSJC08SMCVB172 dropped it; the child then went
+        // unrecorded).
         output_schema="@schemas/develop-output.schema.json",
         output_retries=2,
         retry_policy="standard",
@@ -89,59 +89,33 @@ digraph Conductor {
         x.observations="required"
     ]
 
-    // Revise leg: revisor revises the newest develop run.
-    revise [
-        label="Revise leg",
-        prompt="@prompts/revise-leg.md",
-        // fabro-f84f: opt into vendored-skill discovery — the
-        // session loads `.fabro/skills` (rust-style-guide and
-        // friends) through the UseSkill tool.
-        output_schema="routing",
-        output_retries=2,
-        retry_policy="standard",
-        reasoning_effort="low",
-        project_memory=false,
-        x.preamble_stages_ignore="survey,develop,revise",
-        x.fs_write="",
-        x.fabro_tools="fabro_workflow_version_create,fabro_run_create,fabro_run_get,fabro_run_wait,fabro_run_search,fabro_observation_record",
-        // ADR-0038 flip (2026-10-31): the presence contract — see the
-        // survey node's comment.
-        x.observations="required"
-    ]
-
     start -> survey
     // survey -> merge   [label="Merge needed", condition="preferred_label=\"Merge needed\""]
     survey -> develop [label="Work", condition="preferred_label=\"Work\""]
     survey -> exit    [label="Nothing to do", condition="preferred_label=\"Nothing to do\""]
     survey -> exit    [x.kind="soft", label="Survey failed", condition="outcome=failed"]
-    // Infra pass: after a merge, develop waits for the NEXT fire — but
-    // the REVISE leg still runs: the merge-upstream run itself carries
-    // painpoints worth filing (user directive 2026-09-05; first
-    // autonomous merge 01M1SR27KEJGNQ hit an fs-policy wall worth a seed).
-    // merge -> revise [label="Infra merged — revise the merge run"]
+    // Infra pass: after a merge, develop waits for the NEXT fire — the
+    // merge-upstream run's painpoints file through the run-end hook
+    // like every run's (the revisor leg retired with the hook's
+    // arrival; user directive 2026-09-05 first sent merges through it).
     // merge -> exit [x.kind="soft", label="Merge child failed — manual /merge-upstream", condition="preferred_label=\"Merge child failed\""]
-    develop -> revise [label="Develop integrated", condition="preferred_label=\"Develop integrated\""]
-    // Gate-stuck park (fabro-1dc9): the develop child SUCCEEDED but its PR
-    // gate is persistently blocked after the bounded re-wait chain. The pass
-    // still runs the revise leg — an unreviewed develop run is worse than a
-    // parked PR; the next fire re-enters via survey.
-    develop -> revise [label="Gate stuck — revise anyway", condition="preferred_label=\"Gate stuck — revise anyway\""]
+    develop -> exit [label="Develop integrated", condition="preferred_label=\"Develop integrated\""]
+    // Gate-stuck park (fabro-1dc9): the develop child SUCCEEDED but its
+    // PR gate is persistently blocked after the bounded re-wait chain.
+    // The pass parks soft — the merge stays parked, the next fire
+    // re-enters via survey, and the child's painpoint observations file
+    // through the run-end hook.
+    develop -> exit   [x.kind="soft", label="Gate stuck — parked", condition="preferred_label=\"Gate stuck — parked\""]
     develop -> exit   [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    // Failed-child revise (fabro-deb5): a FAILED develop child routes into
-    // the revise leg too — its painpoints, tool walls, and failure forensics
-    // must not die unreviewed (same principle as the gate-stuck park above:
-    // an unreviewed FAILED run is worse than a parked PR). The revise leg's
-    // newest-revisable-run targeting picks the failed run via child_run_id.
-    // Soft-park semantics stay: if the revisor child then fails too, the
-    // pass still exits soft via "Revisor child failed".
-    develop -> revise [label="Develop child failed — revise anyway", condition="preferred_label=\"Develop child failed — revise anyway\""]
-    revise -> exit [label="Cycle complete"]
-    revise -> exit [x.kind="soft", label="Revisor child failed", condition="preferred_label=\"Revisor child failed\""]
+    // Failed child (fabro-deb5): a FAILED develop child ends the pass
+    // soft too — its painpoints, tool walls, and failure forensics
+    // reach the tracker through the run-end observation filing, not
+    // through a review leg.
+    develop -> exit   [x.kind="soft", label="Develop child failed", condition="preferred_label=\"Develop child failed\""]
     // Unconditional safety nets (validator rule all_conditional_edges):
     // an unrouted outcome ends the pass softly — the next cron fire
     // re-enters cleanly; nothing merges on an ambiguous state.
     survey -> exit [x.kind="soft", label="Unrouted survey outcome"]
     // merge -> exit [x.kind="soft", label="Unrouted merge outcome"]
     develop -> exit [x.kind="soft", label="Unrouted develop outcome"]
-    revise -> exit [x.kind="soft", label="Unrouted revise outcome"]
 }

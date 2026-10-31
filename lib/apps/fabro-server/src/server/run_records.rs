@@ -20,6 +20,7 @@ use fabro_types::{FailureReason, RunId, RunStatus, SuccessReason};
 
 use super::AppState;
 use crate::error::ApiError;
+use crate::observation_filing;
 
 /// Append one record for the run, wake its projector and wait for the
 /// pass that folds it: what the caller reads next holds the record.
@@ -45,7 +46,13 @@ pub(crate) async fn lifecycle(
     run_id: RunId,
     record: RunLifecycleRecord,
 ) -> anyhow::Result<StoredPlatformRecord> {
-    append(state, run_id, PlatformRecord::RunLifecycle(record)).await
+    let record = PlatformRecord::RunLifecycle(record);
+    let stored = append(state, run_id, record).await?;
+    // Server-origin terminal records (a dead worker, a reconciler's
+    // verdict) reach the run-end hook through the same gate the worker
+    // HTTP path uses (ADR-0038 stage 4).
+    observation_filing::enqueue_filing_if_terminal(state, run_id, &stored.record).await;
+    Ok(stored)
 }
 
 /// A transition that leads to `status`.

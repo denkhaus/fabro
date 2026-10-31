@@ -42,7 +42,7 @@ migrated items keep a `seeds:fabro-xxxx` label as their legacy anchor
   `seeds:` label seam (server side from fork.26).
 - **Labels (the standard)**: `prio:p0..p4` (default p2) ·
   `type:task|bug|feature|epic` ·
-  `lane:loop|develop|architect|conductor|revisor` (open items only) ·
+  `lane:loop|develop|architect|conductor` (open items only) ·
   free-form topic labels (`revision`, `engine`, …). `seeds:fabro-xxxx`
   is LEGACY-ONLY — never apply it to a new item.
 - **Lanes are the ownership switch** (replacing the old `assignee`

@@ -54,7 +54,7 @@ never silently work around it.
   otherwise; rust fmt only when .rs files appear.
 - Stage journal: `.fabro/journal/<run_id>.jsonl` — one JSON record per
   stage completion; the fallback source for recovering a run's claimed
-  seed id.
+  item key.
 - Engine credential surfaces (ADR-0019 review axis): the engine injects
   `GITHUB_TOKEN` into every agent shell call (`resolve_workflow_env` in
   `lib/components/fabro-workflow/src/services.rs`) and runs a git

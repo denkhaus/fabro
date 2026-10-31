@@ -37,6 +37,8 @@ pub struct ServerLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_channel:  Option<ServerRunChannelLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observations: Option<ServerObservationsLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logging:      Option<ServerLoggingLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integrations: Option<ServerIntegrationsLayer>,
@@ -217,6 +219,18 @@ pub struct ServerRunChannelLayer {
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dir:     Option<String>,
+}
+
+/// `[server.observations]` — observation-derived work-item filing
+/// (ADR-0038 stage 4, fork): the run-end hook's filing gate and its
+/// fixed distillation model (`provider:model`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct ServerObservationsLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filing_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filing_model:   Option<String>,
 }
 
 /// `[server.logging]` — process-owned logging configuration for the server.

@@ -22,7 +22,7 @@
 # Exit 0 = green; any red prints and exits 1.
 
 const SOURCE = '.fabro/scripts/judgment-shadow.nu'
-const LANES = [loop develop conductor revisor]
+const LANES = [loop develop conductor]
 const SCRIPT_FORM = 'nu "${FABRO_HOOK_ASSETS:-.}/.fabro/scripts/judgment-shadow.nu"'
 const DECLARED_FILE = '../../scripts/judgment-shadow.nu'
 

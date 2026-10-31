@@ -38,6 +38,7 @@ use super::super::{
     RequireWorkerRunSegment, Response, Router, RunId, State, StatusCode, octet_stream_response,
     settle_managed_run_at_finish, settle_managed_run_at_terminal_record,
 };
+use crate::observation_filing;
 
 /// The largest batch of records one append may carry. Petri batches an
 /// execution's records per step, and a step's output can be large.
@@ -308,6 +309,10 @@ async fn append_platform_record(
     {
         Ok(stored) => {
             summaries.notify_platform_record(id);
+            // The run-end hook's enqueue rides the successful terminal
+            // append (ADR-0038 stage 4): one durable outbox row, nothing
+            // else on the terminal path.
+            observation_filing::enqueue_filing_if_terminal(&state, id, &stored.record).await;
             match wire_platform_record(&stored) {
                 Ok(record) => Json(record).into_response(),
                 Err(err) => err.into_response(),

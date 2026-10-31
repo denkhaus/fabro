@@ -151,17 +151,9 @@ governs touched crates and breaks you caused or could fix, and until
 the minimal fix lands, a default-features break still fails your
 'gate passes' self-assessment.
 
-Record what you durably observed through the `fabro_observation_record`
-tool — the presence contract:
-call it AT LEAST once per pass; a stage that never calls it is INVALID
-(engine-validated at completion). One call per entry:
+{% include "observations.md" %}
 
-- category `painpoint`: dev-loop friction in loop assets — what hurt
-  and a concrete suggestion, self-contained: where (file/line), what
-  happened, evidence (run id), fix idea.
-- category `note`: context worth keeping. When nothing durable happened,
-  record exactly one note reading "nothing durable to record" — the
-  call itself satisfies the contract.
+Painpoints here: dev-loop friction in loop assets.
 
 Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one — two full runs shipped zero
