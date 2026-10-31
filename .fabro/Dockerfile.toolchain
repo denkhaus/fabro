@@ -161,12 +161,10 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
-        cargo:mulch@0.1.0 \
     && bun --version \
     && nu --version \
     && just --version \
-    && rg --version \
-    && mulch --version
+    && rg --version
 
 # seeds (seeds-e160, repinned 0.7.0 2026-10-10 matching .mise.toml): the tracker
 # CLI comes from the project's musl-static
@@ -192,6 +190,30 @@ RUN set -eux; \
     rm /tmp/seeds.tgz; \
     seeds --version
 
+# mulch (work#1070, ADR-0023 cutover 2026-10-31): the expertise CLI —
+# native Rust, repo denkhaus/mulch, binary name `mulch`. Same story as
+# seeds above: the cargo backend CANNOT build it in this image (mulch
+# 0.1.0 uses `result_option_map_or_default`, unstable on the pinned
+# nightly-2026-04-14 — the identical class that pushed seeds to release
+# binaries), so the musl-static release binary is version-pinned and
+# checksum-verified instead. .mise.toml keeps cargo:mulch for dev hosts
+# (modern toolchains); the tool-pin parity battery guards the drift.
+ARG MULCH_VERSION=0.1.0
+ARG MULCH_SHA256_X86_64=b3017b4ab6303708153c917a85cce8be2fe342778cf19069fc352d3784daa509
+ARG MULCH_SHA256_AARCH64=a4739b8f82a2750321b876f9572f4271c23845ab301bbdb7c701b8a5cc270aac
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) triple=x86_64-unknown-linux-musl; sha="${MULCH_SHA256_X86_64}";; \
+        arm64) triple=aarch64-unknown-linux-musl; sha="${MULCH_SHA256_AARCH64}";; \
+        *) echo "unsupported TARGETARCH ${TARGETARCH}"; exit 1;; \
+    esac; \
+    curl -fsSL "https://github.com/denkhaus/mulch/releases/download/v${MULCH_VERSION}/mulch-${MULCH_VERSION}-${triple}.tar.gz" -o /tmp/mulch.tgz; \
+    echo "${sha}  /tmp/mulch.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/mulch.tgz -C /usr/local/bin mulch; \
+    chmod 0755 /usr/local/bin/mulch; \
+    rm /tmp/mulch.tgz; \
+    mulch --version
+
 # NO gh in the toolchain image (ADR-0019 capability gate, user decision
 # 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
 # (fabro-05d0, PR #53) and REVERTED — an authenticated forge client in agent
@@ -203,8 +225,8 @@ RUN set -eux; \
 # no new agent tools).
 
 # Repo agent tooling guards (work#1070, the ADR-0023 self-hosting
-# cutover 2026-10-31): mulch rides the mise toolset block above (native
-# Rust CLI, crates.io, binary name `mulch`); the npm @os-eco/mulch-cli
+# cutover 2026-10-31): mulch is the musl release binary installed above
+# (native Rust CLI, binary name `mulch`); the npm @os-eco/mulch-cli
 # reference tool and its `ml` binary are RETIRED with it, exactly like
 # `sd` before — the prompts and skills call `mulch`, the image carries
 # no legacy binary.

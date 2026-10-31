@@ -18,15 +18,16 @@ def read-dockerfile-seeds []: nothing -> string {
 }
 
 # The mulch pin (work#1070, the ADR-0023 cutover): .mise.toml's
-# cargo:mulch must equal the cargo:mulch@X in the toolchain image's
-# mise toolset block — the same drift class as seeds, one guard.
+# cargo:mulch (dev hosts) must equal the toolchain image's
+# MULCH_VERSION release-binary pin — the same drift class as seeds,
+# one guard.
 def read-mise-mulch []: nothing -> string {
     open .mise.toml | get tools | get 'cargo:mulch'
 }
 
 def read-dockerfile-mulch []: nothing -> string {
-    let line = (open --raw .fabro/Dockerfile.toolchain | lines | where $it =~ 'cargo:mulch@' | first)
-    $line | parse --regex 'cargo:mulch@(?<v>[0-9]+\.[0-9]+\.[0-9]+)' | get 0.v
+    let line = (open --raw .fabro/Dockerfile.toolchain | lines | where $it =~ 'ARG MULCH_VERSION' | first)
+    $line | parse --regex 'ARG MULCH_VERSION=(?<v>[0-9]+\.[0-9]+\.[0-9]+)' | get 0.v
 }
 
 def fail [msg: string]: nothing -> nothing {
