@@ -200,7 +200,28 @@ async fn drain_outbox(
                     observation_filing::file_run_observations(state, &run_id)
                         .await
                         .map(|outcome| {
-                            tracing::debug!(run_id = %run_id, ?outcome, "observation filing pass");
+                            // The filing decision is audit-relevant, not a
+                            // failure: which items a run filed, which it
+                            // linked, and WHY it filed nothing all belong
+                            // in the production log.
+                            match outcome {
+                                observation_filing::FilingOutcome::Filed {
+                                    items,
+                                    linked_existing,
+                                } => tracing::info!(
+                                    run_id = %run_id,
+                                    items,
+                                    linked_existing,
+                                    "observation filing filed items"
+                                ),
+                                observation_filing::FilingOutcome::Nothing { reason } => {
+                                    tracing::info!(
+                                        run_id = %run_id,
+                                        reason,
+                                        "observation filing completed with nothing to file"
+                                    );
+                                }
+                            }
                         })
                 } else {
                     tracing::warn!(
