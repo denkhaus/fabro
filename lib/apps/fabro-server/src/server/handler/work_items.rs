@@ -13,10 +13,14 @@ use fabro_api::types::{
     WorkClaimGrantOutcome, WorkClaimGrantRequest, WorkClaimGrantResponse, WorkClaimListResponse,
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
-    WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse, WorkItemUpdateRequest,
-    WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
+    WorkItemCloseResponse, WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse,
+    WorkItemUpdateRequest, WorkObservationLinkOutcome, WorkObservationLinkRequest,
+    WorkObservationLinkResponse, WorkObservationUnlinkResponse, WorkProject as ApiWorkProject,
+    WorkProjectListResponse, WorkProjectUpsertRequest,
 };
-use fabro_store::platform_records::{PlatformRecord, WorkClaimedRecord, WorkReleasedRecord};
+use fabro_store::platform_records::{
+    PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkReleasedRecord,
+};
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
@@ -46,6 +50,14 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/close",
             post(close_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/link",
+            post(link_observation),
+        )
+        .route(
+            "/projects/{projectId}/work-items/unlink",
+            post(unlink_observation),
         )
         .route(
             "/projects/{projectId}/work-items/update",
@@ -478,6 +490,36 @@ async fn close_work_item(
     // Workers close only items they hold a live claim on — the check
     // precedes the tracker mutation (denkhaus/work#991).
     require_claim_held_by_run(&state, &caller, &request.item_key).await?;
+    // The closure-radius gate (ADR-0038): a claimed item whose radius is
+    // open — open work items linked to the observations discovered in
+    // its runs — is refused; `force` overrides, and the response lists
+    // what the override rode over. The gate covers BOTH delivery forms
+    // (agent run tools and user CLI): it lives in the verb, not in a
+    // caller.
+    let radius = closure_radius(&state, project, &request.item_key).await?;
+    let forced = request.force.unwrap_or(false);
+    if !radius.is_empty() && !forced {
+        let listing = radius
+            .iter()
+            .map(|item| format!("{} ({})", item.item_key, item.title))
+            .collect::<Vec<_>>()
+            .join("; ");
+        tracing::warn!(
+            item_key = %request.item_key,
+            open_radius = radius.len(),
+            "close refused: the closure radius is open (ADR-0038)"
+        );
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!(
+                "item {} has an open closure radius — {} open item(s) are linked to the \
+                 observations of its runs: {listing}. Close them first, or pass --force to \
+                 override with this reason",
+                request.item_key,
+                radius.len()
+            ),
+        ));
+    }
     let tracker = tracker_for(&state, project).await?;
     tracker
         .close(project, &request.item_key, &request.reason)
@@ -502,7 +544,165 @@ async fn close_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &request.item_key))?;
-    Ok(Json(api_item(item)).into_response())
+    if !radius.is_empty() {
+        tracing::warn!(
+            item_key = %request.item_key,
+            overridden = radius.len(),
+            "close forced over an open closure radius (ADR-0038); the response lists the items"
+        );
+    }
+    Ok(Json(WorkItemCloseResponse {
+        item:              api_item(item),
+        overridden_radius: if forced { radius } else { Vec::new() },
+    })
+    .into_response())
+}
+
+/// The closure radius of one work item (ADR-0038): the OPEN work items
+/// linked to the observation records discovered in the item's runs —
+/// item → runs (the whole claim history: the claim store is the
+/// authority, WorkClaimed records are audit) → their
+/// `observation.recorded` records → the links' items, minus the item
+/// itself (an item linked to its own run's observations is a self-loop,
+/// never a self-block). One level: "transitive" names the multi-edge
+/// chain through runs and observations, never recursion into the radius
+/// items' own radii.
+///
+/// The observation read degrades to empty on a store failure (with a
+/// warn): the radius must never wedge closes on a transient read error —
+/// the same degrade-to-close philosophy the closeout's advisory arms
+/// use. The links themselves live in the work store beside the claims;
+/// a failure there propagates (it is the same database the claim check
+/// just read).
+async fn closure_radius(
+    state: &Arc<AppState>,
+    project: &WorkProject,
+    item_key: &str,
+) -> Result<Vec<ApiWorkItem>, ApiError> {
+    let runs = state
+        .work_store()
+        .runs_for_item(&project.project_id, item_key)
+        .await
+        .map_err(store_error)?;
+    let mut observations = Vec::new();
+    for run_id in &runs {
+        match state
+            .stores
+            .run_summaries
+            .platform_records()
+            .read_kind(run_id, PlatformRecordKind::ObservationRecorded)
+            .await
+        {
+            Ok(records) => {
+                observations.extend(records.iter().map(|stored| (*run_id, stored.seq)));
+            }
+            Err(error) => {
+                tracing::warn!(
+                    run_id = %run_id,
+                    error = %error,
+                    "observation record read failed; the radius degrades to the links it can see"
+                );
+            }
+        }
+    }
+    let links = state
+        .work_store()
+        .linked_items_for_observations(&project.project_id, &observations)
+        .await
+        .map_err(store_error)?;
+    let mut radius_keys: Vec<String> = links
+        .into_iter()
+        .map(|link| link.item_key)
+        .filter(|key| key != item_key)
+        .collect();
+    radius_keys.sort_unstable();
+    radius_keys.dedup();
+    if radius_keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    let tracker = tracker_for(state, project).await?;
+    let mut radius = Vec::new();
+    for key in &radius_keys {
+        if let Some(item) = tracker.get(project, key).await.map_err(tracker_failed)? {
+            if item.state == "open" {
+                radius.push(api_item(item));
+            }
+        }
+    }
+    Ok(radius)
+}
+
+/// Link a work item to an observation record (ADR-0038): the user-only
+/// backfill/bench surface. Worker principals are refused — the same
+/// posture as the lane move; the run-end hook writes links internally
+/// server-side when it lands.
+async fn link_observation(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkObservationLinkRequest>,
+) -> Result<Response, ApiError> {
+    refuse_worker(&auth, "write observation links")?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let run_id = parse_link_run_id(&request.run_id)?;
+    let seq = u64::from(request.seq);
+    let outcome = state
+        .work_store()
+        .link_observation(&project.project_id, &request.item_key, &run_id, seq)
+        .await
+        .map_err(store_error)?;
+    Ok(Json(WorkObservationLinkResponse {
+        outcome:  match outcome {
+            fabro_work::LinkOutcome::Linked => WorkObservationLinkOutcome::Linked,
+            fabro_work::LinkOutcome::AlreadyLinked => WorkObservationLinkOutcome::AlreadyLinked,
+        },
+        item_key: request.item_key,
+        run_id:   request.run_id,
+        seq:      i64::try_from(seq).unwrap_or(i64::MAX),
+    })
+    .into_response())
+}
+
+/// Remove one observation link — user-only, like link. Unlinking an
+/// absent pair is `removed: false`, never an error.
+async fn unlink_observation(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkObservationLinkRequest>,
+) -> Result<Response, ApiError> {
+    refuse_worker(&auth, "write observation links")?;
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let run_id = parse_link_run_id(&request.run_id)?;
+    let removed = state
+        .work_store()
+        .unlink_observation(
+            &project.project_id,
+            &request.item_key,
+            &run_id,
+            u64::from(request.seq),
+        )
+        .await
+        .map_err(store_error)?;
+    Ok(Json(WorkObservationUnlinkResponse { removed }).into_response())
+}
+
+/// The link surface is a USER operation: a worker principal is refused
+/// before any store call (the lane-move posture, denkhaus/work#1065).
+fn refuse_worker(auth: &RequiredRunManagementActor, action: &str) -> Result<(), ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("observation links are a user operation — run {run_id} may not {action}"),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_link_run_id(run_id: &str) -> Result<RunId, ApiError> {
+    run_id.parse::<RunId>().map_err(|err| {
+        ApiError::bad_request(format!("invalid runId for the observation link: {err}"))
+    })
 }
 
 async fn update_work_item(

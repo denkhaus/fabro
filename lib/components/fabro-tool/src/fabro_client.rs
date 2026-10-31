@@ -287,7 +287,13 @@ impl FabroToolBackend for ClientBackend {
         item_key: &str,
         reason: &str,
     ) -> anyhow::Result<types::WorkItem> {
-        self.client.close_work_item(project, item_key, reason).await
+        // Agents never force: the closure-radius override (ADR-0038) is
+        // the human surface; an open radius refuses the agent's close
+        // with the listing, and the run routes it as feedback.
+        self.client
+            .close_work_item(project, item_key, reason, false)
+            .await
+            .map(|response| response.item)
     }
 
     async fn work_release(&self, claim_id: &str, reason: &str) -> anyhow::Result<types::WorkClaim> {

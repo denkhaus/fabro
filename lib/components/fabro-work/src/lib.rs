@@ -11,8 +11,8 @@ mod store;
 mod tracker;
 
 pub use store::{
-    ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, WorkClaim, WorkClaimEvent,
-    WorkOutboxEntry, WorkProject, WorkStore,
+    ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
+    ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,
 };
 pub use tracker::{NullTracker, TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter};
 
@@ -42,6 +42,8 @@ pub enum Error {
         field:  &'static str,
         value:  i64,
     },
+    #[error("stored observation link seq is out of range: {0}")]
+    InvalidStoredObservationSeq(String),
     #[error("{0}")]
     Other(String),
 }

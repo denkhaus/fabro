@@ -772,7 +772,15 @@ mod next_item {
             &json!({"itemKey": "denkhaus/work#1", "reason": "landed"}),
         )
         .await;
-        assert_eq!(closed["state"], "closed");
+        assert_eq!(closed["item"]["state"], "closed");
+        assert_eq!(
+            closed["overriddenRadius"]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or(0),
+            0,
+            "an unforced close with an empty radius overrides nothing"
+        );
 
         let claim =
             json_request(app, Method::GET, &format!("/claims/{claim_id}"), &json!({})).await;
@@ -1125,5 +1133,516 @@ mod next_item {
         )
         .await;
         assert_eq!(granted_again["outcome"], "granted");
+    }
+}
+
+/// The closure-radius gate (ADR-0038): a close whose item has open work
+/// items linked to the observations of its runs is refused with the
+/// listing; `force` overrides and the response names what the override
+/// rode over. The link surface is user-only and idempotent. Seeded
+/// end-to-end: claim history (item -> runs), observation records
+/// (runs -> observations), links (observations -> items), tracker state
+/// (the open filter).
+mod closure_radius {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode, header};
+    use fabro_server::server::AppState;
+    use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
+    use fabro_store::platform_records::{
+        ObservationRecordedRecord, PlatformRecord, PlatformRecordStore,
+    };
+    use fabro_types::RunId;
+    use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
+
+    use crate::helpers::api;
+
+    const CLOSING_RUN: &str = "01JNQVR7M0EJ5GKAT2SC4ERS1Z";
+
+    /// An in-memory tracker: only what the gate reads — `get` (the open
+    /// filter) and `close` (the mutation under test).
+    struct RadiusTracker {
+        items: Mutex<Vec<WorkItem>>,
+    }
+
+    impl RadiusTracker {
+        fn with_items(items: Vec<WorkItem>) -> Arc<Self> {
+            Arc::new(Self {
+                items: Mutex::new(items),
+            })
+        }
+    }
+
+    fn item(number: u64, state: &str) -> WorkItem {
+        WorkItem {
+            item_key:   format!("denkhaus/work#{number}"),
+            title:      format!("Item {number}"),
+            body:       "the spec".to_string(),
+            state:      state.to_string(),
+            labels:     vec!["project:fabro".to_string()],
+            priority:   2,
+            url:        format!("https://github.com/denkhaus/work/issues/{number}"),
+            updated_at: None,
+        }
+    }
+
+    #[async_trait]
+    impl TrackerProvider for RadiusTracker {
+        async fn list(
+            &self,
+            _project: &WorkProject,
+            filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            Ok(self
+                .items
+                .lock()
+                .expect("tracker lock")
+                .iter()
+                .filter(|item| filter.query.is_none() && item.state == "open")
+                .cloned()
+                .collect())
+        }
+
+        async fn get(
+            &self,
+            _project: &WorkProject,
+            item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok(self
+                .items
+                .lock()
+                .expect("tracker lock")
+                .iter()
+                .find(|item| item.item_key == item_key)
+                .cloned())
+        }
+
+        async fn create(
+            &self,
+            _project: &WorkProject,
+            _draft: WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed by the radius fixtures")
+        }
+
+        async fn update(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed by the radius fixtures")
+        }
+
+        async fn close(
+            &self,
+            _project: &WorkProject,
+            item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            let mut items = self.items.lock().expect("tracker lock");
+            if let Some(entry) = items.iter_mut().find(|item| item.item_key == item_key) {
+                entry.state = "closed".to_string();
+            }
+            Ok(())
+        }
+
+        async fn comment(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn project_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn clear_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    async fn app_with_state(
+        tracker: Arc<RadiusTracker>,
+    ) -> (axum::Router, Arc<AppState>, PlatformRecordStore) {
+        let (store, artifacts) = fabro_server::test_support::test_store_bundle();
+        let records = store.run_summary_store().platform_records();
+        let state = TestAppStateBuilder::new()
+            .work_tracker(tracker as Arc<dyn TrackerProvider>)
+            .store_bundle(store, artifacts)
+            .build();
+        let app = build_test_router(Arc::clone(&state));
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(api("/projects/fabro"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_string(&json!({
+                    "displayName": "Fabro",
+                    "trackerProvider": "github",
+                    "trackerRepo": "denkhaus/work",
+                    "targetRepo": "denkhaus/fabro",
+                    "projectLabel": "project:fabro",
+                    "laneLabels": {"loop": "lane:loop"}
+                }))
+                .expect("project fixture should serialize"),
+            ))
+            .expect("project fixture should build");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("project put should run");
+        assert_eq!(response.status(), StatusCode::OK);
+        (app, state, records)
+    }
+
+    async fn json_call(
+        app: &axum::Router,
+        method: Method,
+        path: &str,
+        body: &Value,
+    ) -> axum::http::Response<Body> {
+        let request = Request::builder()
+            .method(method)
+            .uri(api(path))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(body).expect("radius fixture should serialize"),
+            ))
+            .expect("radius request should build");
+        app.clone()
+            .oneshot(request)
+            .await
+            .expect("radius request should run")
+    }
+
+    async fn body_json(response: axum::http::Response<Body>) -> Value {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("radius response body");
+        serde_json::from_slice(&bytes).expect("radius response json")
+    }
+
+    /// One painpoint observation record for `run_id` at the next seq —
+    /// the run side of the chain, seeded through the production store.
+    async fn seed_observation(
+        records: &PlatformRecordStore,
+        run_id: &str,
+        category_painpoint: bool,
+    ) -> u64 {
+        let run_id: RunId = run_id.parse().expect("fixture run id");
+        let record = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  if category_painpoint {
+                fabro_types::ObservationCategory::Painpoint
+            } else {
+                fabro_types::ObservationCategory::Note
+            },
+            text:      "the gate refused every push because a run PR stayed open".to_string(),
+            execution: 1,
+            firing:    1,
+        });
+        let stored = records
+            .append(&run_id, &record, None)
+            .await
+            .expect("observation record seed");
+        stored.seq
+    }
+
+    #[tokio::test]
+    async fn a_close_over_an_open_radius_is_refused_with_the_listing_and_force_overrides() {
+        // Item 1 closes; its run carries one observation; the
+        // observation links to item 2 (open — blocks) and item 3
+        // (closed — filtered out of the radius).
+        let tracker =
+            RadiusTracker::with_items(vec![item(1, "open"), item(2, "open"), item(3, "closed")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+
+        // The claim makes item 1 -> CLOSING_RUN a claims-history edge.
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#1", "runId": CLOSING_RUN, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted", "the claim must land first");
+
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+
+        // Link both radius items to the observation through the
+        // user-only surface — link also proves idempotence here.
+        let linked = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(linked["outcome"], "linked");
+        let again = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            again["outcome"], "already_linked",
+            "filing dedupes at the link — no second row, a named outcome"
+        );
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#3", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        // A self-link (item 1's own observation linked to item 1) is a
+        // self-loop, never a self-block.
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#1", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        // Without force: 409, the listing names the OPEN item (2), not
+        // the closed one (3), not the item itself (1).
+        let refused = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({"itemKey": "denkhaus/work#1", "reason": "landed as abc123"}),
+        )
+        .await;
+        assert_eq!(
+            refused.status(),
+            StatusCode::CONFLICT,
+            "an open closure radius refuses the close"
+        );
+        let refusal = body_json(refused).await;
+        let detail = refusal["errors"][0]["detail"]
+            .as_str()
+            .expect("the refusal detail");
+        assert!(
+            detail.contains("denkhaus/work#2"),
+            "the refusal lists the open radius item: {detail}"
+        );
+        assert!(
+            !detail.contains("denkhaus/work#3"),
+            "a CLOSED linked item is outside the radius: {detail}"
+        );
+        assert!(
+            !detail.contains("denkhaus/work#1 ("),
+            "the item itself never blocks itself: {detail}"
+        );
+        assert!(
+            detail.contains("--force"),
+            "the refusal teaches the override: {detail}"
+        );
+
+        // With force: the close proceeds and the response names what the
+        // override rode over — item 2, still only item 2.
+        let forced = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({
+                "itemKey": "denkhaus/work#1",
+                "reason": "landed as abc123",
+                "force": true
+            }),
+        )
+        .await;
+        assert_eq!(forced.status(), StatusCode::OK);
+        let closed = body_json(forced).await;
+        assert_eq!(closed["item"]["itemKey"], "denkhaus/work#1");
+        assert_eq!(closed["item"]["state"], "closed");
+        let overridden = closed["overriddenRadius"]
+            .as_array()
+            .expect("the override listing");
+        assert_eq!(overridden.len(), 1, "exactly the open item: {closed}");
+        assert_eq!(overridden[0]["itemKey"], "denkhaus/work#2");
+
+        // The tracker really closed it.
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#1")
+                .await
+                .expect("tracker read")
+                .expect("item 1")
+                .state,
+            "closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_close_without_radius_links_proceeds_unforced() {
+        let tracker = RadiusTracker::with_items(vec![item(5, "open")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#5", "runId": CLOSING_RUN, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted");
+
+        // An observation WITHOUT links (the stage-3 inert shape: no
+        // writer exists yet) and even a link to an already-CLOSED item
+        // leave the radius empty.
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        let mut closed_link_target = item(6, "closed");
+        closed_link_target.item_key = "denkhaus/work#6".to_string();
+        tracker
+            .items
+            .lock()
+            .expect("tracker lock")
+            .push(closed_link_target);
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#6", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        let response = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({"itemKey": "denkhaus/work#5", "reason": "landed as def456"}),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "an empty radius never blocks — the gate ships inert (ADR-0038 stage 3)"
+        );
+        let closed = body_json(response).await;
+        assert_eq!(
+            closed["overriddenRadius"]
+                .as_array()
+                .expect("the listing exists")
+                .len(),
+            0,
+            "an unforced close lists nothing"
+        );
+    }
+
+    #[tokio::test]
+    async fn unlink_removes_the_link_and_reports_an_absent_pair() {
+        let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        let removed = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/unlink",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(removed["removed"], true);
+        let absent = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/unlink",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            absent["removed"], false,
+            "unlinking an absent pair reports false, never errors"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_invalid_link_run_id_is_refused_as_a_bad_request() {
+        let tracker = RadiusTracker::with_items(vec![item(1, "open")]);
+        let (app, _state, _records) = app_with_state(tracker).await;
+        let response = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/link",
+            &json!({"itemKey": "denkhaus/work#1", "runId": "not-a-run-id", "seq": 1}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    fn fake_project() -> WorkProject {
+        WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
     }
 }

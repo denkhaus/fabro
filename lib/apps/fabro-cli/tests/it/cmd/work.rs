@@ -24,6 +24,15 @@ fn item_json_with_body(item_key: &str, title: &str, state: &str, body: &str) -> 
     })
 }
 
+/// The close response shape (ADR-0038): the item plus the radius items a
+/// forced close overrode — empty for an unforced close.
+fn close_response_json(item: serde_json::Value) -> serde_json::Value {
+    json!({
+        "item": item,
+        "overriddenRadius": []
+    })
+}
+
 fn project_json(lanes: &[(&str, &str)]) -> serde_json::Value {
     json!({
         "projectId": "fabro",
@@ -62,6 +71,8 @@ fn help() {
       close   Close a work item with a reason
       update  Edit a work item's title and/or body
       lane    Assign a work item to a lane, or clear its lane (`--lane none`)
+      link    Link a work item to an observation record (ADR-0038 backfill)
+      unlink  Remove a work-item observation link
       claims  List a project's live claims
       help    Print this message or the help of the given subcommand(s)
 
@@ -740,7 +751,10 @@ fn close_sends_the_reason_and_reports_the_key() {
             .body_includes("landed in 84caa6f98");
         then.status(200)
             .header("Content-Type", "application/json")
-            .body(item_json("denkhaus/work#12", "a lane item", "closed").to_string());
+            .body(
+                close_response_json(item_json("denkhaus/work#12", "a lane item", "closed"))
+                    .to_string(),
+            );
     });
     context.set_http_target(&server.base_url());
 

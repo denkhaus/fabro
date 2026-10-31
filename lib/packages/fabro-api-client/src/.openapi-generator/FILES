@@ -603,10 +603,16 @@ models/work-claim-state.ts
 models/work-claim-transition-request.ts
 models/work-claim.ts
 models/work-item-close-request.ts
+models/work-item-close-response.ts
 models/work-item-create-request.ts
+models/work-item-lane-request.ts
 models/work-item-list-response.ts
 models/work-item-update-request.ts
 models/work-item.ts
+models/work-observation-link-outcome.ts
+models/work-observation-link-request.ts
+models/work-observation-link-response.ts
+models/work-observation-unlink-response.ts
 models/work-project-list-response.ts
 models/work-project-upsert-request.ts
 models/work-project.ts

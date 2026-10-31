@@ -1918,13 +1918,16 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// Close a work item with a reason comment.
+    /// Close a work item with a reason comment. `force` overrides an
+    /// open closure radius (ADR-0038); the response carries the closed
+    /// item and, for a forced close, the overridden open items.
     pub async fn close_work_item(
         &self,
         project_id: &str,
         item_key: &str,
         reason: &str,
-    ) -> Result<types::WorkItem> {
+        force: bool,
+    ) -> Result<types::WorkItemCloseResponse> {
         let response = self
             .send_api(|client| async move {
                 client
@@ -1933,12 +1936,77 @@ impl Client {
                     .body(types::WorkItemCloseRequest {
                         item_key: item_key.to_string(),
                         reason:   reason.to_string(),
+                        force:    Some(force),
                     })
                     .send()
                     .await
             })
             .await?;
         Ok(response.into_inner())
+    }
+
+    /// Link a work item to an observation record by its (runId, seq)
+    /// identity (ADR-0038) — the user-only backfill/bench surface;
+    /// idempotent, the outcome names `already_linked`. Seq starts at 1
+    /// (append-only per run); zero is refused locally.
+    pub async fn link_work_item_observation(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        run_id: &str,
+        seq: u64,
+    ) -> Result<types::WorkObservationLinkResponse> {
+        let seq = Self::nonzero_seq(seq)?;
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .link_work_item_observation()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkObservationLinkRequest {
+                        item_key: item_key.to_string(),
+                        run_id: run_id.to_string(),
+                        seq,
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Remove one work-item observation link; `removed` is false for an
+    /// absent pair, never an error.
+    pub async fn unlink_work_item_observation(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        run_id: &str,
+        seq: u64,
+    ) -> Result<types::WorkObservationUnlinkResponse> {
+        let seq = Self::nonzero_seq(seq)?;
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .unlink_work_item_observation()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkObservationLinkRequest {
+                        item_key: item_key.to_string(),
+                        run_id: run_id.to_string(),
+                        seq,
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The observation seq wire type is non-zero (append-only from 1);
+    /// zero is refused before the call, with the invariant named.
+    fn nonzero_seq(seq: u64) -> Result<std::num::NonZeroU64> {
+        std::num::NonZeroU64::new(seq).ok_or_else(|| {
+            anyhow::anyhow!("observation seq starts at 1 — the record identity is append-only")
+        })
     }
 
     /// The project's live claims — the queue view the host reads instead of

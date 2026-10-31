@@ -46,11 +46,21 @@ import type { WorkItem } from '../models';
 // @ts-ignore
 import type { WorkItemCloseRequest } from '../models';
 // @ts-ignore
+import type { WorkItemCloseResponse } from '../models';
+// @ts-ignore
 import type { WorkItemCreateRequest } from '../models';
+// @ts-ignore
+import type { WorkItemLaneRequest } from '../models';
 // @ts-ignore
 import type { WorkItemListResponse } from '../models';
 // @ts-ignore
 import type { WorkItemUpdateRequest } from '../models';
+// @ts-ignore
+import type { WorkObservationLinkRequest } from '../models';
+// @ts-ignore
+import type { WorkObservationLinkResponse } from '../models';
+// @ts-ignore
+import type { WorkObservationUnlinkResponse } from '../models';
 // @ts-ignore
 import type { WorkProject } from '../models';
 // @ts-ignore
@@ -243,6 +253,96 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
+         * The tranche-model session operation (denkhaus/work#1065): moves an item between the project\'s declared lanes or removes it from every lane (`lane` omitted/null). The lane name is validated against the project\'s laneLabels like `lane` on create. User-only: a run worker principal is refused — lane moves are the human surface, never an agent-run capability.
+         * @summary Assign a work item to a lane, or clear its lane
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLaneRequest} workItemLaneRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        laneWorkItem: async (projectId: string, workItemLaneRequest: WorkItemLaneRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('laneWorkItem', 'projectId', projectId)
+            // verify required parameter 'workItemLaneRequest' is not null or undefined
+            assertParamExists('laneWorkItem', 'workItemLaneRequest', workItemLaneRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/lane`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workItemLaneRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The closure-radius chain\'s link edge (ADR-0038): a work item links to an observation record by its append-only (runId, seq) identity, and the link lives only in fabro\'s database. Idempotent — filing dedupes at the link, an already-linked pair reports `already_linked`, never a second row. User-only: a run worker principal is refused (the lane-move posture); the run-end hook writes links internally server-side.
+         * @summary Link a work item to an observation record
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        linkWorkItemObservation: async (projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('linkWorkItemObservation', 'projectId', projectId)
+            // verify required parameter 'workObservationLinkRequest' is not null or undefined
+            assertParamExists('linkWorkItemObservation', 'workObservationLinkRequest', workObservationLinkRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/link`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workObservationLinkRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          *
          * @summary List a claim\'s transition history
          * @param {string} claimId Claim identifier.
@@ -328,11 +428,13 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
-         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {number} [limit] Maximum items to return (1-100); also the page size.
+         * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, label?: string, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'projectId' is not null or undefined
             assertParamExists('listWorkItems', 'projectId', projectId)
             const localVarPath = `/api/v1/projects/{projectId}/work-items`
@@ -364,6 +466,14 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
 
             if (limit !== undefined) {
                 localVarQueryParameter['limit'] = limit;
+            }
+
+            if (label !== undefined) {
+                localVarQueryParameter['label'] = label;
+            }
+
+            if (page !== undefined) {
+                localVarQueryParameter['page'] = page;
             }
 
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -631,6 +741,51 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
+         * Removes one link edge. User-only, like link. Unlinking an absent pair is `removed: false`, not an error.
+         * @summary Remove a work-item observation link
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        unlinkWorkItemObservation: async (projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('unlinkWorkItemObservation', 'projectId', projectId)
+            // verify required parameter 'workObservationLinkRequest' is not null or undefined
+            assertParamExists('unlinkWorkItemObservation', 'workObservationLinkRequest', workObservationLinkRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/unlink`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workObservationLinkRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
          * @summary Edit a work item\'s title and/or body in the project\'s tracker
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -751,7 +906,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async closeWorkItem(projectId: string, workItemCloseRequest: WorkItemCloseRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+        async closeWorkItem(projectId: string, workItemCloseRequest: WorkItemCloseRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemCloseResponse>> {
             const localVarAxiosArgs = await localVarAxiosParamCreator.closeWorkItem(projectId, workItemCloseRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.closeWorkItem']?.[localVarOperationServerIndex]?.url;
@@ -786,6 +941,34 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The tranche-model session operation (denkhaus/work#1065): moves an item between the project\'s declared lanes or removes it from every lane (`lane` omitted/null). The lane name is validated against the project\'s laneLabels like `lane` on create. User-only: a run worker principal is refused — lane moves are the human surface, never an agent-run capability.
+         * @summary Assign a work item to a lane, or clear its lane
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLaneRequest} workItemLaneRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async laneWorkItem(projectId: string, workItemLaneRequest: WorkItemLaneRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.laneWorkItem(projectId, workItemLaneRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.laneWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The closure-radius chain\'s link edge (ADR-0038): a work item links to an observation record by its append-only (runId, seq) identity, and the link lives only in fabro\'s database. Idempotent — filing dedupes at the link, an already-linked pair reports `already_linked`, never a second row. User-only: a run worker principal is refused (the lane-move posture); the run-end hook writes links internally server-side.
+         * @summary Link a work item to an observation record
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async linkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkObservationLinkResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.linkWorkItemObservation(projectId, workObservationLinkRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.linkWorkItemObservation']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          *
          * @summary List a claim\'s transition history
          * @param {string} claimId Claim identifier.
@@ -817,12 +1000,14 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
-         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {number} [limit] Maximum items to return (1-100); also the page size.
+         * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, options);
+        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, label, page, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -908,6 +1093,20 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Removes one link edge. User-only, like link. Unlinking an absent pair is `removed: false`, not an error.
+         * @summary Remove a work-item observation link
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async unlinkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkObservationUnlinkResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.unlinkWorkItemObservation(projectId, workObservationLinkRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.unlinkWorkItemObservation']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
          * @summary Edit a work item\'s title and/or body in the project\'s tracker
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -963,7 +1162,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        closeWorkItem(projectId: string, workItemCloseRequest: WorkItemCloseRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+        closeWorkItem(projectId: string, workItemCloseRequest: WorkItemCloseRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemCloseResponse> {
             return localVarFp.closeWorkItem(projectId, workItemCloseRequest, options).then((request) => request(axios, basePath));
         },
         /**
@@ -987,6 +1186,28 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          */
         grantWorkClaim(projectId: string, workClaimGrantRequest: WorkClaimGrantRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkClaimGrantResponse> {
             return localVarFp.grantWorkClaim(projectId, workClaimGrantRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The tranche-model session operation (denkhaus/work#1065): moves an item between the project\'s declared lanes or removes it from every lane (`lane` omitted/null). The lane name is validated against the project\'s laneLabels like `lane` on create. User-only: a run worker principal is refused — lane moves are the human surface, never an agent-run capability.
+         * @summary Assign a work item to a lane, or clear its lane
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLaneRequest} workItemLaneRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        laneWorkItem(projectId: string, workItemLaneRequest: WorkItemLaneRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+            return localVarFp.laneWorkItem(projectId, workItemLaneRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The closure-radius chain\'s link edge (ADR-0038): a work item links to an observation record by its append-only (runId, seq) identity, and the link lives only in fabro\'s database. Idempotent — filing dedupes at the link, an already-linked pair reports `already_linked`, never a second row. User-only: a run worker principal is refused (the lane-move posture); the run-end hook writes links internally server-side.
+         * @summary Link a work item to an observation record
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        linkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkObservationLinkResponse> {
+            return localVarFp.linkWorkItemObservation(projectId, workObservationLinkRequest, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1014,12 +1235,14 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
-         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {number} [limit] Maximum items to return (1-100); also the page size.
+         * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
-            return localVarFp.listWorkItems(projectId, lane, query, limit, options).then((request) => request(axios, basePath));
+        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
+            return localVarFp.listWorkItems(projectId, lane, query, limit, label, page, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns every configured work-item project, sorted by project id.
@@ -1082,6 +1305,17 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          */
         transitionWorkClaim(claimId: string, workClaimTransitionRequest: WorkClaimTransitionRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkClaim> {
             return localVarFp.transitionWorkClaim(claimId, workClaimTransitionRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Removes one link edge. User-only, like link. Unlinking an absent pair is `removed: false`, not an error.
+         * @summary Remove a work-item observation link
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkObservationLinkRequest} workObservationLinkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        unlinkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkObservationUnlinkResponse> {
+            return localVarFp.unlinkWorkItemObservation(projectId, workObservationLinkRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
@@ -1161,6 +1395,30 @@ export class WorkItemsApi extends BaseAPI {
     }
 
     /**
+     * The tranche-model session operation (denkhaus/work#1065): moves an item between the project\'s declared lanes or removes it from every lane (`lane` omitted/null). The lane name is validated against the project\'s laneLabels like `lane` on create. User-only: a run worker principal is refused — lane moves are the human surface, never an agent-run capability.
+     * @summary Assign a work item to a lane, or clear its lane
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkItemLaneRequest} workItemLaneRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public laneWorkItem(projectId: string, workItemLaneRequest: WorkItemLaneRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).laneWorkItem(projectId, workItemLaneRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The closure-radius chain\'s link edge (ADR-0038): a work item links to an observation record by its append-only (runId, seq) identity, and the link lives only in fabro\'s database. Idempotent — filing dedupes at the link, an already-linked pair reports `already_linked`, never a second row. User-only: a run worker principal is refused (the lane-move posture); the run-end hook writes links internally server-side.
+     * @summary Link a work item to an observation record
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkObservationLinkRequest} workObservationLinkRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public linkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).linkWorkItemObservation(projectId, workObservationLinkRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      *
      * @summary List a claim\'s transition history
      * @param {string} claimId Claim identifier.
@@ -1188,12 +1446,14 @@ export class WorkItemsApi extends BaseAPI {
      * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
      * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
-     * @param {number} [limit] Maximum items to return (1-100).
+     * @param {number} [limit] Maximum items to return (1-100); also the page size.
+     * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+     * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, options?: RawAxiosRequestConfig) {
-        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, options).then((request) => request(this.axios, this.basePath));
+    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, page?: number, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, label, page, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1262,6 +1522,18 @@ export class WorkItemsApi extends BaseAPI {
      */
     public transitionWorkClaim(claimId: string, workClaimTransitionRequest: WorkClaimTransitionRequest, options?: RawAxiosRequestConfig) {
         return WorkItemsApiFp(this.configuration).transitionWorkClaim(claimId, workClaimTransitionRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Removes one link edge. User-only, like link. Unlinking an absent pair is `removed: false`, not an error.
+     * @summary Remove a work-item observation link
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkObservationLinkRequest} workObservationLinkRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public unlinkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).unlinkWorkItemObservation(projectId, workObservationLinkRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

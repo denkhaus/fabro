@@ -1621,6 +1621,8 @@ impl Commands {
                 WorkCommand::Close(_) => "work close",
                 WorkCommand::Update(_) => "work update",
                 WorkCommand::Lane(_) => "work lane",
+                WorkCommand::Link(_) => "work link",
+                WorkCommand::Unlink(_) => "work unlink",
                 WorkCommand::Claims(_) => "work claims",
             },
             Self::Automations(ns) => match &ns.command {
@@ -2167,6 +2169,10 @@ pub(crate) enum WorkCommand {
     Update(WorkUpdateArgs),
     /// Assign a work item to a lane, or clear its lane (`--lane none`)
     Lane(WorkLaneArgs),
+    /// Link a work item to an observation record (ADR-0038 backfill)
+    Link(WorkLinkArgs),
+    /// Remove a work-item observation link
+    Unlink(WorkUnlinkArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
 }
@@ -2256,6 +2262,41 @@ pub(crate) struct WorkCloseArgs {
     /// Closing reason, posted as the item's close comment
     #[arg(long)]
     pub(crate) reason:   String,
+    /// Override an open closure radius (ADR-0038): close even while open
+    /// work items are linked to the observations of this item's runs;
+    /// the output lists what the override rode over
+    #[arg(long)]
+    pub(crate) force:    bool,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkLinkArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+    /// The observation record's run id
+    #[arg(long)]
+    pub(crate) run:      String,
+    /// The observation record's per-run seq (its identity beside the run id)
+    #[arg(long)]
+    pub(crate) seq:      u64,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkUnlinkArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+    /// The observation record's run id
+    #[arg(long)]
+    pub(crate) run:      String,
+    /// The observation record's per-run seq
+    #[arg(long)]
+    pub(crate) seq:      u64,
 }
 
 #[derive(Args)]

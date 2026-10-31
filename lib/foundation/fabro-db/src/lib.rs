@@ -49,6 +49,12 @@ pub const WORK_QUEUE_MIGRATION_SQL: &str = include_str!("../migrations/202610200
 pub const WORK_PROJECT_TARGET_MIGRATION_SQL: &str =
     include_str!("../migrations/2026102101_work_project_target.sql");
 
+/// The work-item observation link migration (`work_observation_links`,
+/// ADR-0038), exposed so fixtures in other crates can install the
+/// production schema without a filesystem path into this crate.
+pub const WORK_OBSERVATION_LINKS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026103101_work_observation_links.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.

@@ -15,9 +15,13 @@
 
 
 /**
- * Close a work item with a reason comment.
+ * Close a work item with a reason comment. A claimed item with an open closure radius (open work items linked to the observations discovered in its runs, ADR-0038) is refused with 409 unless `force` is true; a forced close keeps the mandatory reason and the response lists the overridden open items.
  */
 export interface WorkItemCloseRequest {
     'itemKey': string;
     'reason': string;
+    /**
+     * Override an open closure radius. Omitted/false refuses with 409 while the radius is open; the reason stays mandatory either way.
+     */
+    'force'?: boolean;
 }

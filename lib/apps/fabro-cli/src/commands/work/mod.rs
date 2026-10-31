@@ -11,8 +11,10 @@ mod claims;
 mod close;
 mod create;
 mod lane;
+mod link;
 mod list;
 mod show;
+mod unlink;
 mod update;
 
 use std::io::Read as _;
@@ -36,6 +38,8 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Close(args) => close::close_command(&args, &ctx).await,
         WorkCommand::Update(args) => update::update_command(&args, &ctx).await,
         WorkCommand::Lane(args) => lane::lane_command(&args, &ctx).await,
+        WorkCommand::Link(args) => link::link_command(&args, &ctx).await,
+        WorkCommand::Unlink(args) => unlink::unlink_command(&args, &ctx).await,
         WorkCommand::Claims(args) => claims::claims_command(&args, &ctx).await,
     }
 }

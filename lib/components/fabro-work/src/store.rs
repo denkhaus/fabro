@@ -166,6 +166,27 @@ pub struct WorkOutboxEntry {
     pub last_error:      Option<String>,
 }
 
+/// A work-item ↔ observation-record link (ADR-0038): the chain's link
+/// edge. The pair `(run_id, seq)` is exactly the observation record's
+/// append-only identity; the link lives only in fabro's database — the
+/// platform owns both ends, the tracker keeps items, no GitHub mirror.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservationLink {
+    pub project_id: String,
+    pub item_key:   String,
+    pub run_id:     RunId,
+    pub seq:        u64,
+    pub linked_at:  DateTime<Utc>,
+}
+
+/// The outcome of linking an observation to a work item: filing dedupes
+/// at the link — an already-linked pair is reported, never re-linked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkOutcome {
+    Linked,
+    AlreadyLinked,
+}
+
 /// SQLite-backed project registry, claim ledger and projection outbox.
 pub struct WorkStore {
     pool: SqlitePool,
@@ -561,6 +582,124 @@ ORDER BY seq
         rows.iter().map(event_from_row).collect()
     }
 
+    /// Link one work item to one observation record (ADR-0038). The pair
+    /// `(run_id, seq)` is the record's append-only identity. Idempotent:
+    /// linking an already-linked pair reports
+    /// [`LinkOutcome::AlreadyLinked`] — filing dedupes at the link, an
+    /// existing item is linked, never recreated.
+    pub async fn link_observation(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        run_id: &RunId,
+        seq: u64,
+    ) -> Result<LinkOutcome> {
+        let result = sqlx::query(
+            r"
+INSERT INTO work_observation_links (project_id, item_key, run_id, seq, linked_at_ms)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (project_id, item_key, run_id, seq) DO NOTHING
+",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .bind(run_id.to_string())
+        .bind(seq_to_i64(seq)?)
+        .bind(Utc::now().timestamp_millis())
+        .execute(&self.pool)
+        .await?;
+        Ok(if result.rows_affected() == 0 {
+            LinkOutcome::AlreadyLinked
+        } else {
+            LinkOutcome::Linked
+        })
+    }
+
+    /// Remove one observation link. Returns whether a row was deleted —
+    /// unlinking an absent link is the caller's verdict, not an error.
+    pub async fn unlink_observation(
+        &self,
+        project_id: &str,
+        item_key: &str,
+        run_id: &RunId,
+        seq: u64,
+    ) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM work_observation_links WHERE project_id = ? AND item_key = ? AND run_id = ? AND seq = ?")
+                .bind(project_id)
+                .bind(item_key)
+                .bind(run_id.to_string())
+                .bind(seq_to_i64(seq)?)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Every run that ever claimed `item_key` in the project, live or
+    /// terminal, ordered by first grant. The claim store is the radius's
+    /// authority for item → runs: `WorkClaimed` records are audit, and a
+    /// failed record append must not shrink a closure radius.
+    pub async fn runs_for_item(&self, project_id: &str, item_key: &str) -> Result<Vec<RunId>> {
+        let rows = sqlx::query(
+            r"
+SELECT run_id, MIN(granted_at_ms) AS first_ms
+FROM work_claims
+WHERE project_id = ? AND item_key = ?
+GROUP BY run_id
+ORDER BY first_ms
+",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| parse_run_id(&row.try_get::<String, _>("run_id")?))
+            .collect()
+    }
+
+    /// The links of any of `observations` in the project — the radius
+    /// traversal's observation → items edge; the run-end hook's filing
+    /// dedupe walks the same lookup. Ordered deterministically (item,
+    /// run, seq).
+    pub async fn linked_items_for_observations(
+        &self,
+        project_id: &str,
+        observations: &[(RunId, u64)],
+    ) -> Result<Vec<ObservationLink>> {
+        let mut links = Vec::new();
+        if observations.is_empty() {
+            return Ok(links);
+        }
+        // One fixed-query lookup per (run, seq) pair: the pair set is an
+        // item's runs' observations — a small set — and a fixed SQL
+        // string keeps the sqlx 0.9 injection-audit surface untouched.
+        for (run_id, seq) in observations {
+            let rows = sqlx::query(
+                r"
+SELECT project_id, item_key, run_id, seq, linked_at_ms
+FROM work_observation_links
+WHERE project_id = ? AND run_id = ? AND seq = ?
+",
+            )
+            .bind(project_id)
+            .bind(run_id.to_string())
+            .bind(seq_to_i64(*seq)?)
+            .fetch_all(&self.pool)
+            .await?;
+            links.extend(rows.iter().map(link_from_row).collect::<Result<Vec<_>>>()?);
+        }
+        links.sort_unstable_by(|a, b| {
+            (a.item_key.clone(), a.run_id.to_string(), a.seq).cmp(&(
+                b.item_key.clone(),
+                b.run_id.to_string(),
+                b.seq,
+            ))
+        });
+        links.dedup_by(|a, b| a.item_key == b.item_key && a.run_id == b.run_id && a.seq == b.seq);
+        Ok(links)
+    }
+
     /// Release live claims whose run is not in `live_runs` and whose last
     /// update is older than `cutoff`. Used by the startup reconciler for
     /// claims whose run record is gone (the 30-minute orphan grace).
@@ -858,6 +997,25 @@ fn event_from_row(row: &SqliteRow) -> Result<WorkClaimEvent> {
         reason:     row.try_get("reason")?,
         run_id:     parse_run_id(&row.try_get::<String, _>("run_id")?)?,
     })
+}
+
+fn link_from_row(row: &SqliteRow) -> Result<ObservationLink> {
+    Ok(ObservationLink {
+        project_id: row.try_get("project_id")?,
+        item_key:   row.try_get("item_key")?,
+        run_id:     parse_run_id(&row.try_get::<String, _>("run_id")?)?,
+        seq:        u64::try_from(row.try_get::<i64, _>("seq")?)
+            .map_err(|err| Error::InvalidStoredObservationSeq(err.to_string()))?,
+        linked_at:  timestamp_from_row(row, "observation link", "linked_at_ms")?,
+    })
+}
+
+/// SQLite stores integers as `i64`; observation seqs are `u64`. The
+/// bound direction is infallible in practice (seqs count a run's
+/// records), but a negative or oversized value fails loudly instead of
+/// wrapping.
+fn seq_to_i64(seq: u64) -> Result<i64> {
+    i64::try_from(seq).map_err(|_| Error::InvalidStoredObservationSeq(seq.to_string()))
 }
 
 fn outbox_from_row(row: &SqliteRow) -> Result<WorkOutboxEntry> {
@@ -1199,6 +1357,125 @@ mod tests {
         assert_eq!(released.len(), 1);
         assert_eq!(released[0].claim_id, claim.claim_id);
         assert!(store.active_claim_for_run(&run_id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn observation_links_are_idempotent_and_reverse_joinable() {
+        let (_directory, store) = store().await;
+        let run_id = fabro_types::RunId::new();
+        let other_run = fabro_types::RunId::new();
+
+        assert_eq!(
+            store
+                .link_observation("fabro", "denkhaus/work#7", &run_id, 3)
+                .await
+                .unwrap(),
+            super::LinkOutcome::Linked
+        );
+        assert_eq!(
+            store
+                .link_observation("fabro", "denkhaus/work#7", &run_id, 3)
+                .await
+                .unwrap(),
+            super::LinkOutcome::AlreadyLinked,
+            "filing dedupes at the link: an already-linked pair never creates a second row"
+        );
+        store
+            .link_observation("fabro", "denkhaus/work#8", &run_id, 5)
+            .await
+            .unwrap();
+        store
+            .link_observation("fabro", "denkhaus/work#8", &other_run, 1)
+            .await
+            .unwrap();
+
+        let links = store
+            .linked_items_for_observations("fabro", &[(run_id, 3), (run_id, 5), (other_run, 1)])
+            .await
+            .unwrap();
+        let keys: Vec<(&str, fabro_types::RunId, u64)> = links
+            .iter()
+            .map(|link| (link.item_key.as_str(), link.run_id, link.seq))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("denkhaus/work#7", run_id, 3),
+                ("denkhaus/work#8", other_run, 1),
+                ("denkhaus/work#8", run_id, 5),
+            ],
+            "the reverse join returns exactly the linked pairs, ordered deterministically"
+        );
+        assert!(
+            store
+                .linked_items_for_observations("fabro", &[(run_id, 99)])
+                .await
+                .unwrap()
+                .is_empty(),
+            "an unlinked observation resolves to no items"
+        );
+        assert!(
+            store
+                .linked_items_for_observations("fabro", &[])
+                .await
+                .unwrap()
+                .is_empty(),
+            "an empty observation set is a no-op, not an error"
+        );
+
+        assert!(
+            store
+                .unlink_observation("fabro", "denkhaus/work#7", &run_id, 3)
+                .await
+                .unwrap(),
+            "unlinking an existing link reports true"
+        );
+        assert!(
+            !store
+                .unlink_observation("fabro", "denkhaus/work#7", &run_id, 3)
+                .await
+                .unwrap(),
+            "unlinking an absent link reports false, not an error"
+        );
+    }
+
+    #[tokio::test]
+    async fn runs_for_item_covers_the_whole_claim_history() {
+        let (_directory, store) = store().await;
+        let first_run = fabro_types::RunId::new();
+        let second_run = fabro_types::RunId::new();
+        let GrantOutcome::Granted(first) = store
+            .grant(&request("denkhaus/work#1", first_run))
+            .await
+            .unwrap()
+        else {
+            panic!("first grant must win");
+        };
+        store.release(&first.claim_id, "run failed").await.unwrap();
+        let GrantOutcome::Granted(_) = store
+            .grant(&request("denkhaus/work#1", second_run))
+            .await
+            .unwrap()
+        else {
+            panic!("second grant must win after the release");
+        };
+
+        assert_eq!(
+            store
+                .runs_for_item("fabro", "denkhaus/work#1")
+                .await
+                .unwrap(),
+            vec![first_run, second_run],
+            "the radius resolves runs over the claim HISTORY: the released claim counts beside the live one"
+        );
+        assert!(
+            store
+                .runs_for_item("fabro", "denkhaus/work#404")
+                .await
+                .unwrap()
+                .is_empty(),
+            "an item nobody ever claimed resolves to no runs"
+        );
     }
 
     #[tokio::test]

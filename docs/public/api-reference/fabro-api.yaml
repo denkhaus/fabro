@@ -6746,13 +6746,25 @@ paths:
               $ref: "#/components/schemas/WorkItemCloseRequest"
       responses:
         "200":
-          description: Work item closed
+          description: >-
+            Work item closed. `overriddenRadius` lists the open items a
+            forced close overrode (empty otherwise).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkItem"
+                $ref: "#/components/schemas/WorkItemCloseResponse"
         "400":
           description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >-
+            The claimed item's closure radius is open (open work items
+            are linked to the observations discovered in its runs,
+            ADR-0038). Retry with `force` to override; the error message
+            lists the open items.
           content:
             application/json:
               schema:
@@ -6771,6 +6783,95 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
           description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/link:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: linkWorkItemObservation
+      tags: [Work Items]
+      summary: Link a work item to an observation record
+      description: >-
+        The closure-radius chain's link edge (ADR-0038): a work item
+        links to an observation record by its append-only (runId, seq)
+        identity, and the link lives only in fabro's database. Idempotent
+        — filing dedupes at the link, an already-linked pair reports
+        `already_linked`, never a second row. User-only: a run worker
+        principal is refused (the lane-move posture); the run-end hook
+        writes links internally server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkObservationLinkRequest"
+      responses:
+        "200":
+          description: The link outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkObservationLinkResponse"
+        "400":
+          description: Malformed request body or invalid run id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not write links)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/unlink:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: unlinkWorkItemObservation
+      tags: [Work Items]
+      summary: Remove a work-item observation link
+      description: >-
+        Removes one link edge. User-only, like link. Unlinking an absent
+        pair is `removed: false`, not an error.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkObservationLinkRequest"
+      responses:
+        "200":
+          description: The unlink outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkObservationUnlinkResponse"
+        "400":
+          description: Malformed request body or invalid run id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not write links)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
           content:
             application/json:
               schema:
@@ -18773,7 +18874,12 @@ components:
           description: Additional labels beyond the project label.
 
     WorkItemCloseRequest:
-      description: Close a work item with a reason comment.
+      description: >-
+        Close a work item with a reason comment. A claimed item with an
+        open closure radius (open work items linked to the observations
+        discovered in its runs, ADR-0038) is refused with 409 unless
+        `force` is true; a forced close keeps the mandatory reason and
+        the response lists the overridden open items.
       type: object
       required:
         - itemKey
@@ -18783,6 +18889,12 @@ components:
           type: string
         reason:
           type: string
+        force:
+          type: boolean
+          description: >-
+            Override an open closure radius. Omitted/false refuses with
+            409 while the radius is open; the reason stays mandatory
+            either way.
 
     WorkItemUpdateRequest:
       description: Edit a work item's title and/or body in place.
@@ -18815,6 +18927,78 @@ components:
           description: >-
             Lane name as declared in the project's laneLabels; omitted or
             `null` clears the item's lane.
+
+    WorkItemCloseResponse:
+      description: >-
+        The closed item plus the closure-radius items a forced close
+        overrode (empty when the close needed no override).
+      type: object
+      required:
+        - item
+        - overriddenRadius
+      properties:
+        item:
+          $ref: "#/components/schemas/WorkItem"
+        overriddenRadius:
+          type: array
+          description: >-
+            The open work items the `force` flag overrode, listed so the
+            override stays visible; empty without `force`.
+          items:
+            $ref: "#/components/schemas/WorkItem"
+
+    WorkObservationLinkRequest:
+      description: >-
+        Link or unlink one work item to one observation record, named by
+        its append-only (runId, seq) identity (ADR-0038).
+      type: object
+      required:
+        - itemKey
+        - runId
+        - seq
+      properties:
+        itemKey:
+          type: string
+        runId:
+          type: string
+        seq:
+          type: integer
+          format: int64
+          minimum: 1
+
+    WorkObservationLinkOutcome:
+      type: string
+      enum:
+        - linked
+        - already_linked
+
+    WorkObservationLinkResponse:
+      description: The link outcome — filing dedupes at the link.
+      type: object
+      required:
+        - outcome
+        - itemKey
+        - runId
+        - seq
+      properties:
+        outcome:
+          $ref: "#/components/schemas/WorkObservationLinkOutcome"
+        itemKey:
+          type: string
+        runId:
+          type: string
+        seq:
+          type: integer
+          format: int64
+
+    WorkObservationUnlinkResponse:
+      description: "The unlink outcome — an absent pair is `removed: false`."
+      type: object
+      required:
+        - removed
+      properties:
+        removed:
+          type: boolean
 
     WorkClaimNextRequest:
       description: Grant the next free work item to a run.
