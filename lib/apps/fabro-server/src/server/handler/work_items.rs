@@ -513,8 +513,8 @@ async fn close_work_item(
             StatusCode::CONFLICT,
             format!(
                 "item {} has an open closure radius — {} open item(s) are linked to the \
-                 observations of its runs: {listing}. Close them first, or pass --force to \
-                 override with this reason",
+                 observations of its runs: {listing}. Close them first, or retry the close \
+                 with force: true to override with this reason",
                 request.item_key,
                 radius.len()
             ),

@@ -87,8 +87,6 @@ Role split is unchanged: you analyze and distill, the bookkeeper (file step) run
 - Writes go to `.fabro/reviews/` only (the engine enforces this).
 - Output hygiene — hard rule: wrap every absolute path in backticks in every text you emit. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
-## Journal — every pass answers
-
 ## Observations and journal — every pass
 
 Record what you durably observed through the `fabro_observation_record`

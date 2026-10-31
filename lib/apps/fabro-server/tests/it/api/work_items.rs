@@ -1040,6 +1040,53 @@ mod next_item {
     }
 
     #[tokio::test]
+    async fn observation_links_refuse_run_workers_on_both_verbs() {
+        use fabro_server::test_support::{
+            TestAppStateBuilder, build_test_router, create_test_run_with_target,
+        };
+
+        let tracker = FakeTracker::with_items(vec![item(1, 1)]);
+        let state = TestAppStateBuilder::new()
+            .work_tracker(tracker as Arc<dyn TrackerProvider>)
+            .build();
+        let app = build_test_router(state.clone());
+        put_project(&app).await;
+
+        // The link surface is the user's backfill/bench surface (ADR-0038
+        // stage 3): even the run-tools capability must not write links —
+        // the run-end hook writes them internally server-side instead.
+        let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
+        let tools = state.test_issue_worker_token_with_run_tools(&run_id);
+        for path in ["/work-items/link", "/work-items/unlink"] {
+            let refused = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(api(&format!("/projects/fabro{path}")))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("authorization", format!("Bearer {tools}"))
+                        .body(Body::from(
+                            serde_json::to_vec(&json!({
+                                "itemKey": "denkhaus/work#1",
+                                "runId": run_id.to_string(),
+                                "seq": 1
+                            }))
+                            .expect("fixture serializes"),
+                        ))
+                        .expect("request"),
+                )
+                .await
+                .expect("response");
+            assert_eq!(
+                refused.status(),
+                StatusCode::FORBIDDEN,
+                "{path} must refuse a worker principal before any store call"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn granting_a_named_item_answers_conflict_when_taken() {
         let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 2)]);
         let app = app_with_tracker(Arc::clone(&tracker)).await;
@@ -1472,7 +1519,7 @@ mod closure_radius {
             "the item itself never blocks itself: {detail}"
         );
         assert!(
-            detail.contains("--force"),
+            detail.contains("force: true"),
             "the refusal teaches the override: {detail}"
         );
 

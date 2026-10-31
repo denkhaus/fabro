@@ -46,7 +46,7 @@ Report context through `context_updates.journal` on EVERY pass. Silence
 is a missing report, not an empty one. Emit the key:
 
 {"journal": {"observations": ["<upstream commit count + newest subject, conflict classes seen, gate duration — what the next merger should know>"]}}
-  Do not fix platform assets — report them here. `[]` when nothing hurt.
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
