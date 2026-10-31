@@ -69,13 +69,22 @@ Do not implement anything yourself. Do not review. Planning and tool calls only.
 
 When you write text that flows into context, wrap absolute paths in backticks. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
-## Journal — every pass answers
+## Observations and journal — every pass answers
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction in the loop lane itself — what hurt and a
+concrete suggestion, self-contained: where, what happened, evidence,
+fix idea) or category `note` (context worth keeping; exactly one note
+reading "nothing durable to record" when nothing happened).
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<what the next planner should know: a surprise, a stale item, a misroute you adjudicated>"]}}
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report. Emit the key:
 
-- `painpoints`: friction in the loop lane itself. `[]` when nothing hurt.
+{"journal": {"observations": ["<what the next planner should know: a surprise, a stale item, a misroute you adjudicated>"]}}
+
 - `observations`: at least one entry; the literal `"none"` is valid.
 
 ## Outcome contract
@@ -99,7 +108,7 @@ Claimed an item:
     "current_seed_title": "<its title, verbatim>",
     "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria as one-line pointers, the one-unit bullet naming every part of the unit>",
     "current_item_json": {"itemKey": "<verbatim>", "title": "<verbatim>", "body": "<the item body, verbatim>"},
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -112,7 +121,7 @@ Verification-only:
     "current_seed_title": "<its title, verbatim>",
     "current_seed_brief": "The acceptance criteria appear already satisfied. Verify each one against the worktree; make NO changes if all hold. Per-criterion checks (each already run through the check-transcript wrapper with --by planner; the capture inlines their outputs): <one checkable bullet per acceptance criterion, cheapest-first verification>",
     "current_item_json": {"itemKey": "<verbatim>", "title": "<verbatim>", "body": "<the item body, verbatim>"},
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -122,7 +131,7 @@ Tracker empty:
   "preferred_next_label": "Tracker empty",
   "context_updates": {
     "review_verdict": "",
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -131,7 +140,7 @@ Already landed:
   "outcome": "succeeded",
   "preferred_next_label": "Already landed",
   "context_updates": {
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

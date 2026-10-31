@@ -28,15 +28,15 @@ When your decision is "Work":
    The `files` key stays ABSENT; `files` and `files_from` are mutually
    exclusive. Registration stays idempotent and content-addressed.
    If the packager names a missing dependency, that file is missing from
-   the directory — journal it under `painpoints`; never hand-copy
-   contents.
+   the directory — record it as a painpoint observation through the
+   observation recorder; never hand-copy contents.
 2. Emit BOTH ids as context keys — `develop_workflow_version_id` and
    `revisor_workflow_version_id` (64 hex each) via `context_updates` —
    and journal them under `observations`.
-3. A registration failure is NOT a pass failure: journal the error under
-   `painpoints`, emit no id for that workflow, and let the leg fall back
-   to registering itself. Do not re-register after a success to
-   "make sure".
+3. A registration failure is NOT a pass failure: record the error as a
+   painpoint observation through the observation recorder, emit no id
+   for that workflow, and let the leg fall back to registering itself.
+   Do not re-register after a success to "make sure".
 
 ## Revisor backfill (best-effort)
 
@@ -70,14 +70,27 @@ its measurement is tracked as a seed). REPORT-ONLY: this
 survey NEVER files, consumes, or marks overflow entries — the revisor
 file stage is the one deterministic consumer of the overflow ledger.
 
-## Journal — every pass
+## Observations and journal — every pass
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry:
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<upstream count + newest upstream subject, revisor backlog if any (`revisor backlog: <ids>`), what the next surveyor should know>"]}}
+- category `painpoint`: friction in the survey loop itself (shell/git
+  traps, ambiguous backlog signals) — what hurt and a concrete
+  suggestion, self-contained: where (file/line), what happened,
+  evidence (run id), fix idea. Do not fix platform assets — record them
+  here.
+- category `note`: context worth keeping. When nothing durable happened,
+  record exactly one note reading "nothing durable to record" — the
+  call itself satisfies the contract.
 
-- `painpoints`: friction in the survey loop itself (shell/git traps, ambiguous backlog signals).
-  Do not fix platform assets — report them here. `[]` when nothing hurt.
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one. Emit the key:
+
+{"journal": {"observations": ["<upstream count + newest upstream subject, revisor backlog if any (`revisor backlog: <ids>`), what the next surveyor should know>"]}}
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.

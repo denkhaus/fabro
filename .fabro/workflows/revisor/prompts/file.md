@@ -142,11 +142,20 @@ When a finding or its proposed fix direction would ADD, CHANGE, or REMOVE a tool
 - Wrap absolute paths in backticks in every text you emit; never write a bare slash-word surrounded by spaces.
 - If a work-item tool call or git fails, route failure — do not leave a half-committed state silently.
 
-## Journal — every pass answers
+## Observations and journal — every pass answers
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction — what hurt, where, evidence, fix idea) or
+category `note` (context; exactly one note reading "nothing durable to
+record" when nothing happened).
 
-{"journal": {"painpoints": [{"text": "<what hurt, where, evidence, fix idea>"}], "observations": ["<what the next bookkeeper should know; 'none' is valid when unremarkable>"]}}
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one. Emit the key:
+
+{"journal": {"observations": ["<what the next bookkeeper should know; 'none' is valid when unremarkable>"]}}
 
 ## Outcome contract
 
@@ -160,7 +169,7 @@ End with exactly one JSON object:
   "preferred_next_label": "Staged",
   "context_updates": {
     "filed_item_keys": ["<item-key>", "..."],
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

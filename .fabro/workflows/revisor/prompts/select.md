@@ -33,11 +33,20 @@ If the run list shows an ACTIVE develop run, do not treat that as a blocker for 
 
 If no unrevised terminal run remains, route "Nothing to revise" — that is the goal achieved, not an error.
 
-## Journal — every pass answers
+## Observations and journal — every pass answers
 
-Report through `context_updates.journal` on EVERY pass. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction — what hurt, where, evidence, fix idea) or
+category `note` (context; exactly one note reading "nothing durable to
+record" when nothing happened).
 
-{"journal": {"painpoints": [{"text": "<what hurt, where, evidence, fix idea>"}], "observations": ["<at least one; 'none' is valid when unremarkable>"]}}
+Report context through `context_updates.journal` on EVERY pass. Emit
+the key:
+
+{"journal": {"observations": ["<at least one; 'none' is valid when unremarkable>"]}}
 
 ## Outcome contract
 
@@ -57,7 +66,7 @@ Run selected:
     "revisor_target_status": "<its terminal status>",
     "revisor_target_wall": "<e.g. 4.9 min, or unknown>",
     "revisor_target_workflow_version": "<the selected run's FULL workflow_version_id, verbatim 64-hex — NEVER truncated with an ellipsis; the bookkeeper's basis line and the stale-basis check consume it whole>",
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -66,7 +75,7 @@ Nothing to revise:
   "outcome": "succeeded",
   "preferred_next_label": "Nothing to revise",
   "context_updates": {
-    "journal": {"painpoints": [], "observations": ["<e.g. N runs listed, all revised / 1 active, skipped>"]}
+    "journal": {"observations": ["<e.g. N runs listed, all revised / 1 active, skipped>"]}
   }
 }
 

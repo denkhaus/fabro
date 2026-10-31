@@ -38,9 +38,9 @@ Hard rules:
 5. TESTING BELONGS TO THE TESTER STEP: you never run the loop gate, never the product gate, never a full battery. Your mechanical verification lane is exactly the cheap parse tier: `just lint-nu` and `nu .fabro/scripts/prompt-lint.nu` (parse-level, seconds) after your edits, plus `nu scripts/qualitygate.nu check-run-scope loop` when you want the scope verdict early. The deterministic tester step after you owns the full battery, including the seed-spec-paths tier (a spec-named loop-asset path missing from the diff dies there, never as a silent miss).
 6. Do NOT close the seed and do NOT review.
 
-## Lesson capture — journal only
+## Lesson capture — observations and journal only
 
-The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml record` writes would die at checkpoint. Loop lessons land as `journal.painpoints`/`observations` instead; the revisor workflow files them as work items with a basis. There is NO lesson_capture key in your output contract — do not emit one.
+The expertise store (mulch) is OUTSIDE this node's envelope (fs_hide) — `ml record` writes would die at checkpoint. Loop lessons land as observation records (category note or painpoint through the `fabro_observation_record` tool) and `journal.observations` instead. There is NO lesson_capture key in your output contract — do not emit one.
 
 ## Inline verification report — required in every summary
 
@@ -55,11 +55,19 @@ Material semantic-risk observations (changed routing labels, envelope scope chan
 
 Routing-consistency self-check: re-read every routing instruction you wrote — each branch yields exactly ONE route.
 
-Report through `context_updates.journal` on EVERY pass:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction in the loop lane itself — what hurt and a
+concrete suggestion, self-contained: where, what happened, evidence,
+fix idea) or category `note` (context worth keeping; exactly one note
+reading "nothing durable to record" when nothing happened).
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<a surprise, near-miss, or shortcut risk: file, what, why it matters>"]}}
+Report context through `context_updates.journal` on EVERY pass:
 
-- `painpoints`: friction in the loop lane itself. `[]` when nothing hurt.
+{"journal": {"observations": ["<a surprise, near-miss, or shortcut risk: file, what, why it matters>"]}}
+
 - `observations`: at least one entry; `"none"` is valid.
 - `deferred-action:` marker: every deferred human follow-up you disclose in `implementation_summary` must ALSO be a journal observation starting with `deferred-action: ` — one per action, self-contained after the marker. Closeout sweeps exactly those into open work items before closing.
 
@@ -85,7 +93,7 @@ Implemented:
   "preferred_next_label": "Implemented",
   "context_updates": {
     "implementation_summary": "<files touched and what was built, one short paragraph; then the per-criterion PASS/FAIL verification report incl. the one-unit line; flagged material semantic risks named>",
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

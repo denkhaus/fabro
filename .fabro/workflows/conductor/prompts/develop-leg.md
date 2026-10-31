@@ -47,14 +47,27 @@ the agent recreated a child after an approval_required start error and
 produced two parallel develops — a serialization violation cleaned up
 manually, 2026-09-05).
 
-## Journal — every pass
+## Observations and journal — every pass
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry:
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<child run id, seed title if visible, child status, gate wait outcome (`merged`/`blocked`/`closed_unmerged`) — what the next develop leg should know>"]}}
+- category `painpoint`: friction in the orchestration loop itself (tool
+  schema misses, wait semantics surprises) — what hurt and a concrete
+  suggestion, self-contained: where (file/line), what happened,
+  evidence (run id), fix idea. Do not fix platform assets — record them
+  here.
+- category `note`: context worth keeping. When nothing durable happened,
+  record exactly one note reading "nothing durable to record" — the
+  call itself satisfies the contract.
 
-- `painpoints`: friction in the orchestration loop itself (tool schema misses, wait semantics surprises).
-  Do not fix platform assets — report them here. `[]` when nothing hurt.
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one. Emit the key:
+
+{"journal": {"observations": ["<child run id, seed title if visible, child status, gate wait outcome (`merged`/`blocked`/`closed_unmerged`) — what the next develop leg should know>"]}}
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.

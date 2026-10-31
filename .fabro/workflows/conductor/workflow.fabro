@@ -34,7 +34,12 @@ digraph Conductor {
         // has slack, so the legs pass only the content-addressed id
         // instead of transcribing ~118 KB of closure through tool
         // arguments on the critical path.
-        x.fabro_tools="fabro_run_search,fabro_workflow_version_create"
+        x.fabro_tools="fabro_run_search,fabro_workflow_version_create,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — the
+        // session must call fabro_observation_record at least once per
+        // pass (the explicit "nothing durable to record" note
+        // satisfies it); a stage that never calls it is INVALID.
+        x.observations="required"
     ]
 
     // MERGE LEG DISABLED 2026-09-13 (user decision): fabro no longer runs
@@ -78,7 +83,10 @@ digraph Conductor {
         project_memory=false,
         x.preamble_stages_ignore="survey,develop",
         x.fs_write="",
-        x.fabro_tools="fabro_workflow_version_create,fabro_run_create,fabro_run_get,fabro_run_wait,fabro_run_search"
+        x.fabro_tools="fabro_workflow_version_create,fabro_run_create,fabro_run_get,fabro_run_wait,fabro_run_search,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // survey node's comment.
+        x.observations="required"
     ]
 
     // Revise leg: revisor revises the newest develop run.
@@ -95,7 +103,10 @@ digraph Conductor {
         project_memory=false,
         x.preamble_stages_ignore="survey,develop,revise",
         x.fs_write="",
-        x.fabro_tools="fabro_workflow_version_create,fabro_run_create,fabro_run_get,fabro_run_wait,fabro_run_search"
+        x.fabro_tools="fabro_workflow_version_create,fabro_run_create,fabro_run_get,fabro_run_wait,fabro_run_search,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // survey node's comment.
+        x.observations="required"
     ]
 
     start -> survey

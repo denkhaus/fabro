@@ -182,7 +182,13 @@ digraph Develop {
         // misrouted/stale claim to the queue (then the planner asks
         // again), close lands the superseded-close arms. No tracker CLI,
         // no tracker file, no forge client (ADR-0019).
-        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close"
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — this
+        // stage's session must call fabro_observation_record at least
+        // once per pass; a stage that never calls it is INVALID
+        // (engine-validated at completion, beside the output schema).
+        // The explicit "nothing durable to record" note satisfies it.
+        x.observations="required"
     ]
 
     // Implementer: builds exactly what the claimed seed specifies.
@@ -232,7 +238,12 @@ digraph Develop {
         // step: query the failure tail's distinctive token, items whose
         // body covers the failure are known-bug context). Writes stay
         // denied; no tracker CLI, no forge client.
-        x.fabro_tools="fabro_work_show,fabro_work_list",
+        x.fabro_tools="fabro_work_show,fabro_work_list,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // planner node's comment; every agent stage records its
+        // observations through the tool, never through the journal
+        // painpoints array (that array is retired with the flip).
+        x.observations="required",
         // fabro-e47c pattern, closed on the implementer 2026-09-03: the ##
         // Context section is a strict input contract — the seed trio the
         // prompt names (review feedback arrives as its own `review_feedback`
@@ -421,8 +432,12 @@ digraph Develop {
         // fabro-269d: default-denied fabro-run catalog — before this, a
         // reviewer invoked fabro_run_interact (run 01M2RDM3AZ seq 440).
         // Effective denial is the tools allow-list above (stage_policy
-        // admits only listed names); the empty opt-in records the intent.
-        x.fabro_tools="",
+        // admits only listed names); the ADR-0038 flip (2026-10-31)
+        // adds exactly ONE write-capable grant: the observation
+        // recorder (a record append, not a tree write — x.fs_write
+        // stays empty and the file tools stay read-only).
+        x.fabro_tools="fabro_observation_record",
+        x.observations="required",
         output_schema="routing",
         output_retries=2,
         max_visits=20,

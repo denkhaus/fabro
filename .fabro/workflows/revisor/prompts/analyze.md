@@ -35,7 +35,7 @@ Write the answer to `.fabro/reviews/develop/<run-id>.md` with this header (same 
 
 ## Step 3 — check the tracker BEFORE distilling
 
-The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. This check covers EVERY distill input — the ask answer AND the journal painpoints (Step 4). So:
+The backlog runs share root causes; without a tracker check every pass re-distills the same findings the file stage then has to merge away. This check covers EVERY distill input — the ask answer AND the prior-stage journal observations (Step 4). So:
 
 1. Run `fabro_work_list {"limit": 100}` — that is the current tracker picture, INCLUDING items this revisor run already filed (they are committed on this branch).
 2. For each recurring theme in the answer, run `fabro_work_list {"query": "<theme keyword>"}` — the server-side text search covers title AND body, open AND closed items (the closed half is the point: a closed item means the change is already implemented). Query discipline at the call site: one focused keyword per query first; on zero hits, retry once with a broader token before concluding "no duplicate"; for a candidate the answer cites by key, use `fabro_work_show {"itemKey": "<key>"}`, never search (search matches title/body text, and relevance ranking can bury an exact-key hit).
@@ -67,9 +67,9 @@ When the reviewed run's diff touches `.fabro/workflows/**` (prompts, graphs, sch
 Distill BOTH inputs into `revision_findings` — they get the same path, the same rules, and one shared array:
 
 1. The SURVIVING recommendations from the ask answer.
-2. The journal `painpoints` already in your context from earlier revisor stages (select) — the engine accumulates the journal key across stages, so those painpoints are seed-candidate material here. They are NOT verdicts to relay: you CONTRIBUTE your analysis of each painpoint, re-expressed as a proper candidate (what/where/effect grounded in the painpoint's evidence). A painpoint too vague to name one concrete change is dropped as non-actionable, same as a vague recommendation.
+2. The journal `observations` already in your context from earlier revisor stages (select) — the engine accumulates the journal key across stages, so those entries are seed-candidate material here. They are NOT verdicts to relay: you CONTRIBUTE your analysis of each friction-naming entry, re-expressed as a proper candidate (what/where/effect grounded in the entry's evidence). An entry too vague to name one concrete change is dropped as non-actionable, same as a vague recommendation.
 
-For both sources, a candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Apply the Step 3 tracker rules to painpoint-derived candidates exactly as to ask-answer ones (search first; a same-change match drops with `duplicate_of: <key>` recorded for the journal; closeout-race coverage drops likewise). Drop generic advice, drop praise, merge duplicates among themselves — including a painpoint that duplicates an ask-answer recommendation (keep the better-grounded one). A recommendation or painpoint missing BOTH a known item key and a new-item justification is dropped as non-actionable (consistent with the other drop rules). Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates (with their item keys) and the non-actionable painpoints in the journal observation — the report must show what was withheld and why.
+For both sources, a candidate is actionable only when it names ONE concrete change (file or node, what to change, expected effect) attributable to THIS run's evidence. Apply the Step 3 tracker rules to observation-derived candidates exactly as to ask-answer ones (search first; a same-change match drops with `duplicate_of: <key>` recorded for the journal; closeout-race coverage drops likewise). Drop generic advice, drop praise, merge duplicates among themselves — including an observation-derived candidate that duplicates an ask-answer recommendation (keep the better-grounded one). A recommendation or candidate missing BOTH a known item key and a new-item justification is dropped as non-actionable (consistent with the other drop rules). Each entry: {"title": "<short imperative, English>", "description": "<what/where/effect, grounded in this run>", "priority": <2 normal, 1 high impact>}. An empty array is a valid outcome: a healthy run gets a marker-only revision. Name the dropped duplicates (with their item keys) and the non-actionable entries in the journal observation — the report must show what was withheld and why.
 
 Role split is unchanged: you analyze and distill, the bookkeeper (file step) runs the mechanical tracker search and `fabro_work_create` — the finding objects reach it in the standard shape above.
 
@@ -89,9 +89,20 @@ Role split is unchanged: you analyze and distill, the bookkeeper (file step) run
 
 ## Journal — every pass answers
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+## Observations and journal — every pass
 
-{"journal": {"painpoints": [{"text": "<what hurt, where, evidence, fix idea>"}], "observations": ["<what the next analyst should know; 'none' is valid when unremarkable>"]}}
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction — what hurt, where, evidence, fix idea) or
+category `note` (context; exactly one note reading "nothing durable to
+record" when nothing happened).
+
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one. Emit the key:
+
+{"journal": {"observations": ["<what the next analyst should know; 'none' is valid when unremarkable>"]}}
 
 ## Outcome contract
 
@@ -105,7 +116,7 @@ End with exactly one JSON object:
   "preferred_next_label": "Findings ready",
   "context_updates": {
     "revision_findings": [{"title": "...", "description": "...", "priority": 2}],
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

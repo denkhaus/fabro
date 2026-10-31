@@ -38,7 +38,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
    BEFORE any edit, read the DETERMINISTIC claim-preflight report: the `preflight` stage ran over the granted item and its verdict table is inline in `## Context` as `output.preflight` (already-landed verdict over the item key, anchor/salvage flags, envelope risk — each row's meaning in its `legend`). Parse it mechanically, no judgment calls: verdict `duplicate` (a landed-PR commit — true merge or squash `(#n)` subject — implements the item; a pass that merely FILED the item never counts) -> route Blocked with failure_reason `duplicate run: <item key> already merged as <the row's subject>` and make NO changes to the worktree; verdict `clean` or `degraded` -> proceed normally (degraded: journal the failure mode — a fetch or history error must never dead-end the implementer). An ABSENT table (the stage section missing or the arm degraded) fires the fallback: run `nu .fabro/scripts/dup-run-check.nu <item key> --self <run-id>` yourself — `<run-id>` is YOUR OWN run id, taken from the `Run ID:` line of the stage preamble header at the top of your prompt — and parse the JSON verdict identically; `--self` makes a `Fabro-Run:` trailer naming THIS run a self-closure that NEVER drives a `duplicate` verdict. Anchor flags (`anchors_ok: false`) are advisory planner input — the planner adjudicated them before you; act on the brief, not on re-derived anchor archaeology. This check is a cheap preflight, not a gate substitute — it must NOT weaken the `just verify implementer` rule in step 4. Family note: this is the implementer-side stopgap for the claim-race class; it does NOT close the family — the durable engine-side fixes for this class are tracked as engine items and stay the real closure.
 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
 3. Write or update tests exactly as the item demands.
-4. TESTING BELONGS TO THE TESTER STEP (hard rule): you WRITE and UPDATE tests, you do not EXECUTE the suites that test them — the deterministic tester step after you owns test execution. Your verification lane is ONE call: `git diff --stat && just verify implementer` in a single chained shell invocation (timeout_ms of at least 60000); inside a run, `just verify` alone suffices — the engine injects FABRO_STAGE and scripts/verify.nu derives the stage and the touched-crate scope deterministically: fmt + clippy per code-touched crate, the new tests BY NAME FILTER for crates whose diff only ADDS test files, the full crate suite for test-file-touched crates that EDIT existing tests, a compile check otherwise — never the gate, never the workspace suite, and the default-features clippy pass always included (a known default-features break in a touched crate FAILS your self-assessment: fix it or route Blocked). If verify and any prose disagree, verify wins and the disagreement is a journal painpoint. Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent; a redundant implementer-side gate wastes a cold cache's tens of seconds and blurs role boundaries. Any focused test you run BEYOND the derived touched-crate classes must name the acceptance bullet it serves in your summary — an extra test with no bullet behind it is policy-exceeding tool spend (zero-signal focused runs while the suite that matters goes unrun); if no acceptance bullet needs it, do not run it.
+4. TESTING BELONGS TO THE TESTER STEP (hard rule): you WRITE and UPDATE tests, you do not EXECUTE the suites that test them — the deterministic tester step after you owns test execution. Your verification lane is ONE call: `git diff --stat && just verify implementer` in a single chained shell invocation (timeout_ms of at least 60000); inside a run, `just verify` alone suffices — the engine injects FABRO_STAGE and scripts/verify.nu derives the stage and the touched-crate scope deterministically: fmt + clippy per code-touched crate, the new tests BY NAME FILTER for crates whose diff only ADDS test files, the full crate suite for test-file-touched crates that EDIT existing tests, a compile check otherwise — never the gate, never the workspace suite, and the default-features clippy pass always included (a known default-features break in a touched crate FAILS your self-assessment: fix it or route Blocked). If verify and any prose disagree, verify wins and the disagreement is a painpoint observation (category painpoint through the observation recorder). Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent; a redundant implementer-side gate wastes a cold cache's tens of seconds and blurs role boundaries. Any focused test you run BEYOND the derived touched-crate classes must name the acceptance bullet it serves in your summary — an extra test with no bullet behind it is policy-exceeding tool spend (zero-signal focused runs while the suite that matters goes unrun); if no acceptance bullet needs it, do not run it.
 5. Do NOT close the item and do NOT review — the Reviewer decides, the Closeout step closes through the work-item tools.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. This includes REUSABLE PATTERNS, not only near-miss lessons: any observation naming a reusable pattern (a self-test technique, a structuring convention, a trick that generalizes) is a record, and answering 'nothing durable — skipped' over it is a violation. Skip only if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `ml record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `ml search` and starve it of confirmation evidence.
 
@@ -98,8 +98,8 @@ wastes output tokens and inflates downstream preambles.
 Material semantic-risk observations (e.g. changed retry semantics,
 contract changes, ordering assumptions) MUST be repeated inside
 `implementation_summary` itself — not left only in journal
-painpoints/observations — so the reviewer (whose preamble_allow_keys
-excludes journal) always sees them.
+observations or observation records — so the reviewer (whose
+preamble_allow_keys excludes journal) always sees them.
 
 Routing-consistency self-check: before finishing, re-read every routing
 instruction you wrote — each branch must yield exactly ONE route. Two
@@ -151,13 +151,24 @@ governs touched crates and breaks you caused or could fix, and until
 the minimal fix lands, a default-features break still fails your
 'gate passes' self-assessment.
 
-Report through `context_updates.journal` on EVERY pass. Silence is a
-missing report, not an empty one — two full runs shipped zero journal
-lines because answering was optional. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry:
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<a surprise, near-miss, or shortcut risk you hit while implementing: file, what, why it matters>"]}}
+- category `painpoint`: dev-loop friction in loop assets — what hurt
+  and a concrete suggestion, self-contained: where (file/line), what
+  happened, evidence (run id), fix idea.
+- category `note`: context worth keeping. When nothing durable happened,
+  record exactly one note reading "nothing durable to record" — the
+  call itself satisfies the contract.
 
-- `painpoints`: dev-loop friction in loop assets. `[]` when nothing hurt.
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one — two full runs shipped zero
+journal lines because answering was optional. Emit the key:
+
+{"journal": {"observations": ["<a surprise, near-miss, or shortcut risk you hit while implementing: file, what, why it matters>"]}}
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
@@ -232,7 +243,7 @@ Implemented:
   "context_updates": {
     "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the justified skip; then the per-criterion PASS/FAIL verification report, naming any flagged material semantic risks (changed retry semantics, contract changes, ordering assumptions)>",
     "lesson_capture": "<mx-xxxxxx | nothing durable — skipped>",
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

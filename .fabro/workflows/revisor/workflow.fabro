@@ -69,7 +69,12 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write="",
-        x.fabro_tools="fabro_run_search,fabro_run_set_title",
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — the
+        // session must call fabro_observation_record at least once per
+        // pass (the explicit "nothing durable to record" note
+        // satisfies it); a stage that never calls it is INVALID.
+        x.observations="required",
         // Read window (e47c pattern): selection re-derives from the run
         // list every pass — stale target keys from the previous cycle
         // must not render. journal is the ONLY input: the prior selector's
@@ -104,7 +109,10 @@ digraph Revisor {
         x.preamble_stages_ignore="select,analyze,file",
         x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write=".fabro/reviews/**",
-        x.fabro_tools="fabro_ask,fabro_work_list,fabro_work_show,fabro_work_release",
+        x.fabro_tools="fabro_ask,fabro_work_list,fabro_work_show,fabro_work_release,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // select node's comment.
+        x.observations="required",
         // Read window: the CURRENT target trio (+wall) and journal;
         // revision_findings stays out — a previous cycle's findings are
         // stale, analyze re-emits fresh ones. journal stays: the prior
@@ -140,7 +148,10 @@ digraph Revisor {
         // envelope judges the staged set, not the tool.
         x.fs_hide="lib/**,apps/**,docs/**",
         x.fs_write=".fabro/revisions/**",
-        x.fabro_tools="fabro_work_create,fabro_work_list,fabro_work_show,fabro_work_close",
+        x.fabro_tools="fabro_work_create,fabro_work_list,fabro_work_show,fabro_work_close,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // select node's comment.
+        x.observations="required",
         // Read window: current target + current findings ONLY. Filing,
         // marker, and commit need no journal history — prior-pass
         // observations serve select/analyze continuity, not bookkeeping

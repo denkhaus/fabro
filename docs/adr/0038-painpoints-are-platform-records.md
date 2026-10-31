@@ -12,6 +12,16 @@ categories `painpoint | note`; the tool is `fabro_observation_record`;
 the graph attribute is `x.observations="required"`. The chain and every
 mechanism below are unchanged; only the vocabulary turned.
 
+Amended 2026-10-31 (user decision, sprint 70): decision point 3 (the
+closeout sweeps the journal's painpoint array as the transition floor)
+is SUPERSEDED — its premise does not hold. The transition window it
+bridged (runs on pre-contract graphs while new graphs migrate) never
+exists: lanes are empty and nothing runs without an explicit user
+trigger. The graphs flip to the contract in one move, and the machine
+is tested only after it stands. Every consequence of point 3 dies with
+it: no closeout sweep, no script write path, no CLI record verb. The
+remaining points are unchanged.
+
 ## Context
 
 ADR-0037 linked painpoint work items to their parent item through

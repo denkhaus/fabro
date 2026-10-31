@@ -33,7 +33,11 @@ digraph MergeUpstream {
         // (conflict resolution, gate fixes, report). An empty allowlist
         // would block every tool write and force shell-only workarounds
         // (2026-09-05, first autonomous merge run 01M1SR27KEJGNQ).
-        x.fabro_tools=""
+        // ADR-0038 flip (2026-10-31): the observation recorder joins —
+        // the presence contract below; the run-level switch in
+        // workflow.toml turned true with the flip.
+        x.fabro_tools="fabro_observation_record",
+        x.observations="required"
     ]
 
 
@@ -53,7 +57,11 @@ digraph MergeUpstream {
         project_memory=false,
         x.preamble_stages_ignore="merge,reviewer",
         x.fs_write="",
-        x.fabro_tools=""
+        // ADR-0038 flip (2026-10-31): the reviewer's ONLY run-tool
+        // grant is the observation recorder (a record append, not a
+        // tree write — x.fs_write stays empty).
+        x.fabro_tools="fabro_observation_record",
+        x.observations="required"
     ]
 
     start -> merge

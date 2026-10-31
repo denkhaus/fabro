@@ -97,7 +97,12 @@ digraph Loop {
         // update (stale-spec corrections), release (misroute/skip),
         // close (the two superseded-close arms) — no tracker CLI, no
         // tracker file, no forge client.
-        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close"
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — the
+        // session must call fabro_observation_record at least once per
+        // pass (the explicit "nothing durable to record" note
+        // satisfies it); a stage that never calls it is INVALID.
+        x.observations="required"
     ]
 
     // Claim-contract gate (fabro-c42f stopgap): RETIRED with fabro-786a —
@@ -138,7 +143,10 @@ digraph Loop {
         // a thin brief (the full granted item), list is the known-bug
         // query surface on gate-red bounces. Writes stay denied; no
         // tracker CLI, no forge client.
-        x.fabro_tools="fabro_work_show,fabro_work_list",
+        x.fabro_tools="fabro_work_show,fabro_work_list,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // planner node's comment.
+        x.observations="required",
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief",
         x.fs_hide=".agents/**,.mulch/**",
         // The tracker left the fs envelope with .seeds (denkhaus/work#990
@@ -207,7 +215,10 @@ digraph Loop {
         // title/body/state by key, the spec source when the capture's
         // spec section is thin. Never a write: claiming, closing,
         // editing, or filing is other roles' business.
-        x.fabro_tools="fabro_work_show",
+        x.fabro_tools="fabro_work_show,fabro_observation_record",
+        // ADR-0038 flip (2026-10-31): the presence contract — see the
+        // planner node's comment.
+        x.observations="required",
         output_schema="routing",
         output_retries=2,
         max_visits=20,

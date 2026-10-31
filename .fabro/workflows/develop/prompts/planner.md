@@ -81,16 +81,27 @@ Do not implement anything yourself. Do not review. Planning and tool calls only.
 
 When you write text that flows into context (briefs, feedback), wrap absolute paths in backticks. Never write a bare slash-word surrounded by spaces — later agent stages parse such tokens as skill references and crash on them.
 
-## Journal — every pass answers
+## Observations and journal — every pass answers
 
-Report through `context_updates.journal` on EVERY pass. Silence is a
-missing report, not an empty one — two full runs shipped zero journal
-lines because answering was optional. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry:
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}}
+- category `painpoint`: friction in the dev loop itself (workflow,
+  scripts, gate) — what hurt and a concrete suggestion, self-contained:
+  where (file/line), what happened, evidence (run id), fix idea. Do not
+  fix loop assets — record them here.
+- category `note`: context worth keeping. When nothing durable happened,
+  record exactly one note reading "nothing durable to record" — the
+  call itself satisfies the contract.
 
-- `painpoints`: friction in the dev loop itself (workflow, scripts, gate).
-  Do not fix loop assets — report them here. `[]` when nothing hurt.
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one — two full runs shipped zero
+journal lines because answering was optional. Emit the key:
+
+{"journal": {"observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}}
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
@@ -119,7 +130,7 @@ Claimed an item:
     "current_seed_title": "<its title, verbatim>",
     "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>",
     "current_item_json": {"itemKey": "<verbatim>", "title": "<verbatim>", "body": "<the item body, verbatim>"},
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -131,7 +142,7 @@ Tracker empty (the goal is achieved, not an error):
   "preferred_next_label": "Tracker empty",
   "context_updates": {
     "review_verdict": "",
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 
@@ -140,7 +151,7 @@ Already landed (the fix landed before the cycle; exit without a lap):
   "outcome": "succeeded",
   "preferred_next_label": "Already landed",
   "context_updates": {
-    "journal": {"painpoints": [], "observations": ["none"]}
+    "journal": {"observations": ["none"]}
   }
 }
 

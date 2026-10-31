@@ -21,14 +21,24 @@ exit:
 - "Changes requested" (context key `review_feedback`: concrete objections phrased as instructions): any touchpoint regressed, resolution violates the policy, or evidence is incomplete.
 - "Verification blocked": you cannot read what you must review (missing report, unreadable diff).
 
-## Journal — every pass
+## Observations and journal — every pass
 
-Report through `context_updates.journal` on EVERY pass. Silence is a missing report, not an empty one. Always emit BOTH keys:
+Record what you durably observed through the `fabro_observation_record`
+tool — the presence contract:
+call it AT LEAST once per pass; a stage that never calls it is INVALID
+(engine-validated at completion). One call per entry: category
+`painpoint` (friction in the review loop itself — unreadable reports,
+missing evidence, tooling gaps — what hurt and a concrete suggestion,
+self-contained: where, what happened, evidence, fix idea; do not fix
+platform assets, record them here) or category `note` (context worth
+keeping; exactly one note reading "nothing durable to record" when
+nothing happened).
 
-{"journal": {"painpoints": [{"text": "<what hurt and a concrete suggestion, self-contained: where (file/line), what happened, evidence (run id), fix idea>"}], "observations": ["<touchpoints checked, time spent, upstream themes worth an obsolescence flag — what the next reviewer should know>"]}}
+Report context through `context_updates.journal` on EVERY pass. Silence
+is a missing report, not an empty one. Emit the key:
 
-- `painpoints`: friction in the review loop itself (unreadable reports, missing evidence, tooling gaps).
-  Do not fix platform assets — report them here. `[]` when nothing hurt.
+{"journal": {"observations": ["<touchpoints checked, time spent, upstream themes worth an obsolescence flag — what the next reviewer should know>"]}}
+
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.

@@ -12,7 +12,11 @@ graph = "workflow.fabro"
 # (workstation: agent control function runs `just up` on the report;
 # future 24/7 host: pull-and-rebuild watcher).
 [run.agent]
-fabro_tools = false
+# ADR-0038 flip (2026-10-31): true — node-level x.fabro_tools grants
+# are inert without this run-level switch, and both agent nodes now
+# carry the observation presence contract (x.observations="required"
+# with fabro_observation_record in their grants).
+fabro_tools = true
 
 [run.model]
 provider = "zai"
