@@ -432,9 +432,12 @@ stores it belongs to; reach them by phase need:
 - Landed prompt diffs get a FACT-CHECK against repo reality: claimed
   branches, paths, command behavior. Prompt hygiene: workflow prompts
   land WITHOUT seed-id literals, run ids, PR numbers, commit shas, dated
-  cost narratives, or machine-specific paths (`.fabro/workflows/**`);
-  branch/merge facts belong in PROJECT_FACTS. The mechanical net is the
-  prompt-lint evidence ban.
+  cost narratives, machine-specific paths, or decision-record
+  references (ADR numbers, flip dates, attribute names) — prompts are
+  runtime agent instructions; provenance lives in the graph comments
+  (the maintainer layer) and the tracker, never mixed into the prompt
+  layer (`.fabro/workflows/**`); branch/merge facts belong in
+  PROJECT_FACTS. The mechanical net is the prompt-lint evidence ban.
 - Loop-asset battery sweep BEFORE declaring a gate healthy: run
   EVERY battery named in `scripts/qualitygate.nu` (grep its `smokes` +
   `batteries` lists, run each with `nu`, read each exit code). Cargo
