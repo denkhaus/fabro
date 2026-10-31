@@ -24,11 +24,14 @@
 //! The run tools need one identity: the Fabro run id, which is Petri's run
 //! key for the run (`RunRequest::run_id`) and `FabroRunToolServices::
 //! current_run_id`. It is the parent link of every child run a stage
-//! creates. No run tool records a stage on the effects it creates, so
-//! nothing here derives Fabro's old `StageId` (`node@visit`); the stage a
-//! call came from is Petri's own record of the call, under the stage key
-//! `(run, execution, firing)`, and this adapter logs that key with the node
-//! and attempt when it builds a session's tools.
+//! creates. Most run tools do not record a stage on the effects they
+//! create — the stage a call came from is Petri's own record of the
+//! call, under the stage key `(run, execution, firing)`, and this
+//! adapter logs that key with the node and attempt when it builds a
+//! session's tools. The one exception is `fabro_observation_record`
+//! (ADR-0038): its records carry the stage position natively, so the
+//! services it binds to are built per stage with the context's
+//! `(execution, firing)` (`FabroRunToolServices::for_stage`).
 //!
 //! The builder refuses a context whose run key is not the run the services
 //! were built for: the tools would parent child runs to the wrong run. That
@@ -38,6 +41,7 @@
 
 use std::sync::Arc;
 
+use fabro_store::platform_records::StagePosition;
 use fabro_workflow::run_tools::{register_fabro_run_tools, register_named_fabro_run_tools};
 use fabro_workflow::services::FabroRunToolServices;
 use pebble_coding_agent::tools::RegisteredTool;
@@ -96,13 +100,20 @@ pub fn tools_for_stage(
         tools = %declared,
         "registering Fabro's run tools on a Petri agent session"
     );
+    // The session's tools bind to its stage: the observation recorder
+    // (ADR-0038) attributes every entry to the `(execution, firing)`
+    // pair the context names, the same key a checkpoint record carries.
+    let stage_services = services.for_stage(StagePosition {
+        execution: context.execution.raw(),
+        firing:    context.firing.raw(),
+    });
     match names.as_deref() {
         Some([]) => Vec::new(),
         Some(names) => register_named_fabro_run_tools(
-            services,
+            &stage_services,
             &names.iter().map(String::as_str).collect::<Vec<_>>(),
         ),
-        None => register_fabro_run_tools(services),
+        None => register_fabro_run_tools(&stage_services),
     }
 }
 

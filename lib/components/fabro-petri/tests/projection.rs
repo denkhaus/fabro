@@ -27,7 +27,8 @@ use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::{SqliteRunStore, providers, test_support as petri_support};
 use fabro_store::platform_records::{
-    PlatformRecord, PlatformRecordStore, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
+    ObservationRecordedRecord, PlatformRecord, PlatformRecordStore, RunCreatedRecord,
+    RunLifecycleKind, RunLifecycleRecord, StagePosition,
 };
 use fabro_store::{BlobStore, test_support};
 use fabro_types::{
@@ -563,6 +564,98 @@ async fn a_command_workflow_projects_live_as_it_rebuilds() {
     assert!(say.timing.is_some());
     let states = stage_states(&scenario.pool, scenario.run_id).await;
     assert_eq!(states.len(), 3, "start, say, exit: {states:?}");
+}
+
+/// The `say` stage's `(execution, firing)` as the engine's own rows name
+/// them: the position an observation record must carry to land on the
+/// stage (ADR-0038's fold key). The command fixture fires start, `say`,
+/// exit in graph order, so `say` is the second started firing of the
+/// first execution — the fold assertion itself proves the pair right.
+async fn say_position(pool: &DbPool, run_id: RunId) -> (u64, u64) {
+    let rows = petri_rows(pool, run_id).await;
+    let execution = rows
+        .iter()
+        .find_map(|(log, _, _, json)| {
+            let value = serde_json::from_str::<serde_json::Value>(json.as_str()).ok()?;
+            if log != "coordinator" || value["body"]["event"] != "execution.declared" {
+                return None;
+            }
+            value["body"]["execution"].as_u64()
+        })
+        .expect("the coordinator declares an execution");
+    let log = format!("execution {execution}");
+    let mut firings = rows.iter().filter_map(|(row_log, _, _, json)| {
+        let value = serde_json::from_str::<serde_json::Value>(json.as_str()).ok()?;
+        if row_log != &log || value["body"]["event"] != "step.started" {
+            return None;
+        }
+        value["body"]["firing"].as_u64()
+    });
+    let _start = firings.next().expect("start fires");
+    let say = firings.next().expect("say fires after start");
+    (execution, say)
+}
+
+/// An `observation.recorded` platform record folds onto the stage its
+/// position names — the stage view carries the entry with its record
+/// `seq` (the identity the link seam references), and a record for an
+/// unknown firing stays in the stream without a stage (ADR-0038).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_observation_record_folds_onto_its_stage() {
+    let scenario = command_scenario().await;
+    let projector = run_live(&scenario).await;
+    let (execution, firing) = say_position(&scenario.pool, scenario.run_id).await;
+    let store = PlatformRecordStore::new(scenario.pool.clone());
+    store
+        .append(
+            &scenario.run_id,
+            &PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+                category: fabro_types::ObservationCategory::Painpoint,
+                text: "the gate refused every push because a run PR stayed open".to_string(),
+                execution,
+                firing,
+            }),
+            Some(StagePosition { execution, firing }),
+        )
+        .await
+        .expect("the observation record stores");
+    // A record whose position names no firing of this run: it stays in
+    // the stream and never reaches a stage.
+    store
+        .append(
+            &scenario.run_id,
+            &PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+                category: fabro_types::ObservationCategory::Note,
+                text: "an orphaned entry".to_string(),
+                execution,
+                firing: firing + 9000,
+            }),
+            Some(StagePosition {
+                execution,
+                firing: firing + 9000,
+            }),
+        )
+        .await
+        .expect("the orphaned record stores");
+    projector.signal(scenario.run_id);
+    projector.settle(scenario.run_id).await;
+
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    let say = stored
+        .stage(&StageId::new("say", 1))
+        .expect("the command stage is shown");
+    assert_eq!(
+        say.observations,
+        vec![fabro_types::StageObservation {
+            seq:      5,
+            category: fabro_types::ObservationCategory::Painpoint,
+            text:     "the gate refused every push because a run PR stayed open".to_string(),
+        }],
+        "the entry folds with its record seq; the orphan does not"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

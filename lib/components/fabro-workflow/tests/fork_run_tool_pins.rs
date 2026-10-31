@@ -121,6 +121,7 @@ fn named_registry_resolves_run_wait_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
         current_run_id: RunId::new(),
+        stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_RUN_WAIT_TOOL_NAME]);
     assert_eq!(
@@ -182,6 +183,7 @@ fn named_registry_resolves_fabro_blob_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
         current_run_id: RunId::new(),
+        stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_BLOB_TOOL_NAME]);
     assert_eq!(

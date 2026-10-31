@@ -2851,6 +2851,7 @@ dependencies = [
  "chrono",
  "fabro-api",
  "fabro-client",
+ "fabro-store",
  "fabro-types",
  "fabro-util",
  "fabro-workflow-version",

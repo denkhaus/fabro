@@ -10,7 +10,13 @@ const UNTITLED_RUN: &str = "Untitled run";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunTitleError {
     Blank,
-    TooLong { max_chars: usize },
+    /// An over-cap title: the message names BOTH the limit and the
+    /// actual length, so one refusal is enough for the caller — agent or
+    /// human — to trim correctly (denkhaus/work#1075).
+    TooLong {
+        max_chars:    usize,
+        actual_chars: usize,
+    },
     NotSingleLine,
 }
 
@@ -18,9 +24,13 @@ impl fmt::Display for RunTitleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Blank => write!(f, "run title must not be blank"),
-            Self::TooLong { max_chars } => {
-                write!(f, "run title must be at most {max_chars} characters")
-            }
+            Self::TooLong {
+                max_chars,
+                actual_chars,
+            } => write!(
+                f,
+                "run title exceeds the {max_chars}-character limit: {actual_chars} characters"
+            ),
             Self::NotSingleLine => write!(f, "run title must be a single line"),
         }
     }
@@ -54,7 +64,8 @@ pub fn normalize_explicit_run_title(title: &str) -> Result<String, RunTitleError
     }
     if trimmed.chars().count() > MAX_RUN_TITLE_CHARS {
         return Err(RunTitleError::TooLong {
-            max_chars: MAX_RUN_TITLE_CHARS,
+            max_chars:    MAX_RUN_TITLE_CHARS,
+            actual_chars: trimmed.chars().count(),
         });
     }
     Ok(trimmed.to_string())
@@ -97,7 +108,29 @@ mod tests {
         let title = "x".repeat(101);
         assert_eq!(
             normalize_explicit_run_title(&title).unwrap_err(),
-            RunTitleError::TooLong { max_chars: 100 }
+            RunTitleError::TooLong {
+                max_chars:    100,
+                actual_chars: 101,
+            }
+        );
+    }
+
+    /// The refusal names the limit AND the actual length, so one rejection
+    /// is enough for the caller to trim correctly (denkhaus/work#1075: a
+    /// planner burned three retries on a bare "at most 100" refusal).
+    #[test]
+    fn an_over_long_title_refusal_names_limit_and_actual_length() {
+        let title = format!("{} {}", "a".repeat(130), "b");
+        let error = normalize_explicit_run_title(&title)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("100-character limit"),
+            "the refusal names the limit: {error}"
+        );
+        assert!(
+            error.contains("132 characters"),
+            "the refusal names the actual length: {error}"
         );
     }
 

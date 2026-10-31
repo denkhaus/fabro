@@ -69,19 +69,24 @@ now lives on the tracker.
 
 ## Closure radius
 
-The set of open work items linked to the PAINPOINTS discovered in a
-work item's runs (ADR-0038: the chain is work item ← painpoint ← run,
-carried in fabro's database). A claimed item's closure radius is empty
-when every painpoint-linked work item is closed; the `work close` verb
-refuses while the radius is open (an explicit override names them).
-Tranche selection prefers closing open radii before opening new themes
-— a preference, never a gate.
+The set of open work items linked to the OBSERVATIONS discovered in a
+work item's runs (ADR-0038: the chain is work item ← observation ←
+run, carried in fabro's database). A claimed item's closure radius is
+empty when every observation-linked work item is closed; the `work
+close` verb refuses while the radius is open (an explicit override
+names them). Tranche selection prefers closing open radii before
+opening new themes — a preference, never a gate.
 
-## Painpoint (record)
+## Observation (record)
 
-A platform record of a run's friction or durable observation, persisted
-per project/run/stage through the agent painpoint tool. Calling the
-tool at least once per agent stage is a presence contract — an empty
-entry means "nothing durable"; a stage that never called it is invalid.
-Work items link to painpoint records; the bird's-eye run-end hook files
-them, deduping at the link.
+A platform record of what a stage durably observed, persisted per
+project/run/stage through the `fabro_observation_record` agent tool.
+The genus is the observation (user decision 2026-10-30: an observation
+can contain painpoints, never the reverse); its two categories are
+`painpoint` (friction worth acting on) and `note` (context worth
+keeping, including the explicit "nothing durable to record" entry).
+Calling the tool at least once per agent stage under
+`x.observations="required"` is a presence contract — a stage that
+never called it is invalid (engine-validated beside the output
+schema). Work items link to observation records; the bird's-eye
+run-end hook files them, deduping at the link.

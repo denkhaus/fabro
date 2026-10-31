@@ -73,6 +73,7 @@ fn services(server: &MockServer, run_id: RunId) -> FabroRunToolServices {
     FabroRunToolServices {
         backend:        Arc::new(ClientBackend::new(Arc::new(client))),
         current_run_id: run_id,
+        stage:          None,
     }
 }
 

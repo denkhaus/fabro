@@ -136,12 +136,16 @@ mod tests {
 
     #[test]
     fn an_over_long_title_is_rejected_like_the_server_rejects_it() {
-        let long = "x".repeat(101);
+        let long = "x".repeat(137);
         let error = ValidatedRunSetTitle::try_from(params(None, &long))
             .expect_err("an explicit title over the cap fails, mirroring the server");
         assert!(
-            error.to_string().contains("at most 100"),
-            "the teaching message names the cap: {error}"
+            error.to_string().contains("100-character limit"),
+            "the refusal names the cap: {error}"
+        );
+        assert!(
+            error.to_string().contains("137 characters"),
+            "the refusal names the actual length so one trim is enough: {error}"
         );
     }
 

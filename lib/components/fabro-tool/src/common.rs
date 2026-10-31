@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use fabro_api::types;
+use fabro_store::platform_records::StagePosition;
 use fabro_types::{
     PairId, PairMessageRecord, PairMessageRequest, PairRecord, PairTranscriptResponse, Run, RunId,
     RunPairStatusResponse, StageId,
@@ -163,12 +164,27 @@ pub trait FabroToolBackend: Send + Sync {
         Err(work_tool_unavailable_error(FABRO_WORK_CLOSE_TOOL_NAME))
     }
 
+    /// `fabro_work_release`: end this run's claim on a work item.
     async fn work_release(
         &self,
         _claim_id: &str,
         _reason: &str,
     ) -> anyhow::Result<types::WorkClaim> {
         Err(work_tool_unavailable_error(FABRO_WORK_RELEASE_TOOL_NAME))
+    }
+
+    /// `fabro_observation_record` (ADR-0038): append one
+    /// `observation.recorded` platform record for the run, tied to the
+    /// stage `position` names, and return the record's `seq` (the
+    /// entry's identity). Only a stage-session backend serves it.
+    async fn record_observation(
+        &self,
+        _run_id: &RunId,
+        _position: StagePosition,
+        _category: fabro_types::ObservationCategory,
+        _text: &str,
+    ) -> anyhow::Result<u64> {
+        Err(observation_tool_unavailable_error())
     }
 
     async fn start_run(&self, run_id: &RunId, resume: bool) -> anyhow::Result<Run>;
@@ -320,6 +336,13 @@ fn run_title_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
+fn observation_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!(
+        "{FABRO_OBSERVATION_RECORD_TOOL_NAME} is not available on this surface"
+    ))
+    .into()
+}
+
 pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
     ToolError::message(
         "reading workflow files from the run sandbox (files_from) is not available on this \
@@ -372,6 +395,7 @@ pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_SET_TITLE_TOOL_NAME: &str = "fabro_run_set_title";
+pub const FABRO_OBSERVATION_RECORD_TOOL_NAME: &str = "fabro_observation_record";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
@@ -425,6 +449,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunSetTitleParams>(
             FABRO_RUN_SET_TITLE_TOOL_NAME,
             "Set this run's title to what the run actually works on: after claiming a seed, refine the title to a few sentences specific to that seed (what it demands), never a generic workflow label. Default run: this run. Titles over 100 characters are rejected.",
+        ),
+        tool_definition::<crate::FabroObservationRecordParams>(
+            FABRO_OBSERVATION_RECORD_TOOL_NAME,
+            "Record one durable observation from THIS stage: a painpoint (friction worth acting on — what slowed this stage or will slow the next one) or a note (context worth keeping, including the explicit \"nothing durable to record\" entry). One call per entry; nodes declaring x.observations=\"required\" MUST call this at least once before finishing.",
         ),
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,
@@ -611,6 +639,7 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_SET_TITLE_TOOL_NAME,
+            FABRO_OBSERVATION_RECORD_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,
             FABRO_WORK_NEXT_TOOL_NAME,

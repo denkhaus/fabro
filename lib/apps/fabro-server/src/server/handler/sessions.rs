@@ -823,6 +823,10 @@ async fn build_agent(
     let services = FabroRunToolServices {
         backend:        Arc::new(backend),
         current_run_id: run_id,
+        // An Ask Fabro session serves no workflow stage: the observation
+        // recorder refuses there (ADR-0038), so it is not in the ask set
+        // either.
+        stage:          None,
     };
     let mut ask_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
     // Fork feature (fabro-43cf): the analyst also reads the embedded

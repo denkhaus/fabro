@@ -816,6 +816,19 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
             let title = record.get("title").and_then(Value::as_str).unwrap_or("");
             Some(format!("{ts}   Title: {title}"))
         }
+        "observation.recorded" => {
+            // The genus is the observation; a painpoint is one category
+            // (ADR-0038). The stage view carries the entries per stage.
+            let kind = match record.get("category").and_then(Value::as_str) {
+                Some("painpoint") => "Painpoint",
+                Some("note") => "Note",
+                // The wire is typed, so an unknown category is a newer
+                // kind this CLI does not know yet — render it plainly.
+                _ => "Observation",
+            };
+            let text = record.get("text").and_then(Value::as_str).unwrap_or("");
+            Some(format!("{ts}   {kind}: {text}"))
+        }
         "run.branch" => {
             let branch = record
                 .get("run_branch")

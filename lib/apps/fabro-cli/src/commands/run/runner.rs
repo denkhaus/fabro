@@ -134,6 +134,9 @@ pub(super) fn build_fabro_run_tool_services(
     Some(FabroRunToolServices {
         backend: Arc::new(backend),
         current_run_id,
+        // `fabro exec` serves no workflow stage; the observation
+        // recorder refuses there (ADR-0038).
+        stage: None,
     })
 }
 

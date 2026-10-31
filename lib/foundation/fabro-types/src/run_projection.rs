@@ -96,6 +96,37 @@ pub struct RunArtifact {
     pub blob:          BlobHash,
 }
 
+/// What a recorded observation entry is: a friction worth acting on (a
+/// painpoint), or a note worth keeping. Both are records (ADR-0038: the
+/// genus is the OBSERVATION, a painpoint is one kind of it — user
+/// decision 2026-10-30, the umbrella that can contain painpoints, never
+/// the reverse); the category rides the record so the run-end hook and
+/// the radius queries can tell a demand from a note. Shared by the
+/// store's record and the view.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ObservationCategory {
+    Painpoint,
+    Note,
+}
+
+/// One observation a stage recorded through the `fabro_observation_record`
+/// tool, folded onto its stage in the run view (ADR-0038). `seq` is the
+/// platform record's per-run sequence — the identity the work-item link
+/// seam references.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StageObservation {
+    /// The platform record's `seq`: the entry's identity within the run.
+    pub seq:      u64,
+    /// Whether this entry is a painpoint or a note.
+    pub category: ObservationCategory,
+    /// The entry as the agent wrote it.
+    pub text:     String,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PendingInterviewRecord {
     pub question:   InterviewQuestionRecord,
@@ -372,6 +403,13 @@ pub struct StageProjection {
     pub permission_level:      Option<PermissionLevel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_tools:           Vec<ToolSummary>,
+    /// The observations this stage recorded through the
+    /// `fabro_observation_record` tool (ADR-0038: the genus is the
+    /// observation, a painpoint is one category), folded from the run's
+    /// `observation.recorded` platform records by stage position. Empty
+    /// for stages that predate the tool or recorded nothing durable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observations:          Vec<StageObservation>,
     /// Open inference bracket for this stage, if the event log contains one.
     ///
     /// `Some` means exactly *"an `agent.llm.started` was recorded and no
@@ -480,6 +518,7 @@ impl StageProjection {
             model: None,
             permission_level: None,
             agent_tools: Vec::new(),
+            observations: Vec::new(),
             inference: None,
             acp_started_at: None,
             agent: None,

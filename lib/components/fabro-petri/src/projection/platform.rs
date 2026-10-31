@@ -12,7 +12,7 @@ use fabro_types::{
     CheckpointRecord as ViewCheckpoint, Conclusion, FailureCategory, FailureDetail, FailureReason,
     PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
     RunArtifact, RunControlAction, RunDiff, RunFailure, RunProjection, RunSandbox, RunStatus,
-    StageOutcome, format_blob_ref,
+    StageObservation, StageOutcome, format_blob_ref,
 };
 use tracing::debug;
 
@@ -130,6 +130,30 @@ impl RunView {
                     size: record.bytes,
                     blob: record.blob,
                 });
+            }
+            PlatformRecord::ObservationRecorded(record) => {
+                // ADR-0038: the entry folds onto the stage its recording
+                // session ran under; `seq` is the identity the link seam
+                // (stage 3) references. An unknown firing keeps the record
+                // in the stream but out of the view, like an artifact.
+                let stage = self
+                    .state
+                    .stages
+                    .get(&FiringKey::new(record.execution, record.firing));
+                let Some(stage_id) = stage.map(|stage| stage.stage_id.clone()) else {
+                    debug!(
+                        seq = stored.seq,
+                        "observation record for an unknown firing; not folded"
+                    );
+                    return;
+                };
+                if let Some(stage) = projection.stage_mut(&stage_id) {
+                    stage.observations.push(StageObservation {
+                        seq:      stored.seq,
+                        category: record.category,
+                        text:     record.text.clone(),
+                    });
+                }
             }
             PlatformRecord::RunDiff(record) => {
                 let diff = RunDiff {

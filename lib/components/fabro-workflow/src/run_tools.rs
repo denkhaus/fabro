@@ -229,6 +229,29 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::set_run_title_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroObservationRecordParams>(name, args)?;
+            // An observation belongs to its stage: only a workflow stage
+            // session can record one (ADR-0038). Ask Fabro and `fabro
+            // exec` sessions have no stage and are refused with a
+            // teaching error rather than writing an unattributed record.
+            let Some(stage) = services.stage else {
+                return Err(fabro_tool::ToolError::message(
+                    "observations are recorded by workflow stages; this session serves no stage, \
+                     so there is nothing to attribute the entry to",
+                ));
+            };
+            let result = fabro_tool::record_observation(
+                Arc::clone(&services.backend),
+                services.current_run_id,
+                stage,
+                fabro_tool::ValidatedObservation::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::record_observation_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_PAIR_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunPairParams>(name, args)?;
             let result = fabro_tool::pair_run(
@@ -384,6 +407,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: parent_id,
+            stage:          None,
         };
         let name = fabro_tool::FABRO_RUN_CREATE_TOOL_NAME;
         let mut args = json!({"runs":[{
@@ -566,6 +590,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        backend.clone(),
             current_run_id: current,
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME,
@@ -591,6 +616,97 @@ mod tests {
             output.contains("seed fabro-9711: meaningful run titles"),
             "the result names the new title: {output}"
         );
+    }
+
+    /// `fabro_observation_record` (ADR-0038): an observation belongs to
+    /// its stage, so a session without one — Ask Fabro, `fabro exec` — is
+    /// refused with a teaching error instead of writing an unattributed
+    /// record. The mock server carries no mocks: a wrongly dispatched
+    /// call would fail on transport, not with the stage refusal.
+    #[tokio::test]
+    async fn observation_recording_refuses_a_session_without_a_stage() {
+        let server = httpmock::MockServer::start_async().await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: RunId::new(),
+            stage:          None,
+        };
+        let error = execute_fabro_run_tool(
+            fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME,
+            json!({"category": "note", "text": "nothing durable to record"}),
+            &services,
+        )
+        .await
+        .expect_err("a session without a stage must be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains("workflow stages"),
+            "the refusal teaches the stage contract: {message}"
+        );
+    }
+
+    /// `fabro_observation_record` (ADR-0038) over the REAL client backend:
+    /// a stage session's call reaches the platform-record append endpoint
+    /// with the record tagged `observation.recorded`, the category and
+    /// text as validated, and the stage position on both the request and
+    /// the record payload; the result names the stored `seq`.
+    #[tokio::test]
+    async fn observation_recording_reaches_the_platform_record_endpoint() {
+        let server = httpmock::MockServer::start_async().await;
+        let run_id: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let position = fabro_store::platform_records::StagePosition {
+            execution: 3,
+            firing:    7,
+        };
+        let append = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::POST)
+                    .path(format!("/api/v1/runs/{run_id}/petri/platform-records"))
+                    .json_body(json!({
+                        "execution": 3,
+                        "firing": 7,
+                        "record": {
+                            "kind": "observation.recorded",
+                            "category": "painpoint",
+                            "text": "the gate refused every push because a run PR stayed open",
+                            "execution": 3,
+                            "firing": 7,
+                        }
+                    }));
+                then.status(200).json_body(json!({
+                    "seq": 9,
+                    "recorded_at": 1_793_400_507_014_u64,
+                    "record": {
+                        "kind": "observation.recorded",
+                        "category": "painpoint",
+                        "text": "the gate refused every push because a run PR stayed open",
+                        "execution": 3,
+                        "firing": 7
+                    },
+                    "execution": 3,
+                    "firing": 7
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: run_id,
+            stage:          Some(position),
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME,
+            json!({"category": "painpoint", "text": "  the gate refused every push because a run PR stayed open  "}),
+            &services,
+        )
+        .await
+        .expect("the tool dispatches");
+        assert!(
+            output.contains("painpoint recorded at seq 9"),
+            "the result names category and the record's seq: {output}"
+        );
+        append.assert_async().await;
     }
 
     /// The stage-session path over the REAL client backend (fabro-9711 spec
@@ -625,6 +741,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: current,
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME,
@@ -678,6 +795,7 @@ mod tests {
                 ClientBackend::new(Arc::new(client)).with_run_seeds(Arc::new(FixedSeeds)),
             ),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
@@ -723,6 +841,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_WORK_LIST_TOOL_NAME,
@@ -779,6 +898,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_WORK_LIST_TOOL_NAME,
@@ -835,6 +955,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_WORK_UPDATE_TOOL_NAME,
@@ -899,6 +1020,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
             current_run_id: current,
+            stage:          None,
         };
         // The injected run selector resolves through the API before the
         // grant fires (the resolve_run seam, same as fabro_run_set_title).
@@ -953,6 +1075,7 @@ mod tests {
                     .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
             ),
             current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            stage:          None,
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
         assert_eq!(register_named_fabro_run_tools(&services, &[name]).len(), 1);
@@ -1041,6 +1164,7 @@ mod tests {
                     .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
             ),
             current_run_id: run_id,
+            stage:          None,
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
         let output = execute_fabro_run_tool(
@@ -1248,6 +1372,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(MockAskBackend { run_id }),
             current_run_id: RunId::new(),
+            stage:          None,
         };
         let output = execute_fabro_run_tool(
             fabro_tool::FABRO_ASK_TOOL_NAME,
@@ -1399,6 +1524,7 @@ mod tests {
         let services = FabroRunToolServices {
             backend:        Arc::new(MockFailingAskBackend { run_id }),
             current_run_id: RunId::new(),
+            stage:          None,
         };
         let error = execute_fabro_run_tool(
             fabro_tool::FABRO_ASK_TOOL_NAME,

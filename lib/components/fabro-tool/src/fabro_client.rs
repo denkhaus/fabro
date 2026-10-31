@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use async_trait::async_trait;
 use fabro_api::types;
+use fabro_store::platform_records::StagePosition;
 use fabro_types::{
     PairId, PairMessageRecord, PairMessageRequest, PairRecord, PairTranscriptResponse, Run, RunId,
     RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
@@ -162,6 +163,41 @@ impl FabroToolBackend for ClientBackend {
                 ),
             },
         }
+    }
+
+    /// `fabro_observation_record` (ADR-0038): the append endpoint stores
+    /// the record at the run's next `seq`; the position rides both the
+    /// request (the store's stage column) and the record payload (the
+    /// fold's stage tie), the same shape a checkpoint worker writes.
+    async fn record_observation(
+        &self,
+        run_id: &RunId,
+        position: StagePosition,
+        category: fabro_types::ObservationCategory,
+        text: &str,
+    ) -> anyhow::Result<u64> {
+        use fabro_store::platform_records::{ObservationRecordedRecord, PlatformRecord};
+
+        self.ensure_run_scope(run_id)?;
+        let record = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category,
+            text: text.to_string(),
+            execution: position.execution,
+            firing: position.firing,
+        });
+        let value = serde_json::to_value(&record).context("encoding the observation record")?;
+        let serde_json::Value::Object(record) = value else {
+            anyhow::bail!("the observation record did not encode as a JSON object");
+        };
+        let stored = self
+            .client
+            .append_petri_platform_record(run_id, types::PetriPlatformRecordAppendRequest {
+                execution: Some(position.execution),
+                firing: Some(position.firing),
+                record,
+            })
+            .await?;
+        Ok(stored.seq)
     }
 
     async fn work_next(

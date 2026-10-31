@@ -1667,10 +1667,17 @@ impl Client {
         // The generated newtype enforces the API's 100-char cap; the tool
         // path already rejects over-cap titles via
         // normalize_explicit_run_title, so this only guards non-tool
-        // callers.
+        // callers. The context names the actual length for the same
+        // one-refusal-is-enough ergonomics (denkhaus/work#1075).
+        let char_count = title.chars().count();
         let title = title
             .parse::<types::UpdateRunRequestTitle>()
-            .context("run title exceeds the 100-character cap")?;
+            .with_context(|| {
+                format!(
+                    "run title exceeds the {}-character limit: {char_count} characters",
+                    fabro_types::MAX_RUN_TITLE_CHARS
+                )
+            })?;
         let response = self
             .send_api(|client| async move {
                 client

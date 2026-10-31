@@ -107,6 +107,7 @@ fn named_registry_resolves_the_run_set_title_tool() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
         current_run_id: RunId::new(),
+        stage:          None,
     };
     let tools =
         register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_RUN_SET_TITLE_TOOL_NAME]);

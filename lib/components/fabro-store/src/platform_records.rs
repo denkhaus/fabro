@@ -156,6 +156,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "work.released")]
     #[strum(serialize = "work.released")]
     WorkReleased,
+    #[serde(rename = "observation.recorded")]
+    #[strum(serialize = "observation.recorded")]
+    ObservationRecorded,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -234,6 +237,14 @@ pub enum PlatformRecord {
     NotificationSent(NotificationSentRecord),
     #[serde(rename = "run.paired")]
     RunPaired(RunPairedRecord),
+    /// One durable observation a stage's agent recorded through
+    /// `fabro_observation_record` (ADR-0038): the platform-owned half of
+    /// the transitive closure chain (work item <- observation <- run).
+    /// The genus is the observation; a painpoint is one category of it.
+    /// Identity is the record's `(run_id, seq)`; the stage tie is the
+    /// `(execution, firing)` pair the recording session carried.
+    #[serde(rename = "observation.recorded")]
+    ObservationRecorded(ObservationRecordedRecord),
 }
 
 impl PlatformRecord {
@@ -264,6 +275,7 @@ impl PlatformRecord {
             Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
             Self::WorkClaimed(_) => PlatformRecordKind::WorkClaimed,
             Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
+            Self::ObservationRecorded(_) => PlatformRecordKind::ObservationRecorded,
         }
     }
 
@@ -295,7 +307,8 @@ impl PlatformRecord {
             | Self::RunPaired(_)
             | Self::RunBranchPublished(_)
             | Self::WorkClaimed(_)
-            | Self::WorkReleased(_) => None,
+            | Self::WorkReleased(_)
+            | Self::ObservationRecorded(_) => None,
         }
     }
 }
@@ -412,6 +425,22 @@ pub struct WorkReleasedRecord {
     pub project_id: String,
     pub item_key:   String,
     pub reason:     String,
+}
+
+/// One observation entry a stage's agent recorded through the
+/// `fabro_observation_record` tool (ADR-0038). The entry is append-only
+/// and immutable; its identity is the store's `(run_id, seq)` pair.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObservationRecordedRecord {
+    /// Whether this entry is a painpoint (a friction worth acting on) or
+    /// a note (worth keeping, no action demand).
+    pub category:  fabro_types::ObservationCategory,
+    /// The entry as the agent wrote it, trimmed and non-blank.
+    pub text:      String,
+    /// The Petri execution the recording stage ran under.
+    pub execution: u64,
+    /// The Petri firing the recording stage was.
+    pub firing:    u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -854,6 +883,14 @@ mod tests {
             }),
             PlatformRecordKind::RunArchived => PlatformRecord::RunArchived,
             PlatformRecordKind::RunUnarchived => PlatformRecord::RunUnarchived,
+            PlatformRecordKind::ObservationRecorded => {
+                PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "the gate refused every push".to_string(),
+                    execution: 0,
+                    firing:    3,
+                })
+            }
             PlatformRecordKind::RunSuperseded => {
                 PlatformRecord::RunSuperseded(RunSupersededRecord {
                     new_run_id:                fixtures::RUN_2,

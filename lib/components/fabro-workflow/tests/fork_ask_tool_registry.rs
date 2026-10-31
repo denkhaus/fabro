@@ -142,6 +142,7 @@ fn named_registry_resolves_the_seeds_search_tool() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
         current_run_id: RunId::new(),
+        stage:          None,
     };
     let tools =
         register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME]);
@@ -161,6 +162,7 @@ fn named_registry_resolves_fabro_ask_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
         current_run_id: RunId::new(),
+        stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_ASK_TOOL_NAME]);
     assert_eq!(

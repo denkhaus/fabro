@@ -437,6 +437,14 @@ export function platformRecordsOf(stream: PetriStream): PlatformRecordEntry[] {
       case "run.title":
         detail = getString(rec, "title") ?? null;
         break;
+      case "observation.recorded": {
+        // The genus is the observation; a painpoint is one category
+        // (ADR-0038). Render the category marker beside the text.
+        const category = getString(rec, "category");
+        const marker = category === "painpoint" ? "Painpoint" : "Note";
+        detail = `${marker}: ${getString(rec, "text") ?? ""}`;
+        break;
+      }
       case "run.branch":
         detail = getString(rec, "run_branch") ?? null;
         break;

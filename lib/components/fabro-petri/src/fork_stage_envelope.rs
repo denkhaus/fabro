@@ -61,6 +61,12 @@ const ENFORCED_X: &[&str] = &[
     "x.context_allow_keys",
     "x.context_consume_keys",
     "x.preamble_output_max_lines",
+    // The observation presence contract (ADR-0038): the value ("required"
+    // today) lowers into the engine's agent config, and the engine
+    // validates at stage completion that the stage's session called
+    // `fabro_observation_record` at least once. The value is linted here
+    // so a typo dies at create, not mid-run.
+    "x.observations",
 ];
 
 /// The legacy per-node family still waiting for its enforcement
@@ -115,6 +121,12 @@ pub struct NodeEnvelope {
     /// `x.preamble_output_max_lines` on the node, when set: the per-stage
     /// output block's line ceiling in the preamble.
     pub preamble_output_max_lines: Option<u64>,
+    /// `x.observations` on the node, when set: the observation presence
+    /// contract's mode as written ("required" today — ADR-0038). The
+    /// engine's lowering carries it into the agent config and validates
+    /// at stage completion that the session called
+    /// `fabro_observation_record` at least once.
+    pub observations: Option<String>,
 }
 
 /// The graph block's envelope numbers, as written.
@@ -252,6 +264,8 @@ impl StageEnvelopes {
                         block,
                         "x.preamble_output_max_lines",
                     ),
+                    observations: fork_dot_edges::attribute(block, "x.observations")
+                        .map(str::to_string),
                 };
                 let declares = !envelope.fs_hide.is_empty()
                     || envelope.fs_write.is_some()
@@ -264,7 +278,8 @@ impl StageEnvelopes {
                     || envelope.preamble_allow_keys.is_some()
                     || !envelope.context_consume_keys.is_empty()
                     || envelope.preamble_budget_kb.is_some()
-                    || envelope.preamble_output_max_lines.is_some();
+                    || envelope.preamble_output_max_lines.is_some()
+                    || envelope.observations.is_some();
                 if declares {
                     nodes.insert(name.to_string(), envelope);
                 }
@@ -363,6 +378,20 @@ impl StageEnvelopes {
                             node:     Some(node.clone()),
                         });
                     }
+                }
+            }
+            if let Some(mode) = &envelope.observations {
+                if mode != "required" {
+                    findings.push(StageEnvelopeLint {
+                        severity: LintSeverity::Error,
+                        code:     "fork.observations_mode_valid",
+                        message:  format!(
+                            "node '{node}' declares x.observations=\"{mode}\"; \"required\" is \
+                             the only mode — the engine validates the observation presence \
+                             contract at stage completion (ADR-0038)"
+                        ),
+                        node:     Some(node.clone()),
+                    });
                 }
             }
             let budget = self
@@ -570,6 +599,50 @@ mod tests {
         assert_eq!(review.fs_write, Some(vec![".fabro/reviews/**".to_string()]));
         assert_eq!(review.preamble_inline_max_kb, Some(32));
         assert_eq!(envelopes.graph.preamble_budget_kb, Some(24));
+    }
+
+    /// The observation presence contract (ADR-0038): the mode parses into
+    /// the envelope, and the vocabulary lint accepts the name (it sits in
+    /// ENFORCED_X — the engine lowers and enforces it).
+    #[test]
+    fn observation_contract_parses_into_the_envelope() {
+        let envelopes = StageEnvelopes::parse(
+            r#"digraph W { a [x.observations="required"] start -> a -> exit }"#,
+        );
+        assert_eq!(
+            envelopes
+                .envelope("a")
+                .and_then(|envelope| envelope.observations.as_deref()),
+            Some("required"),
+            "the contract's mode rides the envelope"
+        );
+        assert!(
+            envelopes
+                .lint()
+                .iter()
+                .all(|finding| finding.code != "fork.x_attribute_known"),
+            "x.observations is a known, enforced attribute: {:?}",
+            envelopes.lint()
+        );
+    }
+
+    /// Every mode but "required" refuses at create: the engine knows one
+    /// mode, and a typo must die at admission, not mid-run.
+    #[test]
+    fn an_unknown_observation_mode_is_refused_at_lint() {
+        let envelopes =
+            StageEnvelopes::parse(r#"digraph W { a [x.observations="daily"] start -> a -> exit }"#);
+        let refusal = envelopes
+            .lint()
+            .into_iter()
+            .find(|finding| finding.code == "fork.observations_mode_valid")
+            .expect("the wrong mode refuses at create");
+        assert!(matches!(refusal.severity, LintSeverity::Error));
+        assert!(
+            refusal.message.contains("\"required\""),
+            "the refusal names the only mode: {}",
+            refusal.message
+        );
     }
 
     #[test]
