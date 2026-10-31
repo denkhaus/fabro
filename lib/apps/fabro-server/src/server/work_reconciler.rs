@@ -226,10 +226,15 @@ async fn drain_outbox(
             }
             Err(error) => {
                 let retry_at = Utc::now() + Duration::seconds((entry.attempts + 1) * 60);
-                if let Err(fail_error) = state
-                    .work_store()
-                    .fail(&entry.id, &error.to_string(), retry_at)
-                    .await
+                // The full chain, not the outermost context: a nested
+                // failure (an LLM call inside a filing pass) must name its
+                // cause in the outbox's durable health view.
+                let chain = error
+                    .chain()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(": ");
+                if let Err(fail_error) = state.work_store().fail(&entry.id, &chain, retry_at).await
                 {
                     tracing::warn!(error = %fail_error, "work reconciler: outbox fail bookkeeping");
                 }

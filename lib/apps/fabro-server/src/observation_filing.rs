@@ -523,7 +523,11 @@ fn response_schema() -> JsonValue {
                 "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["title", "body", "priority", "source_seqs"],
+                    // Strict-mode schemas require every property present;
+                    // optional-looking fields are the MODEL's choice of
+                    // value, never a missing key (the parser still
+                    // hardens defaults on the read side).
+                    "required": ["title", "body", "priority", "source_seqs", "needs_user"],
                     "properties": {
                         "title": {
                             "type": "string",
