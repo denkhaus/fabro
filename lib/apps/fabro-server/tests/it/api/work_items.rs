@@ -1676,6 +1676,77 @@ mod closure_radius {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
+    /// The override is the human surface (rust-security F1): a worker
+    /// holding the claim — the exact agent shape — is REFUSED on the
+    /// forced close itself, never left to the tool client's pin.
+    #[tokio::test]
+    async fn a_worker_cannot_force_a_close_over_an_open_radius() {
+        use fabro_server::test_support::create_test_run_with_target;
+
+        let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
+        let (app, state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
+        let seq = seed_observation(&records, &run_id.to_string(), true).await;
+
+        // The worker's own run holds the claim, and the radius is open.
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#1", "runId": run_id.to_string(), "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#2", "runId": run_id.to_string(), "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        let token = state.test_issue_worker_token_with_run_tools(&run_id);
+        let forced = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/projects/fabro/work-items/close"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "itemKey": "denkhaus/work#1",
+                            "reason": "worker tries to force",
+                            "force": true
+                        }))
+                        .expect("fixture serializes"),
+                    ))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("forced worker close runs");
+        assert_eq!(
+            forced.status(),
+            StatusCode::FORBIDDEN,
+            "the verb itself refuses the worker's force — the guardrail is not client-side"
+        );
+        // And the refusal left the item open: no silent half-effect.
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#1")
+                .await
+                .expect("tracker read")
+                .expect("item 1")
+                .state,
+            "open"
+        );
+    }
+
     fn fake_project() -> WorkProject {
         WorkProject {
             project_id:               "fabro".to_string(),

@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use fabro_store::platform_records::StagePosition;
+use fabro_store::platform_records::{MAX_OBSERVATION_TEXT_CHARS, StagePosition};
 use fabro_types::ObservationCategory;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,9 @@ use super::common::{FabroToolBackend, ToolError, ToolResult};
 /// How long one observation entry may be. Entries are one durable
 /// thought, not transcripts; the refusal names the limit and the actual
 /// length so one trim is enough (the denkhaus/work#1075 ergonomics).
-pub const MAX_OBSERVATION_CHARS: usize = 2000;
+/// The cap itself lives at the record type (`fabro-store`) — the raw
+/// append endpoint enforces the same bound (rust-security F2).
+pub const MAX_OBSERVATION_CHARS: usize = MAX_OBSERVATION_TEXT_CHARS;
 
 /// The category as the tool's schema offers it to the model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]

@@ -429,6 +429,63 @@ async fn a_worker_appends_and_reads_platform_records_over_the_api() {
     );
 }
 
+/// The observation text cap holds at the RAW append boundary
+/// (rust-security F2): a worker posting an observation.recorded record
+/// directly — the tool client's 2000-char validation bypassed — is
+/// refused with the limit and the actual length named.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_oversized_observation_record_is_refused_at_the_append_boundary() {
+    use fabro_store::PlatformRecord;
+    use fabro_store::platform_records::ObservationRecordedRecord;
+
+    let state = test_app_state();
+    let base_url = serve(Arc::clone(&state), |router| router).await;
+    let run_id = RunId::new();
+    let token = state.test_issue_worker_token(&run_id);
+
+    // Direct HTTP, not the records client: the assert wants the 400's
+    // curated body, which the client's error wrap would swallow.
+    let oversized = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+        category:  fabro_types::ObservationCategory::Note,
+        text:      "x".repeat(fabro_store::platform_records::MAX_OBSERVATION_TEXT_CHARS + 147),
+        execution: 0,
+        firing:    1,
+    });
+    let http = apply_bearer_token_auth(fabro_http::HttpClientBuilder::new().no_proxy(), &token)
+        .expect("the bearer header builds")
+        .build()
+        .expect("the test HTTP client builds");
+    let response = http
+        .post(format!(
+            "{base_url}/api/v1/runs/{run_id}/petri/platform-records"
+        ))
+        .json(&serde_json::json!({
+            "record": serde_json::to_value(&oversized).expect("fixture serializes"),
+            "execution": null,
+            "firing": null
+        }))
+        .send()
+        .await
+        .expect("the raw append request runs");
+    assert_eq!(
+        response.status(),
+        axum::http::StatusCode::BAD_REQUEST,
+        "the raw append boundary refuses transcript-sized observations"
+    );
+    let body: serde_json::Value = response.json().await.expect("the 400 body parses");
+    let detail = body["errors"][0]["detail"]
+        .as_str()
+        .expect("the error detail");
+    assert!(
+        detail.contains("2000-character limit"),
+        "the refusal names the limit: {detail}"
+    );
+    assert!(
+        detail.contains("2147 characters"),
+        "the refusal names the actual length: {detail}"
+    );
+}
+
 fn checkpoint_operation(
     record: &fabro_store::PlatformRecord,
 ) -> Option<fabro_store::platform_records::OperationKey> {

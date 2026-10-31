@@ -443,6 +443,14 @@ pub struct ObservationRecordedRecord {
     pub firing:    u64,
 }
 
+/// How long one observation entry may be — enforced at the append
+/// boundary (the raw record endpoint) so the tool-side cap (fabro-tool)
+/// cannot be bypassed by a worker posting a record directly. Entries
+/// are one durable thought, not transcripts; the refusal names the
+/// limit and the actual length so one trim is enough (#1075
+/// ergonomics, applied to the platform surface).
+pub const MAX_OBSERVATION_TEXT_CHARS: usize = 2000;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunParentRecord {
     /// The parent after the change; absent when the link was removed.

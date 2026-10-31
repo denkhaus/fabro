@@ -25,7 +25,10 @@ use fabro_api::types::{
 use fabro_petri::petri::{Access, Digest, LogId, OwnerId, Record, StoreError};
 use fabro_petri::projection::finished_run_status;
 use fabro_petri::run_store::{log_id_text, parse_log_id};
-use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition, StoredPlatformRecord};
+use fabro_store::{
+    MAX_OBSERVATION_TEXT_CHARS, PlatformRecord, PlatformRecordKind, StagePosition,
+    StoredPlatformRecord,
+};
 use fabro_types::BlobHash;
 use fabro_util::error::collect_chain;
 use serde_json::{Map, Value, json};
@@ -275,6 +278,20 @@ async fn append_platform_record(
                 .into_response();
         }
     };
+    // The observation text cap holds at the RAW append boundary, not
+    // only in the agent tool (rust-security F2): a worker posting an
+    // observation.recorded record directly cannot smuggle transcript
+    // sizes into the stream and the stage projection.
+    if let PlatformRecord::ObservationRecorded(observation) = &record {
+        let char_count = observation.text.trim().chars().count();
+        if char_count > MAX_OBSERVATION_TEXT_CHARS {
+            return ApiError::bad_request(format!(
+                "observation text exceeds the {MAX_OBSERVATION_TEXT_CHARS}-character limit: \
+                 {char_count} characters"
+            ))
+            .into_response();
+        }
+    }
     let position = match (request.execution, request.firing) {
         (Some(execution), Some(firing)) => Some(StagePosition { execution, firing }),
         _ => None,

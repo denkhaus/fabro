@@ -520,6 +520,14 @@ async fn close_work_item(
             ),
         ));
     }
+    if !radius.is_empty() && forced {
+        // The override is the HUMAN surface (rust-security F1, sprint-70
+        // gate): the tool client pins force=false for agents, and the
+        // verb refuses the worker principal itself — a run posting
+        // {"force": true} directly never bypasses the guardrail the gate
+        // exists to make accountable.
+        refuse_worker(&auth, "force a close over an open closure radius")?;
+    }
     let tracker = tracker_for(&state, project).await?;
     tracker
         .close(project, &request.item_key, &request.reason)
