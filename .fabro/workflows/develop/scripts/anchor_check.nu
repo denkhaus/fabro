@@ -289,7 +289,7 @@ export def basis-commit-resolves [sha: string, root: string]: nothing -> any {
 # surface-router prompts own that adjudication.
 export def lane-surface-risk? [desc: string, lane: string]: nothing -> bool {
     let product_tokens = ["lib/" "apps/" "docs/" "lib/packages/" "public/"]
-    let loop_tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "ml record" "mulch"]
+    let loop_tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "mulch record" "mulch"]
     let tokens = (if $lane == "loop" { $product_tokens } else { $loop_tokens })
     $tokens | any {|t| $desc | str contains $t}
 }

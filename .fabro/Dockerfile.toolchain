@@ -161,10 +161,12 @@ RUN set -eux; \
         aqua:nushell/nushell@0.115.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
+        cargo:mulch@0.1.0 \
     && bun --version \
     && nu --version \
     && just --version \
-    && rg --version
+    && rg --version \
+    && mulch --version
 
 # seeds (seeds-e160, repinned 0.7.0 2026-10-10 matching .mise.toml): the tracker
 # CLI comes from the project's musl-static
@@ -200,16 +202,15 @@ RUN set -eux; \
 # fabro_runs_list data instead (fabro-06e0, Weg A: extend existing tools,
 # no new agent tools).
 
-# Repo agent tooling: AGENTS.md asks agents to run `seeds prime` / `ml
-# prime` at session start; without these binaries every run wastes turns
-# on failures. The seeds tracker CLI is the musl-static release binary
-# installed above (v${SEEDS_VERSION}); the npm `sd` reference tool is
-# RETIRED, no sd executable ships in this image. Mulch stays on the mise
-# bun into BUN_INSTALL (0.10.7, lab exemplar).
-RUN mise exec -- bun install -g \
-        @os-eco/mulch-cli@0.10.7 \
-    && ml --version \
-    && ! command -v sd
+# Repo agent tooling guards (work#1070, the ADR-0023 self-hosting
+# cutover 2026-10-31): mulch rides the mise toolset block above (native
+# Rust CLI, crates.io, binary name `mulch`); the npm @os-eco/mulch-cli
+# reference tool and its `ml` binary are RETIRED with it, exactly like
+# `sd` before — the prompts and skills call `mulch`, the image carries
+# no legacy binary.
+RUN mulch --version \
+    && ! command -v sd \
+    && ! command -v ml
 
 # Full fabro CLI (fabro-fe15, user decision 2026-09-16; petri rework
 # fabro-96c6): staged by scripts/run-images.nu in RELEASE profile

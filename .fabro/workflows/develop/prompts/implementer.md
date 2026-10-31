@@ -40,7 +40,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
 3. Write or update tests exactly as the item demands.
 4. TESTING BELONGS TO THE TESTER STEP (hard rule): you WRITE and UPDATE tests, you do not EXECUTE the suites that test them — the deterministic tester step after you owns test execution. Your verification lane is ONE call: `git diff --stat && just verify implementer` in a single chained shell invocation (timeout_ms of at least 60000); inside a run, `just verify` alone suffices — the engine injects FABRO_STAGE and scripts/verify.nu derives the stage and the touched-crate scope deterministically: fmt + clippy per code-touched crate, the new tests BY NAME FILTER for crates whose diff only ADDS test files, the full crate suite for test-file-touched crates that EDIT existing tests, a compile check otherwise — never the gate, never the workspace suite, and the default-features clippy pass always included (a known default-features break in a touched crate FAILS your self-assessment: fix it or route Blocked). If verify and any prose disagree, verify wins and the disagreement is a painpoint observation (category painpoint through the observation recorder). Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent; a redundant implementer-side gate wastes a cold cache's tens of seconds and blurs role boundaries. Any focused test you run BEYOND the derived touched-crate classes must name the acceptance bullet it serves in your summary — an extra test with no bullet behind it is policy-exceeding tool spend (zero-signal focused runs while the suite that matters goes unrun); if no acceptance bullet needs it, do not run it.
 5. Do NOT close the item and do NOT review — the Reviewer decides, the Closeout step closes through the work-item tools.
-6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `ml record <domain> --type ... --description ...`. This includes REUSABLE PATTERNS, not only near-miss lessons: any observation naming a reusable pattern (a self-test technique, a structuring convention, a trick that generalizes) is a record, and answering 'nothing durable — skipped' over it is a violation. Skip only if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `ml record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `ml search` and starve it of confirmation evidence.
+6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `mulch record <domain> --type ... --description ...`. This includes REUSABLE PATTERNS, not only near-miss lessons: any observation naming a reusable pattern (a self-test technique, a structuring convention, a trick that generalizes) is a record, and answering 'nothing durable — skipped' over it is a violation. Skip only if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `mulch record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `mulch search` and starve it of confirmation evidence.
 
 ## Inline verification report — required in every summary
 
@@ -193,22 +193,22 @@ nobody re-reads your prose, only the JSON survives.
 ## Lesson capture — required answer on every succeeded pass
 
 Mirrors the journal contract: required answer, never optional silence. On every
-`succeeded` pass you either ran `ml record` (and name the mx-id it printed,
+`succeeded` pass you either ran `mulch record` (and name the mx-id it printed,
 format `mx-xxxxxx`) or you explicitly answer 'nothing durable — skipped'.
 The skip answer has a precondition: it is valid ONLY when no observation in
 your journal names a reusable pattern, trick, or convention — a genuinely
 reusable pattern (e.g. a self-test technique, a structuring convention, a
-debugging trick that generalizes) REQUIRES `ml record` and its mx-id; skipping
+debugging trick that generalizes) REQUIRES `mulch record` and its mx-id; skipping
 it strands the trick in a journal nothing re-reads. Skipping is otherwise a
 valid answer; only silence is a violation. The answer lands in
 the `lesson_capture` key of the Implemented JSON (step 6 is where the record
 itself happens).
 
 One record per lesson: `lesson_capture` names exactly ONE mx-id. If a
-correction or follow-up was needed, AMEND the existing record (`ml record`
+correction or follow-up was needed, AMEND the existing record (`mulch record`
 upserts by `--name`, merging outcomes) and name the SAME id again — never
 file a second record for the same lesson, because duplicate stub records
-beat the real record in `ml search`.
+beat the real record in `mulch search`.
 
 ## Verification-only briefs
 
@@ -231,7 +231,7 @@ If the item turns out to be unimplementable as specified, route Blocked and desc
 
 ## Outcome contract
 
-- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate; a lesson-capture answer is present — an `ml record` was run AND its mx-id named (format `mx-xxxxxx`), OR an explicit `nothing durable — skipped` that is justified: no journal observation names a reusable pattern.
+- `succeeded`: implementation written, tests updated, no artifacts left behind, ready for the quality gate; a lesson-capture answer is present — an `mulch record` was run AND its mx-id named (format `mx-xxxxxx`), OR an explicit `nothing durable — skipped` that is justified: no journal observation names a reusable pattern.
 - `failed`: blocked — the item cannot be implemented as specified.
 
 End your response with exactly one JSON object:

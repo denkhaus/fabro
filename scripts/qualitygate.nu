@@ -231,7 +231,7 @@ source ../.fabro/scripts/lib/spec_paths.nu
 # Pure: one path against the product-lane deny-list — EXACTLY develop's
 # implementer fs_hide set (.fabro/**, .agents/**, scripts/**,
 # justfile) minus the hook-owned journal. `.mulch/**` is deliberately NOT denied: develop's implementer
-# has a mandatory lesson-capture contract (`ml record` writes the
+# has a mandatory lesson-capture contract (`mulch record` writes the
 # git-tracked expertise files) — refusing it would false-red every
 # lesson-recording product run (fabro-70b5 spec review).
 def product-denied? [p: string]: nothing -> bool {

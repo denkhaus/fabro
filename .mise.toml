@@ -19,8 +19,11 @@ bun = "1.4.0"
 # logic (clean-target, install-cli, wait-healthy) lives in nushell.
 # Keep aligned with the lab branch pin.
 "aqua:nushell/nushell" = "0.115.0"
-# Expertise CLI (git-native, see AGENTS.md); bin: ml/mulch.
-"npm:@os-eco/mulch-cli" = "0.10.7"
+# Expertise CLI (git-native, see AGENTS.md); bin: mulch. The native
+# Rust CLI (crates.io, repo denkhaus/mulch) replaced the npm
+# @os-eco/mulch-cli reference tool 2026-10-31 (work#1070, the
+# ADR-0023 self-hosting cutover; format-compatible with 0.10.7).
+"cargo:mulch" = "0.1.0"
 # The issue tracker CLI `seeds`, pinned LOCALLY via mise's cargo backend
 # (crates.io 0.9.0; the denkhaus Rust app replaced the npm
 # @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi

@@ -44,7 +44,7 @@ def expect-violations [paths: list<string>, lane: string, expected: list<string>
 expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"] "product" [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"]
 
 # .mulch passes for the PRODUCT lane on purpose: develop's lesson-capture
-# contract writes the git-tracked expertise files there (ml record).
+# contract writes the git-tracked expertise files there (mulch record).
 expect-violations [".mulch/expertise/rust.jsonl"] "product" []
 
 # The hook-owned journal exemption passes. The .seeds tracker paths left

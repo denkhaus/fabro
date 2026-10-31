@@ -110,3 +110,18 @@ mirror of a fixed repository.
   serves a fixed branch of a fixed repo — wrong for foreign repos, stale
   by a refresh window, and needs credentials the server otherwise does
   not hold.
+
+## Addendum: the mulch cutover (2026-10-31, denkhaus/work#1070)
+
+The self-hosting step this ADR anticipated for the expertise CLI has
+landed: the native Rust `mulch` (crates.io 0.1.0, repo denkhaus/mulch,
+binary name `mulch`) replaces the npm `@os-eco/mulch-cli` 0.10.7
+reference tool — read+write format-compatible, CLI surface mirrored.
+The pin moved from mise `npm:@os-eco/mulch-cli` to `cargo:mulch@0.1.0`
+(.mise.toml and the toolchain image's mise toolset, guarded by the
+tool-pin parity battery), every `ml` invocation reference across
+prompts, scripts, and session skills became `mulch`, and the image
+guards now assert the `ml` and `sd` binaries are ABSENT beside the
+`mulch` presence. Known upstream nit: mulch 0.1.0's `init` template
+still writes `ml`-named usage lines into fresh .mulch/README.md files
+(cosmetic; this repo's README is corrected by hand).

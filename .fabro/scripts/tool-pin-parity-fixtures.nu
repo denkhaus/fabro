@@ -17,6 +17,18 @@ def read-dockerfile-seeds []: nothing -> string {
     $line | parse --regex 'ARG SEEDS_VERSION=(?<v>[0-9]+\.[0-9]+\.[0-9]+)' | get 0.v
 }
 
+# The mulch pin (work#1070, the ADR-0023 cutover): .mise.toml's
+# cargo:mulch must equal the cargo:mulch@X in the toolchain image's
+# mise toolset block — the same drift class as seeds, one guard.
+def read-mise-mulch []: nothing -> string {
+    open .mise.toml | get tools | get 'cargo:mulch'
+}
+
+def read-dockerfile-mulch []: nothing -> string {
+    let line = (open --raw .fabro/Dockerfile.toolchain | lines | where $it =~ 'cargo:mulch@' | first)
+    $line | parse --regex 'cargo:mulch@(?<v>[0-9]+\.[0-9]+\.[0-9]+)' | get 0.v
+}
+
 def fail [msg: string]: nothing -> nothing {
     print -e $"tool-pin-parity: ($msg)"
     exit 1
@@ -31,5 +43,12 @@ def main []: nothing -> nothing {
     if $mise_v != $df_v {
         fail $"seeds pin drift: .mise.toml ($mise_v) != Dockerfile.toolchain ($df_v) — repin BOTH in one change, see seed fabro-1893"
     }
-    print $"tool-pin-parity: ok — seeds ($mise_v) aligned in mise and toolchain image"
+    let mise_mulch = (read-mise-mulch)
+    let df_mulch = (read-dockerfile-mulch)
+    if ($mise_mulch | is-empty) { fail '.mise.toml carries no cargo:mulch pin' }
+    if ($df_mulch | is-empty) { fail 'Dockerfile.toolchain carries no cargo:mulch pin in the mise toolset block' }
+    if $mise_mulch != $df_mulch {
+        fail $"mulch pin drift: .mise.toml ($mise_mulch) != Dockerfile.toolchain ($df_mulch) — repin BOTH in one change, denkhaus/work#1070"
+    }
+    print $"tool-pin-parity: ok — seeds ($mise_v), mulch ($mise_mulch) aligned in mise and toolchain image"
 }

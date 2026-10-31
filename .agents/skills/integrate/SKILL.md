@@ -271,7 +271,7 @@ before filing a sibling. Advisory only, fail-open
   or needs-user, NEVER fabro).
 - Weichenstellende decisions do not get implemented - they get a grill
   session; the agreed design goes INTO the seed before the line sees it.
-- Decisions that crystallized -> ADR. Expertise -> `ml record`. Process
+- Decisions that crystallized -> ADR. Expertise -> `mulch record`. Process
   lessons -> edit THIS skill or iterate.
 
 ## Phase 5 - Push coordination (run-PR windows)

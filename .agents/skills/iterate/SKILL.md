@@ -35,7 +35,7 @@ vendored into `.fabro/skills/<name>/`.
 This file carries the LOOP and the BINDING RULES. Expertise lives in the
 stores it belongs to; reach them by phase need:
 
-- `ml prime <domain>` — incident expertise and conventions. Domains you
+- `mulch prime <domain>` — incident expertise and conventions. Domains you
   will need: `rust` (edit mechanics), `testing` (verification discipline),
   `git` (push/PR discipline), `tooling` (tracker hygiene, bench landing),
   `nu` (scripting pitfalls), `engine` (over limit — prefer specific domains).
@@ -400,7 +400,7 @@ stores it belongs to; reach them by phase need:
   landed/clean state. A handoff's stack claim is verified
   (`.../install/session`: 401 = unconfigured, 404 = configured).
 - Edit mechanics (anchors above items, one-cell assert->write, slice
-  uniqueness, compiler-as-worklist, fixture verification): `ml prime rust`.
+  uniqueness, compiler-as-worklist, fixture verification): `mulch prime rust`.
 
 ## Phase 3 — Review
 
@@ -510,7 +510,7 @@ stores it belongs to; reach them by phase need:
   `fabro ask <run-id>` improve-review occasionally (~every 5th cycle).
 - Verification discipline (unpiped commands, full reruns, sequential
   load, failure-set diffs, clean-tree controls, simulation safety,
-  e2e-profile traps): `ml prime testing`.
+  e2e-profile traps): `mulch prime testing`.
 
 ## Phase 4 — Deepen (conditional)
 
@@ -622,7 +622,7 @@ stores it belongs to; reach them by phase need:
   the gated command and branch on `$rc` (2026-10-03 near-miss, arch-branch
   push cell). A repaired gate is validated against a known-active
   line state before its first OPEN verdict is trusted. Incident restore
-  may push as soon as no pass runs. Evidence and history: `ml prime git`.
+  may push as soon as no pass runs. Evidence and history: `mulch prime git`.
 - Deploy windows: deploy only while no conductor pass runs. PRE-DEPLOY
   BENCH GATE (fabro-6041 grill 2026-10-24, user GO): before EVERY deploy
   window, run the fabro-test workbench — `cd ~/dev/fabro-test && just up
@@ -694,7 +694,7 @@ stores it belongs to; reach them by phase need:
   (`nu scripts/workbench.nu`, local stack default) is the engine gate —
   a full table with only tracked known-reds (YELLOW, exit 0) is the pass
   state; every fresh red is a finding. Nu scripting pitfalls:
-  `ml prime nu` and `ml prime tooling`.
+  `mulch prime nu` and `mulch prime tooling`.
 
 ## Phase 6 — Reflect (mandatory, every sprint close)
 
@@ -713,9 +713,9 @@ stores it belongs to; reach them by phase need:
 1. Cost review: what took longer than it should, what needed retries,
    what was missing at decision time. EVERY finding that implies a
    behavior change becomes an edit to THIS skill; domain knowledge goes
-   to mulch (`ml record <domain> '<content>' --type <failure|convention|
+   to mulch (`mulch record <domain> '<content>' --type <failure|convention|
    pattern|decision|reference|guide>` — type is required, failures also
-   need `--description` and `--resolution`; then `ml sync` — real
+   need `--description` and `--resolution`; then `mulch sync` — real
    insights only); durable preferences to memory. No finding stays
    unrecorded. A skill edit carries the ABSTRACT RULE only (user
    directive 2026-10-29): session state, live item numbers, and incident
@@ -726,7 +726,7 @@ stores it belongs to; reach them by phase need:
    duplicates. Ownership per ADR-0018: unassigned by default; `@fabro`
    only as a proposal for clearly-line work; design forks and
    user-decisions get `needs-user`. Shell-safe bodies and tracker
-   roundtrips: `ml prime tooling`.
+   roundtrips: `mulch prime tooling`.
 3. Note open forks ahead for the next grill-with-docs.
 4. Cycle report: outcome, verification evidence (commands run), seeds
    filed/closed — each with a ONE-LINE description, never a bare id —
