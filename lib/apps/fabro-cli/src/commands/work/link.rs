@@ -19,9 +19,7 @@ pub(super) async fn link_command(args: &WorkLinkArgs, ctx: &CommandContext) -> R
     } else {
         let outcome = match response.outcome {
             WorkObservationLinkOutcome::Linked => "linked",
-            WorkObservationLinkOutcome::AlreadyLinked => {
-                "already linked (deduped at the link)"
-            }
+            WorkObservationLinkOutcome::AlreadyLinked => "already linked (deduped at the link)",
         };
         fabro_util::printerr!(
             printer,
