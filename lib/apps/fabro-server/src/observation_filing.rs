@@ -26,6 +26,16 @@
 //! filing-time freshness re-query — is ported into the distillation
 //! prompt and this filer; the revisor retired in the same change (its
 //! input channel, the journal painpoint array, no longer exists).
+//!
+//! Where the retirement cargo's remaining halves live: the revisor's
+//! CLAIM ADJUDICATION (a stranded claim on a terminal run) is the work
+//! reconciler's own pass — `reconcile_run_state` releases every
+//! terminal-without-merge claim on each 30s sweep, which is why this
+//! module never touches claims. The revisor's FILING BALANCE
+//! (creation coupled to same-pass closes) is superseded by the grilled
+//! decision that the hook files freely with dedupe as the guard: the
+//! balance took credit from closes the revisor itself made, and this
+//! filer closes nothing, so there is no credit to balance against.
 
 use std::time::Duration;
 
@@ -64,8 +74,8 @@ const FILING_PROMPT_TEMPLATE: &str = include_str!("prompts/observation_filing.md
 /// Payload firing keys that match no real stage: a server-origin
 /// observation stays stream-readable (the kind query below finds it)
 /// but out of the stage view, like an artifact for an unknown firing.
-pub(crate) const POSITIONLESS_EXECUTION: u64 = u64::MAX;
-pub(crate) const POSITIONLESS_FIRING: u64 = u64::MAX;
+const POSITIONLESS_EXECUTION: u64 = u64::MAX;
+const POSITIONLESS_FIRING: u64 = u64::MAX;
 
 /// How many tracker hits the dedupe layers inspect per query.
 const DEDUPE_QUERY_LIMIT: usize = 20;
@@ -142,6 +152,7 @@ pub(crate) async fn file_run_observations(
             reason: "run has no git target",
         });
     };
+    let target_repo = target_repo.to_string();
     let projects = state
         .work_store()
         .projects()
@@ -149,7 +160,7 @@ pub(crate) async fn file_run_observations(
         .context("listing work projects")?;
     let Some(project) = projects
         .iter()
-        .find(|project| project.target_repo.as_deref() == Some(target_repo))
+        .find(|project| project.target_repo.as_deref() == Some(target_repo.as_str()))
     else {
         return Ok(FilingOutcome::Nothing {
             reason: "no work project targets the run's repository",
@@ -204,7 +215,7 @@ pub(crate) async fn file_run_observations(
         run_id:           *run_id,
         workflow:         projection.spec.graph.name.clone(),
         goal:             projection.spec.graph.goal().to_string(),
-        target:           git_target_repo(&projection).unwrap_or_default().to_string(),
+        target:           target_repo.clone(),
         workflow_version: projection
             .spec
             .workflow_version_id
@@ -272,7 +283,12 @@ async fn file_candidate(
         })
         .await
         .context("freshness query failed")?;
-    // Change-dedupe: the candidate's title is the focused theme query.
+    // Change-dedupe: the candidate's title is the focused theme query;
+    // on no covering hit, ONE broadening retry with the most significant
+    // token (the retired analyzer's query discipline: focused first,
+    // broaden once before concluding "no duplicate"). The verdict is
+    // owned (key + state) — a reference into either query's hit vec
+    // must not escape its arm.
     let found = tracker
         .list(project, WorkItemFilter {
             query: Some(candidate.title.clone()),
@@ -281,12 +297,33 @@ async fn file_candidate(
         })
         .await
         .context("change-dedupe query failed")?;
-    if let Some(covering) = covering_item(citing.iter().chain(found.iter()), candidate) {
-        if covering.state != "open" {
+    let covering = covering_item(citing.iter().chain(found.iter()), candidate)
+        .map(|item| (item.item_key.clone(), item.state.clone()));
+    let covering = if covering.is_none() {
+        let significant = significant_tokens(&candidate.title);
+        if significant.is_empty() {
+            None
+        } else {
+            let broadened = tracker
+                .list(project, WorkItemFilter {
+                    query: Some(significant[0].clone()),
+                    limit: DEDUPE_QUERY_LIMIT,
+                    ..WorkItemFilter::default()
+                })
+                .await
+                .context("change-dedupe broadening query failed")?;
+            covering_item(citing.iter().chain(broadened.iter()), candidate)
+                .map(|item| (item.item_key.clone(), item.state.clone()))
+        }
+    } else {
+        covering
+    };
+    if let Some((covering_key, covering_state)) = covering {
+        if covering_state != "open" {
             // A closed item covering the change: the change is already
             // implemented, the candidate has no filing claim.
             tracing::debug!(
-                item = %covering.item_key,
+                item = %covering_key,
                 "filing drop: a closed item already covers the change"
             );
             return Ok(CandidateOutcome::Dropped);
@@ -294,12 +331,12 @@ async fn file_candidate(
         for seq in &candidate.source_seqs {
             state
                 .work_store()
-                .link_observation(&project.project_id, &covering.item_key, &run_id, *seq)
+                .link_observation(&project.project_id, &covering_key, &run_id, *seq)
                 .await
                 .context("linking the covering item to its observations")?;
         }
         tracing::info!(
-            item = %covering.item_key,
+            item = %covering_key,
             run_id = %run_id,
             "observation filing linked an existing item"
         );
@@ -337,12 +374,12 @@ async fn file_candidate(
 /// One distilled candidate: what/where/effect plus the observation seqs
 /// it carries (the link's identity).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Candidate {
-    pub(crate) title:       String,
-    pub(crate) body:        String,
-    pub(crate) priority:    u8,
-    pub(crate) source_seqs: Vec<u64>,
-    pub(crate) needs_user:  bool,
+struct Candidate {
+    title:       String,
+    body:        String,
+    priority:    u8,
+    source_seqs: Vec<u64>,
+    needs_user:  bool,
 }
 
 /// The plain facts one distillation call needs — the projection's
@@ -435,7 +472,7 @@ fn build_prompt(inputs: &FilingInputs, fresh: &[(u64, String)]) -> Result<String
 /// Parse and harden the distillation output against the fresh seqs:
 /// unknown source seqs drop (never link what this pass did not distill),
 /// malformed entries drop, an empty result is valid.
-pub(crate) fn parse_candidates(object: &JsonValue, fresh: &[(u64, String)]) -> Vec<Candidate> {
+fn parse_candidates(object: &JsonValue, fresh: &[(u64, String)]) -> Vec<Candidate> {
     let Some(raw) = object.get("candidates").and_then(JsonValue::as_array) else {
         return Vec::new();
     };
@@ -582,9 +619,10 @@ fn significant_tokens(title: &str) -> Vec<String> {
 /// The conservative covering predicate — over-linking pollutes closure
 /// radii, so an item covers only on exact normalized-title equality or
 /// when EVERY significant candidate token (three or more) appears in
-/// its title or body. First covering item wins (deterministic order:
-/// the caller chains freshness hits before theme hits).
-pub(crate) fn covering_item<'a>(
+/// its title or body as a WHOLE WORD (padded substring match: "form"
+/// must not cover "format"). First covering item wins (deterministic
+/// order: the caller chains freshness hits before theme hits).
+fn covering_item<'a>(
     mut hits: impl Iterator<Item = &'a WorkItem>,
     candidate: &Candidate,
 ) -> Option<&'a WorkItem> {
@@ -595,10 +633,10 @@ pub(crate) fn covering_item<'a>(
             return true;
         }
         candidate_tokens.len() >= 3 && {
-            let hay = format!("{} {}", item.title, item.body).to_lowercase();
+            let hay = format!(" {} {} ", item.title, item.body).to_lowercase();
             candidate_tokens
                 .iter()
-                .all(|token| hay.contains(token.as_str()))
+                .all(|token| hay.contains(&format!(" {token} ")))
         }
     })
 }
