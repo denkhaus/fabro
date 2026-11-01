@@ -39,6 +39,17 @@ each rule.
   and who the callers are. A grill pitch the user cannot reconstruct the
   topic from is a process defect — the round is aborted and re-pitched
   before any options reach the question tool.
+- GLOSSARY NAMES SURVIVE TRANSLATION (user directive 2026-11-01): in
+  German chat framing, the English proper names of the ubiquitous
+  language stay EXACTLY as GLOSSARY.md spells them — a Run is a Run
+  (never a "Lauf"), a Stage a Stage, a Claim a Claim, the Adjudicator
+  the Adjudicator (never a "Schlichter"), a Gear a Gear, merge-complete
+  stays merge-complete. No ad-hoc translations and no invented German
+  synonyms for glossary terms: the glossary IS the shared
+  understanding, and a renamed term in prose is a fork of the
+  vocabulary. A concept without a glossary entry gets named in English,
+  used consistently, and carried into the glossary — never silently
+  translated.
 - EVERY decision point is grilled BEFORE implementation (user directive
   2026-10-12, Grundsatz-review; procedure directive 2026-10-18): run
   the ACTUAL grill-with-docs skill (grilling + domain-modeling;

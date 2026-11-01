@@ -274,6 +274,15 @@ reality.
    entirely, ask the user to set the visible /heartbeat with this
    ceremony — never run silently unwatched. The user's pause is
    authoritative and never overridden.
+7. C4 LANDSCAPE UPDATE (user directive 2026-11-01): every sprint close
+   updates `.likec4/` to the sprint's landed state — flip status tags
+   (#planned -> #evolving -> untagged when live; #retiring edges
+   delete when their authority is gone), add newly landed elements,
+   retire removed ones, and keep the TARGET landscape (ADR-0039 final
+   state) intact: the model shows where the line is going, the tags
+   show where it stands. Validate with `bunx likec4 validate --json
+   --no-layout` from `.likec4/` before committing; English only
+   (ADR-0033).
 7. Line-watch: pull, evaluate journals/reviews (premise-checked
    against the tree), dispatch per ADR-0018 with dispatch-dedupe, push
    through the gate, rootprint correlation for every evaluated run,
