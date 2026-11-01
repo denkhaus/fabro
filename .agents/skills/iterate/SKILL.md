@@ -316,7 +316,15 @@ reality.
   (criteria is an option-id -> description RECORD, never a bare array);
   every call logs to `~/.local/state/fabro-judgments/<date>.jsonl` —
   the log IS the evaluation corpus, so a phase that CAN pre-screen and
-  does not is a finding. Application points: (a) every grill fires a
+  does not is a finding. PRE-SCREEN INPUT QUALITY (user directive
+  2026-11-01): build the Jev context the same way the user's grill
+  pitches are built — full wait-what style (ASD-STE100 Simplified
+  Technical English: short sentences, one topic per sentence, active
+  voice, no idioms) over the repo's ubiquitous language, covering what
+  the mechanism is today, which incidents shaped it, what the fork
+  changes, and who the callers are. Jev decides only as well as its
+  prepared context; a compressed state string is a finding against the
+  pre-screen itself. Application points: (a) every grill fires a
   pre-screen BEFORE the user grill; (b) cycle review — verdict per
   evaluated run and per-file residue adjudication; (c) line-watch
   journal routing — painpoint severity as noul before dispatching;

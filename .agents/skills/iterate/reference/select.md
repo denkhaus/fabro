@@ -29,6 +29,16 @@ each rule.
 
 ## The grilling format (binding)
 
+- FULL CONTEXT BEFORE THE GRILL (user directive 2026-11-01): every grill
+  round is PRECEDED by a full-context pitch of the topic, written in the
+  wait-what style — ASD-STE100 Simplified Technical English (short
+  sentences, one topic per sentence, active voice, no idioms) over the
+  repo's ubiquitous language (GLOSSARY.md; follow GLOSSARY-MAP.md to the
+  right one when the repo has more than one). The pitch covers: what the
+  mechanism is today, which incidents shaped it, what the fork changes,
+  and who the callers are. A grill pitch the user cannot reconstruct the
+  topic from is a process defect — the round is aborted and re-pitched
+  before any options reach the question tool.
 - EVERY decision point is grilled BEFORE implementation (user directive
   2026-10-12, Grundsatz-review; procedure directive 2026-10-18): run
   the ACTUAL grill-with-docs skill (grilling + domain-modeling;

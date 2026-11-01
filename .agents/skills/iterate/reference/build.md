@@ -25,13 +25,28 @@ directives, and verification recipes. Edit mechanics also live in
   against the FULL text into a walk that slices a SUFFIX — carry the
   absolute cursor beside the relative offset.
 
-## Pin power is PROVEN, not assumed
+## Pin power is PROVEN, not assumed — RED FIRST
 
-- After a regression pin is written, restore the PRE-FIX implementation
-  (the file as it stands in HEAD) and confirm the pin goes RED, then
-  restore. A "nearby" mutation of the new code can pass while the pin
-  is blind — two variant mutations of one scanner survived; only the
-  HEAD restore failed the run-level pin with the real symptom.
+- RED FIRST is the standard loop (user directive 2026-11-01; the @tdd
+  skill is binding for the loop's order and shape): write the
+  test/pin BEFORE the behavior exists and run it RED against the
+  genuine absent-or-broken state — for a fix, the pre-fix tree IS the
+  red state; for new functionality, stub only what must compile
+  (types, enum fields, initializers) and leave the BEHAVIOR out so the
+  test fails for the missing behavior, not for a compile error. Then
+  implement minimally to green. The observed red run IS the pin's
+  proof — no mutation needed.
+- The mutation/restore proof (restore the PRE-FIX implementation, or
+  mutate the new behavior, confirm RED, restore) is the FALLBACK for a
+  test written AFTER its implementation already existed (inherited
+  code, a late-added pin): it reconstructs the red the red-first loop
+  would have shown. A "nearby" mutation of the new code can pass while
+  the pin is blind — two variant mutations of one scanner survived;
+  only the HEAD restore failed the run-level pin with the real
+  symptom.
+- When unsure about the loop's order or shape, LOAD the @tdd skill and
+  follow it — do not improvise a variant (implement-then-test-then-
+  mutate is the anti-pattern the 2026-11-01 directive named).
 - A test added through an EXISTING harness must prove the input reaches
   the seam: one projection harness never wrote the run spec's
   `graph_source`, so the first engine-level pin was trivially green
