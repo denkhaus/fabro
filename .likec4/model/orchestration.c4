@@ -60,13 +60,16 @@ model {
         link ../../.fabro/workflows/develop/workflow.fabro
 
         reporter = workflow "Reporter stage" {
-          #planned
+          #evolving
           description '''
             The develop run's facts-only final stage, renamed from
             closeout: reports patch visibility and Dockerfile touches as
             observation records. The run reports facts; it never judges
-            (ADR-0039 decision 10). Today the closeout still carries the
-            close authority this stage loses.
+            (ADR-0039 decision 10). The FACTS are live in the closeout
+            since stage C (2026-11-01, before the park gate, trigger-
+            based categories); the close authority and the marker sweeps
+            still ride the same stage until the stage-G cutover strips
+            them and the rename lands.
           '''
           link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
         }

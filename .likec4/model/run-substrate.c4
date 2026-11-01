@@ -54,13 +54,20 @@ model {
       // write.
 
       observation-record-surface = service "Observation record surface" {
-        #planned
         description '''
           Writes observation records on a run's OWN record stream.
           Doors: `fabro_observation_record` (agent tool, live) and
           `fabro observation record` (CLI shim — the reporter and the
-          adjudicator's fast path write their facts through it).
+          adjudicator's fast path write their facts through it). A
+          script stage knows its run and stage position through the
+          engine-bound identity quartet (FABRO_RUN_ID, FABRO_NODE_ID,
+          FABRO_EXECUTION, FABRO_FIRING) — stage self-awareness, landed
+          with stage C.
         '''
+        metadata {
+          status "live"
+          code "lib/components/fabro-tool/src/observation.rs, lib/apps/fabro-cli/src/commands/observation"
+        }
       }
 
       orchestration-mark-surface = service "Orchestration mark surface" {
