@@ -1,0 +1,57 @@
+// Target flow of a work item through the three gears (ADR-0039).
+// Structural counterpart of the `gears` view: this one is temporal.
+
+views "Orchestration" {
+  dynamic view lifecycle {
+    title "Life of a work item — target flow (ADR-0039)"
+    description '''
+      The item lifecycle once the adjudicator chain is live. Three
+      serial gears coupled only by the orchestration fields; the run
+      never closes its own work; the reconciler heals underneath at
+      all times.
+    '''
+    fabro.orchestration.scheduler -> fabro.orchestration.conductor "tick (item-driven)"
+    fabro.orchestration.conductor -> fabro.records.work-ledger "picks next item"
+    fabro.orchestration.conductor -> fabro.orchestration.develop "spawns ONE develop run"
+    fabro.orchestration.develop -> fabro.records.work-ledger "claims item (fabro_work_next)"
+    loop "agent stages" {
+      fabro.orchestration.develop -> fabro.orchestration.develop "plan → implement → test → review"
+    }
+    fabro.orchestration.develop -> fabro.records.observation-records "reports facts (reporter stage)"
+    fabro.orchestration.develop -> github "opens PR (artifact, never a gate)"
+
+    fabro.orchestration.scheduler -> fabro.orchestration.adjudicator "tick (run-driven)"
+    alt "adjudication pass 1" {
+      when "no judgment exists" {
+        fabro.orchestration.adjudicator -> fabro.records.run-record "merge: enabled — mechanical fast path, no LLM"
+      }
+      else "judgment exists" {
+        fabro.orchestration.adjudicator -> fabro.records.observation-records "reviews all runs' observations"
+        opt "policy fork" {
+          fabro.orchestration.adjudicator -> operator "asks"
+          fabro.orchestration.adjudicator -> slack "no answer → park + ping"
+        }
+        fabro.orchestration.adjudicator -> fabro.records.run-record "merge: enabled"
+        fabro.orchestration.adjudicator -> fabro.records.work-ledger "files follow-ups"
+      }
+    }
+
+    fabro.orchestration.scheduler -> fabro.orchestration.merger "tick (merge-marker-driven)"
+    fabro.orchestration.merger -> fabro.records.run-record "reads queue: merge-enabled runs"
+    try {
+      fabro.orchestration.merger -> github "integrates base-first, resolves conflicts"
+      fabro.orchestration.merger -> fabro.records.run-record "closable: enabled"
+    } catch "unresolvable conflict" {
+      fabro.orchestration.merger -> fabro.records.run-record "closable: parked (escalation)"
+    }
+
+    fabro.orchestration.scheduler -> fabro.orchestration.adjudicator "tick — pass 2"
+    fabro.orchestration.adjudicator -> fabro.records.run-record "sees closable: enabled"
+    fabro.orchestration.adjudicator -> fabro.records.work-ledger "closes the item — the ONLY closer"
+
+    loop "background, every ~30 s" {
+      fabro.orchestration.reconciler -> fabro.records.work-ledger "heals"
+      fabro.orchestration.reconciler -> github "heals tracker"
+    }
+  }
+}

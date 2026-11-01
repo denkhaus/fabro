@@ -1,0 +1,21 @@
+// Entry view of the landscape: Fabro and its three subsystems, with the
+// orchestration plane expanded (the active refinement area). Records and
+// run-substrate stay collapsed as the next drill-down levels.
+
+views {
+  view index of fabro {
+    title "Fabro — engine landscape"
+    description '''
+      Entry view. The orchestration plane is expanded because that is
+      where the ADR-0039 restructuring plays out. Click `records` or
+      `run-substrate` to drill into the data and execution planes.
+    '''
+    include *
+    global predicate orchestration-plane
+    include fabro.orchestration.develop.reporter
+    global predicate external-forge
+    global predicate target-state
+    global style status
+    autoLayout LeftRight
+  }
+}

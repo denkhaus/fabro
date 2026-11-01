@@ -1,0 +1,99 @@
+// Level 2 (execution plane): everything that executes runs. Coarse on
+// purpose — this is a refinement frontier (Petri internals, sandbox
+// facets, channel transport, deployment view).
+
+model {
+  extend fabro {
+    run-substrate = subsystem "Run substrate" {
+      description '''
+        The execution half of the engine: workflows run as Petri runs in
+        sandboxes and reach the engine through a per-run channel.
+      '''
+
+      run-engine = service "Petri engine (vendored)" {
+        description '''
+          Sans-IO token-flow state machine (apply(state, event) →
+          commands) plus driver, executors and the attractor frontend
+          that lowers Graphviz DOT workflows to the IR. Vendored fork
+          snapshot, consumed only through fabro-petri (ADR-0034).
+        '''
+        metadata {
+          code "vendor/petri"
+        }
+        link ../../vendor/petri/engine-spec.md
+      }
+
+      sandbox-runtime = service "Sandbox runtime" {
+        description '''
+          Docker (default), Host and Daytona providers. Every sandbox
+          carries the petri.run label; deleting a run deletes its
+          sandboxes through the lease ledger.
+        '''
+      }
+
+      run-channel = service "Per-run channel" {
+        description '''
+          The universal bridge between deterministic workflow steps and
+          the engine: a per-run Unix-socket HTTP endpoint mounted into
+          the sandbox. The engine stamps the run's worker principal
+          server-side — no bearer material ever enters the sandbox
+          (ADR-0035).
+        '''
+        metadata {
+          status "live"
+          code "lib/apps/fabro-server/src/server/run_channel.rs"
+        }
+        link ../../docs/adr/0035-one-authority-two-delivery-forms.md
+      }
+
+      // --- capability surfaces (stage-D design, grilled 2026-11-01) -----
+      // One surface, two doors: an agent tool for agent stages and a
+      // CLI shim for script stages, both over the same endpoint with
+      // the same authorization — the CLI mirrors the tool name, like
+      // fabro_work_close <-> `fabro work close`. Agents judge; scripts
+      // write.
+
+      observation-record-surface = service "Observation record surface" {
+        #planned
+        description '''
+          Writes observation records on a run's OWN record stream.
+          Doors: `fabro_observation_record` (agent tool, live) and
+          `fabro observation record` (CLI shim — the reporter and the
+          adjudicator's fast path write their facts through it).
+        '''
+      }
+
+      orchestration-mark-surface = service "Orchestration mark surface" {
+        #planned
+        description '''
+          Writes run.orchestration verdicts on a FOREIGN run — the only
+          cross-run write in the system. Doors: `fabro_run_mark` (agent
+          tool) and `fabro run mark` (CLI shim). The server accepts
+          marks ONLY from runs whose workflow is the adjudicator or the
+          merger (workflow allowlist — the ADR-0019 consent).
+        '''
+      }
+
+      work-item-surface = service "Work-item surface" {
+        description '''
+          The work verbs: next/claim/release/close/link. Doors:
+          `fabro_work_*` (agent tools) and `fabro work <verb>` (CLI
+          shim). Claim-bound authorization makes closing a foreign item
+          impossible by construction.
+        '''
+        metadata {
+          status "live"
+          code "lib/components/fabro-work"
+        }
+      }
+    }
+  }
+
+  fabro.orchestration.develop -[uses]-> fabro.run-substrate.run-channel "run tools reach the engine over the channel (work verbs, observations)"
+
+  // The surfaces persist into the datasets — the write path every
+  // stage takes: stage -> surface (over the channel) -> dataset.
+  fabro.run-substrate.observation-record-surface -[write]-> fabro.records.observation-records
+  fabro.run-substrate.orchestration-mark-surface -[write]-> fabro.records.run-record "verdicts: merge / closable"
+  fabro.run-substrate.work-item-surface -[write]-> fabro.records.work-ledger "claims, closes, links"
+}

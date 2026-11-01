@@ -1,0 +1,22 @@
+// Detail view of the adjudicator (ADR-0039): its two passes, the
+// mechanical fast path, the closure-radius watch and the HITL
+// park/resume corridor — and the datasets they couple through.
+
+views "Orchestration" {
+  view adjudicator of fabro.orchestration.adjudicator {
+    title "Adjudicator — internals (ADR-0039)"
+    description '''
+      Inside the adjudicator: the mechanical fast path, the review pass
+      (pass 1), the closure-radius watch, the operator park/resume
+      corridor, and the closing pass (pass 2). It reads the
+      observations of all runs, writes the merge verdict, and is the
+      ONLY closer in the system. Substrate has landed (orchestration
+      fields, queue query); the workflow itself is pending.
+    '''
+    include *
+    global predicate dataset-substrate
+    include operator, slack
+    global style status
+    autoLayout LeftRight
+  }
+}

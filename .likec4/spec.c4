@@ -1,0 +1,140 @@
+// Vocabulary of the Fabro architecture landscape.
+// Single source for kinds/tags/colors — model and view files only USE these.
+// Keep this file stable: specification changes trigger a full project re-parse.
+
+specification {
+  // --- element kinds ------------------------------------------------------
+
+  element person {
+    notation "Person"
+    style { shape person }
+  }
+
+  element system {
+    notation "External system"
+    style { shape rectangle }
+  }
+
+  element subsystem {
+    notation "Subsystem"
+  }
+
+  element workflow {
+    notation "Workflow"
+  }
+
+  element stage {
+    notation "Workflow stage"
+    style { shape component }
+  }
+
+  element service {
+    notation "Service / component"
+    style { shape component }
+  }
+
+  element dataset {
+    notation "Dataset"
+    style { shape storage }
+  }
+
+  // --- deployment node kinds ----------------------------------------------
+  // The production topology of the final landscape (deployment view).
+
+  deploymentNode container-host {
+    notation "Physical/virtual host"
+    style { shape rectangle }
+  }
+
+  deploymentNode container {
+    notation "Container"
+  }
+
+  deploymentNode volume {
+    notation "Persistent volume"
+    style { shape storage }
+  }
+
+  // --- relationship kinds -------------------------------------------------
+  // Domain verbs of the orchestration line. Reads are dashed so the
+  // dataset coupling (the ONLY coupling, ADR-0039) stays visually
+  // distinct from actions.
+
+  relationship trigger {
+    description "Fires a gear tick"
+    line dotted
+  }
+
+  relationship spawn {
+    description "Creates a child run"
+  }
+
+  relationship claim {
+    description "Atomically claims a work item"
+  }
+
+  relationship read {
+    description "Reads a dataset (queue, gate, state)"
+    line dashed
+  }
+
+  relationship write {
+    description "Writes a dataset (verdict, projection)"
+  }
+
+  relationship create {
+    description "Creates an artifact (PR, work item)"
+  }
+
+  relationship report {
+    description "Files observation records"
+  }
+
+  relationship review {
+    description "Reviews observations"
+  }
+
+  relationship ask {
+    description "Human-in-the-loop ask"
+  }
+
+  relationship notify {
+    description "Notification / escalation ping"
+    line dotted
+  }
+
+  relationship integrate {
+    description "Technical integration of run PRs"
+  }
+
+  relationship close {
+    description "Closes a work item"
+  }
+
+  relationship heal {
+    description "Repairs ledger/projection after drift"
+  }
+
+  relationship uses {
+    description "Runs on / reaches through"
+  }
+
+  // --- status tags --------------------------------------------------------
+  // Lifecycle of the ADR-0039 restructuring. Flip tags as components land.
+
+  tag planned
+  tag evolving
+  tag retiring
+}
+
+// Visual treatment of the status tags, applied via `global style status`
+// in every view. Retiring ELEMENTS fade; retiring/planned EDGES are
+// excluded from target views via `exclude * -> * where tag is ...`.
+
+global {
+  styleGroup status {
+    style element.tag = #planned { color muted; border dashed }
+    style element.tag = #evolving { border dotted }
+    style element.tag = #retiring { opacity 35% }
+  }
+}

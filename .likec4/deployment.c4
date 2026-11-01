@@ -1,0 +1,60 @@
+// Deployment view of the final landscape: the production topology the
+// line operates (mirtuell). One host; the fabro-server container
+// creates its run sandboxes as SIBLINGS on the host's Docker daemon
+// (the compose service mounts /var/run/docker.sock); the SQLite
+// database and blob store live on a mounted volume. Externals (GitHub,
+// Slack, LLM providers, Rootprint) have no instances here — they
+// appear in the logical views.
+
+deployment {
+  prod = container-host "Production host" {
+    description '''
+      The single-tenant production host. Everything fabro owns runs
+      here; the forge, chat, model backends and the telemetry sink are
+      reached over the network.
+    '''
+
+    fabro-container = container "fabro-server" {
+      description '''
+        The platform process: API, engine driver, scheduler,
+        reconciler, run-channel endpoint, platform-record store.
+        Mounts the Docker socket to create sibling run sandboxes.
+      '''
+      server = instanceOf fabro.server
+    }
+
+    run-sandboxes = container "Run sandboxes (siblings)" {
+      description '''
+        One container per run sandbox, created by the fabro-server as
+        SIBLINGS on the host daemon — never nested. Every sandbox
+        carries the petri.run label; deleting a run deletes its
+        sandboxes through the lease ledger.
+      '''
+      sandbox = instanceOf fabro.run-substrate.sandbox-runtime
+    }
+
+    sqlite-volume = volume "SQLite + blob store" {
+      description '''
+        The single SQLite database (petri store, platform records,
+        claim ledger, work observation links) and the blob store, on a
+        mounted volume — one process, one file, backups beside it.
+      '''
+    }
+  }
+}
+
+views "Deployment" {
+  deployment view prod {
+    title "Production deployment — final landscape"
+    description '''
+      The production topology: one host, the fabro-server container,
+      sibling run sandboxes on the host Docker daemon, and the SQLite
+      volume. The capability surfaces and orchestration gears all
+      execute inside the fabro-server instance.
+    '''
+    include prod.**
+    style prod.** {
+      color secondary
+    }
+  }
+}

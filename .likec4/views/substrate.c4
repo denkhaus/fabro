@@ -1,0 +1,35 @@
+// Data plane and execution plane views — the remaining drill-down
+// levels of the landscape. Both are deliberately thin; they grow as
+// those areas get refined.
+
+views "Substrate" {
+  view datasets of fabro.records {
+    title "Dataset substrate — the only coupling"
+    description '''
+      Fields, not messages: every workflow derives its queue from these
+      datasets and writes its verdicts back. The orchestration fields
+      live on the run record; the observation chain carries the closure
+      radius; the claim ledger owns single assignment.
+    '''
+    include *
+    global predicate orchestration-plane
+    global predicate dataset-substrate
+    include operator, github
+    global predicate target-state
+    global style status
+    autoLayout LeftRight
+  }
+
+  view substrate of fabro.run-substrate {
+    title "Run substrate (coarse)"
+    description '''
+      Execution half: the vendored Petri engine, sandboxes, and the
+      per-run capability channel. Refinement frontier — engine
+      internals, sandbox facets, and a deployment view mapping workflows
+      to processes come later.
+    '''
+    include *
+    include fabro.orchestration.develop
+    global style status
+  }
+}

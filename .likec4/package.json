@@ -1,0 +1,12 @@
+{
+  "name": "fabro-architecture",
+  "private": true,
+  "scripts": {
+    "dev": "likec4 serve",
+    "validate": "likec4 validate",
+    "build": "likec4 build -o dist"
+  },
+  "devDependencies": {
+    "likec4": "1.60.0"
+  }
+}

@@ -1,0 +1,21 @@
+// The orchestration plane: one level only. The three serial workflows,
+// their scheduler, and the reconciler healing beneath them. Everything
+// else (dataset coupling, forge, notifications) unfolds in the scoped
+// detail views — progressive disclosure.
+
+views "Orchestration" {
+  view gears of fabro.orchestration {
+    title "Orchestration (ADR-0039 target)"
+    description '''
+      The orchestration plane: the three serial workflows of the line,
+      their scheduler and the reconciler. One level only — details
+      unfold on click: the adjudicator's internals, the dataset
+      coupling (Datasets), and the target flow (lifecycle).
+    '''
+    include *
+    include fabro.orchestration.develop.*
+    global predicate target-state
+    global style status
+    autoLayout LeftRight
+  }
+}

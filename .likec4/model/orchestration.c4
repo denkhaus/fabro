@@ -1,0 +1,240 @@
+// Level 2 (control plane): the three serial scheduler gears of
+// ADR-0039 — item-driven develop, run-driven adjudicator,
+// merge-marker-driven merger — plus the reconciler that heals beneath
+// them.
+//
+// Status tags record where the ADR-0039 restructuring stands:
+//   #planned  — not built yet (substrate may have landed)
+//   #evolving — live in predecessor form, rework pending
+//   #retiring — edge/authority that ADR-0039 removes
+
+model {
+  extend fabro {
+    orchestration = subsystem "Orchestration" {
+      description '''
+        Three serial scheduler gears, each with its own tick and
+        on_overlap: skip, coupled ONLY through the dataset fields on the
+        run record. The serial tick never blocks on a human; a dead-man
+        watch alarms when a gear makes no progress (ADR-0039 decision 9).
+      '''
+      link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
+
+      scheduler = service "Scheduler" {
+        description '''
+          The automation scheduler: fires each gear's tick. One overlap
+          policy for every gear: skip — never two passes of one gear,
+          never a blocked tick.
+        '''
+        metadata {
+          status "live"
+          code "lib/apps/fabro-server/src/server/automation_scheduler.rs"
+        }
+      }
+
+      conductor = workflow "Conductor" {
+        description '''
+          Item-driven. Surveys the project, picks the next work item and
+          spawns exactly ONE develop child run
+          (fabro_workflow_version_create → fabro_run_create →
+          fabro_run_wait), then waits terminal → merged.
+        '''
+        metadata {
+          status "live"
+          code ".fabro/workflows/conductor"
+        }
+      }
+
+      develop = workflow "Develop run — the unit of work" {
+        description '''
+          planner → preflight → implementer → tester → evidence →
+          reviewer → reporter. Its end product is a pull request
+          carrying the performed work. It never closes its item, never
+          files follow-ups, never judges itself (ADR-0039 decision 1).
+          Verification runs inside fabro — GitHub automerge and CI
+          gates retire completely.
+        '''
+        metadata {
+          status "live"
+          code ".fabro/workflows/develop"
+        }
+        link ../../.fabro/workflows/develop/workflow.fabro
+
+        reporter = workflow "Reporter stage" {
+          #planned
+          description '''
+            The develop run's facts-only final stage, renamed from
+            closeout: reports patch visibility and Dockerfile touches as
+            observation records. The run reports facts; it never judges
+            (ADR-0039 decision 10). Today the closeout still carries the
+            close authority this stage loses.
+          '''
+          link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
+        }
+      }
+
+      adjudicator = workflow "Adjudicator" {
+        #planned
+        description '''
+          Run-driven, serial, HITL. Pass 1: reviews the observations of
+          ALL runs of an item one after another, reconciles painpoints,
+          markers and notes, files follow-up items, watches the closure
+          radius, asks the operator on policy forks (park + resume) and
+          marks `merge` on the run record. Pass 2 — once the merger
+          marked `closable: enabled` — closes the item. The ONLY closer.
+          A mechanical fast path handles the trivial case without an
+          LLM call.
+        '''
+        metadata {
+          substrate "orchestration fields + queue query landed; workflow pending"
+          epic "denkhaus/work#1107"
+        }
+        link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
+
+        // --- internals (detail level, shown in the adjudicator view) ---
+
+        fast-path = stage "Mechanical fast path" {
+          #planned
+          description '''
+            The trivial case — no markers, no painpoints, empty radius —
+            is decided and closed mechanically, without an LLM call
+            (ADR-0039 decision 7).
+          '''
+        }
+
+        review-pass = stage "Review pass (pass 1)" {
+          #planned
+          description '''
+            Reviews the observations of ALL runs of the item one after
+            another; reconciles painpoints, markers and notes; files
+            follow-up items; marks merge = enabled | refused on the run
+            record.
+          '''
+        }
+
+        radius-watch = stage "Closure-radius watch" {
+          #planned
+          description '''
+            Watches the closure radius: the open work items linked to
+            the observations of the item's runs (work item ←
+            observation ← run, ADR-0037/0038).
+          '''
+          link ../../docs/adr/0037-work-item-closure-radius.md
+        }
+
+        park-resume = stage "Operator ask & park/resume" {
+          #planned
+          description '''
+            The HITL corridor: the pass runs autonomously for clear
+            cases; a true policy fork triggers an operator ask; no
+            answer within the pass parks the run and pings Slack; the
+            next pass resumes.
+          '''
+        }
+
+        closing-pass = stage "Closing pass (pass 2)" {
+          #planned
+          description '''
+            Once the merger marked closable = enabled, closes the item —
+            the ONLY closer in the system.
+          '''
+        }
+      }
+
+      merger = workflow "Merger" {
+        #evolving
+        description '''
+          Merge-marker-driven. Integrates every merge-enabled run of a
+          repo/project — serializes, merges, resolves conflicts — and
+          marks `closable` on the run record. Owns technical
+          integration, never the content verdict; parks on unresolvable
+          conflicts. Today it runs as the ADR-0031 run-PR landing path
+          (window-gated, base-first squash via `fabro pr merge`) and
+          still closes items itself; that close authority moves to the
+          adjudicator.
+        '''
+        metadata {
+          status "live as run-PR landing path; ADR-0039 rework pending"
+          code "lib/apps/fabro-cli/src/commands/pr/merge.rs + lib/apps/fabro-server/src/server/run_publish.rs"
+        }
+        link ../../docs/adr/0031-run-pr-merger-replaces-auto-merge.md
+      }
+
+      reconciler = service "Work reconciler" {
+        description '''
+          One periodic pass per project (~30 s), all directions: heals
+          the claim ledger, the tracker projection and the outbox after
+          crashes and outages; moves terminal runs to awaiting_merge or
+          release. Its outbox/reconciler discipline returns as the
+          adjudicator's fast-path reliability pattern (ADR-0039).
+        '''
+        metadata {
+          status "live"
+          code "lib/apps/fabro-server/src/server/work_reconciler.rs"
+        }
+        link ../../docs/adr/0032-central-work-item-tracker.md
+      }
+
+      dead-man-watch = service "Dead-man watch" {
+        #planned
+        description '''
+          Alarms when a gear makes no progress (ADR-0039 decision 9):
+          no adjudication pass in its window, a merger stall, a queue
+          that only grows. The alarm lands in Slack with the evidence
+          window in Rootprint — a stalled gear must never be silent.
+        '''
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wiring. Full FQNs on purpose: relationships are the coupling story of
+// ADR-0039 and should read uniformly, regardless of file scope.
+
+model {
+  // --- ticks ---------------------------------------------------------------
+  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.conductor "tick — item-driven"
+  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.adjudicator "tick — run-driven"
+  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.merger "tick — merge-marker-driven"
+
+  // --- conductor / develop -------------------------------------------------
+  fabro.orchestration.conductor -[read]-> fabro.records.work-ledger "picks the next item"
+  fabro.orchestration.conductor -[spawn]-> fabro.orchestration.develop "spawns ONE child run, waits terminal → merged"
+  fabro.orchestration.develop -[claim]-> fabro.run-substrate.work-item-surface "claims via fabro_work_next (atomic claim mutex)"
+  fabro.orchestration.develop -[uses]-> llm-providers "agent stages: plan → implement → test → review"
+  fabro.orchestration.develop -[create]-> github "opens the PR — artifact only, never a gate"
+  fabro.orchestration.develop.reporter -[report]-> fabro.run-substrate.observation-record-surface "reports facts: patch visibility, Dockerfile touches"
+  fabro.orchestration.develop -[close]-> fabro.run-substrate.work-item-surface "closeout closes its own item (pre-ADR-0039)" #retiring
+
+  // --- adjudicator ---------------------------------------------------------
+  // Edges live at the OWNING stage (single source). Views that show the
+  // adjudicator collapsed aggregate these automatically — there are no
+  // duplicate parent-level edges.
+  fabro.orchestration.adjudicator.review-pass -[review]-> fabro.records.observation-records "reviews all runs' observations, one after another"
+  fabro.orchestration.adjudicator.review-pass -[uses]-> llm-providers "the judgment call — the only LLM step in the chain"
+  fabro.orchestration.adjudicator.review-pass -[write]-> fabro.run-substrate.orchestration-mark-surface "marks merge = enabled | refused"
+  fabro.orchestration.adjudicator.review-pass -[create]-> fabro.run-substrate.work-item-surface "files follow-up items, linked to the observations (provenance)"
+  fabro.orchestration.adjudicator.fast-path -[write]-> fabro.run-substrate.orchestration-mark-surface "merge: enabled — mechanically, no LLM"
+  fabro.orchestration.adjudicator.radius-watch -[read]-> fabro.records.observation-records "radius chain: linked observations"
+  fabro.orchestration.adjudicator.radius-watch -[read]-> fabro.records.work-ledger "open items in the radius"
+  fabro.orchestration.adjudicator.park-resume -[ask]-> operator "policy ask"
+  fabro.orchestration.adjudicator.park-resume -[notify]-> slack "park ping; next pass resumes"
+  fabro.orchestration.adjudicator.closing-pass -[read]-> fabro.records.run-record "gate: closable = enabled"
+  fabro.orchestration.adjudicator.closing-pass -[close]-> fabro.run-substrate.work-item-surface "closes the item — the ONLY closer"
+
+  // --- merger --------------------------------------------------------------
+  fabro.orchestration.merger -[read]-> fabro.records.run-record "reads its queue: merge-enabled runs"
+  fabro.orchestration.merger -[write]-> fabro.run-substrate.orchestration-mark-surface "writes closable = enabled | parked" #planned
+  fabro.orchestration.merger -[integrate]-> github "integrates base-first, resolves conflicts"
+  fabro.orchestration.merger -[close]-> fabro.run-substrate.work-item-surface "lands claim + closes item (ADR-0031 form)" #retiring
+
+  // --- reconciler & watch --------------------------------------------------
+  fabro.orchestration.reconciler -[heal]-> fabro.records.work-ledger "heals ledger, drains outbox"
+  fabro.orchestration.reconciler -[heal]-> github "heals tracker projection (labels)"
+  fabro.orchestration.reconciler -[read]-> fabro.records.run-record "terminal runs → awaiting_merge | release"
+  fabro.orchestration.dead-man-watch -[read]-> fabro.records.run-record "progress per gear (verdicts advance?)"
+  fabro.orchestration.dead-man-watch -[notify]-> slack "stall alarm — evidence window in Rootprint"
+
+  // --- operator ------------------------------------------------------------
+  operator -[create]-> github "files work items (painpoints channel)"
+}

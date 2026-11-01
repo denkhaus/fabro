@@ -1,0 +1,32 @@
+// Reusable view fragments — the shared vocabulary of the views.
+// Views reference these with `global predicate <name>` instead of
+// copying include/exclude lists: a model change (new dataset, new
+// workflow, retired authority) is made ONCE here or in the model, and
+// every view picks it up.
+
+global {
+  // The orchestration plane: the three serial workflows, scheduler and
+  // reconciler. Used by the index and the datasets view.
+  predicateGroup orchestration-plane {
+    include fabro.orchestration.*
+  }
+
+  // The dataset substrate — the ONLY coupling between workflows
+  // (ADR-0039). Adding a dataset in model/records.c4 makes it appear
+  // in every view using this group.
+  predicateGroup dataset-substrate {
+    include fabro.records.*
+  }
+
+  // The actors outside Fabro: operator, forge, chat, model backends,
+  // telemetry sink.
+  predicateGroup external-forge {
+    include operator, github, slack, llm-providers, rootprint
+  }
+
+  // Target-state views hide retiring edges (the pre-ADR-0039
+  // authorities). The `today` dynamic view keeps them instead.
+  predicateGroup target-state {
+    exclude * -> * where tag is #retiring
+  }
+}

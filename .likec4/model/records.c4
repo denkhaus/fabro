@@ -1,0 +1,64 @@
+// Level 2 (data plane): the dataset substrate — the ONLY coupling
+// between workflows (ADR-0039 decision 6: dataset fields, no messaging
+// conventions).
+
+model {
+  extend fabro {
+    records = subsystem "Dataset substrate" {
+      description '''
+        Fields, not messages. Every gear derives its queue from these
+        datasets and writes its verdicts back — no gear ever talks to
+        another gear directly.
+      '''
+
+      run-record = dataset "Run record" {
+        description '''
+          The per-run dataset, including the two orchestration fields
+          with one writer each: `merge` (the adjudicator writes) and
+          `closable` (the merger writes), values
+          pending | parked | enabled | refused. Gear queues are derived:
+          latest verdict per run, ascending run id — deterministic.
+        '''
+        metadata {
+          substrate "landed — OrchestrationField, RunOrchestrationRecord, latest_verdicts_by_run"
+          code "lib/components/fabro-store/src/platform_records.rs"
+        }
+        link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
+      }
+
+      observation-records = dataset "Observation records" {
+        description '''
+          What a stage durably observed (ADR-0038): platform records of
+          genus observation, categories painpoint | note, filed per
+          project/run/stage through the fabro_observation_record tool.
+          Work items link to observations — that chain is the closure
+          radius.
+        '''
+        metadata {
+          substrate "landed"
+          code "lib/components/fabro-store/src/platform_records.rs"
+        }
+        link ../../docs/adr/0038-painpoints-are-platform-records.md
+      }
+
+      work-ledger = dataset "Work-item tracker & claim ledger" {
+        description '''
+          Server-owned claim ledger (granted → active → awaiting_merge →
+          landed, plus released) arbitrating single assignment; item
+          content lives on the tracker and is projected as labels
+          through an outbox. Derived lock: an item is locked while it
+          has an active claim whose run is not yet merged — the lock
+          span is claim to merge-complete.
+        '''
+        metadata {
+          substrate "landed"
+          code "lib/components/fabro-work/src/store.rs"
+        }
+        link ../../docs/adr/0032-central-work-item-tracker.md
+      }
+    }
+  }
+
+  // The tracker is the forge projection; the ledger is the authority.
+  fabro.records.work-ledger -[write]-> github "projects claim/run labels via outbox (TrackerProvider)"
+}

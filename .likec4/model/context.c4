@@ -1,0 +1,89 @@
+// Level 1: the Fabro system and its external actors.
+// The fabro element is refined by records.c4, orchestration.c4 and
+// run-substrate.c4 (one subsystem per file).
+
+model {
+  operator = person "Human operator" {
+    description '''
+      The human in the loop. Files work items (painpoints are the only
+      platform channel) and answers the adjudicator's policy asks; a
+      parked run waits for this actor.
+    '''
+    link ../../docs/adr/0002-painpoints-are-the-only-platform-channel.md
+  }
+
+  github = system "GitHub" {
+    description '''
+      The forge, in two roles: the work-item tracker (issues, labels,
+      states — item content is owned by the tracker, never by the
+      server) and the code host receiving the run pull requests.
+    '''
+  }
+
+  slack = system "Slack" {
+    description '''
+      Operator notifications. A parked run pings Slack; the next pass
+      resumes (ADR-0039 decision 8).
+    '''
+  }
+
+  llm-providers = system "LLM providers" {
+    description '''
+      The model backends behind every agent stage: zai, Anthropic,
+      OpenAI, Gemini and OpenAI-compatible endpoints, reached through
+      the unified fabro-llm client. The adjudicator's mechanical fast
+      path is the one orchestration stage that NEVER calls here.
+    '''
+  }
+
+  rootprint = system "Rootprint (OTel sink)" {
+    description '''
+      The log and trace platform: production telemetry flows here
+      (OpenTelemetry). The dead-man watch's alarm evidence and every
+      gear's WARN/ERROR windows live in it. INFO is not ingested.
+    '''
+  }
+
+  fabro = subsystem "Fabro" {
+    description '''
+      The line's operating system: a workflow engine (Petri) executing
+      scheduled gears over a dataset substrate. The develop run is the
+      unit of work; the adjudicator is the only closer (ADR-0039).
+    '''
+    link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
+  }
+}
+
+model {
+  extend fabro {
+    server = service "Fabro server" {
+      description '''
+        The platform host: HTTP API, the Petri engine driver, the
+        automation scheduler, the work reconciler, the per-run channel
+        endpoint and the platform-record store — one process over one
+        SQLite database. Everything in `orchestration` and every
+        capability surface executes inside it.
+      '''
+      metadata {
+        code "lib/apps/fabro-server"
+      }
+    }
+
+    web-ui = service "Web UI & operator CLI" {
+      description '''
+        The human access surfaces: the SPA (run detail with the
+        observations table and linked-item column, board radius view)
+        and the `fabro` CLI (`fabro work`, `fabro run`, `fabro ps`).
+        The operator files items, reviews parked runs and reads the
+        landscape through these doors.
+      '''
+      metadata {
+        spa "apps/fabro-web"
+      }
+    }
+  }
+
+  operator -[uses]-> fabro.web-ui "files items, reviews parked runs"
+  fabro.web-ui -[uses]-> fabro.server "API"
+  fabro.server -[write]-> rootprint "emits OpenTelemetry logs & traces"
+}
