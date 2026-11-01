@@ -141,6 +141,12 @@ const BATTERIES = [
     # only; live gaps found at filing: fork_exec_guard x2,
     # fork_structured).
     '.fabro/scripts/touchpoints-parity-fixtures.nu'
+    # likec4 landscape validation (retro 2026-11-01): the .likec4/
+    # target-landscape project must validate — a spec/model typo once
+    # reached the user before any check ran. HOST-ONLY: loudly skips
+    # where bunx or the gitignored node_modules are absent (run
+    # sandboxes); the dev-host sweep is the net.
+    '.fabro/scripts/likec4-fixtures.nu'
     # Dependency freeze pin (ADR-0027, 2026-10-09): the locked revs of the
     # GIT-pinned engine dependency repos (lithos-llm, sandbox-driver,
     # twins, daytona-sdk-rust) must equal the recorded list — a dep bump

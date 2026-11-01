@@ -19,6 +19,9 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   rewrites: two consecutive pushes once left riders behind because the
   sed batch touched six files and the hand-typed add list had four; an
   EMPTY `git status` is part of the push gate, not an afterthought).
+  A `git rm` STAGES the deletion itself: leave deleted paths out of
+  later `git add` lists — a staged deletion has no worktree file, and
+  `git add` on it fails with a pathspec error.
 - Language gate before commit (ADR-0033): re-read the staged diff —
   every written line is English. Cheap mechanical catch:
   `git diff --cached | rg 'ä|ö|ü|ß|Zweck|Regeln|Facette|Pflege|wird|nicht|muss'`.
