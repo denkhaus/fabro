@@ -79,6 +79,22 @@ pub struct RunProjection {
     /// were recorded. The bytes are in the blob table under `blob`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub artifacts:             Vec<RunArtifact>,
+    /// The adjudicator's verdict on whether the run's work may merge
+    /// (ADR-0039 orchestration field): `parked` (an operator escalation
+    /// is open), `enabled`, or `refused`. Folded from the LATEST
+    /// `run.orchestration` platform record naming the `merge` field, so
+    /// a later verdict transitions the run (parked → enabled). Absent
+    /// means `pending` — nothing adjudicated yet, no backfill needed.
+    /// The adjudicator workflow is the only writer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge:                 Option<OrchestrationVerdict>,
+    /// The merger's verdict on whether the run is closable (ADR-0039
+    /// orchestration field): `parked` (an unresolvable conflict is
+    /// escalated), `enabled`, or `refused`. Folded from the LATEST
+    /// `run.orchestration` record naming the `closable` field. Absent
+    /// means `pending`. The merger workflow is the only writer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closable:              Option<OrchestrationVerdict>,
     stages:                    HashMap<StageId, StageProjection>,
 }
 
@@ -94,6 +110,35 @@ pub struct RunArtifact {
     pub size:          u64,
     /// The blob that holds the file's bytes.
     pub blob:          BlobHash,
+}
+
+/// Which orchestration field of a run a verdict names (ADR-0039): the
+/// adjudicator's `merge` or the merger's `closable`. One writer per
+/// field — the field pairs each verdict with exactly one gear.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum OrchestrationField {
+    Merge,
+    Closable,
+}
+
+/// A gear's verdict on one orchestration field (ADR-0039). `pending`
+/// is deliberately NOT a variant: it is the absence of a verdict — no
+/// `run.orchestration` record exists for that field yet, which keeps
+/// the initial state backfill-free (a run with no verdict row is
+/// pending, not a row that says so).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, strum::Display,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum OrchestrationVerdict {
+    Parked,
+    Enabled,
+    Refused,
 }
 
 /// What a recorded observation entry is: a friction worth acting on (a
@@ -803,6 +848,8 @@ impl RunProjection {
             git_identity: None,
             pending_interviews: BTreeMap::new(),
             artifacts: Vec::new(),
+            merge: None,
+            closable: None,
             stages: HashMap::new(),
         }
     }

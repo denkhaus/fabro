@@ -89,4 +89,51 @@ Calling the tool at least once per agent stage under
 `x.observations="required"` is a presence contract — a stage that
 never called it is invalid (engine-validated beside the output
 schema). Work items link to observation records; the bird's-eye
-run-end hook files them, deduping at the link.
+run-end hook files them, deduping at the link. [The filing sentence is
+superseded by ADR-0039: the adjudicator workflow files and closes; the
+run-end hook strips.]
+
+## Orchestration fields
+
+The two coupling fields on the run record (ADR-0039), one writer
+each: `merge: pending|parked|enabled|refused` (the adjudicator
+writes) and `closable: pending|parked|enabled|refused` (the merger
+writes). Dataset fields are the ONLY coupling between the scheduler
+gears — no messaging conventions. `parked` is an operator escalation.
+
+- Not a **status enum on the item**: the verdict belongs to ONE run;
+  an item can carry several runs.
+- Not a **bool**: `false` cannot say "refused" apart from "not yet
+  decided".
+
+## Adjudicator
+
+The scheduler-driven serial workflow (ADR-0039) that reviews the
+observations of all runs one after another, files follow-up work
+items, watches the closure radius, asks the operator for policy
+decisions (park + resume), marks `merge` on the run record, and — in
+its second pass, once the merger marked `closable` — closes the work
+item. The ONLY closer; a mechanical fast path handles the trivial
+case without an LLM call.
+
+- Not the **revisor** (retired, ADR-0038): the revisor filed from
+  journal prose; the adjudicator reads observation records and
+  orchestration fields.
+- Not the **reviewer** (a stage inside the develop run judging the
+  diff): the adjudicator judges the RUN and its aftermath.
+
+## Merger
+
+The scheduler-driven workflow (ADR-0039) that integrates every
+merge-enabled run of a repo/project — serializes, merges, resolves
+conflicts — and marks `closable` on the run record. Owns technical
+integration, never the content verdict; parks (operator escalation)
+on unresolvable conflicts.
+
+## Reporter
+
+The develop run's facts-only final stage (ADR-0039): reports patch
+visibility and Dockerfile touches as observation records. Supersedes
+the closeout — the name retires with the close authority, because the
+run never closes its own item.
+

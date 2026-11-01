@@ -14224,11 +14224,36 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/PendingInterviewRecord"
+        merge:
+          oneOf:
+            - $ref: "#/components/schemas/OrchestrationVerdict"
+            - type: "null"
+          description: >
+            The adjudicator's merge verdict (ADR-0039 orchestration
+            field). Absent means pending — no verdict exists yet.
+        closable:
+          oneOf:
+            - $ref: "#/components/schemas/OrchestrationVerdict"
+            - type: "null"
+          description: >
+            The merger's closable verdict (ADR-0039 orchestration
+            field). Absent means pending — no verdict exists yet.
         stages:
           type: object
           description: Map from StageId (`node_id@visit`) to stage projection data.
           additionalProperties:
             $ref: "#/components/schemas/StageProjection"
+
+    OrchestrationVerdict:
+      type: string
+      enum: [parked, enabled, refused]
+      description: |-
+        A gear's verdict on one orchestration field of a run
+        (ADR-0039): the adjudicator writes `merge`, the merger writes
+        `closable` — one writer per field. `parked` marks an open
+        operator escalation (an adjudication policy fork or an
+        unresolvable merge conflict). `pending` is deliberately not a
+        value: it is the ABSENCE of a verdict.
 
     TodoStatus:
       type: string

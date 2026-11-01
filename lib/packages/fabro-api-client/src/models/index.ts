@@ -235,6 +235,7 @@ export * from './notification-route-settings';
 export * from './object-store-local-settings';
 export * from './object-store-s3-settings';
 export * from './object-store-settings';
+export * from './orchestration-verdict';
 export * from './paginated-api-question-list';
 export * from './paginated-history-entry-list';
 export * from './paginated-model-list';

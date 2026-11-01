@@ -266,6 +266,7 @@ models/notification-route-settings.ts
 models/object-store-local-settings.ts
 models/object-store-s3-settings.ts
 models/object-store-settings.ts
+models/orchestration-verdict.ts
 models/paginated-api-question-list.ts
 models/paginated-history-entry-list.ts
 models/paginated-model-list.ts

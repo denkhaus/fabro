@@ -19,12 +19,10 @@
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use fabro_types::RunId;
 use fabro_work::{ClaimState, TrackerProvider};
 use tokio::task::JoinHandle;
 use tokio::time::{MissedTickBehavior, interval};
 
-use crate::observation_filing;
 use crate::server::AppState;
 
 const PASS_INTERVAL: Duration = Duration::seconds(30);
@@ -163,11 +161,6 @@ async fn drain_outbox(
             .and_then(|value| value.as_str())
             .unwrap_or_default()
             .to_string();
-        let run_id: Option<RunId> = entry
-            .payload
-            .get("run_id")
-            .and_then(|value| value.as_str())
-            .and_then(|value| value.parse().ok());
         let outcome = match entry.kind.as_str() {
             "claim.projected" | "claim.cleared" if !claim_id.is_empty() => {
                 match state.work_store().claim(&claim_id).await {
@@ -191,46 +184,11 @@ async fn drain_outbox(
                     Err(error) => Err(anyhow::anyhow!(error)),
                 }
             }
-            // The run-end observation filing (ADR-0038 stage 4): the arm
-            // resolves the run's own project and tracker, so it ignores
-            // the loop's — an entry filed for another project's run is
-            // still processed exactly once, here.
-            observation_filing::OUTBOX_KIND => {
-                if let Some(run_id) = run_id {
-                    observation_filing::file_run_observations(state, &run_id)
-                        .await
-                        .map(|outcome| {
-                            // The filing decision is audit-relevant, not a
-                            // failure: which items a run filed, which it
-                            // linked, and WHY it filed nothing all belong
-                            // in the production log.
-                            match outcome {
-                                observation_filing::FilingOutcome::Filed {
-                                    items,
-                                    linked_existing,
-                                } => tracing::info!(
-                                    run_id = %run_id,
-                                    items,
-                                    linked_existing,
-                                    "observation filing filed items"
-                                ),
-                                observation_filing::FilingOutcome::Nothing { reason } => {
-                                    tracing::info!(
-                                        run_id = %run_id,
-                                        reason,
-                                        "observation filing completed with nothing to file"
-                                    );
-                                }
-                            }
-                        })
-                } else {
-                    tracing::warn!(
-                        id = %entry.id,
-                        "observation filing entry carries no run_id; completing"
-                    );
-                    Ok(())
-                }
-            }
+            // The run-end observation filing arm is GONE (ADR-0039: the
+            // hook stripped before any next window; the adjudicator
+            // owns filing). Entries of its kind still queued in a
+            // production database complete through the unknown-kind
+            // arm below, with a warning.
             other => {
                 tracing::warn!(
                     kind = other,
@@ -248,8 +206,8 @@ async fn drain_outbox(
             Err(error) => {
                 let retry_at = Utc::now() + Duration::seconds((entry.attempts + 1) * 60);
                 // The full chain, not the outermost context: a nested
-                // failure (an LLM call inside a filing pass) must name its
-                // cause in the outbox's durable health view.
+                // failure must name its cause in the outbox's durable
+                // health view.
                 let chain = error
                     .chain()
                     .map(ToString::to_string)
@@ -258,21 +216,6 @@ async fn drain_outbox(
                 if let Err(fail_error) = state.work_store().fail(&entry.id, &chain, retry_at).await
                 {
                     tracing::warn!(error = %fail_error, "work reconciler: outbox fail bookkeeping");
-                }
-                // The filing hook's own friction rides the same channel:
-                // from the second failed attempt on, one positionless
-                // painpoint names the failing pipeline on the run itself
-                // (ADR-0038 stage 4) — the retry re-reads and files it.
-                if entry.kind == observation_filing::OUTBOX_KIND && entry.attempts >= 1 {
-                    if let Some(run_id) = run_id {
-                        observation_filing::record_friction_once(
-                            state,
-                            run_id,
-                            &entry.id,
-                            &error.to_string(),
-                        )
-                        .await;
-                    }
                 }
             }
         }

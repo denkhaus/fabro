@@ -146,9 +146,9 @@ pub use run_intent::{
 };
 pub use run_projection::{
     CURRENT_SEED_ID_CONTEXT_KEY, CheckpointRecord, ForkOrigin, ObservationCategory,
-    PendingInterviewRecord, RunArtifact, RunProjection, StageContextWindow,
-    StageContextWindowUnavailableReason, StageInferenceProjection, StageModelUsage,
-    StageObservation, StageProjection, StageToolBatchProjection, first_event_seq,
+    OrchestrationField, OrchestrationVerdict, PendingInterviewRecord, RunArtifact, RunProjection,
+    StageContextWindow, StageContextWindowUnavailableReason, StageInferenceProjection,
+    StageModelUsage, StageObservation, StageProjection, StageToolBatchProjection, first_event_seq,
 };
 pub use run_sandbox::{
     RunSandbox, RunSandboxFailure, RunSandboxInstance, RunSandboxKind, RunSandboxPlan,

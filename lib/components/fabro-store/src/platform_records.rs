@@ -24,11 +24,14 @@
 //! kind), so the record and the effect share one identity and a retry after
 //! a crash finds the effect already done.
 
+use std::collections::BTreeMap;
+use std::str::FromStr as _;
 use std::sync::Arc;
 
 use fabro_types::{
-    BlobHash, DiffSummary, GitIdentity, PairId, PairTarget, Principal, PullRequestCreationId,
-    PullRequestLink, RunControlAction, RunId, RunNoticeLevel, RunSpec, RunStatus,
+    BlobHash, DiffSummary, GitIdentity, OrchestrationField, OrchestrationVerdict, PairId,
+    PairTarget, Principal, PullRequestCreationId, PullRequestLink, RunControlAction, RunId,
+    RunNoticeLevel, RunSpec, RunStatus,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnection, SqliteRow};
@@ -159,6 +162,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "observation.recorded")]
     #[strum(serialize = "observation.recorded")]
     ObservationRecorded,
+    #[serde(rename = "run.orchestration")]
+    #[strum(serialize = "run.orchestration")]
+    RunOrchestration,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -245,6 +251,13 @@ pub enum PlatformRecord {
     /// `(execution, firing)` pair the recording session carried.
     #[serde(rename = "observation.recorded")]
     ObservationRecorded(ObservationRecordedRecord),
+    /// One gear's verdict on one orchestration field of the run
+    /// (ADR-0039): the adjudicator writes `merge`, the merger writes
+    /// `closable` — one writer per field. The projection folds the
+    /// LATEST record per field, so a later verdict transitions the run
+    /// (parked → enabled); absent records mean `pending`.
+    #[serde(rename = "run.orchestration")]
+    RunOrchestration(RunOrchestrationRecord),
 }
 
 impl PlatformRecord {
@@ -276,6 +289,7 @@ impl PlatformRecord {
             Self::WorkClaimed(_) => PlatformRecordKind::WorkClaimed,
             Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
             Self::ObservationRecorded(_) => PlatformRecordKind::ObservationRecorded,
+            Self::RunOrchestration(_) => PlatformRecordKind::RunOrchestration,
         }
     }
 
@@ -308,7 +322,8 @@ impl PlatformRecord {
             | Self::RunBranchPublished(_)
             | Self::WorkClaimed(_)
             | Self::WorkReleased(_)
-            | Self::ObservationRecorded(_) => None,
+            | Self::ObservationRecorded(_)
+            | Self::RunOrchestration(_) => None,
         }
     }
 }
@@ -441,6 +456,25 @@ pub struct ObservationRecordedRecord {
     pub execution: u64,
     /// The Petri firing the recording stage was.
     pub firing:    u64,
+}
+
+/// One verdict on one orchestration field (ADR-0039): which field the
+/// verdict names, the verdict itself, and the run that wrote it (the
+/// adjudicator or merger workflow run; absent for a server-side or
+/// operator write). Identity is the record's `(run_id, seq)`;
+/// `seq` order decides which verdict is current — the projection folds
+/// the latest per field.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunOrchestrationRecord {
+    /// Which field this verdict applies to: `merge` (the adjudicator's)
+    /// or `closable` (the merger's).
+    pub field:   OrchestrationField,
+    /// The verdict. No `pending` variant: pending is the absence of a
+    /// record for the field.
+    pub verdict: OrchestrationVerdict,
+    /// The gear run that wrote the verdict, when a workflow run did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_run:  Option<RunId>,
 }
 
 /// How long one observation entry may be — enforced at the append
@@ -798,6 +832,43 @@ impl PlatformRecordStore {
                 .await?;
         Ok(head.and_then(|head| u64::try_from(head).ok()))
     }
+
+    /// The LATEST verdict each run carries on one orchestration field
+    /// (ADR-0039), ascending by run id — the substrate query the gears
+    /// derive their queues from: a run carrying `Enabled` on `merge` is
+    /// the merger's queue, a run ABSENT from the `merge` map is
+    /// `pending` (the adjudicator's first-pass queue), and `Parked`
+    /// marks an open operator escalation. Reads all
+    /// `run.orchestration` records and groups per run in Rust — the
+    /// field and verdict live in the record payload, and duplicating
+    /// their JSON shape into SQL would drift from the serde form.
+    pub async fn latest_verdicts_by_run(
+        &self,
+        field: OrchestrationField,
+    ) -> Result<Vec<(RunId, OrchestrationVerdict)>> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT run_id, record_json FROM platform_records \
+             WHERE kind = ? ORDER BY run_id, seq",
+        )
+        .bind(PlatformRecordKind::RunOrchestration.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        let mut latest: BTreeMap<RunId, OrchestrationVerdict> = BTreeMap::new();
+        for (run_id, record_json) in rows {
+            let record: PlatformRecord = serde_json::from_str(&record_json)?;
+            let PlatformRecord::RunOrchestration(record) = record else {
+                continue;
+            };
+            if record.field == field {
+                latest.insert(
+                    RunId::from_str(&run_id)
+                        .map_err(|_| Error::InvalidStoredRunId { value: run_id })?,
+                    record.verdict,
+                );
+            }
+        }
+        Ok(latest.into_iter().collect())
+    }
 }
 
 fn decode_row(row: &SqliteRow) -> Result<StoredPlatformRecord> {
@@ -891,6 +962,13 @@ mod tests {
             }),
             PlatformRecordKind::RunArchived => PlatformRecord::RunArchived,
             PlatformRecordKind::RunUnarchived => PlatformRecord::RunUnarchived,
+            PlatformRecordKind::RunOrchestration => {
+                PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Merge,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  Some(fixtures::RUN_2),
+                })
+            }
             PlatformRecordKind::ObservationRecorded => {
                 PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
                     category:  fabro_types::ObservationCategory::Painpoint,
@@ -1122,5 +1200,67 @@ mod tests {
                 .expect("an empty head reads"),
             None
         );
+    }
+
+    /// The gear substrate query (ADR-0039): `latest_verdicts_by_run`
+    /// keeps the LATEST verdict per run per FIELD — a parked → enabled
+    /// transition overwrites, the two fields stay independent, and a
+    /// run with no verdict on a field is absent (pending needs no
+    /// row). Ascending by run id so a gear's queue is deterministic.
+    #[tokio::test]
+    async fn latest_verdicts_by_run_keeps_the_latest_per_field() {
+        use OrchestrationVerdict as Verdict;
+
+        let store = store();
+        let run_a = RunId::new();
+        let run_b = RunId::new();
+        let mark = |field, verdict, by_run| {
+            PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                field,
+                verdict,
+                by_run,
+            })
+        };
+        let merge = OrchestrationField::Merge;
+        let closable = OrchestrationField::Closable;
+
+        // run_a: the escalation resolves — parked then enabled on merge.
+        store
+            .append(&run_a, &mark(merge, Verdict::Parked, None), None)
+            .await
+            .expect("the parked verdict stores");
+        store
+            .append(&run_a, &mark(merge, Verdict::Enabled, Some(run_b)), None)
+            .await
+            .expect("the enabled verdict stores");
+        // run_b: merge refused, closable enabled — independent fields.
+        store
+            .append(&run_b, &mark(merge, Verdict::Refused, None), None)
+            .await
+            .expect("the refused verdict stores");
+        store
+            .append(&run_b, &mark(closable, Verdict::Enabled, None), None)
+            .await
+            .expect("the closable verdict stores");
+
+        let merge_verdicts = store
+            .latest_verdicts_by_run(merge)
+            .await
+            .expect("the merge verdicts read");
+        let want = if run_a < run_b {
+            vec![(run_a, Verdict::Enabled), (run_b, Verdict::Refused)]
+        } else {
+            vec![(run_b, Verdict::Refused), (run_a, Verdict::Enabled)]
+        };
+        assert_eq!(
+            merge_verdicts, want,
+            "the LATEST merge verdict wins per run"
+        );
+
+        let closable_verdicts = store
+            .latest_verdicts_by_run(closable)
+            .await
+            .expect("the closable verdicts read");
+        assert_eq!(closable_verdicts, vec![(run_b, Verdict::Enabled)]);
     }
 }

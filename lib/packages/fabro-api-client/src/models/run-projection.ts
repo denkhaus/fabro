@@ -27,6 +27,9 @@ import type { ForkOrigin } from './fork-origin';
 import type { GitIdentity } from './git-identity';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { OrchestrationVerdict } from './orchestration-verdict';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { PendingInterviewRecord } from './pending-interview-record';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -92,6 +95,8 @@ export interface RunProjection {
     'forked_from'?: ForkOrigin | null;
     'git_identity'?: GitIdentity | null;
     'pending_interviews': { [key: string]: PendingInterviewRecord; };
+    'merge'?: OrchestrationVerdict | null;
+    'closable'?: OrchestrationVerdict | null;
     /**
      * Map from StageId (`node_id@visit`) to stage projection data.
      */

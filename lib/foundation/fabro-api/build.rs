@@ -633,6 +633,11 @@ fn main() {
         ("ModelCosts", "fabro_types::ModelCosts", &[]),
         ("ModelTestMode", "fabro_types::ModelTestMode", &[]),
         ("RunProjection", "fabro_types::RunProjection", &[]),
+        (
+            "OrchestrationVerdict",
+            "fabro_types::OrchestrationVerdict",
+            &[],
+        ),
         ("PairId", "fabro_types::PairId", &[]),
         ("PairMessageId", "fabro_types::PairMessageId", &[]),
         ("PairStatus", "fabro_types::PairStatus", &[]),

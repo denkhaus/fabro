@@ -10,9 +10,9 @@ use fabro_store::platform_records::{
 };
 use fabro_types::{
     CheckpointRecord as ViewCheckpoint, Conclusion, FailureCategory, FailureDetail, FailureReason,
-    PullRequestCreation, PullRequestCreationStatus, PullRequestLink, RunApproval, RunApprovalState,
-    RunArtifact, RunControlAction, RunDiff, RunFailure, RunProjection, RunSandbox, RunStatus,
-    StageObservation, StageOutcome, format_blob_ref,
+    OrchestrationField, PullRequestCreation, PullRequestCreationStatus, PullRequestLink,
+    RunApproval, RunApprovalState, RunArtifact, RunControlAction, RunDiff, RunFailure,
+    RunProjection, RunSandbox, RunStatus, StageObservation, StageOutcome, format_blob_ref,
 };
 use tracing::debug;
 
@@ -153,6 +153,17 @@ impl RunView {
                         category: record.category,
                         text:     record.text.clone(),
                     });
+                }
+            }
+            PlatformRecord::RunOrchestration(record) => {
+                // ADR-0039 orchestration field: one writer per field —
+                // the adjudicator names `merge`, the merger names
+                // `closable`. The stream is `seq`-ordered, so a later
+                // record for the same field transitions the run
+                // (parked → enabled) by simply overwriting the fold.
+                match record.field {
+                    OrchestrationField::Merge => projection.merge = Some(record.verdict),
+                    OrchestrationField::Closable => projection.closable = Some(record.verdict),
                 }
             }
             PlatformRecord::RunDiff(record) => {

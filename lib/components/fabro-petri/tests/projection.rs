@@ -28,12 +28,13 @@ use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::{SqliteRunStore, providers, test_support as petri_support};
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordStore, RunCreatedRecord,
-    RunLifecycleKind, RunLifecycleRecord, StagePosition,
+    RunLifecycleKind, RunLifecycleRecord, RunOrchestrationRecord, StagePosition,
 };
 use fabro_store::{BlobStore, test_support};
 use fabro_types::{
-    BlobHash, BlockedReason, FailureReason, PetriAdmission, PetriGraphRef, RunId, RunStatus,
-    StageHandler, StageId, StageState, test_support as types_support,
+    BlobHash, BlockedReason, FailureReason, OrchestrationField, OrchestrationVerdict,
+    PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler, StageId, StageState,
+    test_support as types_support,
 };
 use petri_execution::host::{self, HostRun};
 use petri_frontend_fabro::Fabro;
@@ -656,6 +657,72 @@ async fn an_observation_record_folds_onto_its_stage() {
         }],
         "the entry folds with its record seq; the orphan does not"
     );
+}
+
+/// An `run.orchestration` platform record folds onto the run's
+/// orchestration fields (ADR-0039): the latest record per field wins —
+/// a later verdict TRANSITIONS the run (parked → enabled) — each field
+/// folds independently, and a field with no record stays absent
+/// (`pending` needs no backfill row).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn orchestration_verdicts_fold_latest_per_field() {
+    let scenario = command_scenario().await;
+    let projector = run_live(&scenario).await;
+    let store = PlatformRecordStore::new(scenario.pool.clone());
+
+    let mark = |field, verdict| {
+        PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+            field,
+            verdict,
+            by_run: Some(scenario.run_id),
+        })
+    };
+
+    // The adjudicator parks the merge verdict (an operator escalation
+    // is open); closable has no record yet.
+    store
+        .append(
+            &scenario.run_id,
+            &mark(OrchestrationField::Merge, OrchestrationVerdict::Parked),
+            None,
+        )
+        .await
+        .expect("the parked merge verdict stores");
+    projector.signal(scenario.run_id);
+    projector.settle(scenario.run_id).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(stored.merge, Some(OrchestrationVerdict::Parked));
+    assert_eq!(stored.closable, None, "no closable record means pending");
+
+    // The adjudicator resolves the escalation: the LATER merge record
+    // transitions the field; the merger enables closable beside it.
+    store
+        .append(
+            &scenario.run_id,
+            &mark(OrchestrationField::Merge, OrchestrationVerdict::Enabled),
+            None,
+        )
+        .await
+        .expect("the enabled merge verdict stores");
+    store
+        .append(
+            &scenario.run_id,
+            &mark(OrchestrationField::Closable, OrchestrationVerdict::Enabled),
+            None,
+        )
+        .await
+        .expect("the enabled closable verdict stores");
+    projector.signal(scenario.run_id);
+    projector.settle(scenario.run_id).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(stored.merge, Some(OrchestrationVerdict::Enabled));
+    assert_eq!(stored.closable, Some(OrchestrationVerdict::Enabled));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
