@@ -53,6 +53,7 @@ fn help() {
       automations  Manage server automations (alias: auto)
       projects     Manage the server's work-project registry
       work         Read and write work items and read their claims (ADR-0032)
+      observation  Record stage observations (the script-stage door, ADR-0038)
       variable     Manage server-owned variables
       settings     Inspect effective settings
       workflow     Workflow operations

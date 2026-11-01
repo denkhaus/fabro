@@ -1489,6 +1489,8 @@ pub(crate) enum Commands {
     Projects(ProjectsNamespace),
     /// Read and write work items and read their claims (ADR-0032)
     Work(WorkNamespace),
+    /// Record stage observations (the script-stage door, ADR-0038)
+    Observation(ObservationNamespace),
     /// Manage server-owned variables
     Variable(VariableNamespace),
     /// Inspect effective settings
@@ -1624,6 +1626,9 @@ impl Commands {
                 WorkCommand::Link(_) => "work link",
                 WorkCommand::Unlink(_) => "work unlink",
                 WorkCommand::Claims(_) => "work claims",
+            },
+            Self::Observation(ns) => match &ns.command {
+                ObservationCommand::Record(_) => "observation record",
             },
             Self::Automations(ns) => match &ns.command {
                 AutomationsCommand::List(_) => "automations list",
@@ -2148,6 +2153,78 @@ pub(crate) struct WorkNamespace {
 
     #[command(subcommand)]
     pub(crate) command: WorkCommand,
+}
+
+/// The observation surface's script-stage door (ADR-0038/0039,
+/// denkhaus/work#1107 stage C): the CLI twin of the
+/// `fabro_observation_record` agent tool — one endpoint, one
+/// authorization, the tool's validation verbatim. A script stage's
+/// identity comes from the engine-bound environment; flags override.
+#[derive(Args)]
+pub(crate) struct ObservationNamespace {
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+
+    #[command(subcommand)]
+    pub(crate) command: ObservationCommand,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ObservationCommand {
+    /// Record one observation for a run from a workflow stage
+    Record(ObservationRecordArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct ObservationRecordArgs {
+    /// Whether this entry is a painpoint (friction worth acting on) or a
+    /// note (context worth keeping, including the explicit
+    /// "nothing durable to record" empty entry)
+    #[arg(long)]
+    pub(crate) category: ObservationCategoryArg,
+
+    /// The entry as the stage observed it: one durable thought, trimmed
+    /// and non-blank, at most 2000 characters
+    #[arg(long)]
+    pub(crate) text: String,
+
+    /// The run to record for; defaults to the engine-bound FABRO_RUN_ID
+    /// of a workflow stage's script
+    #[arg(long)]
+    pub(crate) run_id: Option<String>,
+
+    /// The Petri execution of the recording stage; defaults to the
+    /// engine-bound FABRO_EXECUTION (a stage position is both halves:
+    /// --execution with --firing)
+    #[arg(long)]
+    pub(crate) execution: Option<u64>,
+
+    /// The Petri firing of the recording stage; defaults to the
+    /// engine-bound FABRO_FIRING (a stage position is both halves:
+    /// --firing with --execution)
+    #[arg(long)]
+    pub(crate) firing: Option<u64>,
+}
+
+/// The category as the CLI offers it, mirroring the agent tool's schema
+/// one to one (the words the presence contract teaches).
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub(crate) enum ObservationCategoryArg {
+    /// A friction worth acting on: something that slowed this stage down
+    /// or will slow the next one
+    Painpoint,
+    /// Context worth keeping without an action demand — including the
+    /// explicit "nothing durable to record" empty entry
+    Note,
+}
+
+impl From<ObservationCategoryArg> for fabro_tool::FabroObservationCategory {
+    fn from(category: ObservationCategoryArg) -> Self {
+        match category {
+            ObservationCategoryArg::Painpoint => Self::Painpoint,
+            ObservationCategoryArg::Note => Self::Note,
+        }
+    }
 }
 
 /// The work-item facade (ADR-0032 stage 1b): after the cutover this is the

@@ -11,6 +11,7 @@ pub(crate) mod graph;
 pub(crate) mod install;
 pub(crate) mod mcp;
 pub(crate) mod model;
+pub(crate) mod observation;
 pub(crate) mod parent;
 pub(crate) mod pr;
 pub(crate) mod preflight;

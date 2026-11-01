@@ -10,8 +10,17 @@ const CLOSEOUT = "closeout.nu"
 const SCRIPTS_DIR = (path self | path dirname)
 source $CLOSEOUT
 
+# nu 0.115 catches `exit` inside `try` (the e2e arms live in one), so a
+# bare exit-1 fail would print FAIL and still end green — the battery
+# reads exit codes. Every fail also lands in this marker file; the final
+# gate turns any recorded fail into a real non-zero exit. The path rides
+# the environment because a def cannot close over a runtime `let` (and
+# mktemp is not a parse-time command).
+load-env {CLOSEOUT_SMOKE_FAIL_LOG: (mktemp -t closeout-smoke-fails.XXXXXX)}
+
 def fail [what: string]: nothing -> nothing {
     print -e $"closeout-smoke: FAIL — ($what)"
+    $"($what)\n" | save --append $env.CLOSEOUT_SMOKE_FAIL_LOG
     exit 1
 }
 
@@ -321,6 +330,58 @@ if ($eft | str length) > 140 {
     fail "exemption-title unbounded excerpt"
 }
 
+# --- Reporter facts (ADR-0039 stage C, denkhaus/work#1107) --------------
+# The trigger-based category rule (grilled): a category encodes whether a
+# fact needs a DECISION, never which decision — painpoints and markers
+# force the adjudicator's agent pass, notes never trigger. Visibility
+# NOT visible is the fabro-02c4 class (as a note the guard would erode);
+# visible is context. A DEGRADED check (tooling failure) is a painpoint
+# too: the fact must never assert a verdict the check never established,
+# and an undetermined verdict on an about-to-close item needs the
+# adjudicator's eye. A Dockerfile touch always has an action pending
+# (the image rebuild, fabro-6f6e).
+let vf_note = (visibility-fact "visible" "denkhaus/work#1" "abc1234")
+if $vf_note.category != "note" {
+    fail $"visible demand must be a note: ($vf_note | to json -r)"
+}
+if not ($vf_note.text | str contains "abc1234") {
+    fail $"the visibility note must name the diff base: ($vf_note.text)"
+}
+let vf_painpoint = (visibility-fact "not-visible" "denkhaus/work#1" "abc1234")
+if $vf_painpoint.category != "painpoint" {
+    fail $"NOT-visible demand must be a painpoint (fabro-02c4): ($vf_painpoint | to json -r)"
+}
+if not ($vf_painpoint.text | str contains "NOT visible") {
+    fail $"the visibility painpoint must say what the diff shows: ($vf_painpoint.text)"
+}
+let vf_degraded = (visibility-fact "degraded" "denkhaus/work#1" "abc1234")
+if $vf_degraded.category != "painpoint" {
+    fail $"a degraded check must be a painpoint: ($vf_degraded | to json -r)"
+}
+if not ($vf_degraded.text | str contains "not be determined") {
+    fail $"the degraded fact must say the verdict was never established: ($vf_degraded.text)"
+}
+if $vf_note.text == $vf_painpoint.text {
+    fail "the two visibility verdicts must read differently"
+}
+
+# The Dockerfile fact exists only on hits (no empty-entry noise): a hit
+# is a painpoint naming the paths and the inert-until-rebuild reason.
+if (dockerfile-fact []) != null {
+    fail "no Dockerfile touch must record no fact"
+}
+let df_hit = (dockerfile-fact [".fabro/Dockerfile.toolchain" "Dockerfile"])
+if $df_hit.category != "painpoint" {
+    fail $"a Dockerfile touch must be a painpoint: ($df_hit | to json -r)"
+}
+if not ($df_hit.text | str contains ".fabro/Dockerfile.toolchain") {
+    fail $"the Dockerfile fact must name the paths: ($df_hit.text)"
+}
+if not ($df_hit.text | str contains "INERT") {
+    fail $"the Dockerfile fact must name the inert-until-rebuild reason: ($df_hit.text)"
+}
+
+
 # --- Direct work-item mode through the channel shim (denkhaus/work#990) --
 # The full-script path IS the pin: a temp git repo (deterministic diff
 # for the PARK gate), a shim state file, a fixture journal — and the
@@ -378,8 +439,21 @@ git config user.email smoke@localhost
         fail $"PARK arm must print the park note: ($park_run.stdout | str substring 0..200)"
     }
     let park_state_after = (open --raw $park_state | from json)
-    if (($park_state_after.log | where {|e| $e.argv.1 != "show"} | length) != 0) {
-        fail "PARK arm must not mutate the tracker (only the title show is allowed)"
+    if (($park_state_after.log | where {|e| $e.argv.1 not-in ["show" "record"]} | length) != 0) {
+        fail "PARK arm must not mutate the tracker (title show and fact records only)"
+    }
+    # The parked run still carries its verdict: exactly one fact, recorded
+    # BEFORE the park gate, and a NOT-visible demand is the painpoint the
+    # trigger rule demands (fabro-02c4 — as a note the guard would erode).
+    let park_facts = ($park_state_after.log | where {|e| $e.argv.0 == "observation"})
+    if ($park_facts | length) != 1 {
+        fail $"PARK arm must record exactly the visibility fact: ($park_facts | to json -r)"
+    }
+    if $park_facts.0.flags.category != "painpoint" {
+        fail $"a parked run's visibility fact is a painpoint: ($park_facts.0.flags | to json -r)"
+    }
+    if not ($park_facts.0.flags.text | str contains "NOT visible") {
+        fail $"the parked run's fact says what the diff shows: ($park_facts.0.flags.text)"
     }
     if (($park_state_after.items | where state == "open") | length) != 1 {
         fail "PARK arm must leave the item open"
@@ -434,6 +508,17 @@ git config user.email smoke@localhost
         if ($f.body | is-empty) { fail "a filed item lost its body (stdin transport broken)" }
     }
 
+    # The reporter's fact rides the same run: a visible demand records as
+    # a NOTE (the trigger rule — context, nothing to decide), before the
+    # sweeps and the close.
+    let happy_facts = ($happy_after.log | where {|e| $e.argv.0 == "observation"})
+    if ($happy_facts | length) != 1 {
+        fail $"happy path must record exactly the visibility note: ($happy_facts | to json -r)"
+    }
+    if $happy_facts.0.flags.category != "note" {
+        fail $"a visible demand records as a note: ($happy_facts.0.flags | to json -r)"
+    }
+
     # (c) Dedupe arm: a state already carrying the finding's title -> the
     # sweep skips it, exactly one NEW filing lands.
     let dedupe_state = ($repo | path join 'dedupe-state.json')
@@ -486,24 +571,68 @@ git config user.email smoke@localhost
 
     # The real-parser argv pin (run 01M60NX9W7N65DEPXYN09CE9BR lost its
     # deferred-action filing to this): the work shim is position-blind
-    # (nu binds declared flags wherever they appear), so the create argv
-    # is pinned by driving closeout.nu END TO END with the REAL fabro
-    # binary against a dead server — the park gate degrades open, the
-    # dedupe degrades off, the sweeps still fire, and a clap parse error
-    # ('unexpected argument', the pre-fix --project-before-the-verb
-    # shape) is distinguishable from the expected transport failure.
+    # (nu binds declared flags wherever they appear), so every outbound
+    # argv is pinned by driving the REAL fabro binary against a dead
+    # server — a clap parse error ('unexpected argument') is
+    # distinguishable from the expected transport failure. Since the
+    # reporter's fact made the closeout HARD (a failed record fails the
+    # stage, user decision 2026-11-01), a dead-server closeout run stops
+    # at the FIRST fact and never reaches the work verbs — so the argv
+    # shapes drive the binary directly: the fact call through the
+    # closeout itself, the work verbs as the four shapes the shim log
+    # above proves the closeout emits (the happy arm's log is the
+    # cross-check).
     do {
-        let dead_env = {FABRO_BIN: (which fabro | get 0.path), FABRO_SERVER: "http://127.0.0.1:1"}
-        let parse_run = (do {
-            with-env $dead_env {
+        # The fact call needs a binary that HAS the verb: prefer the tree
+        # build (the battery host builds it before the quality gate), fall
+        # back to whatever `fabro` resolves to. The verb-presence check is
+        # part of the pin — an installed CLI that predates the verb names
+        # itself (the fork.26/fork.27 skew class).
+        let tree_bin = ($SCRIPTS_DIR | path join '../../../..' 'target' 'debug' 'fabro')
+        let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
+        let dead_server = "http://127.0.0.1:1"
+        # the fact call, exactly as the closeout emits it (facts fire
+        # first, so this is the one argv a dead-server closeout run
+        # reaches)
+        let fact_run = (do {
+            with-env {FABRO_BIN: $fabro_bin, FABRO_SERVER: $dead_server} {
                 echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
             }
         } | complete)
-        let combined = ($parse_run.stdout + $parse_run.stderr)
-        if ($combined | str contains 'unexpected argument') {
-            fail $"an outbound work argv drifted out of the real parser's grammar: ($combined | str substring 0..240)"
+        let fact_combined = ($fact_run.stdout + $fact_run.stderr)
+        if ($fact_combined | str contains 'unexpected argument') {
+            fail $"the observation argv drifted out of the real parser's grammar: ($fact_combined | str substring 0..240)"
         }
-        print 'ok: every outbound work argv parses against the real CLI grammar'
+        if ($fact_combined | str contains 'unrecognized subcommand') {
+            fail $"the fact arm's fabro binary predates the observation verb — build the tree CLI \(cargo build -p fabro-cli\) or fix PATH: ($fact_combined | str substring 0..240)"
+        }
+        if $fact_run.exit_code != 1 {
+            fail $"a failed fact record must fail the stage (exit 1): ($fact_combined | str substring 0..240)"
+        }
+        # the four work verb shapes, driven directly against the dead
+        # server: parse errors are clap's, everything else is transport
+        let work_shapes = [
+            [work --server $dead_server show --project fabro "denkhaus/work#1" --json]
+            [work --server $dead_server list --project fabro --label "residual"]
+            [work --server $dead_server close --project fabro "denkhaus/work#1" --reason "r"]
+        ]
+        for shape in $work_shapes {
+            let run = (do { ^$fabro_bin ...$shape } | complete)
+            let combined = ($run.stdout + $run.stderr)
+            if ($combined | str contains 'unexpected argument') {
+                fail $"a work argv drifted out of the real parser's grammar: ($combined | str substring 0..240)"
+            }
+        }
+        # the create shape (the historically buggy one, run
+        # 01M60NX9W7N65DEPXYN09CE9BR) carries its body on stdin
+        let create_run = (do {
+            "body" | ^$fabro_bin work --server $dead_server create --project fabro --title "t" --body-file - --type task --label "residual"
+        } | complete)
+        let create_combined = ($create_run.stdout + $create_run.stderr)
+        if ($create_combined | str contains 'unexpected argument') {
+            fail $"the create argv drifted out of the real parser's grammar: ($create_combined | str substring 0..240)"
+        }
+        print 'ok: every outbound argv parses against the real CLI grammar'
     }
 } finally {
     # fail-exits bypass this (nu cannot catch exit); mktemp -t keeps any
@@ -512,6 +641,12 @@ git config user.email smoke@localhost
     rm -rf $repo
 }
 
+# The fail gate (see the marker note above): a fail inside the e2e try
+# printed and was caught — the marker file is what the battery reads.
+if ((try { open --raw $env.CLOSEOUT_SMOKE_FAIL_LOG } catch { '' }) | str trim | is-not-empty) {
+    exit 1
+}
+rm -f $env.CLOSEOUT_SMOKE_FAIL_LOG
 print "closeout-smoke: ok — sweep logic plus the direct work-item arms through the channel shim (park, filings, dedupe, close, negatives)"
 
 

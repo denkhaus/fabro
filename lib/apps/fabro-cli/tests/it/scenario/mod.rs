@@ -8,6 +8,7 @@ mod artifacts;
 mod auth;
 mod exec;
 mod lifecycle;
+mod observation_cli;
 mod petri;
 mod petri_controls;
 mod petri_docker;

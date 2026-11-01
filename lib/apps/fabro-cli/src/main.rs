@@ -410,6 +410,9 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
             Commands::Work(ns) => {
                 commands::work::dispatch(ns, &base_ctx).await?;
             }
+            Commands::Observation(ns) => {
+                commands::observation::dispatch(ns, &base_ctx).await?;
+            }
             Commands::Variable(ns) => {
                 commands::variable::dispatch(ns, &base_ctx).await?;
             }

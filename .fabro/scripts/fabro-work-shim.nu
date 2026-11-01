@@ -53,25 +53,38 @@ def main [
     --priority: string,
     --lane: string,
     --limit: string,
+    --category: string,           # the observation door (ADR-0039 stage C)
+    --text: string,
     --json,
     ...argv: string
 ]: nothing -> nothing {
     let p = (state-path)
     let stdin_text = (cat | str join)
     let s = (load-state $p)
-    let flags = {server: $server, project: $project, query: $query, title: $title, itemType: $type, reason: $reason, bodyFile: $body_file, label: $label, priority: $priority, lane: $lane, limit: $limit, json: $json}
+    let flags = {server: $server, project: $project, query: $query, title: $title, itemType: $type, reason: $reason, bodyFile: $body_file, label: $label, priority: $priority, lane: $lane, limit: $limit, category: $category, text: $text, json: $json}
     let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
     save-state $p $logged
 
     # $argv keeps the subcommand chain and the selector positional.
-    if (($argv | length) < 2) or ($argv.0 != "work") {
-        print -e $"fabro-work-shim: expected 'work <subcommand>', got: ($argv | str join ' ')"
+    if ($argv | length) < 2 {
+        print -e $"fabro-work-shim: expected '<facade> <subcommand>', got: ($argv | str join ' ')"
         exit 2
     }
-    let sub = $argv.1
-    let positional = ($argv | skip 2 | get -o 0 | default '')
 
-    match $sub {
+    match [$argv.0 $argv.1] {
+        ["observation" "record"] => {
+            # The observation CLI door's fake (ADR-0039 stage C): one seq
+            # per call over the state's observations, the CLI's own
+            # success line shape ("note recorded at seq 3"). upsert: the
+            # column arrives with the first record, older states lack it.
+            let seen = ($logged | get -o observations | default [])
+            let next = ($seen | length) + 1
+            save-state $p ($logged | upsert observations ($seen | append {category: $category, text: $text}))
+            print $"($category) recorded at seq ($next)"
+        }
+        ["work" $sub] => {
+            let positional = ($argv | skip 2 | get -o 0 | default '')
+            match $sub {
         "show" => {
             let item = ($logged.items | where {|it| $it.itemKey == $positional} | get -o 0 | default null)
             if $item == null {
@@ -111,6 +124,12 @@ def main [
         }
         _ => {
             print -e $"fabro-work-shim: unsupported subcommand '($sub)'"
+            exit 2
+        }
+        }
+        }
+        _ => {
+            print -e $"fabro-work-shim: unsupported facade '($argv.0)'"
             exit 2
         }
     }

@@ -118,15 +118,72 @@ def run-base []: nothing -> record<base: string, short: string, grounded: bool> 
 # Prints the warning to BOTH stderr and stdout (both are captured into
 # the stage journal / run output); never blocks the close.
 def warn-dockerfile-diff []: nothing -> nothing {
-    let base = (run-base)
-    let res = (do { git diff --name-only $base.base } | complete)
-    if $res.exit_code != 0 { return }
-    let hits = (dockerfile-hits ($res.stdout | lines | compact))
+    let hits = (dockerfile-hits-in-diff)
     if ($hits | is-empty) { return }
     let msg = $"closeout: WARNING — diff touches Dockerfile path\(s\): ($hits | str join ', '). This fix is INERT until the fabro-toolchain:noble image is rebuilt — run sandboxes build that image and never mount it live."
     print -e $msg
     print $msg
 }
+
+# The Dockerfile* paths the run diff (run-base anchored) touches, [] on
+# any git failure: the shared seam of the warning above and the reporter
+# fact below (ADR-0039 stage C) — one detection, two surfaces.
+def dockerfile-hits-in-diff []: nothing -> list<string> {
+    let base = (run-base)
+    let res = (do { git diff --name-only $base.base } | complete)
+    if $res.exit_code != 0 { return [] }
+    dockerfile-hits ($res.stdout | lines | compact)
+}
+
+# --- Reporter facts (ADR-0039 stage C, denkhaus/work#1107) ---------------
+# The run reports FACTS as observation records; it never judges — the
+# adjudicator does. The category encodes whether a fact needs a DECISION
+# (grilled 2026-11-01): a painpoint forces the adjudicator's agent pass,
+# a note never triggers anything. Facts fire BEFORE the park gate, so a
+# parked run still carries its verdict.
+
+# Pure: the visibility fact over the park gate's verdict. NOT visible is
+# the fabro-02c4 class — as a note, the fast path would close what an
+# approval without an implementing diff must not. DEGRADED (the check
+# failed) never asserts a verdict it did not establish, and the
+# adjudicator must look.
+def visibility-fact [verdict: string, item_key: string, base_short: string]: nothing -> record<category: string, text: string> {
+    if $verdict == "visible" {
+        {category: "note", text: $"patch-visibility: the demand of ($item_key) is visible in the run-anchored diff \(base ($base_short)\)"}
+    } else if $verdict == "degraded" {
+        {category: "painpoint", text: $"patch-visibility: the demand of ($item_key) could not be determined \(check degraded, base ($base_short)\) — the park gate degraded to proceeding; the adjudicator must verify the patch"}
+    } else {
+        {category: "painpoint", text: $"patch-visibility: the demand of ($item_key) is NOT visible in the run-anchored diff \(base ($base_short)\) — the fabro-02c4 class: an approval without an implementing diff must not close"}
+    }
+}
+
+# Pure: the Dockerfile-touch fact. Null when nothing touched (no
+# empty-entry noise — a command stage has no presence contract). A touch
+# is a painpoint: an image rebuild is pending, or the fix stays inert
+# (fabro-6f6e).
+def dockerfile-fact [hits: list<string>]: nothing -> any {
+    if ($hits | is-empty) { return null }
+    {category: "painpoint", text: $"dockerfile-touch: the run diff touches \(($hits | str join ', ')\) — the fix stays INERT until the fabro-toolchain:noble image is rebuilt \(fabro-6f6e\)"}
+}
+
+# One fact through the CLI door (`fabro observation record`, the agent
+# tool's script twin): the engine binds FABRO_RUN_ID, FABRO_EXECUTION
+# and FABRO_FIRING into this script's environment (stage
+# self-awareness), so the call carries no identity flags. HARD by
+# contract (user decision 2026-11-01): a failed record fails the stage —
+# the engine retries, the caller fixes the error, never absorbs it.
+def record-fact [fact: any]: nothing -> nothing {
+    if ($fact | is-empty) { return }
+    let bin = ($env.FABRO_BIN? | default 'fabro')
+    let args = [observation --server (work-server) record --category $fact.category --text $fact.text]
+    let res = (do { ^$bin ...$args } | complete)
+    if $res.exit_code != 0 {
+        print -e $"closeout: observation record failed \(category ($fact.category)\): ($res.stderr | str trim | str substring 0..240)"
+        exit 1
+    }
+    print $"closeout: reported fact — ($res.stdout | str trim)"
+}
+
 
 # ---------------------------------------------------------------------------
 # Closure-discipline pre-close check (fabro-02c4)
@@ -177,15 +234,25 @@ def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
 
 # Best-effort visibility verdict for THIS item against the run diff
 # (run-base anchored — work-item claims are server-side, no tracker-file
-# claim transition to anchor on; denkhaus/work#1056). Never blocks on
-# git/channel failure — degrades to visible.
-def item-demand-visible [item_key: string]: nothing -> bool {
+# claim transition to anchor on; denkhaus/work#1056): 'visible',
+# 'not-visible', or 'degraded'. The park gate below degrades to
+# PROCEEDING on 'degraded' (a tooling failure must never block a
+# legitimate close); the reporter fact degrades to a PAINPOINT (it must
+# never assert a verdict the check never established).
+def item-demand-verdict [item_key: string]: nothing -> string {
     let base = (run-base)
     let diff_res = (do { git diff $base.base -- . ':(exclude).fabro/journal' } | complete)
-    if $diff_res.exit_code != 0 { return true }
+    if $diff_res.exit_code != 0 { return "degraded" }
     let title = (do -i { work-item-title $item_key } | default '')
-    let tokens = (do -i { demand-tokens $title } | default [])
-    demand-visible $tokens $diff_res.stdout
+    if ($title | is-empty) {
+        # the title never resolved (a channel outage printed its own
+        # warning above): an empty patch is honestly not visible; a
+        # non-empty one could not be compared.
+        if not (demand-visible [] $diff_res.stdout) { return "not-visible" }
+        return "degraded"
+    }
+    let tokens = (demand-tokens $title)
+    if (demand-visible $tokens $diff_res.stdout) { "visible" } else { "not-visible" }
 }
 
 # The item's title through the channel (denkhaus/work#990): show is the
@@ -577,6 +644,16 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
     let rid = (do -i { current-run-id } | default '')
     let journal_path = $".fabro/journal/($rid).jsonl"
 
+    # Reporter facts (ADR-0039 stage C): the run reports facts as
+    # observation records, never judgments — the adjudicator decides.
+    # Both facts fire BEFORE the park gate, so a parked run still carries
+    # its verdict for adjudicator pass one. HARD by contract (user
+    # decision 2026-11-01): a failed record fails the stage; the engine
+    # retries, the caller fixes the error, never absorbs it.
+    let demand_verdict = (do -i { item-demand-verdict $key } | default "degraded")
+    record-fact (visibility-fact $demand_verdict $key (run-base).short)
+    record-fact (dockerfile-fact (dockerfile-hits-in-diff))
+
     # Dockerfile-touch warning (fabro-6f6e): advisory only — `do -i` plus
     # the per-call complete wrappers above guarantee no failure here can
     # reach the close below. No Dockerfile touched: byte-identical close
@@ -588,8 +665,11 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
     # (the title resolves through the channel; the diff anchors on the
     # run base — work-item claims are server-side, no tracker-file
     # transition to anchor on). Item stays open; exit 0 — a park is a
-    # deliberate hold for the next cycle, not a stage failure.
-    if not (do -i { item-demand-visible $key } | default true) {
+    # deliberate hold for the next cycle, not a stage failure. A DEGRADED
+    # check proceeds (a tooling failure must never block a legitimate
+    # close; the fact above flags it for the adjudicator). The verdict
+    # itself is already reported as the fact above.
+    if $demand_verdict == "not-visible" {
         let park = $"closeout: PARK — \(($key)\) NOT closed: the run diff \(run-base anchored, journal bookkeeping excluded\) shows no implementing change for the item's demand. fabro-9967 class: an approval with no implementing diff must not close. Item left OPEN — re-enter the review cycle."
         print -e $park
         print $park

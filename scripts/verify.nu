@@ -235,7 +235,10 @@ def stage-implementer [] {
         return
     }
     print $"verify: code-touched=($t.code | str join ', ') test-file-touched=($t.tests | str join ', ')"
-    mut failed = false
+    # A FAIL path must EXIT, never `return`: `return` leaves the def and
+    # main ends green — a red tier reads as exit 0 for every caller (the
+    # just recipe, the run gate). Observed live 2026-11-01: three
+    # `verify: FAIL nextest fabro-cli` runs, exit 0 each.
     for c in $t.code {
         print $"== fmt -p ($c) =="
         let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' fmt -p $c --check } | complete)
@@ -243,7 +246,7 @@ def stage-implementer [] {
             print $res.stderr
             print $"verify: FAIL fmt ($c)"
             $env.LAST_VERIFY_FAIL = "fmt"
-            return
+            exit 1
         }
         print $"verify: PASS fmt ($c)"
     }
@@ -254,7 +257,7 @@ def stage-implementer [] {
         if $res.exit_code != 0 {
             print (output-tail $res.stderr 2000)
             print $"verify: FAIL clippy ($c)"
-            return
+            exit 1
         }
         print $"verify: PASS clippy ($c)"
     }
@@ -265,7 +268,7 @@ def stage-implementer [] {
         if $res.exit_code != 0 {
             print (output-tail $res.stderr 2000)
             print $"verify: FAIL compile ($c)"
-            return
+            exit 1
         }
         print $"verify: PASS compile ($c)"
     }
@@ -275,7 +278,7 @@ def stage-implementer [] {
         let tm = (test-mode-for $t.base $files)
         if $tm.mode == 'names' {
             print $"== nextest -p ($c) (added tests by name filter: ($tm.names | str join ', ')) =="
-            let res = (do { ^cargo nextest run -p $c --no-fail-fast ...$tm.names } | complete)
+            let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 ...$tm.names } | complete)
             # Zero-selection guard (fabro-bdff): a filter matching zero tests
             # must never look green. Each extracted name is a distinct test
             # fn and nextest matches filters by substring, so a correct
@@ -285,16 +288,19 @@ def stage-implementer [] {
             if $res.exit_code != 0 or $ran == null or $ran < ($tm.names | length) {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
                 print $"verify: FAIL nextest ($c) (name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length))"
-                return
+                exit 1
             }
             print $"verify: PASS nextest ($c)"
         } else {
             print $"== nextest -p ($c) — full crate suite: ($tm.reason) =="
-            let res = (do { ^cargo nextest run -p $c --no-fail-fast } | complete)
+            # --retries 2: a load-bound host (a sibling build, a bench)
+            # must not kill a sound tier — the qualitygate's discipline,
+            # applied to the same command here.
+            let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 } | complete)
             if $res.exit_code != 0 {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
                 print $"verify: FAIL nextest ($c)"
-                return
+                exit 1
             }
             print $"verify: PASS nextest ($c)"
         }
