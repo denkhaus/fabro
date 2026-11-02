@@ -85,9 +85,13 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
    ```
    Then open http://localhost:3333. Stop with `docker stop mintlify-dev`.
 
+Before diagnosing 404s or "Invalid run ID" answers from a long-running local stack: `fabro version --server <url>` shows client vs server build identity — the stack is often just older than the route you just built (sprint-74: a two-day-stale stack ate `/runs/queue`). `/health` is deliberately build-free; the version command is the skew check.
+
 ## API workflow
 
 The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
+
+`--server` is NOT global — each facade seats it differently: `work`/`observation` at the facade level (`fabro work --server X radius …`), the `run` verbs on the verb segment (`fabro run queue --server X`). Never append it blindly; `.fabro/scripts/lib/work_channel.nu`'s argv builders own the shapes.
 
 1. Edit `docs/public/api-reference/fabro-api.yaml`
 2. `cargo build -p fabro-api` — build.rs regenerates Rust types and client via progenitor
@@ -137,6 +141,8 @@ Before merging changes that add or move shared test helpers, verify:
 - relevant tests compile and run with `test-support`
 - `rg -n "create_app_state|test-only-name"` does not show production call sites
 - release/debug artifacts do not contain fake secrets, fixture tokens, or test helper symbols when built without `test-support`
+
+Fork-only pin files (`lib/**/tests/fork_*.rs`, `lib/**/src/**/fork_*.rs`) follow the **two-pin rule**: every one needs a row in `TOUCHPOINTS.md` (repo root) naming it by basename. The touchpoints-parity battery enforces the pair — it sees COMMITTED files only, so an unregistered pin fires at the sprint close (`scripts/sprint-close.nu` runs it), not before.
 
 ## Architecture
 
@@ -216,7 +222,7 @@ When interpolating values into shell command strings (in `fabro-workflow`), alwa
 
 - **Types** (structs, enums, traits): import by name — `use crate::outcome::Outcome;`
 - **Functions**: import the parent module, call as `module::function()` — `use fabro_workflow::operations; operations::create(...)`
-- **No glob imports** in production code (`use foo::*`). Globs are acceptable in test modules and preludes. Enforced by clippy `wildcard_imports` lint.
+- **No glob imports** in production code (`use foo::*`); globs are fine in test modules and preludes (clippy `wildcard_imports` enforces this — do not re-check by hand).
 
 ## Enum string/int conversions (strum)
 
@@ -264,3 +270,7 @@ The five triage roles map onto the label standard (`prio:pN`, `type:*`, `lane:*`
 ### Domain docs
 
 Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/` (one series: lab-branch era 0001–0031, denkhaus line 0032+). See `docs/agents/domain.md`.
+
+### Sprint ledger
+
+`iterate-state.json` (repo root) is the iterate-cycle ledger; rotated-out sprints live in `iterate-state-archive.jsonl`. A sprint close is ONE command — `echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review] [--ran-arch-review] [--ran-rust-security]` (repo root, after the sprint's last substantive commit): it appends the record, rotates, runs touchpoints parity, and prints the next close's gates plus the commit-message skeleton. Gate arithmetic alone: `just gates [N]` — %2 code review, %3 architecture review, %5 rust-security review. Never compute the gates by hand.

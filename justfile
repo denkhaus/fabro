@@ -265,8 +265,8 @@ vendor *args:
     nu scripts/vendor-sync.nu {{ args }}
 
 # Session sprint-ledger rotation (iterate-skill bookkeeping, SESSION-OWNED):
-# iterate-state.json keeps the newest 10 notes, older ones move to
-# iterate-state-archive.jsonl (one {"note": …} record per line, append-only,
+# iterate-state.json keeps the newest 10 sprints, older ones move to
+# iterate-state-archive.jsonl (one record per line, append-only,
 # oldest first). Run after a sprint close when notes > 10 — the state file
 # must stay readable whole (the 50 KB read-tool limit). Lanes and
 # qualitygate batteries never invoke this.
@@ -276,6 +276,19 @@ rotate-notes:
 rotate-notes-dry:
     nu scripts/rotate-sprint-notes.nu --dry-run
 
+# Gate arithmetic for a sprint close (sprint-74 retro 2026-11-02: the
+# hand-computed "no gates due at 75" was wrong — %3 and %5 both due).
+# %2 code review, %3 architecture review, %5 rust-security review; no
+# argument = the next sprint (sprints_completed + 1).
+gates sprint="":
+    nu scripts/gates-due.nu {{ sprint }}
+
+# Sprint close, ONE entry point (append record from stdin, rotate,
+# touchpoints parity, gates for the next sprint, commit skeleton):
+#   echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review ...]
+# The --ran-* flags move the ledger's last_*_at_sprint markers for gates
+# that ran at this close. Run from the repo root, after the sprint's
+# last substantive commit.
 # Provider-window gate twin smoke (fabro-2919): the three gate behaviors —
 # a scripted 429 holds the tick and refuses manual fires, a reopened window
 # fires on the next recheck tick — proven against the real twin-openai

@@ -345,6 +345,7 @@ Before merging a test change, check:
 - Does the test avoid hand-writing run-directory internals?
 - Does the assertion use snapshots where snapshots are the better tool?
 - Is JSON / JSONL asserted structurally rather than via substring matching?
+- Where a lane script parses a CLI `--json` stdout: is that stdout's record shape pinned against the compiled binary (a mock-server IT), not only against the shim?
 - Are unstable values normalized?
 - Is the test name describing the contract?
 - Would a lower-level test be cleaner and less brittle?
@@ -362,6 +363,7 @@ Avoid these patterns in CLI integration tests:
 - using many `contains()` checks for output that should be snapshot-tested
 - keeping scenario tests in `cmd/*`
 - keeping workflow-shape tests in `cmd/*`
+- trusting a lane-script shim's response shape where a lane script parses CLI `--json` stdout — the shim mirrors what you EXPECT, only a mock-server IT against the compiled binary pins what the CLI PRINTS (sprint-74: the fast-path smoke stayed green while the real `observation list --json` printed a bare array; the parser silently read zero facts)
 
 ## Defaults for new tests
 
