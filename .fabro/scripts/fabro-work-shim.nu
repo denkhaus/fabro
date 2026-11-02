@@ -234,7 +234,7 @@ def main [
                 ($r.status in ["succeeded" "failed" "dead"]) and (not ($r.runId in $settled)) and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
             } | each {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
-                {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: $r.status}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null)}
+                {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: $r.status}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null), project: ($r | get -o project | default null)}
             })
             {data: $data, meta: {has_more: false, total: ($data | length)}} | to json --raw | print
         }

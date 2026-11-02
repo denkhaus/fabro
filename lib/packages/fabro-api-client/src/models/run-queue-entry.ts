@@ -18,7 +18,7 @@
 import type { Run } from './run';
 
 /**
- * One adjudication-queue entry: a terminal run without a settled verdict on the queried field, decorated with the work item its latest claim names (ADR-0039 stage D part 2). `work_item` is null when the run never claimed one — the claim ledger is the run → work-item edge, and a released claim still names the item.
+ * One adjudication-queue entry: a terminal run without a settled verdict on the queried field, decorated with the work item and project of its latest claim (ADR-0039 stage D part 2). `work_item` and `project` are null when the run never claimed one — the claim ledger is the run → work-item edge, and a released claim still names the item.
  */
 export interface RunQueueEntry {
     'run': Run;
@@ -26,6 +26,10 @@ export interface RunQueueEntry {
      * The work-item key of the run\'s latest claim (for example `denkhaus/work#12`), null when the run never claimed a work item.
      */
     'work_item'?: string;
+    /**
+     * The project id of the run\'s latest claim (for example `fabro`), null when the run never claimed a work item. Queue consumers read scoped doors (the closure radius) with THIS id — never a hardcoded one (work#1113).
+     */
+    'project'?: string;
     /**
      * The run\'s latest verdict on the QUERIED field. `pending` means the run was never adjudicated on the field (absence); `parked` means an open operator escalation keeps the run queued — it re-enters every pass until resolved (stage D part 2). `enabled` and `refused` runs have left the queue.
      */

@@ -32,12 +32,12 @@ write-shim-state $state {
     nextKey: 9001,
     log: [],
     runs: [
-        {runId: "01TRIVIALPR00000000000000000", workflowSlug: "develop", status: "succeeded", title: "clean trivial run", pullRequest: {owner: "denkhaus", repo: "fabro", number: 501}, claimedItem: "denkhaus/work#1"}
-        {runId: "01TRIVIALNOPR0000000000000000", workflowSlug: "develop", status: "failed", title: "failed without a pull request", claimedItem: null}
-        {runId: "01PAINPoinTRUN000000000000000", workflowSlug: "develop", status: "succeeded", title: "run with painpoints", pullRequest: {owner: "denkhaus", repo: "fabro", number: 502}, claimedItem: "denkhaus/work#2"}
-        {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2"}
-        {runId: "01SMOKERUN000000000000000000", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null}
-        {runId: "01LIVERUN00000000000000000000", workflowSlug: "develop", status: "running", title: "still going", claimedItem: null}
+        {runId: "01TRIVIALPR00000000000000000", workflowSlug: "develop", status: "succeeded", title: "clean trivial run", pullRequest: {owner: "denkhaus", repo: "fabro", number: 501}, claimedItem: "denkhaus/work#1", project: "fabro"}
+        {runId: "01TRIVIALNOPR0000000000000000", workflowSlug: "develop", status: "failed", title: "failed without a pull request", claimedItem: null, project: null}
+        {runId: "01PAINPoinTRUN000000000000000", workflowSlug: "develop", status: "succeeded", title: "run with painpoints", pullRequest: {owner: "denkhaus", repo: "fabro", number: 502}, claimedItem: "denkhaus/work#2", project: "fabro-test"}
+        {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro"}
+        {runId: "01SMOKERUN000000000000000000", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null, project: null}
+        {runId: "01LIVERUN00000000000000000000", workflowSlug: "develop", status: "running", title: "still going", claimedItem: null, project: null}
     ],
     marks: [
         {runId: "01PARKEDRUN00000000000000000", field: "merge", verdict: "parked", byRun: "01PREVPASS0000000000000000"}
@@ -100,6 +100,16 @@ let packets = ($adjudication | get -o packets | default [])
 let packet_ids = ($packets | get run_id)
 if ($packets | length) != 2 {
     fail $"exactly the painpoint and parked runs become packets: ($packet_ids | to json -r)"
+}
+# work#1113: the radius read uses the ENTRY's project, never a hardcoded
+# one — the painpoint run's claim rides a different project (fabro-test)
+# and the shim's argv log must name it.
+let radius_log = (open --raw $state | from json | get -o log | default [] | where {|l|
+    ($l.argv | str join ' ') =~ 'radius'
+})
+let painpoint_radius = ($radius_log | where {|l| ($l.argv | str join ' ') =~ 'denkhaus/work#2' and $l.flags?.project? == "fabro-test"} | get -o 0 | default null)
+if $painpoint_radius == null {
+    fail $"the radius read must carry the entry's own project fabro-test, not a hardcode: ($radius_log | to json -r)"
 }
 let painpoint_packet = ($packets | where {|p| $p.run_id == "01PAINPoinTRUN000000000000000"} | get -o 0 | default null)
 if $painpoint_packet == null { fail "the painpoint run must route to the agent pass" }

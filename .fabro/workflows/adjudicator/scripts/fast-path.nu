@@ -77,11 +77,12 @@ def read-observations [run_id: string]: nothing -> list<any> {
 
 # The work item's closure radius through the read door: the OPEN work
 # items linked to the item's observations. [] when the run claims no
-# work item. HARD on transport failure.
-def read-radius [work_item: string]: nothing -> list<any> {
+# work item. The project rides the queue entry (work#1113) — never a
+# hardcoded project id. HARD on transport failure.
+def read-radius [project: string, work_item: string]: nothing -> list<any> {
     if ($work_item | is-empty) { return [] }
     let srv = (server $CALLER)
-    let res = (cli $CALLER (work-radius-argv $srv 'fabro' $work_item))
+    let res = (cli $CALLER (work-radius-argv $srv $project $work_item))
     if $res.exit_code != 0 {
         print -e $"($CALLER): work radius failed for ($work_item): ($res.stderr | str trim | str substring 0..240)"
         exit 1
@@ -122,18 +123,19 @@ def main [--smoke]: nothing -> nothing {
     for entry in $entries {
         let run_id = $entry.run.id
         let work_item = ($entry | get -o work_item | default '')
+        let project = ($entry | get -o project | default '')
         let has_pr = ($entry.run | get -o pull_request | default null) != null
 
         if $entry.verdict == "parked" {
             # An open operator escalation re-enters every pass: the
             # agent pass re-engages with the fork's context.
             $skipped_parked = ($skipped_parked | append $run_id)
-            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints (read-observations $run_id)), radius_items: (read-radius $work_item | length), has_pull_request: $has_pr})
+            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints (read-observations $run_id)), radius_items: (read-radius $project $work_item | length), has_pull_request: $has_pr})
             continue
         }
 
         let painpoints = (distinct-painpoints (read-observations $run_id))
-        let radius_count = (read-radius $work_item | length)
+        let radius_count = (read-radius $project $work_item | length)
         if ($painpoints | is-empty) and $radius_count == 0 {
             # The trivial mass: mark directly, no LLM call.
             if $has_pr {

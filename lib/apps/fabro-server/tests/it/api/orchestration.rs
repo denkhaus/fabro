@@ -513,6 +513,12 @@ async fn the_queue_decorates_work_items_keeps_parked_and_filters_by_workflow() {
         "the entry carries the run's claimed work item: {claimed_entry}"
     );
     assert_eq!(
+        claimed_entry["project"].as_str(),
+        Some("fabro"),
+        "the entry carries the claim's project — queue consumers must not hardcode one \
+         (work#1113): {claimed_entry}"
+    );
+    assert_eq!(
         claimed_entry["verdict"].as_str(),
         Some("pending"),
         "a never-adjudicated run reads pending: {claimed_entry}"
@@ -528,6 +534,11 @@ async fn the_queue_decorates_work_items_keeps_parked_and_filters_by_workflow() {
         smoke_entry["work_item"].as_str(),
         None,
         "an unclaimed run decorates with no work item: {smoke_entry}"
+    );
+    assert_eq!(
+        smoke_entry["project"].as_str(),
+        None,
+        "an unclaimed run decorates with no project: {smoke_entry}"
     );
 
     // The workflow filter narrows the worklist: smoke stays out.

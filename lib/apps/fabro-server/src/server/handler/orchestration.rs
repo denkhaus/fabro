@@ -122,11 +122,14 @@ async fn list_queue(
         }
     };
     let run_ids = runs.iter().map(|run| run.id).collect::<Vec<_>>();
-    let work_item_by_run = match state.stores.work.latest_claims_of_runs(&run_ids).await {
+    // The decoration carries the claim's item AND project (work#1113):
+    // queue consumers read scoped doors (the closure radius) with the
+    // claim's own project, never a hardcoded one.
+    let claim_by_run = match state.stores.work.latest_claims_of_runs(&run_ids).await {
         Ok(claims) => claims
             .into_iter()
-            .map(|claim| (claim.run_id, claim.item_key))
-            .collect::<HashMap<RunId, String>>(),
+            .map(|claim| (claim.run_id, (claim.item_key, claim.project_id)))
+            .collect::<HashMap<RunId, (String, String)>>(),
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
                 .into_response();
@@ -141,8 +144,13 @@ async fn list_queue(
                 Some(OrchestrationVerdict::Parked) => RunQueueEntryVerdict::Parked,
                 _ => RunQueueEntryVerdict::Pending,
             };
+            let (work_item, project) = match claim_by_run.get(&run.id) {
+                Some((item_key, project_id)) => (Some(item_key.clone()), Some(project_id.clone())),
+                None => (None, None),
+            };
             RunQueueEntry {
-                work_item: work_item_by_run.get(&run.id).cloned(),
+                work_item,
+                project,
                 run,
                 verdict,
             }
