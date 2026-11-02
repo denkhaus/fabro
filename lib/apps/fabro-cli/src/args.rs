@@ -62,7 +62,11 @@ pub(crate) struct GlobalArgs {
     pub no_upgrade_check: bool,
 
     /// Suppress non-essential output
-    #[arg(long, global = true, env = EnvVars::FABRO_QUIET, value_parser = clap::builder::BoolishValueParser::new(), conflicts_with = "verbose")]
+    // The conflict with `verbose` is declared on `verbose` only: a global
+    // conflict reference breaks in nested subcommands that shadow
+    // `verbose` locally (`fabro run` carries its own -v) — one
+    // declaration keeps the pair exclusive at every level that has both.
+    #[arg(long, global = true, env = EnvVars::FABRO_QUIET, value_parser = clap::builder::BoolishValueParser::new())]
     pub quiet: bool,
 
     /// Enable verbose output
@@ -237,7 +241,10 @@ pub(crate) struct RunArgs {
         rustdoc::broken_intra_doc_links,
         reason = "the help text's `[@REF]` is an optional segment, not a link"
     )]
-    #[arg(required = true)]
+    /// Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not clap-
+    /// required: the orchestration verbs ride as subcommands
+    /// (`fabro run mark`, ADR-0039) — `command::execute` enforces the
+    /// positional when no verb was given.
     pub(crate) workflow: Option<PathBuf>,
 
     /// Acquire workflow source locally from a GitHub OWNER/REPO using native
@@ -1308,7 +1315,7 @@ pub(crate) enum RunCommands {
     // Boxed so `RunArgs` does not dominate the size of the flattened
     // `Commands` enum (clippy `large_enum_variant`).
     /// Register a workflow version, create a run, and start it
-    Run(Box<RunArgs>),
+    Run(RunWithVerbs),
     /// Register a workflow version and create a submitted run
     Create(Box<RunArgs>),
     /// Start a created workflow run on the server
@@ -1343,10 +1350,37 @@ pub(crate) enum RunCommands {
     Ask(AskArgs),
 }
 
+/// `fabro run` carries the orchestration verbs as OPTIONAL subcommands
+/// beside its workflow positional (ADR-0039 stage D, the grilled
+/// `fabro run mark` / `fabro run queue` shape): `fabro run <workflow>`
+/// starts a workflow exactly as before; `fabro run mark …` writes a
+/// verdict. A workflow named exactly `mark` or `queue` would be
+/// unreachable from the CLI — no line workflow carries those names.
+#[derive(Args)]
+pub(crate) struct RunWithVerbs {
+    #[command(flatten)]
+    pub(crate) run:  Box<RunArgs>,
+    #[command(subcommand)]
+    pub(crate) verb: Option<RunVerb>,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum RunVerb {
+    /// Mark one orchestration field of another run (ADR-0039 stage D)
+    Mark(RunMarkArgs),
+    /// List the orchestration queue: terminal runs without a verdict on
+    /// the field (ADR-0039 stage D)
+    Queue(RunQueueArgs),
+}
+
 impl RunCommands {
     pub(crate) fn name(&self) -> &'static str {
         match self {
-            Self::Run(_) => "run",
+            Self::Run(args) => match &args.verb {
+                Some(RunVerb::Mark(_)) => "run mark",
+                Some(RunVerb::Queue(_)) => "run queue",
+                None => "run",
+            },
             Self::Create(_) => "create",
             Self::Start(_) => "start",
             Self::Attach(_) => "attach",
@@ -1364,6 +1398,32 @@ impl RunCommands {
             Self::Wait(_) => "wait",
         }
     }
+}
+
+#[derive(Args)]
+pub(crate) struct RunMarkArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The TARGET run the verdict applies to: always explicit — the
+    /// adjudicator and the merger write verdicts about OTHER runs; a
+    /// run marking itself is refused by the door
+    pub(crate) run_id: String,
+
+    /// The field and verdict as `<field>=<verdict>`: merge or closable,
+    /// and enabled, refused, or parked
+    pub(crate) field_verdict: String,
+}
+
+#[derive(Args)]
+pub(crate) struct RunQueueArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Which orchestration field the queue filters on: merge (the
+    /// adjudicator's pass-one queue, default) or closable (the merger's)
+    #[arg(long, default_value = "merge")]
+    pub(crate) field: String,
 }
 
 #[derive(Subcommand)]
@@ -1625,10 +1685,12 @@ impl Commands {
                 WorkCommand::Lane(_) => "work lane",
                 WorkCommand::Link(_) => "work link",
                 WorkCommand::Unlink(_) => "work unlink",
+                WorkCommand::Radius(_) => "work radius",
                 WorkCommand::Claims(_) => "work claims",
             },
             Self::Observation(ns) => match &ns.command {
                 ObservationCommand::Record(_) => "observation record",
+                ObservationCommand::List(_) => "observation list",
             },
             Self::Automations(ns) => match &ns.command {
                 AutomationsCommand::List(_) => "automations list",
@@ -2173,6 +2235,15 @@ pub(crate) struct ObservationNamespace {
 pub(crate) enum ObservationCommand {
     /// Record one observation for a run from a workflow stage
     Record(ObservationRecordArgs),
+    /// List a run's observation records (the read door, ADR-0039 stage D)
+    List(ObservationListArgs),
+}
+
+#[derive(Args)]
+pub(crate) struct ObservationListArgs {
+    /// The run whose observation records list
+    #[arg(long)]
+    pub(crate) run_id: String,
 }
 
 #[derive(Args)]
@@ -2250,6 +2321,9 @@ pub(crate) enum WorkCommand {
     Link(WorkLinkArgs),
     /// Remove a work-item observation link
     Unlink(WorkUnlinkArgs),
+    /// Show a work item's closure radius: the open items linked to the
+    /// observations of its runs (ADR-0038; read door ADR-0039 stage D)
+    Radius(WorkRadiusArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
 }
@@ -2374,6 +2448,15 @@ pub(crate) struct WorkUnlinkArgs {
     /// The observation record's per-run seq
     #[arg(long)]
     pub(crate) seq:      u64,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkRadiusArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
 }
 
 #[derive(Args)]

@@ -27,33 +27,13 @@
 # the next run re-enters the review cycle; an approved-but-unclosed item is
 # re-approvable harmlessly.
 
-# ---------------------------------------------------------------------------
-# Work facade through the capability channel (denkhaus/work#990).
-#
-# The binary resolves through FABRO_BIN so host-side batteries can shim
-# it (state-file pattern — the channel only exists inside a run
-# sandbox); FABRO_SERVER names the server the transport targets (set by
-# the run's channel mount in-sandbox, refused loudly when absent so a
-# host invocation never silently routes to a wrong default).
-# MIRRORED into evidence.nu — reuse this shape, do not invent a new one.
-# ---------------------------------------------------------------------------
-def work-server []: nothing -> string {
-    let server = ($env.FABRO_SERVER? | default '' | str trim)
-    if ($server | is-empty) {
-        print -e "closeout: FABRO_SERVER is not set — the work channel needs it (run sandboxes carry it via the channel mount)"
-        exit 1
-    }
-    $server
-}
-
-# One outbound work-facade call: the args list carries the subcommand
-# and ITS flags verbatim (a rest-param would eat `--project` as THIS
-# command's flag), the helper adds the binary and the server. Returns
-# the complete-wrapped result record.
-def work-call [args: list<string>]: nothing -> any {
-    let bin = ($env.FABRO_BIN? | default 'fabro')
-    do { ^$bin work --server (work-server) ...$args } | complete
-}
+# Shared lane-script modules (denkhaus/work#1108): the run-anchor triple
+# (branch/run-id/run-base) and the work channel (server/bin resolution,
+# the facade call, the observation door) live in .fabro/scripts/lib/ —
+# one implementation, every lane script a consumer (the adjudicator
+# fast-path script and the stage-G reporter source the same files).
+use ../../../scripts/lib/run_anchor.nu
+use ../../../scripts/lib/work_channel.nu
 
 # ---------------------------------------------------------------------------
 # Dockerfile-touch warning (fabro-6f6e)
@@ -86,53 +66,33 @@ def dockerfile-hits [paths: list<string>]: nothing -> list<string> {
     $paths | where {|p| ($p | split row "/" | any {|seg| $seg | str starts-with "Dockerfile"})}
 }
 
-# --- diff-anchor helpers: MIRRORED from evidence.nu (the
-# current-branch/run-base pair; run-base anchoring — claims are
-# server-side, denkhaus/work#1056) — reuse that anchoring scheme, do
-# not invent a new one.
+# --- diff-anchor helpers: the run-anchor module (denkhaus/work#1108)
+# owns branch/run-id/run-base — run-base anchoring since denkhaus/work#1056
+# (claims are server-side); this script computes the anchor ONCE in main
+# and threads it (the pre-extraction triple computation retired).
 
-def current-branch []: nothing -> string {
-    git branch --show-current | str trim
-}
-
-def run-base []: nothing -> record<base: string, short: string, grounded: bool> {
-    let run_id = (
-        current-branch
-        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
-        | get -o id.0
-        | default ''
-    )
-    let subject_mark = $"fabro\(($run_id)\):"
-    let checkpoints = (do { git log --format=%H --fixed-strings --grep $subject_mark } | complete | get stdout | lines | compact)
-    if ($checkpoints | is-empty) {
-        {base: "HEAD", short: (do { git rev-parse --short HEAD } | complete | get stdout | str trim), grounded: false}
-    } else {
-        let base = (do { git rev-parse $"($checkpoints | last)^" } | complete | get stdout | str trim)
-        {base: $base, short: (do { git rev-parse --short $base } | complete | get stdout | str trim), grounded: true}
-    }
+# The Dockerfile* paths the run diff (run-base anchored) touches, [] on
+# any git failure: the shared seam of the warning above and the reporter
+# fact below (ADR-0039 stage C) — one detection, two surfaces. Takes the
+# THREADED anchor (computed once in main).
+def dockerfile-hits-in-diff [anchor: record<base: string, short: string, grounded: bool>]: nothing -> list<string> {
+    let res = (do { git diff --name-only $anchor.base } | complete)
+    if $res.exit_code != 0 { return [] }
+    dockerfile-hits ($res.stdout | lines | compact)
 }
 
 # Best-effort detection + warning: warn when the run diff (run-base
 # anchored — work-item claims are server-side, no tracker-file claim
 # anchor exists; denkhaus/work#1056) touches any Dockerfile* path.
 # Prints the warning to BOTH stderr and stdout (both are captured into
-# the stage journal / run output); never blocks the close.
-def warn-dockerfile-diff []: nothing -> nothing {
-    let hits = (dockerfile-hits-in-diff)
+# the stage journal / run output); never blocks the close. Takes the
+# THREADED anchor (computed once in main).
+def warn-dockerfile-diff [anchor: record<base: string, short: string, grounded: bool>]: nothing -> nothing {
+    let hits = (dockerfile-hits-in-diff $anchor)
     if ($hits | is-empty) { return }
     let msg = $"closeout: WARNING — diff touches Dockerfile path\(s\): ($hits | str join ', '). This fix is INERT until the fabro-toolchain:noble image is rebuilt — run sandboxes build that image and never mount it live."
     print -e $msg
     print $msg
-}
-
-# The Dockerfile* paths the run diff (run-base anchored) touches, [] on
-# any git failure: the shared seam of the warning above and the reporter
-# fact below (ADR-0039 stage C) — one detection, two surfaces.
-def dockerfile-hits-in-diff []: nothing -> list<string> {
-    let base = (run-base)
-    let res = (do { git diff --name-only $base.base } | complete)
-    if $res.exit_code != 0 { return [] }
-    dockerfile-hits ($res.stdout | lines | compact)
 }
 
 # --- Reporter facts (ADR-0039 stage C, denkhaus/work#1107) ---------------
@@ -146,37 +106,40 @@ def dockerfile-hits-in-diff []: nothing -> list<string> {
 # the fabro-02c4 class — as a note, the fast path would close what an
 # approval without an implementing diff must not. DEGRADED (the check
 # failed) never asserts a verdict it did not establish, and the
-# adjudicator must look.
+# adjudicator must look. Line one is the deterministic machine head
+# (lib/fact_head.nu owns the grammar): the fast path's parse and the
+# retry-dedupe key; prose follows after it.
 def visibility-fact [verdict: string, item_key: string, base_short: string]: nothing -> record<category: string, text: string> {
+    let head = $"fact=patch-visibility verdict=($verdict) base=($base_short) item=($item_key)"
     if $verdict == "visible" {
-        {category: "note", text: $"patch-visibility: the demand of ($item_key) is visible in the run-anchored diff \(base ($base_short)\)"}
+        {category: "note", text: $"($head)\npatch-visibility: the demand of ($item_key) is visible in the run-anchored diff \(base ($base_short)\)"}
     } else if $verdict == "degraded" {
-        {category: "painpoint", text: $"patch-visibility: the demand of ($item_key) could not be determined \(check degraded, base ($base_short)\) — the park gate degraded to proceeding; the adjudicator must verify the patch"}
+        {category: "painpoint", text: $"($head)\npatch-visibility: the demand of ($item_key) could not be determined \(check degraded, base ($base_short)\) — the park gate degraded to proceeding; the adjudicator must verify the patch"}
     } else {
-        {category: "painpoint", text: $"patch-visibility: the demand of ($item_key) is NOT visible in the run-anchored diff \(base ($base_short)\) — the fabro-02c4 class: an approval without an implementing diff must not close"}
+        {category: "painpoint", text: $"($head)\npatch-visibility: the demand of ($item_key) is NOT visible in the run-anchored diff \(base ($base_short)\) — the fabro-02c4 class: an approval without an implementing diff must not close"}
     }
 }
 
 # Pure: the Dockerfile-touch fact. Null when nothing touched (no
 # empty-entry noise — a command stage has no presence contract). A touch
 # is a painpoint: an image rebuild is pending, or the fix stays inert
-# (fabro-6f6e).
+# (fabro-6f6e). Line one is the machine head (paths comma-joined).
 def dockerfile-fact [hits: list<string>]: nothing -> any {
     if ($hits | is-empty) { return null }
-    {category: "painpoint", text: $"dockerfile-touch: the run diff touches \(($hits | str join ', ')\) — the fix stays INERT until the fabro-toolchain:noble image is rebuilt \(fabro-6f6e\)"}
+    let head = $"fact=dockerfile-touch paths=($hits | str join ',')"
+    {category: "painpoint", text: $"($head)\ndockerfile-touch: the run diff touches \(($hits | str join ', ')\) — the fix stays INERT until the fabro-toolchain:noble image is rebuilt \(fabro-6f6e\)"}
 }
 
 # One fact through the CLI door (`fabro observation record`, the agent
-# tool's script twin): the engine binds FABRO_RUN_ID, FABRO_EXECUTION
-# and FABRO_FIRING into this script's environment (stage
-# self-awareness), so the call carries no identity flags. HARD by
-# contract (user decision 2026-11-01): a failed record fails the stage —
-# the engine retries, the caller fixes the error, never absorbs it.
+# tool's script twin — argv and transport live in the work-channel
+# module): the engine binds FABRO_RUN_ID, FABRO_EXECUTION and
+# FABRO_FIRING into this script's environment (stage self-awareness),
+# so the call carries no identity flags. HARD by contract (user
+# decision 2026-11-01): a failed record fails the stage — the engine
+# retries, the caller fixes the error, never absorbs it.
 def record-fact [fact: any]: nothing -> nothing {
     if ($fact | is-empty) { return }
-    let bin = ($env.FABRO_BIN? | default 'fabro')
-    let args = [observation --server (work-server) record --category $fact.category --text $fact.text]
-    let res = (do { ^$bin ...$args } | complete)
+    let res = (work_channel observation-record 'closeout' $fact.category $fact.text)
     if $res.exit_code != 0 {
         print -e $"closeout: observation record failed \(category ($fact.category)\): ($res.stderr | str trim | str substring 0..240)"
         exit 1
@@ -238,10 +201,10 @@ def demand-visible [tokens: list<string>, patch: string]: nothing -> bool {
 # 'not-visible', or 'degraded'. The park gate below degrades to
 # PROCEEDING on 'degraded' (a tooling failure must never block a
 # legitimate close); the reporter fact degrades to a PAINPOINT (it must
-# never assert a verdict the check never established).
-def item-demand-verdict [item_key: string]: nothing -> string {
-    let base = (run-base)
-    let diff_res = (do { git diff $base.base -- . ':(exclude).fabro/journal' } | complete)
+# never assert a verdict the check never established). Takes the
+# THREADED anchor (computed once in main).
+def item-demand-verdict [item_key: string, anchor: record<base: string, short: string, grounded: bool>]: nothing -> string {
+    let diff_res = (do { git diff $anchor.base -- . ':(exclude).fabro/journal' } | complete)
     if $diff_res.exit_code != 0 { return "degraded" }
     let title = (do -i { work-item-title $item_key } | default '')
     if ($title | is-empty) {
@@ -260,7 +223,7 @@ def item-demand-verdict [item_key: string]: nothing -> string {
 # WITH a stderr trace (the PARK gate then degrades to the non-empty-patch
 # check) — a channel outage must never disarm the gate silently.
 def work-item-title [item_key: string]: nothing -> string {
-    let res = (work-call [show --project fabro $item_key --json])
+    let res = (work_channel call 'closeout' [show --project fabro $item_key --json])
     if $res.exit_code != 0 {
         print -e $"closeout: WARNING — work show \($item_key\) failed, the PARK gate degrades to the non-empty-patch check: ($res.stderr | str trim | str substring 0..160)"
         return ''
@@ -319,10 +282,8 @@ def journal-nonblocking [journal_path: string]: nothing -> list<string> {
     do -i { nonblocking-from-journal (open --raw $journal_path) } | default []
 }
 
-# Pure: run id from the run branch (`fabro/run/<run_id>`), '' off-run.
-def current-run-id []: nothing -> string {
-    current-branch | parse --regex 'fabro/run/(?P<id>[^/]+)$' | get -o id.0 | default ''
-}
+# Pure: run id from the run branch (`fabro/run/<run_id>`), '' off-run —
+# the run-anchor module's parse (denkhaus/work#1108).
 
 # Pure: filed-seed title — short finding excerpt plus provenance.
 def finding-title [finding: string, item_key: string]: nothing -> string {
@@ -330,23 +291,10 @@ def finding-title [finding: string, item_key: string]: nothing -> string {
     $"Reviewer residual \(non-blocking\) from ($item_key): ($excerpt)"
 }
 
-# Deterministic filing through the channel (denkhaus/work#990): create
-# with the body on STDIN (tracker text never travels on a command
-# line), labels as repeated --label. Returns the complete-wrapped
-# result record; callers own the advisory failure handling.
-def work-create [title: string, body: string, item_type: string, ...labels: string]: nothing -> any {
-    let bin = ($env.FABRO_BIN? | default 'fabro')
-    # One comma-joined --label: the work CLI accepts it in exactly this
-    # form (repeatable OR comma-separated), and it keeps the argv flat.
-    # `--project` belongs to CREATE (flags after the subcommand): at the
-    # `work` level clap only knows --server, and a pre-subcommand
-    # --project makes clap eat the verb as --server's value — the run
-    # 01M60NX9W7N65DEPXYN09CE9BR deferred-action loss (the shim is
-    # position-blind, so the smoke pins this shape against the real
-    # parser).
-    let args = ([work --server (work-server) create --project fabro --title $title --body-file - --type $item_type --label ($labels | str join ",")])
-    do { $body | ^$bin ...$args } | complete
-}
+# Deterministic filing through the channel (denkhaus/work#990): the
+# work-channel module's `create` (argv builder + STDIN body transport;
+# tracker text never travels on a command line). Callers own the
+# advisory failure handling.
 
 # The fork-8 filing-time dedupe, deterministic since #990 (the agent
 # stage that owned it is gone): titles of OPEN items that already cite
@@ -355,7 +303,7 @@ def work-create [title: string, body: string, item_type: string, ...labels: stri
 # advisory arm.
 def filed-titles [run_id: string]: nothing -> list<string> {
     if ($run_id | is-empty) { return [] }
-    let res = (work-call [list --project fabro --query $run_id --json])
+    let res = (work_channel call 'closeout' [list --project fabro --query $run_id --json])
     if $res.exit_code != 0 {
         print -e $"closeout: WARNING — work list query failed, the dedupe degrades to OFF for this close: ($res.stderr | str trim | str substring 0..160)"
         return []
@@ -381,7 +329,7 @@ def sweep-reviewer-findings [item_key: string, run_id: string, journal_path: str
             continue
         }
         let desc = $"Reviewer non-blocking residual from ($item_key) — re-filed at closeout so the finding survives the item's closure.\n\nFinding: \"($finding)\"\n\nOrigin: reviewer journal of run ($run_id), closed item ($item_key).\nBasis: run ($run_id), closed item ($item_key)"
-        let res = (work-create $title $desc "bug" ...(["residual"] | append $lane_labels))
+        let res = (work_channel create 'closeout' $title $desc "bug" (["residual"] | append $lane_labels))
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file reviewer finding \(non-blocking, from ($item_key)\): ($res.stderr | str trim)"
         } else {
@@ -489,7 +437,7 @@ def sweep-deferred-actions [item_key: string, run_id: string, journal_path: stri
             continue
         }
         let desc = $"Deferred human follow-up the implementer disclosed while implementing ($item_key).\n\nAction: \"($text)\"\n\nOrigin: implementer journal of run ($run_id), deferred-action marker observation.\nBasis: run ($run_id), closed item ($item_key)"
-        let res = (work-create $title $desc "task" ...(["residual"] | append $lane_labels))
+        let res = (work_channel create 'closeout' $title $desc "task" (["residual"] | append $lane_labels))
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file deferred action \(from ($item_key)\): ($res.stderr | str trim)"
         } else {
@@ -592,7 +540,7 @@ def sweep-exemption-arms [item_key: string, run_id: string, journal_path: string
             continue
         }
         let desc = $"Deferred user/infra action the run exempted while implementing ($item_key) — the run could not land this arm itself.\n\nAction: \"($text)\"\n\nOrigin: planner journal of run ($run_id), EXEMPTION marker observation.\nBasis: run ($run_id), closed item ($item_key)"
-        let res = (work-create $title $desc "task" ...(["ops" "residual"] | append $lane_labels))
+        let res = (work_channel create 'closeout' $title $desc "task" (["ops" "residual"] | append $lane_labels))
         if $res.exit_code != 0 {
             print -e $"closeout: WARNING — could not file EXEMPTION arm \(from ($item_key)\): ($res.stderr | str trim)"
         } else {
@@ -641,8 +589,14 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
         exit 1
     }
     let lane_labels = (if ($lane | is-empty) { [] } else { [$"lane:($lane)"] })
-    let rid = (do -i { current-run-id } | default '')
+    let rid = (do -i { run_anchor run-id '' } | default '')
     let journal_path = $".fabro/journal/($rid).jsonl"
+
+    # The run anchor, computed ONCE and threaded (denkhaus/work#1108):
+    # the demand verdict, the visibility fact's base, and the
+    # Dockerfile-hits check all anchor on the same run base — the
+    # pre-extraction shape computed it three times.
+    let anchor = (do -i { run_anchor run-base } | default {base: "HEAD", short: "", grounded: false})
 
     # Reporter facts (ADR-0039 stage C): the run reports facts as
     # observation records, never judgments — the adjudicator decides.
@@ -650,15 +604,15 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
     # its verdict for adjudicator pass one. HARD by contract (user
     # decision 2026-11-01): a failed record fails the stage; the engine
     # retries, the caller fixes the error, never absorbs it.
-    let demand_verdict = (do -i { item-demand-verdict $key } | default "degraded")
-    record-fact (visibility-fact $demand_verdict $key (run-base).short)
-    record-fact (dockerfile-fact (dockerfile-hits-in-diff))
+    let demand_verdict = (do -i { item-demand-verdict $key $anchor } | default "degraded")
+    record-fact (visibility-fact $demand_verdict $key $anchor.short)
+    record-fact (dockerfile-fact (dockerfile-hits-in-diff $anchor))
 
     # Dockerfile-touch warning (fabro-6f6e): advisory only — `do -i` plus
     # the per-call complete wrappers above guarantee no failure here can
     # reach the close below. No Dockerfile touched: byte-identical close
     # semantics (packet validation, work close, exit codes).
-    do -i { warn-dockerfile-diff } | ignore
+    do -i { warn-dockerfile-diff $anchor } | ignore
 
     # Closure-discipline gate (fabro-02c4): PARK instead of closing when
     # the run diff shows no implementing change for the item's demand
@@ -709,7 +663,7 @@ def main [--lane: string = "", --work-item]: nothing -> nothing {
     # claimed item; a mismatched packet is refused by the engine, not
     # by a script-side gate.
     let reason = $"Closed by run \(($rid)\) after reviewer approval — one item per run. The closeout gate verified the item's demand visible in the run-anchored diff; residuals, deferred actions, and EXEMPTION arms were re-filed before this close — see the closeout report in the run output."
-    let res = (work-call [close --project fabro $key --reason $reason])
+    let res = (work_channel call 'closeout' [close --project fabro $key --reason $reason])
     if $res.exit_code != 0 {
         print -e $"closeout: work close ($key) failed: ($res.stderr | str trim)"
         exit 1

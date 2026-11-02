@@ -347,6 +347,14 @@ if $vf_note.category != "note" {
 if not ($vf_note.text | str contains "abc1234") {
     fail $"the visibility note must name the diff base: ($vf_note.text)"
 }
+# The machine head (ADR-0039 stage D, grilled): line one is deterministic
+# `key=value` pairs — the retry-dedupe key and the fast path's parse.
+if ($vf_note.text | lines | first) != "fact=patch-visibility verdict=visible base=abc1234 item=denkhaus/work#1" {
+    fail $"the visible fact's head must be deterministic: ($vf_note.text | lines | first)"
+}
+if ($vf_note.text | lines | length) < 2 {
+    fail "the head carries prose after line one"
+}
 let vf_painpoint = (visibility-fact "not-visible" "denkhaus/work#1" "abc1234")
 if $vf_painpoint.category != "painpoint" {
     fail $"NOT-visible demand must be a painpoint (fabro-02c4): ($vf_painpoint | to json -r)"
@@ -354,12 +362,18 @@ if $vf_painpoint.category != "painpoint" {
 if not ($vf_painpoint.text | str contains "NOT visible") {
     fail $"the visibility painpoint must say what the diff shows: ($vf_painpoint.text)"
 }
+if ($vf_painpoint.text | lines | first) != "fact=patch-visibility verdict=not-visible base=abc1234 item=denkhaus/work#1" {
+    fail $"the not-visible fact's head must be deterministic: ($vf_painpoint.text | lines | first)"
+}
 let vf_degraded = (visibility-fact "degraded" "denkhaus/work#1" "abc1234")
 if $vf_degraded.category != "painpoint" {
     fail $"a degraded check must be a painpoint: ($vf_degraded | to json -r)"
 }
 if not ($vf_degraded.text | str contains "not be determined") {
     fail $"the degraded fact must say the verdict was never established: ($vf_degraded.text)"
+}
+if ($vf_degraded.text | lines | first) != "fact=patch-visibility verdict=degraded base=abc1234 item=denkhaus/work#1" {
+    fail $"the degraded fact's head must be deterministic: ($vf_degraded.text | lines | first)"
 }
 if $vf_note.text == $vf_painpoint.text {
     fail "the two visibility verdicts must read differently"
@@ -379,6 +393,31 @@ if not ($df_hit.text | str contains ".fabro/Dockerfile.toolchain") {
 }
 if not ($df_hit.text | str contains "INERT") {
     fail $"the Dockerfile fact must name the inert-until-rebuild reason: ($df_hit.text)"
+}
+if ($df_hit.text | lines | first) != "fact=dockerfile-touch paths=.fabro/Dockerfile.toolchain,Dockerfile" {
+    fail $"the Dockerfile fact's head must be deterministic: ($df_hit.text | lines | first)"
+}
+
+# The shared parser (lib/fact_head.nu): heads parse to records, records
+# render back to the canonical line, prose-only text parses null — the
+# engine-retry dedupe keys on the head line (the grilled decision).
+use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
+let parsed = (parse-head $vf_painpoint.text)
+if $parsed == null {
+    fail "the parser must read the visibility head"
+}
+if ($parsed | get -o fact) != "patch-visibility" { fail $"the parser reads fact: ($parsed | to json -r)" }
+if ($parsed | get -o verdict) != "not-visible" { fail $"the parser reads verdict: ($parsed | to json -r)" }
+if ($parsed | get -o base) != "abc1234" { fail $"the parser reads base: ($parsed | to json -r)" }
+if ($parsed | get -o item) != "denkhaus/work#1" { fail $"the parser reads item: ($parsed | to json -r)" }
+if (head-of $parsed) != ($vf_painpoint.text | lines | first) {
+    fail $"the renderer round-trips: (head-of $parsed)"
+}
+if (parse-head "plain prose, no head at all") != null {
+    fail "prose-only text parses to null"
+}
+if (parse-head $"($vf_note.text | lines | first)\nmore prose") == null {
+    fail "the head parses with prose after it"
 }
 
 

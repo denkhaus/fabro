@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use fabro_util::terminal::Styles;
 use tracing::Instrument as _;
 
-use crate::args::{AttachArgs, RunCommands, RunWorkerArgs, StartArgs};
+use crate::args::{AttachArgs, RunCommands, RunVerb, RunWorkerArgs, StartArgs};
 use crate::command_context::CommandContext;
 use crate::shared::print_json_pretty;
 #[cfg(feature = "sleep_inhibitor")]
@@ -18,11 +18,13 @@ pub(crate) mod diff;
 pub(crate) mod events;
 pub(crate) mod fork;
 pub(crate) mod logs;
+pub(crate) mod mark;
 pub(crate) mod output;
 pub(crate) mod overrides;
 pub(crate) mod petri_stream;
 mod petri_worker;
 pub(crate) mod preview;
+pub(crate) mod queue;
 mod remote_workflow;
 mod resolution;
 pub(crate) mod resume;
@@ -47,7 +49,11 @@ pub(crate) async fn dispatch(
     let printer = base_ctx.printer();
 
     match cmd {
-        RunCommands::Run(args) => Box::pin(command::execute(*args, base_ctx)).await,
+        RunCommands::Run(args) => match args.verb {
+            Some(RunVerb::Mark(mark_args)) => mark::mark_command(&mark_args, base_ctx).await,
+            Some(RunVerb::Queue(queue_args)) => queue::queue_command(&queue_args, base_ctx).await,
+            None => Box::pin(command::execute(*args.run, base_ctx)).await,
+        },
         RunCommands::Create(args) => {
             let styles: &'static Styles = Box::leak(Box::new(Styles::detect_stderr()));
             let ctx = base_ctx.with_target(&args.target)?;

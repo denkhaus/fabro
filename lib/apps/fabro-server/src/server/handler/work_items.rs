@@ -14,9 +14,9 @@ use fabro_api::types::{
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
     WorkItemCloseResponse, WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse,
-    WorkItemUpdateRequest, WorkObservationLinkOutcome, WorkObservationLinkRequest,
-    WorkObservationLinkResponse, WorkObservationUnlinkResponse, WorkProject as ApiWorkProject,
-    WorkProjectListResponse, WorkProjectUpsertRequest,
+    WorkItemRadiusResponse, WorkItemUpdateRequest, WorkObservationLinkOutcome,
+    WorkObservationLinkRequest, WorkObservationLinkResponse, WorkObservationUnlinkResponse,
+    WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkReleasedRecord,
@@ -54,6 +54,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/link",
             post(link_observation),
+        )
+        .route(
+            "/projects/{projectId}/work-items/{itemKey}/radius",
+            get(get_work_item_radius),
         )
         .route(
             "/projects/{projectId}/work-items/unlink",
@@ -562,6 +566,31 @@ async fn close_work_item(
     Ok(Json(WorkItemCloseResponse {
         item:              api_item(item),
         overridden_radius: if forced { radius } else { Vec::new() },
+    })
+    .into_response())
+}
+
+/// The closure radius as its own read (ADR-0039 stage D): the SAME
+/// computation the close gate enforces, served for the adjudicator's
+/// fast path (the trivial case demands an empty radius) and the
+/// operator. One implementation, two readers.
+async fn get_work_item_radius(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path((project_id, item_key)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    let tracker = tracker_for(&state, project).await?;
+    let item = tracker
+        .get(project, &item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| ApiError::not_found("Work item not found."))?;
+    let radius = closure_radius(&state, project, &item_key).await?;
+    Ok(Json(WorkItemRadiusResponse {
+        item: api_item(item),
+        radius,
     })
     .into_response())
 }

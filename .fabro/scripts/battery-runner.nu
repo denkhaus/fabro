@@ -128,6 +128,14 @@ const BATTERIES = [
     # classification RED both ways, both lanes, plus the git base
     # derivation — this tier proves the meta lane's diff boundary.
     '.fabro/scripts/run-scope-fixtures.nu'
+    # lane-script commons battery (denkhaus/work#1108): the shared
+    # work-channel and run-anchor modules — the pure pins (branch parse
+    # with the per-consumer off-run default, the fixed-string grep mark,
+    # the argv builders with the --project-after-subcommand lesson) and
+    # the extraction pins (every consumer SOURCES the lib; no mirror
+    # def regrows beside it). The red-first core of the #1108
+    # extraction; transport arms stay with the closeout/evidence smokes.
+    '.fabro/scripts/lane-commons-fixtures.nu'
     # rust-style-guide skill parity (fabro-6538): .fabro/skills/
     # rust-style-guide (canonical — run-facing, the reviewer
     # contract's source) and .agents/skills/rust-style-guide (the

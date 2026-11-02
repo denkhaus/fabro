@@ -6,13 +6,15 @@ use chrono::{DateTime, NaiveDate, Utc};
 use fabro_api::types;
 use fabro_store::platform_records::StagePosition;
 use fabro_types::{
-    PairId, PairMessageRecord, PairMessageRequest, PairRecord, PairTranscriptResponse, Run, RunId,
-    RunPairStatusResponse, StageId,
+    OrchestrationField, OrchestrationVerdict, PairId, PairMessageRecord, PairMessageRequest,
+    PairRecord, PairTranscriptResponse, Run, RunId, RunPairStatusResponse, StageId,
 };
 use fabro_util::exit::{self, ExitClass};
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
+
+use crate::run_mark::RunMarkOutcome;
 
 #[derive(Debug)]
 pub struct ToolError {
@@ -91,6 +93,19 @@ pub trait FabroToolBackend: Send + Sync {
     /// scope.
     async fn set_run_title(&self, _run: Option<&str>, _title: &str) -> anyhow::Result<Run> {
         Err(run_title_tool_unavailable_error())
+    }
+    /// Mark one orchestration field of a FOREIGN run
+    /// (`fabro_run_mark`, ADR-0039 stage D): the adjudicator writes
+    /// `merge`, the merger writes `closable`. The server's workflow
+    /// allowlist is the authorization — the caller's own run is the
+    /// writer, the named run is the target.
+    async fn mark_run_orchestration(
+        &self,
+        _run: &str,
+        _field: OrchestrationField,
+        _verdict: OrchestrationVerdict,
+    ) -> anyhow::Result<RunMarkOutcome> {
+        Err(run_mark_tool_unavailable_error())
     }
     /// The run a work tool acts for: the resolved selector, or the
     /// session's own run when none is given. A surface without an own-run
@@ -343,6 +358,13 @@ fn observation_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
+fn run_mark_tool_unavailable_error() -> anyhow::Error {
+    ToolError::message(format!(
+        "{FABRO_RUN_MARK_TOOL_NAME} is not available on this surface"
+    ))
+    .into()
+}
+
 pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
     ToolError::message(
         "reading workflow files from the run sandbox (files_from) is not available on this \
@@ -395,6 +417,7 @@ pub const FABRO_RUN_INTERACT_TOOL_NAME: &str = "fabro_run_interact";
 pub const FABRO_RUN_GATHER_TOOL_NAME: &str = "fabro_run_gather";
 pub const FABRO_RUN_EVENTS_TOOL_NAME: &str = "fabro_run_events";
 pub const FABRO_RUN_SET_TITLE_TOOL_NAME: &str = "fabro_run_set_title";
+pub const FABRO_RUN_MARK_TOOL_NAME: &str = "fabro_run_mark";
 pub const FABRO_OBSERVATION_RECORD_TOOL_NAME: &str = "fabro_observation_record";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
@@ -449,6 +472,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunSetTitleParams>(
             FABRO_RUN_SET_TITLE_TOOL_NAME,
             "Set this run's title to what the run actually works on: after claiming a seed, refine the title to a few sentences specific to that seed (what it demands), never a generic workflow label. Default run: this run. Titles over 100 characters are rejected.",
+        ),
+        tool_definition::<crate::FabroRunMarkParams>(
+            FABRO_RUN_MARK_TOOL_NAME,
+            "Mark one orchestration field of ANOTHER run with a verdict (ADR-0039): `merge` (the adjudicator's field) or `closable` (the merger's), verdict `enabled`, `refused`, or `parked` (an operator escalation the next pass resumes). The server refuses a field this run's workflow does not own and a run marking itself.",
         ),
         tool_definition::<crate::FabroObservationRecordParams>(
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
@@ -639,6 +666,7 @@ mod tests {
             FABRO_RUN_PAIR_TOOL_NAME,
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_SET_TITLE_TOOL_NAME,
+            FABRO_RUN_MARK_TOOL_NAME,
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,

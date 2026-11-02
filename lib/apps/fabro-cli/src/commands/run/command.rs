@@ -14,6 +14,18 @@ pub(crate) async fn execute(mut args: RunArgs, base_ctx: &CommandContext) -> Res
     let ctx = base_ctx.with_target(&args.target)?;
     args.verbose = args.verbose || ctx.verbose();
 
+    // The workflow positional is enforced HERE, not by clap: `fabro run`
+    // carries the orchestration verbs as optional subcommands
+    // (`fabro run mark`, ADR-0039 stage D), and a `required = true`
+    // positional would demand a workflow beside every verb.
+    if args.workflow.is_none() {
+        anyhow::bail!(
+            "the workflow is required — pass a workflow name, path, or \
+             OWNER/REPO[@REF]:WORKFLOW (the orchestration verbs are subcommands: \
+             `fabro run mark`, `fabro run queue`)"
+        );
+    }
+
     let quiet = args.detach;
     let prevent_idle_sleep = ctx.user_settings().cli.exec.prevent_idle_sleep;
     // Ctrl-C stays owned here through start; `attach` installs its own listener.

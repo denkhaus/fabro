@@ -9,7 +9,7 @@ use fabro_types::{
     RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
 };
 
-use crate::{FabroToolBackend, common, seeds};
+use crate::{FabroToolBackend, RunMarkOutcome, common, seeds};
 
 #[derive(Clone)]
 pub struct ClientBackend {
@@ -151,6 +151,30 @@ impl FabroToolBackend for ClientBackend {
         };
         self.ensure_run_scope(&run_id)?;
         self.client.update_run_title(&run_id, title).await
+    }
+
+    async fn mark_run_orchestration(
+        &self,
+        run: &str,
+        field: fabro_types::OrchestrationField,
+        verdict: fabro_types::OrchestrationVerdict,
+    ) -> anyhow::Result<RunMarkOutcome> {
+        // The target is FOREIGN by design (ADR-0039 stage D): the
+        // adjudicator and the merger write verdicts about OTHER runs, so
+        // this call deliberately skips the run-scope guard every
+        // own-run tool carries — the server's workflow allowlist is the
+        // gate, and the door refuses a self-mark anyway.
+        let run_id = self.resolve_run(run).await?.id;
+        let marked = self
+            .client
+            .mark_run_orchestration(&run_id, field, verdict)
+            .await?;
+        Ok(RunMarkOutcome {
+            run_id:  marked.run_id,
+            field:   marked.field,
+            verdict: marked.verdict,
+            by_run:  marked.by_run,
+        })
     }
 
     async fn resolve_optional_own_run(&self, run: Option<&str>) -> anyhow::Result<RunId> {

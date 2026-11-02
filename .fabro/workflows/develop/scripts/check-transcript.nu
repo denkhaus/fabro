@@ -45,12 +45,10 @@
 # transcript dir constant in sync with evidence.nu's checks-section
 # (shared script, two entry points — one file each side).
 
-# Run id from the run branch; "local" off a run branch. Mirrors
-# evidence.nu's current-run-id — change both together.
-def current-run-id []: nothing -> string {
-    let id = (git branch --show-current | parse --regex 'fabro/run/(?P<id>[^/]+)$' | get -o id.0 | default '')
-    if ($id | is-empty) { "local" } else { $id }
-}
+# The run-id parse lives in the shared run-anchor module
+# (.fabro/scripts/lib/run_anchor.nu, denkhaus/work#1108) — the same
+# parse every lane script performs, one implementation.
+use ../../../scripts/lib/run_anchor.nu
 
 # Shared transcript dir. The env override exists so the transcript
 # battery can isolate its pins; production never sets it. Mirror any
@@ -66,7 +64,7 @@ def transcript-path [run_id: string]: nothing -> string {
 
 def main [...command: string, --path, --by: string = "implementer"]: nothing -> nothing {
     if $path or ($command | is-empty) {
-        print (transcript-path (current-run-id))
+        print (transcript-path (run_anchor run-id 'local'))
         return
     }
     let cmd = ($command | str join ' ')
@@ -101,7 +99,7 @@ def main [...command: string, --path, --by: string = "implementer"]: nothing -> 
     # Fail-open: a missing transcript or a header that does not
     # line-match (multi-line command) counts as no prior attempt —
     # the stamp is advisory and never changes the exit code.
-    let tpath = (transcript-path (current-run-id))
+    let tpath = (transcript-path (run_anchor run-id 'local'))
     let attempt = (if ($tpath | path exists) {
         1 + (open --raw $tpath | lines | where {|l|
             ($l | str starts-with "$ [by ") and (($l | str replace -r '^\$ \[by [^\]]+\] ' '') == $cmd)

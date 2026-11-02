@@ -27,9 +27,12 @@ const ALLOWED = [
     # The policy site itself: falls back to git HEAD in a plain checkout.
     '.fabro/scripts/line-tip-sha.nu'
     # Run-LOCAL diff bases inside a run's own checkout (the run's HEAD or a
-    # checkpoint ref), never a release tag. loop uses these develop copies.
-    '.fabro/workflows/develop/scripts/evidence.nu'
-    '.fabro/workflows/develop/scripts/closeout.nu'
+    # checkpoint ref), never a release tag. The derivation lives in the
+    # shared run-anchor module since #1108 — the develop scripts source it,
+    # and an allow-listed consumer regrowing its own `--short` derivation
+    # REDs here as unauthorised. loop uses the module through the develop
+    # copies.
+    '.fabro/scripts/lib/run_anchor.nu'
     # This battery: it assembles the pattern from fragments to scan for it
     # and derives nothing itself.
     '.fabro/scripts/release-sha-fixtures.nu'

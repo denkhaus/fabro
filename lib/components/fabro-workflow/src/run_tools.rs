@@ -229,6 +229,20 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::set_run_title_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_MARK_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunMarkParams>(name, args)?;
+            // The target is always explicit (no own-run default): the
+            // adjudicator and the merger write verdicts about OTHER
+            // runs, and the door refuses a self-mark. The server's
+            // workflow allowlist is the authorization (ADR-0039 stage D).
+            let result = fabro_tool::mark_run(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunMark::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::mark_run_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME => {
             let params =
                 parse_fabro_tool_args::<fabro_tool::FabroObservationRecordParams>(name, args)?;

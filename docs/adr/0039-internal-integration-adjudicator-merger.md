@@ -94,7 +94,12 @@ will not use.
 - The fork.30 window carries no server payload (all server-side
   commits since fork.29 are hook substance) and slips until the
   adjudicator chain is ready; the stage-4 live proof and the
-  `filing_enabled` settings checklist are cancelled.
+  `filing_enabled` settings checklist are cancelled. Stage C later
+  added payload again (engine quartet bindings, the observation CLI,
+  reporter facts); the user decision of the sprint-73 grill
+  (2026-11-01) extends the slip: NOTHING deploys to mirtuell while the
+  chain is in flight — the local fabro carries the current build and
+  local testing covers it; the window runs once the work is complete.
 - The transition is ONE cutover: adjudicator live, reporter renamed,
   closeout authority gone, hook stripped — lanes are empty, the
   adjudication queue starts empty.

@@ -282,11 +282,11 @@ mod adapter_tests {
                         }
                         let selections = |argv: &[&str]| {
                             let cli = Cli::try_parse_from(argv).unwrap();
-                            let Commands::RunCmd(
-                                RunCommands::Run(args) | RunCommands::Create(args),
-                            ) = *cli.command.unwrap()
-                            else {
-                                panic!("expected run args")
+                            let command = *cli.command.unwrap();
+                            let args = match command {
+                                Commands::RunCmd(RunCommands::Run(with_verbs)) => with_verbs.run,
+                                Commands::RunCmd(RunCommands::Create(boxed)) => boxed,
+                                _ => panic!("expected run args"),
                             };
                             parse(&args).unwrap()
                         };
@@ -373,10 +373,11 @@ mod adapter_tests {
                 "release",
             ])
             .unwrap();
-            let Commands::RunCmd(RunCommands::Run(args) | RunCommands::Create(args)) =
-                *cli.command.unwrap()
-            else {
-                panic!("expected shared run arguments");
+            let command = *cli.command.unwrap();
+            let args = match command {
+                Commands::RunCmd(RunCommands::Run(with_verbs)) => with_verbs.run,
+                Commands::RunCmd(RunCommands::Create(boxed)) => boxed,
+                _ => panic!("expected shared run arguments"),
             };
             assert_eq!(
                 parse(&args).unwrap(),
@@ -395,7 +396,7 @@ mod adapter_tests {
         }
         let cli = Cli::try_parse_from(["fabro", "run", "create"]).unwrap();
         assert!(
-            matches!(*cli.command.unwrap(), Commands::RunCmd(RunCommands::Run(args)) if args.workflow.as_deref() == Some(Path::new("create")))
+            matches!(*cli.command.unwrap(), Commands::RunCmd(RunCommands::Run(with_verbs)) if with_verbs.run.workflow.as_deref() == Some(Path::new("create")))
         );
     }
 

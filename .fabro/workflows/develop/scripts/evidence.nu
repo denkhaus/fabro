@@ -32,6 +32,13 @@
 # Output text is contract: the reviewer prompt names these sections —
 # change wording there too.
 
+# Shared lane-script modules (denkhaus/work#1108): the run-anchor triple
+# (branch/run-id/run-base) and the work channel (server/bin resolution,
+# the facade call) live in .fabro/scripts/lib/ — one implementation,
+# every lane script a consumer.
+use ../../../scripts/lib/run_anchor.nu
+use ../../../scripts/lib/work_channel.nu
+
 # Dev-loop machinery this repo owns; never part of a seed's review scope.
 const LOOP_PREFIXES = [".fabro/" ".mulch/" ".seeds/" ".prime/" ".agents/" "docs/" "scripts/"]
 const LOOP_ROOTS = ["justfile" "AGENTS.md" "CLAUDE.md" ".gitignore"]
@@ -121,36 +128,6 @@ def resolve-blobrefs [text: string]: nothing -> string {
 def diff-sort-key [path: string]: nothing -> string {
     let ext = ($path | path parse | get extension? | default "" | str lowercase)
     if $ext in $DOC_EXTENSIONS { $"z:($path)" } else { $"a:($path)" }
-}
-
-def current-branch []: nothing -> string {
-    git branch --show-current | str trim
-}
-
-# Run id parsed from the run branch (`fabro/run/<id>`); "local" off a
-# run branch. Shared by run-base and the checks-transcript path below;
-# mirrored in check-transcript.nu — change both together.
-def current-run-id []: nothing -> string {
-    let id = (current-branch | parse --regex 'fabro/run/(?P<id>[^/]+)$' | get -o id.0 | default '')
-    if ($id | is-empty) { "local" } else { $id }
-}
-
-# Parent of THIS run's oldest checkpoint commit, identified via the run
-# branch name (fabro/run/<id> -> subject "fabro(<id>): ..."). The subject
-# match is FIXED-STRING: a regex like "fabro.<id>:" silently matches
-# nothing (it lacks the ")" before ":"), which once produced empty diff
-# sections and misleading evidence. Foreign run checkpoints merged into
-# history are ignored. Fallback: HEAD.
-def run-base []: nothing -> record<base: string, short: string, grounded: bool> {
-    let run_id = (current-run-id)
-    let subject_mark = $"fabro\(($run_id)\):"
-    let checkpoints = (git log --format=%H --fixed-strings --grep $subject_mark | lines | compact)
-    if ($checkpoints | is-empty) {
-        {base: "HEAD", short: (git rev-parse --short HEAD), grounded: false}
-    } else {
-        let base = (git rev-parse $"($checkpoints | last)^")
-        {base: $base, short: (git rev-parse --short $base), grounded: true}
-    }
 }
 
 def is-loop-path [path: string]: nothing -> bool {
@@ -255,25 +232,6 @@ def worktree-state []: nothing -> record<lines: list<string>, label: string> {
 # do; run 01M294HH's wrong-item capture class dies at the source).
 # A malformed packet, an unresolvable item, or a missing claim each
 # hard-fail: a silent fallback would reintroduce the wrong-item capture.
-def work-server []: nothing -> string {
-    let server = ($env.FABRO_SERVER? | default '' | str trim)
-    if ($server | is-empty) {
-        print -e "evidence: FABRO_SERVER is not set — the work channel needs it (run sandboxes carry it via the channel mount)"
-        exit 1
-    }
-    $server
-}
-
-# One outbound work-facade call: the args list carries the subcommand
-# and ITS flags verbatim (a rest-param would eat `--project` as THIS
-# command's flag), the helper adds the binary and the server. Returns
-# the complete-wrapped result record. MIRRORED from closeout.nu —
-# reuse this shape, do not invent a new one.
-def work-call [args: list<string>]: nothing -> any {
-    let bin = ($env.FABRO_BIN? | default 'fabro')
-    do { ^$bin work --server (work-server) ...$args } | complete
-}
-
 # The live claim states that hold an item (the push gate's live set).
 def live-claim-states []: nothing -> list<string> {
     ["granted" "active" "awaiting_merge"]
@@ -283,8 +241,8 @@ def live-claim-states []: nothing -> list<string> {
 # hold a live claim on EXACTLY this item. Hard-fail otherwise — the
 # capture speaks for a claim, not for a key that happens to parse.
 def verify-run-claim [item_key: string]: nothing -> nothing {
-    let rid = (current-run-id)
-    let res = (work-call [claims --project fabro --json])
+    let rid = (run_anchor run-id 'local')
+    let res = (work_channel call 'evidence' [claims --project fabro --json])
     if $res.exit_code != 0 {
         print -e $"evidence: work claims failed — cannot verify this run's claim: ($res.stderr | str trim)"
         exit 1
@@ -330,7 +288,7 @@ def claimed-item [work_item: bool]: nothing -> any {
         exit 1
     }
     verify-run-claim $key
-    let res = (work-call [show --project fabro $key --json])
+    let res = (work_channel call 'evidence' [show --project fabro $key --json])
     if $res.exit_code != 0 {
         print -e $"evidence: work show \($key\) failed — item not resolvable through the channel: ($res.stderr | str trim)"
         exit 1
@@ -760,7 +718,7 @@ def classify-rows [rows: list, lane: string, spec_paths: list<string>]: nothing 
 # surfaces in the anomaly section for adjudication). Passed by the
 # calling graph's script line; deterministic via the run's workflow spec.
 def main [--lane: string = "product", --work-item]: nothing -> nothing {
-    let base = (run-base)
+    let base = (run_anchor run-base)
     let no_base_note = (if not $base.grounded {
         "NO RUN BASE — no checkpoint commits found for this run.\nThe diff below is empty or misleading; treat this evidence as unreliable.\n\n"
     } else { "" })
@@ -801,7 +759,7 @@ def main [--lane: string = "product", --work-item]: nothing -> nothing {
     # verification-only claims fabro-f759): cheap and critical —
     # slot it after the spec, before the file lists and diffs, so a
     # compact render still carries the recorded proof.
-    let checks = (checks-section (checks-transcript-path (current-run-id)))
+    let checks = (checks-section (checks-transcript-path (run_anchor run-id 'local')))
     let files = (seed-work-files-section $seed_rows)
     let churn = (loop-churn-section $churn_rows)
     # Churn-only seeds get a loop-work diff adjacent to the churn counts

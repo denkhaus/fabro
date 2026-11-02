@@ -638,6 +638,12 @@ fn main() {
             "fabro_types::OrchestrationVerdict",
             &[],
         ),
+        ("OrchestrationField", "fabro_types::OrchestrationField", &[]),
+        (
+            "RunObservationCategory",
+            "fabro_types::ObservationCategory",
+            &[],
+        ),
         ("PairId", "fabro_types::PairId", &[]),
         ("PairMessageId", "fabro_types::PairMessageId", &[]),
         ("PairStatus", "fabro_types::PairStatus", &[]),

@@ -76,6 +76,12 @@ import type { RunIntent } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
 // @ts-ignore
+import type { RunObservationList } from '../models';
+// @ts-ignore
+import type { RunOrchestrationMarkRequest } from '../models';
+// @ts-ignore
+import type { RunOrchestrationMarkResponse } from '../models';
+// @ts-ignore
 import type { RunSandboxFileMap } from '../models';
 // @ts-ignore
 import type { RunTimelineResponse } from '../models';
@@ -814,6 +820,87 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
+         * @summary List a Run\'s Observations
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunObservations: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listRunObservations', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/observations`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * @summary List the Orchestration Queue
+         * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunQueue: async (field?: ListRunQueueFieldEnum, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/runs/queue`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (field !== undefined) {
+                localVarQueryParameter['field'] = field;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
          * @summary Read one workspace directory of the run\'s sandbox
          * @param {string} id Unique run identifier (ULID).
@@ -995,6 +1082,51 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The verdict write door (ADR-0039, denkhaus/work#1107 stage D): appends one `run.orchestration` record to the TARGET run named by the path. The WRITER is the caller\'s own run — a workflow run whose workflow is on the orchestration allowlist, bound to exactly one field: `adjudicator` runs write `merge`, `merger` runs write `closable`. One writer per field, enforced at the door: a call naming a field the caller\'s workflow does not own is refused with `403`, whatever the target. The target run is always an explicit run id — the adjudicator and merger write verdicts about OTHER runs; a run marking itself is the conflict of interest this door exists to end (refused with `403`, code `orchestration_self_mark`).  Failures return `403` (`orchestration_not_allowed` — the caller\'s workflow is not on the allowlist; or the field is not the caller\'s to write; or the caller is not a workflow run at all), `404` (`run not found`), `400` (invalid field or verdict).
+         * @summary Mark a Run\'s Orchestration Field
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunOrchestrationMarkRequest} runOrchestrationMarkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        markRunOrchestration: async (id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('markRunOrchestration', 'id', id)
+            // verify required parameter 'runOrchestrationMarkRequest' is not null or undefined
+            assertParamExists('markRunOrchestration', 'runOrchestrationMarkRequest', runOrchestrationMarkRequest)
+            const localVarPath = `/api/v1/runs/{id}/orchestration`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(runOrchestrationMarkRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -2010,6 +2142,32 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
+         * @summary List a Run\'s Observations
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunObservations(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunObservationList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunObservations(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.listRunObservations']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * @summary List the Orchestration Queue
+         * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunQueue(field, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.listRunQueue']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
          * @summary Read one workspace directory of the run\'s sandbox
          * @param {string} id Unique run identifier (ULID).
@@ -2059,6 +2217,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.listRuns']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The verdict write door (ADR-0039, denkhaus/work#1107 stage D): appends one `run.orchestration` record to the TARGET run named by the path. The WRITER is the caller\'s own run — a workflow run whose workflow is on the orchestration allowlist, bound to exactly one field: `adjudicator` runs write `merge`, `merger` runs write `closable`. One writer per field, enforced at the door: a call naming a field the caller\'s workflow does not own is refused with `403`, whatever the target. The target run is always an explicit run id — the adjudicator and merger write verdicts about OTHER runs; a run marking itself is the conflict of interest this door exists to end (refused with `403`, code `orchestration_self_mark`).  Failures return `403` (`orchestration_not_allowed` — the caller\'s workflow is not on the allowlist; or the field is not the caller\'s to write; or the caller is not a workflow run at all), `404` (`run not found`), `400` (invalid field or verdict).
+         * @summary Mark a Run\'s Orchestration Field
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunOrchestrationMarkRequest} runOrchestrationMarkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunOrchestrationMarkResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.markRunOrchestration(id, runOrchestrationMarkRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.markRunOrchestration']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -2491,6 +2663,26 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.linkRunPullRequest(id, linkRunPullRequestRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
+         * @summary List a Run\'s Observations
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunObservations(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunObservationList> {
+            return localVarFp.listRunObservations(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * @summary List the Orchestration Queue
+         * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunList> {
+            return localVarFp.listRunQueue(field, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
          * @summary Read one workspace directory of the run\'s sandbox
          * @param {string} id Unique run identifier (ULID).
@@ -2532,6 +2724,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          */
         listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunList> {
             return localVarFp.listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The verdict write door (ADR-0039, denkhaus/work#1107 stage D): appends one `run.orchestration` record to the TARGET run named by the path. The WRITER is the caller\'s own run — a workflow run whose workflow is on the orchestration allowlist, bound to exactly one field: `adjudicator` runs write `merge`, `merger` runs write `closable`. One writer per field, enforced at the door: a call naming a field the caller\'s workflow does not own is refused with `403`, whatever the target. The target run is always an explicit run id — the adjudicator and merger write verdicts about OTHER runs; a run marking itself is the conflict of interest this door exists to end (refused with `403`, code `orchestration_self_mark`).  Failures return `403` (`orchestration_not_allowed` — the caller\'s workflow is not on the allowlist; or the field is not the caller\'s to write; or the caller is not a workflow run at all), `404` (`run not found`), `400` (invalid field or verdict).
+         * @summary Mark a Run\'s Orchestration Field
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunOrchestrationMarkRequest} runOrchestrationMarkRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunOrchestrationMarkResponse> {
+            return localVarFp.markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Merges the stored pull request for a run on GitHub.
@@ -2924,6 +3127,28 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
+     * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
+     * @summary List a Run\'s Observations
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunObservations(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRunObservations(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+     * @summary List the Orchestration Queue
+     * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRunQueue(field, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
      * @summary Read one workspace directory of the run\'s sandbox
      * @param {string} id Unique run identifier (ULID).
@@ -2967,6 +3192,18 @@ export class RunsApi extends BaseAPI {
      */
     public listRuns(pageLimit?: number, pageOffset?: number, includeArchived?: boolean, parentId?: string, status?: Array<BoardColumn>, sort?: ListRunsSortEnum, direction?: ListRunsDirectionEnum, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).listRuns(pageLimit, pageOffset, includeArchived, parentId, status, sort, direction, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The verdict write door (ADR-0039, denkhaus/work#1107 stage D): appends one `run.orchestration` record to the TARGET run named by the path. The WRITER is the caller\'s own run — a workflow run whose workflow is on the orchestration allowlist, bound to exactly one field: `adjudicator` runs write `merge`, `merger` runs write `closable`. One writer per field, enforced at the door: a call naming a field the caller\'s workflow does not own is refused with `403`, whatever the target. The target run is always an explicit run id — the adjudicator and merger write verdicts about OTHER runs; a run marking itself is the conflict of interest this door exists to end (refused with `403`, code `orchestration_self_mark`).  Failures return `403` (`orchestration_not_allowed` — the caller\'s workflow is not on the allowlist; or the field is not the caller\'s to write; or the caller is not a workflow run at all), `404` (`run not found`), `400` (invalid field or verdict).
+     * @summary Mark a Run\'s Orchestration Field
+     * @param {string} id Unique run identifier (ULID).
+     * @param {RunOrchestrationMarkRequest} runOrchestrationMarkRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -3177,6 +3414,11 @@ export class RunsApi extends BaseAPI {
     }
 }
 
+export const ListRunQueueFieldEnum = {
+    MERGE: 'merge',
+    CLOSABLE: 'closable'
+} as const;
+export type ListRunQueueFieldEnum = typeof ListRunQueueFieldEnum[keyof typeof ListRunQueueFieldEnum];
 export const ListRunsSortEnum = {
     CREATED_AT: 'created_at',
     UPDATED_AT: 'updated_at',

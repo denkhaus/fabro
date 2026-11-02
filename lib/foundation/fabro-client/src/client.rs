@@ -1691,6 +1691,29 @@ impl Client {
         convert_type(response.into_inner())
     }
 
+    /// Mark one orchestration field of a run (ADR-0039 stage D): the
+    /// verdict write door. The caller's own run (the worker principal)
+    /// is the writer; the server's workflow allowlist binds each gear's
+    /// workflow to exactly one field.
+    pub async fn mark_run_orchestration(
+        &self,
+        run_id: &RunId,
+        field: fabro_types::OrchestrationField,
+        verdict: fabro_types::OrchestrationVerdict,
+    ) -> Result<types::RunOrchestrationMarkResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .mark_run_orchestration()
+                    .id(run_id.to_string())
+                    .body(types::RunOrchestrationMarkRequest { field, verdict })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Every configured work-item project (ADR-0032).
     pub async fn list_work_projects(&self) -> Result<Vec<types::WorkProject>> {
         let response = self
@@ -1862,6 +1885,68 @@ impl Client {
                     .retrieve_work_item()
                     .project_id(project_id.to_string())
                     .item_key(item_key.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// A work item's closure radius (ADR-0038 read door, ADR-0039 stage
+    /// D): the item beside the open work items linked to the
+    /// observations of its runs — the same computation the close gate
+    /// enforces.
+    pub async fn work_item_radius(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<types::WorkItemRadiusResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_work_item_radius()
+                    .project_id(project_id.to_string())
+                    .item_key(item_key.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The orchestration queue (ADR-0039 stage D): terminal runs without
+    /// a verdict on the field — the adjudicator's pass-one worklist
+    /// (`merge`) or the merger's (`closable`).
+    pub async fn run_queue(
+        &self,
+        field: fabro_types::OrchestrationField,
+    ) -> Result<Vec<types::Run>> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .list_run_queue()
+                    .field(match field {
+                        fabro_types::OrchestrationField::Merge => types::ListRunQueueField::Merge,
+                        fabro_types::OrchestrationField::Closable => {
+                            types::ListRunQueueField::Closable
+                        }
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner().data)
+    }
+
+    /// A run's observation records in seq order (ADR-0039 stage D read
+    /// door): the facts its stages recorded, with the category that
+    /// routes adjudication.
+    pub async fn list_run_observations(&self, run_id: &RunId) -> Result<types::RunObservationList> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .list_run_observations()
+                    .id(run_id.to_string())
                     .send()
                     .await
             })

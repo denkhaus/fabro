@@ -1301,7 +1301,7 @@ destination = "{destination}"
             .expect("should parse");
         match *cli.command.unwrap() {
             Commands::RunCmd(RunCommands::Run(args)) => {
-                assert_eq!(args.inputs.values, vec!["foo=bar"]);
+                assert_eq!(args.run.inputs.values, vec!["foo=bar"]);
             }
             _ => panic!("unexpected command variant"),
         }
@@ -1319,7 +1319,7 @@ destination = "{destination}"
         .expect("should parse");
         match *cli.command.unwrap() {
             Commands::RunCmd(RunCommands::Run(args)) => {
-                assert_eq!(args.parent.as_deref(), Some("nightly-parent"));
+                assert_eq!(args.run.parent.as_deref(), Some("nightly-parent"));
             }
             _ => panic!("unexpected command variant"),
         }

@@ -39,6 +39,7 @@ mod mcp;
 mod model;
 mod model_list;
 mod model_test;
+mod orchestration;
 mod parent;
 mod pr;
 mod pr_close;

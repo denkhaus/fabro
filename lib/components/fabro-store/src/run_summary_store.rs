@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
 use chrono::{DateTime, Utc};
-use fabro_types::{Run, RunId, RunSize, RunStatusKind, RunTiming, timing};
+use fabro_types::{OrchestrationField, Run, RunId, RunSize, RunStatusKind, RunTiming, timing};
 use sqlx::query::Query;
 use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
@@ -361,6 +361,51 @@ impl RunSummaryStore {
             .push(
                 " AND (status IN ('succeeded', 'failed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
             );
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        query.push(" LIMIT ").push_bind(i64::from(limit));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
+    /// The adjudication queue (ADR-0039 stage D, denkhaus/work#1107):
+    /// terminal runs carrying no `run.orchestration` verdict on `field`
+    /// yet — the anti-join of the runs row's terminal statuses against
+    /// the runs the field's latest verdicts name. Archived terminal runs
+    /// stay queued (archiving is bookkeeping, not adjudication state);
+    /// a run leaves the queue the moment any verdict record for the
+    /// field exists. Newest first. No cursor, no queue table:
+    /// repetition is gap-safe.
+    pub async fn adjudication_queue(
+        &self,
+        field: OrchestrationField,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        // The runs this field has ANY verdict for, read once in Rust —
+        // verdict records are rare, so the fold stays cheap (the same
+        // trade `latest_verdicts_by_run` names).
+        let verdicted: Vec<String> = self
+            .platform_records()
+            .latest_verdicts_by_run(field)
+            .await?
+            .into_iter()
+            .map(|(run_id, _verdict)| run_id.to_string())
+            .collect();
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
+        if !verdicted.is_empty() {
+            query.push(" AND runs.id NOT IN (");
+            let mut separated = query.separated(", ");
+            for run_id in verdicted {
+                separated.push_bind(run_id);
+            }
+            query.push(")");
+        }
         push_order(
             &mut query,
             RunSummarySort::CreatedAt,
@@ -948,6 +993,96 @@ mod tests {
             store.active_run_for_automation("loop-fabro").await.unwrap(),
             Some(live.spec.run_id),
             "a running run still reads as active"
+        );
+    }
+
+    /// The adjudication queue (ADR-0039 stage D, denkhaus/work#1107):
+    /// the anti-join of TERMINAL runs against the field's verdicts. A
+    /// run leaves the queue the moment any verdict on the field exists;
+    /// the OTHER field's verdicts do not free it; non-terminal runs
+    /// never queue; an archived terminal run stays queued (archiving is
+    /// bookkeeping, not adjudication state).
+    #[tokio::test]
+    async fn adjudication_queue_joins_terminal_runs_against_the_field_verdicts() {
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        use crate::platform_records::{PlatformRecord, RunOrchestrationRecord};
+
+        let (_directory, store) = store().await;
+        let base = dt("2026-11-01T12:00:00Z");
+        let mut succeeded = projection(run_id(1, 1), "succeeded run", base);
+        succeeded.status = sample_status(RunStatusKind::Succeeded);
+        let mut failed = projection(
+            run_id(2, 2),
+            "failed run",
+            base + chrono::Duration::seconds(10),
+        );
+        failed.status = sample_status(RunStatusKind::Failed);
+        let mut running = projection(
+            run_id(3, 3),
+            "running run",
+            base + chrono::Duration::seconds(20),
+        );
+        running.status = sample_status(RunStatusKind::Running);
+        write(&store, &succeeded).await;
+        write(&store, &failed).await;
+        write(&store, &running).await;
+
+        // merge = refused on the SUCCEEDED run, written by another run.
+        store
+            .platform_records()
+            .append(
+                &succeeded.spec.run_id,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Merge,
+                    verdict: OrchestrationVerdict::Refused,
+                    by_run:  None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let now = dt("2026-11-01T13:00:00Z");
+        let merge_queue = store
+            .adjudication_queue(OrchestrationField::Merge, 50, now)
+            .await
+            .expect("the merge queue reads");
+        assert_eq!(
+            merge_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![failed.spec.run_id],
+            "the verdicted run left the merge queue; the running run never queued"
+        );
+
+        // The merge verdict does not free the closable field.
+        let closable_queue = store
+            .adjudication_queue(OrchestrationField::Closable, 50, now)
+            .await
+            .expect("the closable queue reads");
+        let mut closable_ids = closable_queue.iter().map(|run| run.id).collect::<Vec<_>>();
+        closable_ids.sort();
+        let mut want = vec![succeeded.spec.run_id, failed.spec.run_id];
+        want.sort();
+        assert_eq!(
+            closable_ids, want,
+            "both terminal runs stay queued on the verdict-free field"
+        );
+
+        // An archived terminal run stays queued.
+        sqlx::query("UPDATE runs SET archived_at_ms = ? WHERE id = ?")
+            .bind(now.timestamp_millis())
+            .bind(failed.spec.run_id.to_string())
+            .execute(&store.pool())
+            .await
+            .unwrap();
+        let archived_queue = store
+            .adjudication_queue(OrchestrationField::Merge, 50, now)
+            .await
+            .expect("the queue reads after archiving");
+        assert_eq!(
+            archived_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![failed.spec.run_id],
+            "archiving is bookkeeping, not adjudication state — the run stays queued"
         );
     }
 

@@ -7,6 +7,7 @@ mod environments;
 mod install;
 mod install_openai_compatible;
 mod mcp_servers;
+mod orchestration;
 mod petri_store;
 mod routing;
 mod run_channel;

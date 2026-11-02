@@ -1760,4 +1760,91 @@ mod closure_radius {
             backpressure_open_pr_cap: 0,
         }
     }
+
+    /// The radius read door (ADR-0039 stage D): the SAME computation the
+    /// close gate enforces, served as its own GET — the adjudicator
+    /// fast path's empty-radius check and the operator's view. The
+    /// itemKey path segment URL-encodes the `#` (the CLI encodes the
+    /// same way).
+    #[tokio::test]
+    async fn the_radius_get_serves_the_close_gates_computation() {
+        let tracker =
+            RadiusTracker::with_items(vec![item(1, "open"), item(2, "open"), item(3, "closed")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+
+        // No observations, no links: the radius is empty and the item
+        // itself serves.
+        let empty = body_json(
+            json_call(
+                &app,
+                Method::GET,
+                "/projects/fabro/work-items/denkhaus%2Fwork%231/radius",
+                &Value::Null,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(empty["item"]["itemKey"].as_str(), Some("denkhaus/work#1"));
+        assert_eq!(
+            empty["radius"].as_array().map(Vec::len),
+            Some(0),
+            "nothing linked: the radius is empty: {empty}"
+        );
+
+        // The close-gate fixture shape: item 1's run observation links
+        // the OPEN item 2 — the radius lists it.
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#1", "runId": CLOSING_RUN, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted");
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#2", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+        let radius = body_json(
+            json_call(
+                &app,
+                Method::GET,
+                "/projects/fabro/work-items/denkhaus%2Fwork%231/radius",
+                &Value::Null,
+            )
+            .await,
+        )
+        .await;
+        let keys = radius["radius"]
+            .as_array()
+            .expect("radius array")
+            .iter()
+            .map(|entry| entry["itemKey"].as_str().expect("item key"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            keys,
+            vec!["denkhaus/work#2"],
+            "the open blocker lists: {radius}"
+        );
+
+        // An unknown item is a 404, not an empty radius.
+        let missing = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-items/denkhaus%2Fwork%2399/radius",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
 }
