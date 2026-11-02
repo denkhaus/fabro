@@ -81,8 +81,8 @@ pub mod types {
         StageId, StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection,
         StageState, StageToolBatchProjection, SystemActorKind, SystemIntegrationStatus,
         SystemIntegrationsResponse, TodoListProjection, ToolCategory, ToolSource, ToolSummary,
-        TurnId, UpdateVariableRequest, UserPrincipal, Variable, VariableListResponse, WorkflowPath,
-        WorkflowSettings, WorkflowVersion, WorkflowVersionId,
+        TurnId, UpdateVariableRequest, UserPrincipal, Variable, VariableListResponse,
+        WorkItemComment, WorkflowPath, WorkflowSettings, WorkflowVersion, WorkflowVersionId,
     };
     pub use lithos_llm::catalog::{ModelHandle, ProviderId};
     pub use lithos_llm::types::{

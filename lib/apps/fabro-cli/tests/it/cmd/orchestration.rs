@@ -115,6 +115,24 @@ fn run_mark_refusals_teach_the_grammar() {
     }
 }
 
+/// A blank `--workflow` is refused with the two shapes taught (door
+/// symmetry: the tool twin refuses the same value — a blank filter is a
+/// caller accident, never a read-everything wish).
+#[test]
+fn run_queue_refuses_a_blank_workflow_filter() {
+    let output = fabro(&["run", "queue", "--workflow", "  "]);
+    assert!(!output.status.success());
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains("--workflow is blank"),
+        "the refusal names the blank flag: {stderr}"
+    );
+    assert!(
+        stderr.contains("drop"),
+        "the refusal teaches the fix (drop the flag): {stderr}"
+    );
+}
+
 /// The workflow positional became a runtime guard when the verbs moved
 /// under `fabro run`: `fabro run` with neither workflow nor verb
 /// teaches both shapes.

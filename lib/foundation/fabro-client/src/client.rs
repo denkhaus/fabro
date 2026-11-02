@@ -1935,9 +1935,6 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// The orchestration queue (ADR-0039 stage D): terminal runs without
-    /// a verdict on the field — the adjudicator's pass-one worklist
-    /// (`merge`) or the merger's (`closable`).
     /// The adjudication queue (ADR-0039 stage D read door): terminal runs
     /// whose latest verdict on the field is not settled, optionally
     /// narrowed to one workflow, each entry decorated with the work item

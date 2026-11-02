@@ -1380,8 +1380,8 @@ mod tests {
         listed.assert_calls_async(1).await;
         let (head, body) = output.split_once('\n').expect("summary then JSON body");
         assert!(
-            head.starts_with("denkhaus/work#7 radius: 1 open item(s)"),
-            "the summary names the item and the radius size: {head}"
+            head.starts_with("denkhaus/work#7 radius: 1 open work item(s)"),
+            "the summary names the work item and the radius size: {head}"
         );
         assert!(body.contains("denkhaus/work#9"), "{body}");
     }
@@ -1421,7 +1421,7 @@ mod tests {
         let (head, body) = output.split_once('\n').expect("summary then JSON body");
         assert!(
             head.starts_with("1 comment(s) on denkhaus/work#7, oldest first:"),
-            "the summary names the item and the count: {head}"
+            "the summary names the work item and the count: {head}"
         );
         assert!(body.contains("denkhaus"), "{body}");
         assert!(body.contains("exempt"), "{body}");

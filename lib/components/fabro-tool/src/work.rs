@@ -10,9 +10,8 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use fabro_api::types::{
-    WorkClaim, WorkItem, WorkItemComment, WorkItemCommentList, WorkItemRadiusResponse,
-};
+use fabro_api::types::{WorkClaim, WorkItem, WorkItemCommentList, WorkItemRadiusResponse};
+use fabro_types::WorkItemComment;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +45,7 @@ pub struct FabroWorkShowParams {
     pub item_key: String,
 }
 
-/// `fabro_work_radius` (ADR-0038 read door, ADR-0039 stage D): the item
+/// `fabro_work_radius` (ADR-0038 read door, ADR-0039 stage D): the work item
 /// beside its open closure radius — what a merge verdict hinges on.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkRadiusParams {
@@ -334,7 +333,7 @@ pub async fn work_show(
 }
 
 /// Read a work item's closure radius (ADR-0038 read door): the open
-/// items linked to the observations of the item's runs. The SAME
+/// work items linked to the observations of the work item's runs. The SAME
 /// computation the close gate enforces — one implementation, two
 /// readers.
 pub async fn work_radius(
@@ -479,8 +478,9 @@ pub fn work_show_text(result: &WorkItem) -> String {
     format!("{} — {} [{}]", result.item_key, result.title, result.state)
 }
 
-/// The radius rendering: the item, the size of its open radius, then
-/// one line per blocking item — the listing a verdict leans on.
+/// The radius rendering: the work item, the size of its open radius,
+/// then one line per blocking work item — the listing a verdict leans
+/// on.
 pub fn work_radius_text(result: &WorkItemRadiusResponse) -> String {
     if result.radius.is_empty() {
         return format!(
@@ -489,21 +489,21 @@ pub fn work_radius_text(result: &WorkItemRadiusResponse) -> String {
         );
     }
     let mut listed = format!(
-        "{} radius: {} open item(s):",
+        "{} radius: {} open work item(s):",
         result.item.item_key,
         result.radius.len()
     );
-    for item in &result.radius {
+    for work_item in &result.radius {
         let _ = write!(
             listed,
             "\n{} — {} [{}] prio {}",
-            item.item_key, item.title, item.state, item.priority
+            work_item.item_key, work_item.title, work_item.state, work_item.priority
         );
     }
     listed
 }
 
-/// The answer-channel rendering: count and item, then each comment as
+/// The answer-channel rendering: count and work item, then each comment as
 /// `author (when)` with its fact head — bodies are free prose, so the
 /// full text rides the JSON payload.
 pub fn work_comments_text(item_key: &str, comments: &[WorkItemComment]) -> String {
@@ -546,11 +546,11 @@ pub fn work_list_text(items: &[WorkItem], query: Option<&str>) -> String {
         return empty;
     }
     let mut listed = head;
-    for item in items {
+    for work_item in items {
         let _ = write!(
             listed,
             "\n{} — {} [{}] prio {}",
-            item.item_key, item.title, item.state, item.priority
+            work_item.item_key, work_item.title, work_item.state, work_item.priority
         );
     }
     listed
@@ -775,7 +775,7 @@ mod tests {
         );
     }
 
-    fn item(key: &str, title: &str, state: &str) -> WorkItem {
+    fn work_item(key: &str, title: &str, state: &str) -> WorkItem {
         WorkItem {
             item_key:   key.to_string(),
             title:      title.to_string(),
@@ -815,21 +815,21 @@ mod tests {
     #[test]
     fn the_radius_renderer_reports_the_item_and_its_open_items() {
         let listed = work_radius_text(&WorkItemRadiusResponse {
-            item:   item("denkhaus/work#7", "Adjudicate", "open"),
-            radius: vec![item("denkhaus/work#9", "Watchdog tuning", "open")],
+            item:   work_item("denkhaus/work#7", "Adjudicate", "open"),
+            radius: vec![work_item("denkhaus/work#9", "Watchdog tuning", "open")],
         });
         assert_eq!(
             listed.lines().next(),
-            Some("denkhaus/work#7 radius: 1 open item(s):"),
-            "the head names the item and the radius size: {listed}"
+            Some("denkhaus/work#7 radius: 1 open work item(s):"),
+            "the head names the work item and the radius size: {listed}"
         );
         assert!(
             listed.contains("denkhaus/work#9 — Watchdog tuning [open] prio 2"),
-            "one line per blocking item: {listed}"
+            "one line per blocking work item: {listed}"
         );
 
         let empty = work_radius_text(&WorkItemRadiusResponse {
-            item:   item("denkhaus/work#7", "Adjudicate", "open"),
+            item:   work_item("denkhaus/work#7", "Adjudicate", "open"),
             radius: Vec::new(),
         });
         assert!(

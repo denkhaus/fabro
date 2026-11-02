@@ -61,6 +61,7 @@ pub mod transcript;
 pub mod usage;
 pub mod usage_rollup;
 pub mod variable;
+pub mod work_item;
 pub mod workflow_path;
 pub mod workflow_version;
 pub mod workflow_version_id;
@@ -199,6 +200,7 @@ pub use usage::{ModelRef, ModelUsage, format_cost, sum_usage, usage_is_empty};
 pub use variable::{
     CreateVariableRequest, UpdateVariableRequest, Variable, VariableListResponse, is_env_style_name,
 };
+pub use work_item::WorkItemComment;
 pub use workflow_path::{
     MAX_WORKFLOW_PATH_BYTES, MAX_WORKFLOW_PATH_COMPONENTS, WorkflowPath, WorkflowPathParseError,
 };

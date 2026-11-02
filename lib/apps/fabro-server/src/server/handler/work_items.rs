@@ -13,11 +13,11 @@ use fabro_api::types::{
     WorkClaimGrantOutcome, WorkClaimGrantRequest, WorkClaimGrantResponse, WorkClaimListResponse,
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
-    WorkItemCloseResponse, WorkItemComment as ApiWorkItemComment, WorkItemCommentList,
-    WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse, WorkItemRadiusResponse,
-    WorkItemUpdateRequest, WorkObservationLinkOutcome, WorkObservationLinkRequest,
-    WorkObservationLinkResponse, WorkObservationUnlinkResponse, WorkProject as ApiWorkProject,
-    WorkProjectListResponse, WorkProjectUpsertRequest,
+    WorkItemCloseResponse, WorkItemCommentList, WorkItemCreateRequest, WorkItemLaneRequest,
+    WorkItemListResponse, WorkItemRadiusResponse, WorkItemUpdateRequest,
+    WorkObservationLinkOutcome, WorkObservationLinkRequest, WorkObservationLinkResponse,
+    WorkObservationUnlinkResponse, WorkProject as ApiWorkProject, WorkProjectListResponse,
+    WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkReleasedRecord,
@@ -25,7 +25,7 @@ use fabro_store::platform_records::{
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
-    WorkItemComment, WorkItemDraft, WorkItemFilter, WorkProject,
+    WorkItemDraft, WorkItemFilter, WorkProject,
 };
 
 use super::super::{
@@ -624,10 +624,10 @@ async fn list_work_item_comments(
         .list_comments(project, &item_key)
         .await
         .map_err(tracker_failed)?;
-    Ok(Json(WorkItemCommentList {
-        comments: comments.into_iter().map(api_comment).collect(),
-    })
-    .into_response())
+    // `WorkItemComment` IS the port's type (the `with_replacement`
+    // contract, AGENTS.md API type ownership): no adapter, the wire
+    // shape is the canonical shape.
+    Ok(Json(WorkItemCommentList { comments }).into_response())
 }
 
 /// The closure radius of one work item (ADR-0038): the OPEN work items
@@ -1370,18 +1370,6 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         title:      item.title,
         updated_at: item.updated_at,
         url:        item.url,
-    }
-}
-
-/// The tracker port's comment projected onto the wire form (the
-/// `api_item` pattern: the port stays forge-agnostic, the schema owns
-/// its own serde shape).
-fn api_comment(comment: WorkItemComment) -> ApiWorkItemComment {
-    ApiWorkItemComment {
-        author:     comment.author,
-        body:       comment.body,
-        created_at: comment.created_at,
-        url:        comment.url,
     }
 }
 

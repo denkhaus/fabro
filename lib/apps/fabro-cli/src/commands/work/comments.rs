@@ -7,7 +7,7 @@
 //! to every worker of the project (the radius read's authorization).
 
 use anyhow::Result;
-use fabro_api::types::WorkItemComment;
+use fabro_types::WorkItemComment;
 use fabro_util::printer::Printer;
 
 use super::resolve_item_key;

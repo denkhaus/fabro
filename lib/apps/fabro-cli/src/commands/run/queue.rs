@@ -24,11 +24,19 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
              adjudicator's pass-one queue) and closable (the merger's)"
         ),
     };
-    let workflow = args
-        .workflow
-        .as_deref()
-        .map(str::trim)
-        .filter(|w| !w.is_empty());
+    let workflow = match args.workflow.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                anyhow::bail!(
+                    "--workflow is blank — pass a workflow slug (for example develop) or drop \
+                     the flag to read every workflow's queue"
+                );
+            }
+            Some(trimmed)
+        }
+    };
     let ctx = base_ctx.with_target(&args.server)?;
     let client = ctx.server().await?;
     let queue = client.run_queue(field, workflow).await?;

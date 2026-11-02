@@ -74,13 +74,17 @@ async fn list_queue(
     Query(query): Query<QueueQuery>,
 ) -> Response {
     let field = query.field.unwrap_or(OrchestrationField::Merge);
-    let runs = match state
+    // The +1 probe: `has_more` must be honest — a worklist bigger than
+    // one page must never read as complete (the fast path would sweep
+    // only the first page and route "Queue empty" beside a full
+    // backlog).
+    let fetched = match state
         .stores
         .run_summaries
         .adjudication_queue(
             field,
             query.workflow.as_deref(),
-            QUEUE_PAGE_LIMIT,
+            QUEUE_PAGE_LIMIT + 1,
             Utc::now(),
         )
         .await
@@ -91,7 +95,13 @@ async fn list_queue(
                 .into_response();
         }
     };
-    let total = i64::try_from(runs.len()).unwrap_or(i64::MAX);
+    let has_more = usize::try_from(QUEUE_PAGE_LIMIT).is_ok_and(|limit| fetched.len() > limit);
+    let runs = if has_more {
+        let limit = usize::try_from(QUEUE_PAGE_LIMIT).expect("a page limit that fits a usize");
+        fetched[..limit].to_vec()
+    } else {
+        fetched
+    };
 
     // The verdict map names the parked runs: the queue holds pending and
     // parked entries, and only the parked ones re-entered by escalation.
@@ -141,8 +151,11 @@ async fn list_queue(
     Json(RunQueueList {
         data: entries,
         meta: PaginationMeta {
-            has_more: false,
-            total:    Some(total),
+            has_more,
+            // The full count is not computed (the +1 probe carries the
+            // paging truth; `total` stays absent rather than reporting
+            // the page length as the worklist size).
+            total: None,
         },
     })
     .into_response()

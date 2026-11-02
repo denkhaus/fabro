@@ -8,6 +8,7 @@ use fabro_store::platform_records::StagePosition;
 use fabro_types::{
     OrchestrationField, OrchestrationVerdict, PairId, PairMessageRecord, PairMessageRequest,
     PairRecord, PairTranscriptResponse, Run, RunId, RunPairStatusResponse, StageId,
+    WorkItemComment,
 };
 use fabro_util::exit::{self, ExitClass};
 use schemars::JsonSchema;
@@ -149,7 +150,7 @@ pub trait FabroToolBackend: Send + Sync {
         &self,
         _project: &str,
         _item_key: &str,
-    ) -> anyhow::Result<Vec<types::WorkItemComment>> {
+    ) -> anyhow::Result<Vec<WorkItemComment>> {
         Err(read_tool_unavailable_error(FABRO_WORK_COMMENTS_TOOL_NAME))
     }
 

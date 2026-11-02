@@ -111,7 +111,11 @@ let dead = (
 # --- verdict ------------------------------------------------------------
 if ($unpinned | is-not-empty) {
     for f in $unpinned {
-        print -e $"touchpoints-parity: pin file without a registry row: ($f) — add a row for it in TOUCHPOINTS.md (repo root) or rename the file"
+        # NOTE: no parenthesized asides in this message — nu parses
+        # `(...)` inside an interpolated string as a subexpression, and
+        # a bare word pair like `repo root` crashed the battery instead
+        # of teaching (caught live 2026-11-02).
+        print -e $"touchpoints-parity: pin file without a registry row: ($f) — add a row for it in TOUCHPOINTS.md at the repo root, or rename the file"
     }
 }
 if ($dead | is-not-empty) {

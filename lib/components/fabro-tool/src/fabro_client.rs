@@ -7,6 +7,7 @@ use fabro_store::platform_records::StagePosition;
 use fabro_types::{
     PairId, PairMessageRecord, PairMessageRequest, PairRecord, PairTranscriptResponse, Run, RunId,
     RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
+    WorkItemComment,
 };
 
 use crate::{FabroToolBackend, RunMarkOutcome, common, seeds};
@@ -232,7 +233,7 @@ impl FabroToolBackend for ClientBackend {
         &self,
         project: &str,
         item_key: &str,
-    ) -> anyhow::Result<Vec<types::WorkItemComment>> {
+    ) -> anyhow::Result<Vec<WorkItemComment>> {
         Ok(self
             .client
             .work_item_comments(project, item_key)

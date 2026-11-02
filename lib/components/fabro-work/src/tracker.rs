@@ -41,15 +41,12 @@ pub struct WorkItemDraft {
 /// parks with a question, the operator answers on the work item, and
 /// the next pass reads the answer here. Chronological order, oldest
 /// first (the forges' own order).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WorkItemComment {
-    /// The comment's author as the forge names it (login/handle).
-    pub author:     String,
-    pub body:       String,
-    pub created_at: Option<DateTime<Utc>>,
-    /// The forge's permalink to the comment, when it names one.
-    pub url:        Option<String>,
-}
+///
+/// The shared-carrier rule (AGENTS.md, API type ownership): the type
+/// lives in `fabro-types` (the product vocabulary), `fabro-api` reuses
+/// it through `with_replacement`, and this port re-exports it so the
+/// `fabro_work::WorkItemComment` path stays stable.
+pub use fabro_types::WorkItemComment;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkItemFilter {

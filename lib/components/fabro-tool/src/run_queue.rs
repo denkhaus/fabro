@@ -30,7 +30,9 @@ pub struct FabroRunQueueParams {
 }
 
 /// A validated queue read: the parsed field and a trimmed workflow
-/// filter (blank means no filter, the CLI facade's own rule).
+/// filter (absent means no filter; a PRESENT-but-blank value is
+/// refused — the CLI facade's own rule, door symmetry: both twins
+/// refuse the same argv).
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidatedRunQueue {
     pub field:    FabroOrchestrationField,

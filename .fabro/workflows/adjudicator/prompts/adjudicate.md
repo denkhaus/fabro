@@ -11,7 +11,7 @@ The `output.adjudication` context key carries your worklist: a list of
 packets. Each packet names a run, the work item it claimed (when it
 claimed one), its pending-or-parked verdict state, its distinct
 painpoints (already deduplicated on the fact head — trust the list, do
-not recount), the number of open items in its closure radius, and
+not recount), the number of open work items in its closure radius, and
 whether it carries a pull request.
 
 ## What you decide
@@ -26,7 +26,7 @@ For ONE run per response, in order:
    - `merge=refused` — the run's work is not mergeable: the run failed
      without a pull request, its painpoints name real defects, the
      patch does not carry the claimed demand, or the radius holds open
-     items that must land follow-ups first.
+     work items that must land follow-ups first.
    - `merge=parked` — ONLY for a true policy fork you cannot decide:
      the run needs a human ruling (a scope call, an exemption decision,
      a conflict between facts). Parking is rare. When you park, also
@@ -34,12 +34,12 @@ For ONE run per response, in order:
      text starts with `parked-fork:` followed by the question the
      operator must answer, naming the run. Never wait for an answer:
      park, then continue with the next packet.
-2. **Follow-up work items.** When a painpoint or a radius item names
+2. **Follow-up work items.** When a painpoint or a radius work item names
    work that should survive (a defect to fix, a residual finding, a
    deferred action), file it with `fabro_work_create`. The body carries
    the finding, the run it came from, and what would close it. Link
    expectations: the radius read (`fabro_work_radius`) tells you which
-   open items already block the claim — link nothing manually; filing
+   open work items already block the claim — link nothing manually; filing
    is enough.
 3. **The observation duty.** Every response records at least one
    observation with `fabro_observation_record`: your verdict rationale

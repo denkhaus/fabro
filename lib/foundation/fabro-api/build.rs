@@ -907,6 +907,7 @@ fn main() {
         ("WorkflowVersionId", "fabro_types::WorkflowVersionId", &[]),
         ("BlobHash", "fabro_types::BlobHash", &[]),
         ("CostSource", "lithos_llm::types::CostSource", &[]),
+        ("WorkItemComment", "fabro_types::WorkItemComment", &[]),
     ];
     for (name, path, impls) in replacements {
         settings.with_replacement(*name, *path, impls.iter().copied());

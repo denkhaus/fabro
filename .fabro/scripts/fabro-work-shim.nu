@@ -141,12 +141,12 @@ def main [
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let key = ($positional | get -o 0 | default '')
-            let item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
-            if $item == null {
-                print -e $"no item '($key)' in the shim state"
+            let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
+            if $work_item == null {
+                print -e $"no work item '($key)' in the shim state"
                 exit 1
             }
-            if $json { $item | to json --raw | print } else { print $"($item.itemKey): ($item.title)" }
+            if $json { $work_item | to json --raw | print } else { print $"($work_item.itemKey): ($work_item.title)" }
         }
         ["work" "claims"] => {
             refuse-foreign-flags $facade $sub $provided ["server" "project" "json"]
@@ -175,8 +175,8 @@ def main [
             let key = $"denkhaus/work#($n)"
             let labels = (if ($label | is-empty) { [] } else { $label | split row "," })
             let item_type = ($type | default 'task')
-            let item = {itemKey: $key, title: ($title | default ''), body: $stdin_text, state: "open", labels: ($labels | append $"type:($item_type)")}
-            save-state $p ($logged | update items ($logged.items | append $item) | update nextKey ($n + 1))
+            let work_item = {itemKey: $key, title: ($title | default ''), body: $stdin_text, state: "open", labels: ($labels | append $"type:($item_type)")}
+            save-state $p ($logged | update items ($logged.items | append $work_item) | update nextKey ($n + 1))
             print $key
         }
         ["work" "close"] => {
@@ -185,8 +185,8 @@ def main [
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let key = ($positional | get -o 0 | default '')
-            let item = ($logged.items | where {|it| $it.itemKey == $key and $it.state == "open"} | get -o 0 | default null)
-            if $item == null {
+            let work_item = ($logged.items | where {|it| $it.itemKey == $key and $it.state == "open"} | get -o 0 | default null)
+            if $work_item == null {
                 print -e $"no open item '($key)' to close in the shim state"
                 exit 1
             }
@@ -201,8 +201,8 @@ def main [
             save-state $p $logged
             let key = ($positional | get -o 0 | default '')
             let radius = ($logged | get -o radius | default {} | get -o $key | default [])
-            let item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default {itemKey: $key, title: "the fixture item", body: "", state: "open", labels: []})
-            {item: $item, radius: $radius} | to json --raw | print
+            let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default {itemKey: $key, title: "the fixture work item", body: "", state: "open", labels: []})
+            {item: $work_item, radius: $radius} | to json --raw | print
         }
         ["work" "comments"] => {
             # The comment READ verb's fake (ADR-0039 stage D part 2): the
@@ -213,9 +213,9 @@ def main [
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let key = ($positional | get -o 0 | default '')
-            let item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
-            if $item == null {
-                print -e $"no item '($key)' in the shim state"
+            let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
+            if $work_item == null {
+                print -e $"no work item '($key)' in the shim state"
                 exit 1
             }
             let comments = ($logged | get -o comments | default {} | get -o $key | default [])
