@@ -31,14 +31,16 @@ export interface RunQueueEntry {
      */
     'project'?: string;
     /**
-     * The run\'s latest verdict on the QUERIED field. `pending` means the run was never adjudicated on the field (absence); `parked` means an open operator escalation keeps the run queued — it re-enters every pass until resolved (stage D part 2). `enabled` and `refused` runs have left the queue.
+     * The run\'s latest verdict on the QUERIED field. `pending` means the run was never adjudicated on the field (absence); `parked` means an open operator escalation keeps the run queued — it re-enters every pass until resolved (stage D part 2). `enabled` and `refused` appear only under a settled-verdict filter (stage E) — the entry names the verdict the filter selected.
      */
     'verdict': RunQueueEntryVerdictEnum;
 }
 
 export const RunQueueEntryVerdictEnum = {
     PENDING: 'pending',
-    PARKED: 'parked'
+    PARKED: 'parked',
+    ENABLED: 'enabled',
+    REFUSED: 'refused'
 } as const;
 
 export type RunQueueEntryVerdictEnum = typeof RunQueueEntryVerdictEnum[keyof typeof RunQueueEntryVerdictEnum];
