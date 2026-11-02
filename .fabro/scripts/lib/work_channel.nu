@@ -77,6 +77,54 @@ export def observation-record-argv [srv: string, category: string, text: string]
     ]
 }
 
+# --- The adjudicator doors (ADR-0039 stage D part 2) ---------------------
+# The run facade's grammar is verb-first: `fabro run` carries an optional
+# WORKFLOW positional that eats a leading subcommand once a flag precedes
+# it (verified against the real parser: `run --server X mark ...` resolves
+# `mark` as the workflow selector), so the verb comes directly after
+# `run` and --server rides the SUBCOMMAND segment. The observation and
+# work facades keep the facade-level server (no positional precedes
+# their subcommands).
+
+# Pure: the argv for one run-queue read (the adjudicator's worklist).
+export def run-queue-argv [srv: string, field: string, workflow: string]: nothing -> list<string> {
+    [
+        'run' 'queue' '--field' $field '--workflow' $workflow '--json' '--server' $srv
+    ]
+}
+
+# Pure: the argv for one run-mark write (the verdict door).
+export def run-mark-argv [srv: string, run_id: string, field: string, verdict: string]: nothing -> list<string> {
+    ['run' 'mark' $run_id $"($field)=($verdict)" '--server' $srv]
+}
+
+# Pure: the argv for one observation-list read (a run's facts).
+export def observation-list-argv [srv: string, run_id: string]: nothing -> list<string> {
+    ['observation' '--server' $srv 'list' '--run-id' $run_id '--json']
+}
+
+# Pure: the argv for one work-radius read (the closure radius of a
+# work item; the CLI URL-encodes the item key's `#`).
+export def work-radius-argv [srv: string, project: string, work_item: string]: nothing -> list<string> {
+    ['work' '--server' $srv 'radius' '--project' $project $work_item '--json']
+}
+
+# Pure: the argv for one work-comments read (the ANSWER CHANNEL — a
+# parked run's fork travels back as a comment on the work item,
+# ADR-0039 stage D part 2).
+export def work-comments-argv [srv: string, project: string, work_item: string]: nothing -> list<string> {
+    ['work' '--server' $srv 'comments' '--project' $project $work_item '--json']
+}
+
+# One CLI call over the channel with a COMPLETE argv (the builders
+# above carry facade, server and flags in their grammatically correct
+# positions — the run facade differs from work/observation). Returns the
+# complete-wrapped result record; callers own failure policy.
+export def cli [caller: string, argv: list<string>]: nothing -> any {
+    let exe = (bin)
+    do { ^$exe ...$argv } | complete
+}
+
 # The fabro binary (host-side batteries shim it through FABRO_BIN).
 def bin []: nothing -> string {
     $env.FABRO_BIN? | default 'fabro'

@@ -522,6 +522,51 @@ impl TrackerProvider for GitHubTracker {
         Ok(())
     }
 
+    /// The item's comments, oldest first (ADR-0039 stage D part 2): the
+    /// READ half of the comment door. GitHub returns the issue's comments
+    /// chronologically with `per_page=100`; a comment without an author
+    /// login is skipped rather than reported blank.
+    async fn list_comments(
+        &self,
+        _project: &WorkProject,
+        item_key: &str,
+    ) -> anyhow::Result<Vec<fabro_work::WorkItemComment>> {
+        let number = Self::issue_number(item_key)?;
+        let url = format!(
+            "{}?per_page=100",
+            self.url(&format!("issues/{number}/comments"))
+        );
+        let response = self.request(Method::GET, &url).send().await?;
+        let value = self.send_json(response).await?;
+        let values = value
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("GitHub issue comments were not an array"))?;
+        Ok(values
+            .iter()
+            .filter_map(|comment| {
+                let author = comment.get("user")?.get("login")?.as_str()?.to_string();
+                let created_at = comment
+                    .get("created_at")
+                    .and_then(Value::as_str)
+                    .and_then(|at| DateTime::parse_from_rfc3339(at).ok())
+                    .map(|at| at.with_timezone(&Utc));
+                Some(fabro_work::WorkItemComment {
+                    author,
+                    body: comment
+                        .get("body")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                    created_at,
+                    url: comment
+                        .get("html_url")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                })
+            })
+            .collect())
+    }
+
     async fn project_claim(
         &self,
         project: &WorkProject,
@@ -895,6 +940,55 @@ mod tests {
         assert!(
             junk.to_string().contains("owner/repo#number"),
             "the teaching error survives: {junk}"
+        );
+    }
+
+    /// The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107):
+    /// a work item's comments oldest first, each with its author, body and
+    /// timestamp — the answer channel a parked run's fork travels back on
+    /// (the operator answers on the work item; the next pass reads it).
+    #[tokio::test]
+    async fn list_comments_reads_the_issue_comments_oldest_first() {
+        let server = httpmock::MockServer::start_async().await;
+        let read = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues/1107/comments")
+                    .query_param("per_page", "100")
+                    // Same User-Agent pin as the search arm: only the live
+                    // API enforces it, the wire pin carries it.
+                    .header("User-Agent", "fabro");
+                then.status(200).json_body(serde_json::json!([
+                    {"user": {"login": "adjudicator-bot"},
+                     "body": "parked-fork: residual file — unfinished or exempt?",
+                     "created_at": "2026-11-02T09:00:00Z",
+                     "html_url": "https://github.com/denkhaus/work/issues/1107#issuecomment-1"},
+                    {"user": {"login": "denkhaus"},
+                     "body": "exempt — the residual ships as-is",
+                     "created_at": "2026-11-02T10:00:00Z",
+                     "html_url": "https://github.com/denkhaus/work/issues/1107#issuecomment-2"}
+                ]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let comments = tracker
+            .list_comments(&project(), "denkhaus/work#1107")
+            .await
+            .expect("the comment read resolves");
+        read.assert_calls_async(1).await;
+        assert_eq!(comments.len(), 2, "both comments come back in order");
+        assert_eq!(comments[0].author, "adjudicator-bot");
+        assert!(comments[0].body.contains("parked-fork"));
+        assert_eq!(
+            comments[0].created_at.map(|at| at.timestamp()),
+            Some(1_793_610_000),
+            "the forge timestamp parses"
+        );
+        assert_eq!(comments[1].author, "denkhaus");
+        assert_eq!(
+            comments[1].url.as_deref(),
+            Some("https://github.com/denkhaus/work/issues/1107#issuecomment-2"),
+            "the permalink survives for the operator's trace"
         );
     }
 }

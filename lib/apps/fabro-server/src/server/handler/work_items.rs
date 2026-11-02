@@ -13,10 +13,11 @@ use fabro_api::types::{
     WorkClaimGrantOutcome, WorkClaimGrantRequest, WorkClaimGrantResponse, WorkClaimListResponse,
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
-    WorkItemCloseResponse, WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse,
-    WorkItemRadiusResponse, WorkItemUpdateRequest, WorkObservationLinkOutcome,
-    WorkObservationLinkRequest, WorkObservationLinkResponse, WorkObservationUnlinkResponse,
-    WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
+    WorkItemCloseResponse, WorkItemComment as ApiWorkItemComment, WorkItemCommentList,
+    WorkItemCreateRequest, WorkItemLaneRequest, WorkItemListResponse, WorkItemRadiusResponse,
+    WorkItemUpdateRequest, WorkObservationLinkOutcome, WorkObservationLinkRequest,
+    WorkObservationLinkResponse, WorkObservationUnlinkResponse, WorkProject as ApiWorkProject,
+    WorkProjectListResponse, WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkReleasedRecord,
@@ -24,7 +25,7 @@ use fabro_store::platform_records::{
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
-    WorkItemDraft, WorkItemFilter, WorkProject,
+    WorkItemComment, WorkItemDraft, WorkItemFilter, WorkProject,
 };
 
 use super::super::{
@@ -58,6 +59,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/{itemKey}/radius",
             get(get_work_item_radius),
+        )
+        .route(
+            "/projects/{projectId}/work-items/{itemKey}/comments",
+            get(list_work_item_comments),
         )
         .route(
             "/projects/{projectId}/work-items/unlink",
@@ -591,6 +596,36 @@ async fn get_work_item_radius(
     Ok(Json(WorkItemRadiusResponse {
         item: api_item(item),
         radius,
+    })
+    .into_response())
+}
+
+/// The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107):
+/// a work item's comments, oldest first — the ANSWER CHANNEL for parked
+/// runs. The adjudicator parks a policy fork as a `parked-fork:` note on
+/// the run; the operator answers on the work item; the next pass reads
+/// the answer here. Same authorization and item-existence gate as the
+/// radius read: the project's workers may read, comment writing stays
+/// the human's surface (tracker/UI).
+async fn list_work_item_comments(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path((project_id, item_key)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let project = caller.project();
+    let tracker = tracker_for(&state, project).await?;
+    tracker
+        .get(project, &item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| ApiError::not_found("Work item not found."))?;
+    let comments = tracker
+        .list_comments(project, &item_key)
+        .await
+        .map_err(tracker_failed)?;
+    Ok(Json(WorkItemCommentList {
+        comments: comments.into_iter().map(api_comment).collect(),
     })
     .into_response())
 }
@@ -1335,6 +1370,18 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         title:      item.title,
         updated_at: item.updated_at,
         url:        item.url,
+    }
+}
+
+/// The tracker port's comment projected onto the wire form (the
+/// `api_item` pattern: the port stays forge-agnostic, the schema owns
+/// its own serde shape).
+fn api_comment(comment: WorkItemComment) -> ApiWorkItemComment {
+    ApiWorkItemComment {
+        author:     comment.author,
+        body:       comment.body,
+        created_at: comment.created_at,
+        url:        comment.url,
     }
 }
 

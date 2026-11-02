@@ -243,6 +243,48 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::mark_run_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_QUEUE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunQueueParams>(name, args)?;
+            // The worklist read (ADR-0039 stage D part 2): the same
+            // queue the fast-path script reads over the CLI, so the
+            // agent pass verifies a packet against the door itself.
+            let result = fabro_tool::run_queue(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunQueue::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_queue_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_OBSERVATION_LIST_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroObservationListParams>(name, args)?;
+            let result =
+                fabro_tool::list_observations(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::list_observations_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_RADIUS_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkRadiusParams>(name, args)?;
+            let result = fabro_tool::work_radius(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedWorkItemRead::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::work_radius_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_WORK_COMMENTS_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroWorkCommentsParams>(name, args)?;
+            let validated = fabro_tool::ValidatedWorkItemRead::try_from(params)?;
+            // The key rides the text summary (the wire body is the
+            // endpoint's own `{comments}` shape).
+            let item_key = validated.item_key.clone();
+            let result =
+                fabro_tool::work_comments(Arc::clone(&services.backend), validated).await?;
+            let summary = fabro_tool::work_comments_text(&item_key, &result.comments);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME => {
             let params =
                 parse_fabro_tool_args::<fabro_tool::FabroObservationRecordParams>(name, args)?;
@@ -1195,6 +1237,194 @@ mod tests {
         assert_eq!(summary, format!("Registered workflow version {id}"));
         collected.assert_calls_async(1).await;
         upload.assert_calls_async(1).await;
+    }
+
+    /// One fixture work item: every field the `WorkItem` schema
+    /// requires, so a read response parses exactly like the wire's.
+    fn work_item(item_key: &str, title: &str) -> serde_json::Value {
+        json!({
+            "itemKey": item_key,
+            "title": title,
+            "body": "the item body",
+            "state": "open",
+            "labels": ["project:fabro"],
+            "priority": 2,
+            "url": format!("https://github.com/denkhaus/work/issues/{item_key}"),
+        })
+    }
+
+    /// `fabro_run_queue` (ADR-0039 stage D part 2, door symmetry): the
+    /// tool twin reaches the SAME queue endpoint the CLI facade uses,
+    /// carrying the field and the workflow filter, and renders the
+    /// decorated entries — run, verdict, claim's work item.
+    #[tokio::test]
+    async fn run_queue_dispatch_reads_the_adjudication_queue() {
+        let server = httpmock::MockServer::start_async().await;
+        let target: RunId = "01KRBZW4DW0000000000000003".parse().unwrap();
+        let mut pending = ask_target_run(target);
+        pending.title = "queued run".to_string();
+        let pending = serde_json::to_value(pending).expect("the fixture run serializes");
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/runs/queue")
+                    .query_param("field", "merge")
+                    .query_param("workflow", "develop");
+                then.status(200).json_body(json!({
+                    "data": [{
+                        "run": pending,
+                        "verdict": "pending",
+                        "work_item": "denkhaus/work#7"
+                    }],
+                    "meta": {"has_more": false}
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: RunId::new(),
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            "fabro_run_queue",
+            json!({"field": "merge", "workflow": "develop"}),
+            &services,
+        )
+        .await
+        .expect("the queue read dispatches");
+        listed.assert_calls_async(1).await;
+        let (head, body) = output.split_once('\n').expect("summary then JSON body");
+        assert!(
+            head.starts_with("1 run(s) queued on merge:"),
+            "the summary names the field and the count: {head}"
+        );
+        assert!(body.contains(target.to_string().as_str()), "{body}");
+        assert!(body.contains("denkhaus/work#7"), "{body}");
+        assert!(body.contains("verdict=pending"), "{body}");
+    }
+
+    /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's
+    /// facts, read from the same endpoint the CLI facade uses — the
+    /// packet's summary verifiable against the records themselves.
+    #[tokio::test]
+    async fn observation_list_dispatch_reads_a_runs_facts() {
+        let server = httpmock::MockServer::start_async().await;
+        let run_id: RunId = "01KRBZW4DW0000000000000004".parse().unwrap();
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{run_id}/observations"));
+                then.status(200).json_body(json!({
+                    "observations": [{
+                        "seq": 1,
+                        "category": "painpoint",
+                        "text": "gate.refused_push\nevery push failed while a run PR stayed open"
+                    }]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: RunId::new(),
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            "fabro_observation_list",
+            json!({"run": run_id.to_string()}),
+            &services,
+        )
+        .await
+        .expect("the observation read dispatches");
+        listed.assert_calls_async(1).await;
+        let (head, body) = output.split_once('\n').expect("summary then JSON body");
+        assert!(
+            head.starts_with("1 observation record(s) on "),
+            "the summary names the count and the run: {head}"
+        );
+        assert!(head.contains(run_id.to_string().as_str()), "{head}");
+        assert!(body.contains("painpoint"), "{body}");
+        assert!(body.contains("gate.refused_push"), "{body}");
+    }
+
+    /// `fabro_work_radius` (ADR-0038 read door, ADR-0039 stage D): the
+    /// closure radius a verdict hinges on, read from the same endpoint
+    /// the CLI facade uses.
+    #[tokio::test]
+    async fn work_radius_dispatch_reads_the_closure_radius() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/projects/fabro/work-items/denkhaus%2Fwork%237/radius");
+                then.status(200).json_body(json!({
+                    "item": work_item("denkhaus/work#7", "Adjudicate the develop line"),
+                    "radius": [work_item("denkhaus/work#9", "Watchdog tuning")]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: RunId::new(),
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            "fabro_work_radius",
+            json!({"project": "fabro", "itemKey": "denkhaus/work#7"}),
+            &services,
+        )
+        .await
+        .expect("the radius read dispatches");
+        listed.assert_calls_async(1).await;
+        let (head, body) = output.split_once('\n').expect("summary then JSON body");
+        assert!(
+            head.starts_with("denkhaus/work#7 radius: 1 open item(s)"),
+            "the summary names the item and the radius size: {head}"
+        );
+        assert!(body.contains("denkhaus/work#9"), "{body}");
+    }
+
+    /// `fabro_work_comments` (ADR-0039 stage D part 2): the answer
+    /// channel a parked run's fork travels back on, read from the same
+    /// endpoint the CLI facade uses, in the forge's chronological order.
+    #[tokio::test]
+    async fn work_comments_dispatch_reads_the_answer_channel() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/api/v1/projects/fabro/work-items/denkhaus%2Fwork%237/comments");
+                then.status(200).json_body(json!({
+                    "comments": [{
+                        "author": "denkhaus",
+                        "body": "exempt — the residual ships as-is"
+                    }]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: RunId::new(),
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            "fabro_work_comments",
+            json!({"project": "fabro", "itemKey": "denkhaus/work#7"}),
+            &services,
+        )
+        .await
+        .expect("the comment read dispatches");
+        listed.assert_calls_async(1).await;
+        let (head, body) = output.split_once('\n').expect("summary then JSON body");
+        assert!(
+            head.starts_with("1 comment(s) on denkhaus/work#7, oldest first:"),
+            "the summary names the item and the count: {head}"
+        );
+        assert!(body.contains("denkhaus"), "{body}");
+        assert!(body.contains("exempt"), "{body}");
     }
 
     struct MockAskBackend {

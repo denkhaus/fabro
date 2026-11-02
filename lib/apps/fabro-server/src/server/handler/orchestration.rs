@@ -13,6 +13,7 @@
 //! one writer per field (ADR-0039 decision 6), structural, not
 //! conventional.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -22,15 +23,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fabro_api::types::{
-    RunObservation, RunObservationList, RunOrchestrationMarkRequest, RunOrchestrationMarkResponse,
+    PaginationMeta, RunObservation, RunObservationList, RunOrchestrationMarkRequest,
+    RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict, RunQueueList,
 };
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
 };
-use fabro_types::{OrchestrationField, Principal, RunId};
+use fabro_types::{OrchestrationField, OrchestrationVerdict, Principal, RunId};
 use tracing::info;
 
-use super::super::{AppState, ListResponse, run_records};
+use super::super::{AppState, run_records};
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
 
@@ -56,11 +58,16 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
 
 #[derive(Debug, serde::Deserialize)]
 struct QueueQuery {
-    field: Option<OrchestrationField>,
+    field:    Option<OrchestrationField>,
+    workflow: Option<String>,
 }
 
-/// The adjudication queue: terminal runs minus the runs this field has
-/// a verdict for (the store's anti-join, `adjudication_queue`).
+/// The adjudication queue: terminal runs whose latest verdict on the
+/// field is not settled (pending or parked), optionally narrowed to one
+/// workflow's runs — the adjudicator's worklist filter. Each entry is
+/// decorated with the work item of the run's latest claim (released
+/// claims included): the claim ledger is the run → work-item edge
+/// (ADR-0039 stage D part 2).
 async fn list_queue(
     _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
@@ -70,7 +77,12 @@ async fn list_queue(
     let runs = match state
         .stores
         .run_summaries
-        .adjudication_queue(field, QUEUE_PAGE_LIMIT, Utc::now())
+        .adjudication_queue(
+            field,
+            query.workflow.as_deref(),
+            QUEUE_PAGE_LIMIT,
+            Utc::now(),
+        )
         .await
     {
         Ok(runs) => runs,
@@ -79,9 +91,61 @@ async fn list_queue(
                 .into_response();
         }
     };
-    let total = runs.len() as u64;
+    let total = i64::try_from(runs.len()).unwrap_or(i64::MAX);
+
+    // The verdict map names the parked runs: the queue holds pending and
+    // parked entries, and only the parked ones re-entered by escalation.
+    // Read once, like the store's own fold.
+    let verdicts = match state
+        .stores
+        .run_summaries
+        .platform_records()
+        .latest_verdicts_by_run(field)
+        .await
+    {
+        Ok(verdicts) => verdicts
+            .into_iter()
+            .collect::<HashMap<RunId, OrchestrationVerdict>>(),
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let run_ids = runs.iter().map(|run| run.id).collect::<Vec<_>>();
+    let work_item_by_run = match state.stores.work.latest_claims_of_runs(&run_ids).await {
+        Ok(claims) => claims
+            .into_iter()
+            .map(|claim| (claim.run_id, claim.item_key))
+            .collect::<HashMap<RunId, String>>(),
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+
     let data = state.decorate_run_summaries(runs).await;
-    Json(ListResponse::paginated(data, false, total)).into_response()
+    let entries = data
+        .into_iter()
+        .map(|run| {
+            let verdict = match verdicts.get(&run.id) {
+                Some(OrchestrationVerdict::Parked) => RunQueueEntryVerdict::Parked,
+                _ => RunQueueEntryVerdict::Pending,
+            };
+            RunQueueEntry {
+                work_item: work_item_by_run.get(&run.id).cloned(),
+                run,
+                verdict,
+            }
+        })
+        .collect::<Vec<_>>();
+    Json(RunQueueList {
+        data: entries,
+        meta: PaginationMeta {
+            has_more: false,
+            total:    Some(total),
+        },
+    })
+    .into_response()
 }
 
 /// The verdict write door. Authorization is the identity chain of the

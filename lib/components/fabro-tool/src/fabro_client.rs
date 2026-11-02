@@ -189,6 +189,57 @@ impl FabroToolBackend for ClientBackend {
         }
     }
 
+    /// `fabro_run_queue` (ADR-0039 stage D part 2): the same queue the
+    /// CLI facade reads — field and workflow filter ride through, the
+    /// server decorates each entry with its claim's work item.
+    async fn run_queue(
+        &self,
+        field: fabro_types::OrchestrationField,
+        workflow: Option<&str>,
+    ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
+        Ok(self.client.run_queue(field, workflow).await?.data)
+    }
+
+    /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's
+    /// facts. The run-scope guard stays ON — a run-scoped session (Ask
+    /// Fabro) reads its own run only, while the adjudicator's
+    /// unscoped stage session verifies foreign packets.
+    async fn list_run_observations(
+        &self,
+        run_id: &RunId,
+    ) -> anyhow::Result<Vec<types::RunObservation>> {
+        self.ensure_run_scope(run_id)?;
+        Ok(self
+            .client
+            .list_run_observations(run_id)
+            .await?
+            .observations)
+    }
+
+    /// `fabro_work_radius` (ADR-0038 read door): the closure radius the
+    /// close gate enforces, read beside it.
+    async fn work_item_radius(
+        &self,
+        project: &str,
+        item_key: &str,
+    ) -> anyhow::Result<types::WorkItemRadiusResponse> {
+        self.client.work_item_radius(project, item_key).await
+    }
+
+    /// `fabro_work_comments` (ADR-0039 stage D part 2): the answer
+    /// channel, in the forge's chronological order.
+    async fn work_item_comments(
+        &self,
+        project: &str,
+        item_key: &str,
+    ) -> anyhow::Result<Vec<types::WorkItemComment>> {
+        Ok(self
+            .client
+            .work_item_comments(project, item_key)
+            .await?
+            .comments)
+    }
+
     /// `fabro_observation_record` (ADR-0038): the append endpoint stores
     /// the record at the run's next `seq`; the position rides both the
     /// request (the store's stage column) and the record payload (the

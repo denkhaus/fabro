@@ -72,6 +72,12 @@ const SMOKES = [
     # journal, deferred-action and exemption-arm sweep. Same finding —
     # unregistered until fabro-8b38.
     '.fabro/workflows/develop/scripts/closeout-smoke.nu'
+    # adjudicator fast-path sweep (ADR-0039 stage D part 2,
+    # denkhaus/work#1107): trivial marks split by pull request, packets
+    # for painpoint/radius/parked runs, fact-head dedupe, workflow
+    # filter, routing envelope — driven through the channel shim over
+    # the shared smoke harness.
+    '.fabro/workflows/adjudicator/scripts/fast-path-smoke.nu'
     # close-claim battery RETIRED 2026-10-26 (cutover stage 5,
     # denkhaus/work#988): close-claim-check guarded commit subjects
     # claiming a seeds close the file tracker never saw; the tracker is

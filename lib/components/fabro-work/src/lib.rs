@@ -14,7 +14,9 @@ pub use store::{
     ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
     ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,
 };
-pub use tracker::{NullTracker, TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter};
+pub use tracker::{
+    NullTracker, TrackerProvider, WorkItem, WorkItemComment, WorkItemDraft, WorkItemFilter,
+};
 
 pub type Result<T> = std::result::Result<T, Error>;
 

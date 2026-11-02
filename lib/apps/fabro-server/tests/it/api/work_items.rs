@@ -309,7 +309,9 @@ mod next_item {
     use axum::http::{Method, Request, StatusCode, header};
     use chrono::Utc;
     use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
-    use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
+    use fabro_work::{
+        TrackerProvider, WorkItem, WorkItemComment, WorkItemDraft, WorkItemFilter, WorkProject,
+    };
     use serde_json::{Value, json};
     use tokio::sync::Mutex as AsyncMutex;
     use tower::ServiceExt;
@@ -322,20 +324,49 @@ mod next_item {
     /// A scripted tracker: fixed items, recorded claim projections and
     /// the filters every list call received.
     struct FakeTracker {
-        items:   Mutex<Vec<WorkItem>>,
-        claims:  AsyncMutex<Vec<(String, String)>>,
-        cleared: AsyncMutex<Vec<(String, String)>>,
-        filters: AsyncMutex<Vec<WorkItemFilter>>,
+        items:    Mutex<Vec<WorkItem>>,
+        claims:   AsyncMutex<Vec<(String, String)>>,
+        cleared:  AsyncMutex<Vec<(String, String)>>,
+        filters:  AsyncMutex<Vec<WorkItemFilter>>,
+        comments: Mutex<Vec<WorkItemComment>>,
     }
 
     impl FakeTracker {
         fn with_items(items: Vec<WorkItem>) -> Arc<Self> {
             Arc::new(Self {
-                items:   Mutex::new(items),
-                claims:  AsyncMutex::new(Vec::new()),
-                cleared: AsyncMutex::new(Vec::new()),
-                filters: AsyncMutex::new(Vec::new()),
+                items:    Mutex::new(items),
+                claims:   AsyncMutex::new(Vec::new()),
+                cleared:  AsyncMutex::new(Vec::new()),
+                filters:  AsyncMutex::new(Vec::new()),
+                comments: Mutex::new(Vec::new()),
             })
+        }
+
+        /// The comment-read fixture (ADR-0039 stage D part 2): the same
+        /// scripted tracker with the comments every `list_comments` call
+        /// answers — the port hands back whatever order it holds, the
+        /// handler must not re-sort it.
+        fn with_items_and_comments(
+            items: Vec<WorkItem>,
+            comments: Vec<WorkItemComment>,
+        ) -> Arc<Self> {
+            Arc::new(Self {
+                items:    Mutex::new(items),
+                claims:   AsyncMutex::new(Vec::new()),
+                cleared:  AsyncMutex::new(Vec::new()),
+                filters:  AsyncMutex::new(Vec::new()),
+                comments: Mutex::new(comments),
+            })
+        }
+    }
+
+    /// One fixture comment (the answer channel's two voices).
+    fn comment(author: &str, body: &str) -> WorkItemComment {
+        WorkItemComment {
+            author:     author.to_string(),
+            body:       body.to_string(),
+            created_at: None,
+            url:        None,
         }
     }
 
@@ -499,6 +530,22 @@ mod next_item {
             _body: &str,
         ) -> anyhow::Result<()> {
             Ok(())
+        }
+
+        /// The scripted comment read (ADR-0039 stage D part 2): the
+        /// fixture's comments in their own order — the handler must pass
+        /// them through untouched. Item existence is gated by `get`
+        /// before this ever runs.
+        async fn list_comments(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+        ) -> anyhow::Result<Vec<WorkItemComment>> {
+            Ok(self
+                .comments
+                .lock()
+                .expect("work-item test step should succeed")
+                .clone())
         }
 
         async fn project_claim(
@@ -746,6 +793,79 @@ mod next_item {
         let filters = tracker.filters.lock().await;
         assert_eq!(filters[1].label, None);
         assert_eq!(filters[1].page, 1);
+    }
+
+    /// The comment READ verb over HTTP (ADR-0039 stage D part 2,
+    /// denkhaus/work#1107): the answer channel serves the provider's
+    /// comments in CHRONOLOGICAL order untouched (the operator's answer
+    /// must read after the parked question), and a missing item answers
+    /// 404 before any comment read.
+    #[tokio::test]
+    async fn comments_read_in_provider_order_and_a_missing_item_is_not_found() {
+        let tracker = FakeTracker::with_items_and_comments(vec![item(7, 1)], vec![
+            comment(
+                "adjudicator-bot",
+                "parked-fork: residual file — unfinished or exempt?",
+            ),
+            comment("denkhaus", "exempt — the residual ships as-is"),
+        ]);
+        let app = app_with_tracker(tracker).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api(
+                        "/projects/fabro/work-items/denkhaus%2Fwork%237/comments",
+                    ))
+                    .body(Body::empty())
+                    .expect("comment read request should build"),
+            )
+            .await
+            .expect("comment read request should run");
+        let body = response_json(response, StatusCode::OK, "comment read").await;
+        let comments = body["comments"]
+            .as_array()
+            .expect("the response carries the comments array");
+        assert_eq!(comments.len(), 2, "both fixture comments come back: {body}");
+        assert_eq!(
+            comments[0]["author"].as_str(),
+            Some("adjudicator-bot"),
+            "chronological order is preserved, oldest first: {body}"
+        );
+        assert!(
+            comments[0]["body"]
+                .as_str()
+                .expect("the question body")
+                .contains("parked-fork")
+        );
+        assert_eq!(comments[1]["author"].as_str(), Some("denkhaus"));
+        assert!(
+            comments[1]["body"]
+                .as_str()
+                .expect("the answer body")
+                .contains("exempt"),
+            "the operator's answer rides the channel: {body}"
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api(
+                        "/projects/fabro/work-items/denkhaus%2Fwork%2399/comments",
+                    ))
+                    .body(Body::empty())
+                    .expect("comment read request should build"),
+            )
+            .await
+            .expect("comment read request should run");
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "an unknown item answers 404 before any comment read"
+        );
     }
 
     #[tokio::test]

@@ -1,7 +1,9 @@
 //! `fabro run queue` (ADR-0039 stage D, denkhaus/work#1107): the
-//! adjudication queue — terminal runs without a verdict on the field.
-//! The fast-path script reads its worklist here; a run leaves the queue
-//! the moment a verdict record for the field exists.
+//! adjudication queue — terminal runs whose latest verdict on the field
+//! is not settled (pending or parked; `enabled` and `refused` runs have
+//! left). The fast-path script reads its worklist here; each entry
+//! carries the work item of the run's latest claim and, for parked
+//! runs, the open-escalation marker (stage D part 2).
 
 use anyhow::Result;
 use cli_table::{Cell, CellStruct, Style, Table};
@@ -22,19 +24,24 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
              adjudicator's pass-one queue) and closable (the merger's)"
         ),
     };
+    let workflow = args
+        .workflow
+        .as_deref()
+        .map(str::trim)
+        .filter(|w| !w.is_empty());
     let ctx = base_ctx.with_target(&args.server)?;
     let client = ctx.server().await?;
-    let runs = client.run_queue(field).await?;
+    let queue = client.run_queue(field, workflow).await?;
 
     let printer = ctx.printer();
     if ctx.json_output() {
-        print_json_pretty(&runs)?;
+        print_json_pretty(&queue)?;
         return Ok(());
     }
-    if runs.is_empty() {
+    if queue.data.is_empty() {
         fabro_util::printout!(
             printer,
-            "The {} queue is empty — every terminal run carries a verdict.",
+            "The {} queue is empty — every terminal run carries a settled verdict.",
             field
         );
         return Ok(());
@@ -46,16 +53,25 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
         "RUN".cell().bold(use_color),
         "WORKFLOW".cell().bold(use_color),
         "STATUS".cell().bold(use_color),
+        "WORK ITEM".cell().bold(use_color),
+        "VERDICT".cell().bold(use_color),
         "TITLE".cell().bold(use_color),
     ];
-    let rows: Vec<Vec<CellStruct>> = runs
+    let rows: Vec<Vec<CellStruct>> = queue
+        .data
         .iter()
-        .map(|run| {
+        .map(|entry| {
             vec![
-                run.id.to_string().cell().bold(use_color),
-                run.workflow.slug.clone().unwrap_or_default().cell(),
-                run.lifecycle.status.to_string().cell(),
-                run.title.clone().cell(),
+                entry.run.id.to_string().cell().bold(use_color),
+                entry.run.workflow.slug.clone().unwrap_or_default().cell(),
+                entry.run.lifecycle.status.to_string().cell(),
+                entry
+                    .work_item
+                    .clone()
+                    .unwrap_or_else(|| "—".to_string())
+                    .cell(),
+                entry.verdict.to_string().cell(),
+                entry.run.title.clone().cell(),
             ]
         })
         .collect();

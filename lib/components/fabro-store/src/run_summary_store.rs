@@ -6,7 +6,9 @@ use std::fmt::Write as _;
 use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
 use chrono::{DateTime, Utc};
-use fabro_types::{OrchestrationField, Run, RunId, RunSize, RunStatusKind, RunTiming, timing};
+use fabro_types::{
+    OrchestrationField, OrchestrationVerdict, Run, RunId, RunSize, RunStatusKind, RunTiming, timing,
+};
 use sqlx::query::Query;
 use sqlx::sqlite::{SqliteArguments, SqliteConnection, SqliteRow};
 use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
@@ -375,33 +377,49 @@ impl RunSummaryStore {
     /// The adjudication queue (ADR-0039 stage D, denkhaus/work#1107):
     /// terminal runs carrying no `run.orchestration` verdict on `field`
     /// yet — the anti-join of the runs row's terminal statuses against
-    /// the runs the field's latest verdicts name. Archived terminal runs
+    /// the runs the field has settled. Archived terminal runs
     /// stay queued (archiving is bookkeeping, not adjudication state);
-    /// a run leaves the queue the moment any verdict record for the
-    /// field exists. Newest first. No cursor, no queue table:
-    /// repetition is gap-safe.
+    /// a run leaves the queue the moment its LATEST verdict on the
+    /// field is `enabled` or `refused` — a `parked` latest verdict
+    /// keeps the run queued (an open escalation re-enters every pass
+    /// until resolved, stage D part 2). The optional `workflow` filter
+    /// narrows the worklist to one workflow's runs. Newest first. No
+    /// cursor, no queue table: repetition is gap-safe.
     pub async fn adjudication_queue(
         &self,
         field: OrchestrationField,
+        workflow: Option<&str>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<Vec<Run>> {
-        // The runs this field has ANY verdict for, read once in Rust —
-        // verdict records are rare, so the fold stays cheap (the same
-        // trade `latest_verdicts_by_run` names).
-        let verdicted: Vec<String> = self
+        // The runs this field has SETTLED — latest verdict `enabled` or
+        // `refused` — read once in Rust. Verdict records are rare, so
+        // the fold stays cheap (the same trade `latest_verdicts_by_run`
+        // names). A `parked` latest verdict does NOT settle: parked is
+        // an open operator escalation that re-enters every pass until
+        // resolved (stage D part 2).
+        let settled: Vec<String> = self
             .platform_records()
             .latest_verdicts_by_run(field)
             .await?
             .into_iter()
+            .filter(|(_run_id, verdict)| {
+                matches!(
+                    verdict,
+                    OrchestrationVerdict::Enabled | OrchestrationVerdict::Refused
+                )
+            })
             .map(|(run_id, _verdict)| run_id.to_string())
             .collect();
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
         query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
-        if !verdicted.is_empty() {
+        if let Some(workflow) = workflow {
+            query.push(" AND workflow_slug = ").push_bind(workflow);
+        }
+        if !settled.is_empty() {
             query.push(" AND runs.id NOT IN (");
             let mut separated = query.separated(", ");
-            for run_id in verdicted {
+            for run_id in settled {
                 separated.push_bind(run_id);
             }
             query.push(")");
@@ -998,10 +1016,12 @@ mod tests {
 
     /// The adjudication queue (ADR-0039 stage D, denkhaus/work#1107):
     /// the anti-join of TERMINAL runs against the field's verdicts. A
-    /// run leaves the queue the moment any verdict on the field exists;
-    /// the OTHER field's verdicts do not free it; non-terminal runs
-    /// never queue; an archived terminal run stays queued (archiving is
-    /// bookkeeping, not adjudication state).
+    /// run leaves the queue the moment its latest verdict on the field
+    /// settles it (`enabled` or `refused` — a `parked` latest verdict
+    /// keeps it queued, see the part-2 pin below); the OTHER field's
+    /// verdicts do not free it; non-terminal runs never queue; an
+    /// archived terminal run stays queued (archiving is bookkeeping,
+    /// not adjudication state).
     #[tokio::test]
     async fn adjudication_queue_joins_terminal_runs_against_the_field_verdicts() {
         use fabro_types::{OrchestrationField, OrchestrationVerdict};
@@ -1045,7 +1065,7 @@ mod tests {
 
         let now = dt("2026-11-01T13:00:00Z");
         let merge_queue = store
-            .adjudication_queue(OrchestrationField::Merge, 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
             .await
             .expect("the merge queue reads");
         assert_eq!(
@@ -1056,7 +1076,7 @@ mod tests {
 
         // The merge verdict does not free the closable field.
         let closable_queue = store
-            .adjudication_queue(OrchestrationField::Closable, 50, now)
+            .adjudication_queue(OrchestrationField::Closable, None, 50, now)
             .await
             .expect("the closable queue reads");
         let mut closable_ids = closable_queue.iter().map(|run| run.id).collect::<Vec<_>>();
@@ -1076,13 +1096,102 @@ mod tests {
             .await
             .unwrap();
         let archived_queue = store
-            .adjudication_queue(OrchestrationField::Merge, 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
             .await
             .expect("the queue reads after archiving");
         assert_eq!(
             archived_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
             vec![failed.spec.run_id],
             "archiving is bookkeeping, not adjudication state — the run stays queued"
+        );
+    }
+
+    /// The parked-stays-queued semantics and the workflow filter (stage D
+    /// part 2, denkhaus/work#1107): only `enabled` and `refused` free a
+    /// run — a PARKED run (an open operator escalation) re-enters every
+    /// pass until resolved — and the optional workflow filter narrows the
+    /// worklist to the named workflow's runs (the adjudicator reads
+    /// `develop`; smoke and sleeper noise stays out).
+    #[tokio::test]
+    async fn adjudication_queue_keeps_parked_runs_and_filters_by_workflow() {
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        use crate::platform_records::{PlatformRecord, RunOrchestrationRecord};
+
+        let (_directory, store) = store().await;
+        let base = dt("2026-11-02T12:00:00Z");
+        let mut parked = projection(
+            run_id(base.timestamp_millis().cast_unsigned(), 1),
+            "parked run",
+            base,
+        );
+        parked.status = sample_status(RunStatusKind::Succeeded);
+        parked.spec.workflow_slug = Some("develop".to_string());
+        let mut enabled = projection(
+            run_id(base.timestamp_millis().cast_unsigned(), 2),
+            "enabled run",
+            base + chrono::Duration::seconds(10),
+        );
+        enabled.status = sample_status(RunStatusKind::Succeeded);
+        enabled.spec.workflow_slug = Some("develop".to_string());
+        let mut smoke = projection(
+            run_id(base.timestamp_millis().cast_unsigned(), 3),
+            "smoke run",
+            base + chrono::Duration::seconds(20),
+        );
+        smoke.status = sample_status(RunStatusKind::Succeeded);
+        smoke.spec.workflow_slug = Some("smoke".to_string());
+        write(&store, &parked).await;
+        write(&store, &enabled).await;
+        write(&store, &smoke).await;
+
+        store
+            .platform_records()
+            .append(
+                &parked.spec.run_id,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Merge,
+                    verdict: OrchestrationVerdict::Parked,
+                    by_run:  None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        store
+            .platform_records()
+            .append(
+                &enabled.spec.run_id,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Merge,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let now = dt("2026-11-02T13:00:00Z");
+        let queue = store
+            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
+            .await
+            .expect("the unfiltered queue reads");
+        assert_eq!(
+            queue.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![smoke.spec.run_id, parked.spec.run_id],
+            "parked stays queued (an open escalation re-enters every pass); \
+             enabled frees; newest first"
+        );
+
+        let develop_queue = store
+            .adjudication_queue(OrchestrationField::Merge, Some("develop"), 50, now)
+            .await
+            .expect("the filtered queue reads");
+        assert_eq!(
+            develop_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![parked.spec.run_id],
+            "the workflow filter narrows the worklist to the named workflow's runs"
         );
     }
 

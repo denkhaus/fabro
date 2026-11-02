@@ -435,6 +435,8 @@ models/run-prepare-settings.ts
 models/run-projection.ts
 models/run-provenance.ts
 models/run-question.ts
+models/run-queue-entry.ts
+models/run-queue-list.ts
 models/run-reference.ts
 models/run-runnable-source.ts
 models/run-sandbox-failure.ts
@@ -612,6 +614,8 @@ models/work-claim-transition-request.ts
 models/work-claim.ts
 models/work-item-close-request.ts
 models/work-item-close-response.ts
+models/work-item-comment-list.ts
+models/work-item-comment.ts
 models/work-item-create-request.ts
 models/work-item-lane-request.ts
 models/work-item-list-response.ts

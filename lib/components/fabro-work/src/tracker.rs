@@ -36,6 +36,21 @@ pub struct WorkItemDraft {
     pub labels: Vec<String>,
 }
 
+/// One comment on a work item, as its forge sees it — the answer
+/// channel for parked runs (ADR-0039 stage D part 2): the adjudicator
+/// parks with a question, the operator answers on the work item, and
+/// the next pass reads the answer here. Chronological order, oldest
+/// first (the forges' own order).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkItemComment {
+    /// The comment's author as the forge names it (login/handle).
+    pub author:     String,
+    pub body:       String,
+    pub created_at: Option<DateTime<Utc>>,
+    /// The forge's permalink to the comment, when it names one.
+    pub url:        Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkItemFilter {
     pub lane:  Option<String>,
@@ -121,6 +136,19 @@ pub trait TrackerProvider: Send + Sync {
         item_key: &str,
         body: &str,
     ) -> anyhow::Result<()>;
+
+    /// The item's comments, oldest first (ADR-0039 stage D part 2): the
+    /// READ half of the comment door — the answer channel a parked run's
+    /// question travels back on. Default refuses, so a provider without
+    /// a read side keeps compiling; the GitHub adapter serves it.
+    async fn list_comments(
+        &self,
+        project: &crate::WorkProject,
+        item_key: &str,
+    ) -> anyhow::Result<Vec<WorkItemComment>> {
+        let _ = (project, item_key);
+        anyhow::bail!("this tracker provider does not support reading comments")
+    }
 
     /// Project the claim in the forge (the run-id label on GitHub and
     /// Forgejo). Best called after the claim committed in the store: the

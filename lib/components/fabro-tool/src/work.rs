@@ -10,7 +10,9 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use fabro_api::types::{WorkClaim, WorkItem};
+use fabro_api::types::{
+    WorkClaim, WorkItem, WorkItemComment, WorkItemCommentList, WorkItemRadiusResponse,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -42,6 +44,65 @@ pub struct FabroWorkShowParams {
     /// The provider-stable item key, e.g. `denkhaus/work#123`.
     #[serde(rename = "itemKey")]
     pub item_key: String,
+}
+
+/// `fabro_work_radius` (ADR-0038 read door, ADR-0039 stage D): the item
+/// beside its open closure radius — what a merge verdict hinges on.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroWorkRadiusParams {
+    /// The project id; omit it to use THIS run's project.
+    pub project:  Option<String>,
+    /// The provider-stable item key, e.g. `denkhaus/work#123`.
+    #[serde(rename = "itemKey")]
+    pub item_key: String,
+}
+
+/// `fabro_work_comments` (ADR-0039 stage D part 2): a work item's
+/// comments, oldest first — the ANSWER CHANNEL a parked run's fork
+/// travels back on. Reading is open to every worker of the project;
+/// writing stays the human's surface.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroWorkCommentsParams {
+    /// The project id; omit it to use THIS run's project.
+    pub project:  Option<String>,
+    /// The provider-stable item key, e.g. `denkhaus/work#123`.
+    #[serde(rename = "itemKey")]
+    pub item_key: String,
+}
+
+/// A validated work-item read: a resolved project and a non-blank
+/// provider-stable item key. The radius and comment reads share it —
+/// one door shape, one validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedWorkItemRead {
+    pub project:  String,
+    pub item_key: String,
+}
+
+impl TryFrom<FabroWorkRadiusParams> for ValidatedWorkItemRead {
+    type Error = ToolError;
+
+    fn try_from(params: FabroWorkRadiusParams) -> Result<Self, Self::Error> {
+        validate_work_item_read(params.project.as_deref(), &params.item_key)
+    }
+}
+
+impl TryFrom<FabroWorkCommentsParams> for ValidatedWorkItemRead {
+    type Error = ToolError;
+
+    fn try_from(params: FabroWorkCommentsParams) -> Result<Self, Self::Error> {
+        validate_work_item_read(params.project.as_deref(), &params.item_key)
+    }
+}
+
+fn validate_work_item_read(
+    project: Option<&str>,
+    item_key: &str,
+) -> Result<ValidatedWorkItemRead, ToolError> {
+    Ok(ValidatedWorkItemRead {
+        project:  resolve_project(project)?,
+        item_key: non_blank(item_key, "itemKey")?,
+    })
 }
 
 /// `fabro_work_list`: the project's open work items, optionally
@@ -272,6 +333,33 @@ pub async fn work_show(
         .map_err(|err| ToolError::from_anyhow(&err))
 }
 
+/// Read a work item's closure radius (ADR-0038 read door): the open
+/// items linked to the observations of the item's runs. The SAME
+/// computation the close gate enforces — one implementation, two
+/// readers.
+pub async fn work_radius(
+    backend: Arc<dyn FabroToolBackend>,
+    params: ValidatedWorkItemRead,
+) -> ToolResult<WorkItemRadiusResponse> {
+    backend
+        .work_item_radius(&params.project, &params.item_key)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))
+}
+
+/// Read a work item's comments, oldest first (ADR-0039 stage D part
+/// 2): the answer channel a parked run's fork travels back on.
+pub async fn work_comments(
+    backend: Arc<dyn FabroToolBackend>,
+    params: ValidatedWorkItemRead,
+) -> ToolResult<WorkItemCommentList> {
+    let comments = backend
+        .work_item_comments(&params.project, &params.item_key)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))?;
+    Ok(WorkItemCommentList { comments })
+}
+
 /// The open items of a project: the server-side lane filter and limit,
 /// then the provider's list. An omitted lane lists every lane.
 pub async fn work_list(
@@ -389,6 +477,53 @@ pub fn work_next_text(result: &WorkNextResult) -> String {
 
 pub fn work_show_text(result: &WorkItem) -> String {
     format!("{} — {} [{}]", result.item_key, result.title, result.state)
+}
+
+/// The radius rendering: the item, the size of its open radius, then
+/// one line per blocking item — the listing a verdict leans on.
+pub fn work_radius_text(result: &WorkItemRadiusResponse) -> String {
+    if result.radius.is_empty() {
+        return format!(
+            "{} radius: empty — nothing blocks its closure",
+            result.item.item_key
+        );
+    }
+    let mut listed = format!(
+        "{} radius: {} open item(s):",
+        result.item.item_key,
+        result.radius.len()
+    );
+    for item in &result.radius {
+        let _ = write!(
+            listed,
+            "\n{} — {} [{}] prio {}",
+            item.item_key, item.title, item.state, item.priority
+        );
+    }
+    listed
+}
+
+/// The answer-channel rendering: count and item, then each comment as
+/// `author (when)` with its fact head — bodies are free prose, so the
+/// full text rides the JSON payload.
+pub fn work_comments_text(item_key: &str, comments: &[WorkItemComment]) -> String {
+    if comments.is_empty() {
+        return format!("no comments on {item_key} yet — the answer channel is empty");
+    }
+    let mut listed = format!("{} comment(s) on {item_key}, oldest first:", comments.len());
+    for (index, comment) in comments.iter().enumerate() {
+        let when = comment
+            .created_at
+            .map_or_else(|| "unknown time".to_string(), |at| at.to_rfc3339());
+        let head = super::common::first_line_capped(&comment.body, 120);
+        let _ = write!(
+            listed,
+            "\n[{}] {} ({when}): {head}",
+            index + 1,
+            comment.author
+        );
+    }
+    listed
 }
 
 /// The list rendering: count plus one line per item — the shape a
@@ -637,6 +772,107 @@ mod tests {
         assert_eq!(
             work_list_text(&[], Some("never-matches")),
             "no work-item matches for 'never-matches'"
+        );
+    }
+
+    fn item(key: &str, title: &str, state: &str) -> WorkItem {
+        WorkItem {
+            item_key:   key.to_string(),
+            title:      title.to_string(),
+            body:       String::new(),
+            state:      state.to_string(),
+            labels:     vec!["project:fabro".to_string()],
+            priority:   2,
+            url:        format!("https://github.com/denkhaus/work/issues/{key}"),
+            updated_at: None,
+        }
+    }
+
+    /// Both read doors validate the same shape: a resolved project and
+    /// a non-blank provider-stable item key (door symmetry: the CLI
+    /// facade takes the same two arguments).
+    #[test]
+    fn the_radius_and_comment_reads_share_their_item_key_validation() {
+        let radius = ValidatedWorkItemRead::try_from(FabroWorkRadiusParams {
+            project:  Some(" fabro ".to_string()),
+            item_key: " denkhaus/work#7 ".to_string(),
+        })
+        .expect("a normal radius read validates");
+        assert_eq!(radius.project, "fabro");
+        assert_eq!(radius.item_key, "denkhaus/work#7");
+
+        let comments = ValidatedWorkItemRead::try_from(FabroWorkCommentsParams {
+            project:  None,
+            item_key: "   ".to_string(),
+        })
+        .expect_err("a blank item key must fail");
+        assert!(
+            comments.to_string().contains("itemKey must not be blank"),
+            "the refusal names the parameter: {comments}"
+        );
+    }
+
+    #[test]
+    fn the_radius_renderer_reports_the_item_and_its_open_items() {
+        let listed = work_radius_text(&WorkItemRadiusResponse {
+            item:   item("denkhaus/work#7", "Adjudicate", "open"),
+            radius: vec![item("denkhaus/work#9", "Watchdog tuning", "open")],
+        });
+        assert_eq!(
+            listed.lines().next(),
+            Some("denkhaus/work#7 radius: 1 open item(s):"),
+            "the head names the item and the radius size: {listed}"
+        );
+        assert!(
+            listed.contains("denkhaus/work#9 — Watchdog tuning [open] prio 2"),
+            "one line per blocking item: {listed}"
+        );
+
+        let empty = work_radius_text(&WorkItemRadiusResponse {
+            item:   item("denkhaus/work#7", "Adjudicate", "open"),
+            radius: Vec::new(),
+        });
+        assert!(
+            empty.contains("nothing blocks its closure"),
+            "the empty radius blocks nothing: {empty}"
+        );
+    }
+
+    #[test]
+    fn the_comments_renderer_reads_the_answer_channel_oldest_first() {
+        let comments = vec![
+            WorkItemComment {
+                author:     "adjudicator-bot".to_string(),
+                body:       "parked-fork: residual file — unfinished or exempt?".to_string(),
+                created_at: None,
+                url:        None,
+            },
+            WorkItemComment {
+                author:     "denkhaus".to_string(),
+                body:       "exempt — the residual ships as-is".to_string(),
+                created_at: None,
+                url:        None,
+            },
+        ];
+        let listed = work_comments_text("denkhaus/work#7", &comments);
+        assert_eq!(
+            listed.lines().next(),
+            Some("2 comment(s) on denkhaus/work#7, oldest first:"),
+            "the head names count and item: {listed}"
+        );
+        let lines: Vec<&str> = listed.lines().collect();
+        assert!(
+            lines[1].contains("[1] adjudicator-bot"),
+            "the parked question reads first: {listed}"
+        );
+        assert!(
+            lines[2].contains("[2] denkhaus") && lines[2].contains("exempt"),
+            "the operator's answer reads after it: {listed}"
+        );
+
+        assert_eq!(
+            work_comments_text("denkhaus/work#7", &[]),
+            "no comments on denkhaus/work#7 yet — the answer channel is empty"
         );
     }
 }

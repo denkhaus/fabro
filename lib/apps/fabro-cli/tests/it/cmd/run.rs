@@ -120,10 +120,15 @@ fn help() {
     ----- stdout -----
     Register a workflow version, create a run, and start it
 
-    Usage: fabro run [OPTIONS] <WORKFLOW>
+    Usage: fabro run [OPTIONS] [WORKFLOW] [COMMAND]
+
+    Commands:
+      mark   Mark one orchestration field of another run (ADR-0039 stage D)
+      queue  List the orchestration queue: terminal runs without a verdict on the field (ADR-0039 stage D)
+      help   Print this message or the help of the given subcommand(s)
 
     Arguments:
-      <WORKFLOW>  Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW
+      [WORKFLOW]  Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not required by clap: the orchestration verbs ride as subcommands (`fabro run mark`, ADR-0039), so the command path enforces the positional when no verb was given
 
     Options:
           --json                          Output as JSON [env: FABRO_JSON=]

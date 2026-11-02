@@ -65,16 +65,18 @@ fn help() {
     Usage: fabro work [OPTIONS] <COMMAND>
 
     Commands:
-      list    List a project's open work items
-      show    Show one work item, body included
-      create  File a new work item
-      close   Close a work item with a reason
-      update  Edit a work item's title and/or body
-      lane    Assign a work item to a lane, or clear its lane (`--lane none`)
-      link    Link a work item to an observation record (ADR-0038 backfill)
-      unlink  Remove a work-item observation link
-      claims  List a project's live claims
-      help    Print this message or the help of the given subcommand(s)
+      list      List a project's open work items
+      show      Show one work item, body included
+      create    File a new work item
+      close     Close a work item with a reason
+      update    Edit a work item's title and/or body
+      lane      Assign a work item to a lane, or clear its lane (`--lane none`)
+      link      Link a work item to an observation record (ADR-0038 backfill)
+      unlink    Remove a work-item observation link
+      radius    Show a work item's closure radius: the open items linked to the observations of its runs (ADR-0038; read door ADR-0039 stage D)
+      comments  Read a work item's comments, oldest first — the answer channel for parked runs (ADR-0039 stage D part 2)
+      claims    List a project's live claims
+      help      Print this message or the help of the given subcommand(s)
 
     Options:
           --json              Output as JSON [env: FABRO_JSON=]

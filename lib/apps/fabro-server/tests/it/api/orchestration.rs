@@ -276,9 +276,14 @@ async fn the_queue_lists_terminal_runs_minus_the_field_verdicts() {
     let queue_ids = |body: &Value| {
         body["data"]
             .as_array()
-            .expect("paginated data")
+            .expect("queue entries")
             .iter()
-            .map(|run| run["id"].as_str().expect("run id").to_string())
+            .map(|entry| {
+                entry["run"]["id"]
+                    .as_str()
+                    .expect("run id inside the entry")
+                    .to_string()
+            })
             .collect::<Vec<_>>()
     };
     let read_queue = |field: &str| {
@@ -393,4 +398,152 @@ async fn the_observations_read_lists_a_runs_records() {
         "the fact head rides the text: {body}"
     );
     assert_eq!(observations[1]["category"].as_str(), Some("note"));
+}
+
+/// Seed the work project through the user surface (the run_channel
+/// precedent): the claims the decoration test grants need it.
+async fn seed_work_project(state: &Arc<fabro_server::server::AppState>) {
+    let app = fabro_server::test_support::build_test_router(Arc::clone(state));
+    let request = Request::builder()
+        .method(Method::PUT)
+        .uri(api("/projects/fabro"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "displayName": "Fabro",
+                "trackerProvider": "github",
+                "trackerRepo": "denkhaus/work",
+                "targetRepo": "denkhaus/fabro",
+                "projectLabel": "project:fabro",
+                "laneLabels": {"loop": "lane:loop"},
+                "claimLabelPrefix": "fabro:run:",
+                "claimCommentEnabled": false
+            }))
+            .expect("project fixture serializes"),
+        ))
+        .expect("project request builds");
+    let response = app.oneshot(request).await.expect("project upsert runs");
+    response_json(response, StatusCode::OK, "PUT /projects/fabro (user seed)").await;
+}
+
+/// Grant one claim for `run` on `item` through the user surface and
+/// return the claim id (the run_channel precedent).
+async fn seed_claim(
+    state: &Arc<fabro_server::server::AppState>,
+    run: &RunId,
+    item: &str,
+) -> String {
+    let app = fabro_server::test_support::build_test_router(Arc::clone(state));
+    let payload = json!({"itemKey": item, "runId": run.to_string(), "lane": "loop"});
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/projects/fabro/claims"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&payload).expect("claim fixture serializes"),
+        ))
+        .expect("claim request builds");
+    let response = app.oneshot(request).await.expect("claim seed runs");
+    let body = response_json(response, StatusCode::OK, "POST /projects/fabro/claims").await;
+    body["claim"]["claimId"]
+        .as_str()
+        .expect("the seeded claim id")
+        .to_string()
+}
+
+/// The part-2 queue semantics over HTTP (ADR-0039 stage D part 2):
+/// entries carry the work item of the run's latest claim, a PARKED
+/// latest verdict keeps the run queued with the escalation visible in
+/// the entry's verdict, and the workflow filter narrows the worklist to
+/// the named workflow's runs.
+#[tokio::test]
+async fn the_queue_decorates_work_items_keeps_parked_and_filters_by_workflow() {
+    let (app, state, store) = orchestration_app();
+    let adjudicator = RunId::new();
+    let claimed = RunId::new();
+    let parked = RunId::new();
+    let smoke = RunId::new();
+    seed_run(&store, adjudicator, "adjudicator", true).await;
+    seed_run(&store, claimed, "develop", true).await;
+    seed_run(&store, parked, "develop", true).await;
+    seed_run(&store, smoke, "smoke", true).await;
+    seed_work_project(&state).await;
+    seed_claim(&state, &claimed, "denkhaus/work#1").await;
+    seed_claim(&state, &parked, "denkhaus/work#2").await;
+    let token = state.test_issue_worker_token_with_run_tools(&adjudicator);
+
+    // The adjudicator parks one run: an open operator escalation.
+    let response = mark_call(
+        &app,
+        &token,
+        &parked,
+        json!({"field": "merge", "verdict": "parked"}),
+    )
+    .await;
+    response_json(response, StatusCode::OK, "seed parked verdict").await;
+
+    let read_queue = |query: &str| {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(api(&format!("/runs/queue?{query}")))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("queue request builds");
+        let app = app.clone();
+        async move {
+            let response = app.oneshot(request).await.expect("queue request runs");
+            response_json(response, StatusCode::OK, "queue read").await
+        }
+    };
+    let entry_of = |body: &Value, run: &RunId| {
+        body["data"]
+            .as_array()
+            .expect("queue entries")
+            .iter()
+            .find(|entry| entry["run"]["id"].as_str() == Some(run.to_string().as_str()))
+            .cloned()
+            .unwrap_or_else(|| panic!("run {run} is not queued: {body}"))
+    };
+
+    let queue = read_queue("field=merge").await;
+    let claimed_entry = entry_of(&queue, &claimed);
+    assert_eq!(
+        claimed_entry["work_item"].as_str(),
+        Some("denkhaus/work#1"),
+        "the entry carries the run's claimed work item: {claimed_entry}"
+    );
+    assert_eq!(
+        claimed_entry["verdict"].as_str(),
+        Some("pending"),
+        "a never-adjudicated run reads pending: {claimed_entry}"
+    );
+    let parked_entry = entry_of(&queue, &parked);
+    assert_eq!(
+        parked_entry["verdict"].as_str(),
+        Some("parked"),
+        "the parked run stays queued with its escalation visible: {parked_entry}"
+    );
+    let smoke_entry = entry_of(&queue, &smoke);
+    assert_eq!(
+        smoke_entry["work_item"].as_str(),
+        None,
+        "an unclaimed run decorates with no work item: {smoke_entry}"
+    );
+
+    // The workflow filter narrows the worklist: smoke stays out.
+    let develop_queue = read_queue("field=merge&workflow=develop").await;
+    let develop_ids = develop_queue["data"]
+        .as_array()
+        .expect("queue entries")
+        .iter()
+        .map(|entry| entry["run"]["id"].as_str().expect("run id").to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        !develop_ids.contains(&smoke.to_string()),
+        "the workflow filter keeps other workflows out: {develop_ids:?}"
+    );
+    assert!(
+        develop_ids.contains(&parked.to_string()) && develop_ids.contains(&claimed.to_string()),
+        "the develop worklist holds both develop runs: {develop_ids:?}"
+    );
 }

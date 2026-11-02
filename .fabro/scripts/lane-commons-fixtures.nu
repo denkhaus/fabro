@@ -143,6 +143,35 @@ def test-probe-literal-equality []: nothing -> nothing {
         '--category' 'note' '--text' 'probe-37 recorded from a script stage'
     ]
     assert-eq (work_channel observation-record-argv 'http://127.0.0.1:32276' 'note' 'probe-37 recorded from a script stage') $probe37 'observation-record-argv equals the probe-37 bench literal'
+
+    # probe-39's literals (its probe.nu door calls — the adjudicator's
+    # four READ doors), argv after the binary, verbatim. The server
+    # value is the workbench default the live sock stands in for (the
+    # probe-37 equality convention); the run id and item key are the
+    # representative literals of the probe's grammar legs.
+    let probe39_queue = [
+        'run' 'queue' '--field' 'merge' '--workflow' 'develop' '--json'
+        '--server' 'http://127.0.0.1:32276'
+    ]
+    assert-eq (work_channel run-queue-argv 'http://127.0.0.1:32276' 'merge' 'develop') $probe39_queue 'run-queue-argv equals the probe-39 bench literal'
+
+    let probe39_facts = [
+        'observation' '--server' 'http://127.0.0.1:32276' 'list'
+        '--run-id' '01M5844J1FDD00000000000000' '--json'
+    ]
+    assert-eq (work_channel observation-list-argv 'http://127.0.0.1:32276' '01M5844J1FDD00000000000000') $probe39_facts 'observation-list-argv equals the probe-39 bench literal'
+
+    let probe39_radius = [
+        'work' '--server' 'http://127.0.0.1:32276' 'radius' '--project'
+        'fabro-proof' 'denkhaus/work#7' '--json'
+    ]
+    assert-eq (work_channel work-radius-argv 'http://127.0.0.1:32276' 'fabro-proof' 'denkhaus/work#7') $probe39_radius 'work-radius-argv equals the probe-39 bench literal'
+
+    let probe39_comments = [
+        'work' '--server' 'http://127.0.0.1:32276' 'comments' '--project'
+        'fabro-proof' 'denkhaus/work#7' '--json'
+    ]
+    assert-eq (work_channel work-comments-argv 'http://127.0.0.1:32276' 'fabro-proof' 'denkhaus/work#7') $probe39_comments 'work-comments-argv equals the probe-39 bench literal'
 }
 
 # --- 3. extraction pins: the mirrors retired -------------------------------

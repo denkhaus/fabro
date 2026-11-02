@@ -107,6 +107,52 @@ pub trait FabroToolBackend: Send + Sync {
     ) -> anyhow::Result<RunMarkOutcome> {
         Err(run_mark_tool_unavailable_error())
     }
+    /// `fabro_run_queue` (ADR-0039 stage D part 2): the adjudication
+    /// queue — terminal runs whose latest verdict on `field` is not
+    /// settled, optionally narrowed to one workflow, each decorated with
+    /// the work item of its latest claim. The pass-one worklist read,
+    /// the tool twin of `fabro run queue`.
+    async fn run_queue(
+        &self,
+        _field: OrchestrationField,
+        _workflow: Option<&str>,
+    ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
+        Err(read_tool_unavailable_error(FABRO_RUN_QUEUE_TOOL_NAME))
+    }
+    /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's
+    /// observation records in `seq` order — the facts behind a packet's
+    /// summary. A FOREIGN run by design (the adjudicator verifies other
+    /// runs), so the run-scope guard a scoped session carries still
+    /// refuses anything but its own run.
+    async fn list_run_observations(
+        &self,
+        _run: &RunId,
+    ) -> anyhow::Result<Vec<types::RunObservation>> {
+        Err(read_tool_unavailable_error(
+            FABRO_OBSERVATION_LIST_TOOL_NAME,
+        ))
+    }
+    /// `fabro_work_radius` (ADR-0038 read door): a work item's closure
+    /// radius — the open items linked to the item's runs, what a merge
+    /// verdict hinges on.
+    async fn work_item_radius(
+        &self,
+        _project: &str,
+        _item_key: &str,
+    ) -> anyhow::Result<types::WorkItemRadiusResponse> {
+        Err(read_tool_unavailable_error(FABRO_WORK_RADIUS_TOOL_NAME))
+    }
+    /// `fabro_work_comments` (ADR-0039 stage D part 2): a work item's
+    /// comments, oldest first — the ANSWER CHANNEL a parked run's fork
+    /// travels back on.
+    async fn work_item_comments(
+        &self,
+        _project: &str,
+        _item_key: &str,
+    ) -> anyhow::Result<Vec<types::WorkItemComment>> {
+        Err(read_tool_unavailable_error(FABRO_WORK_COMMENTS_TOOL_NAME))
+    }
+
     /// The run a work tool acts for: the resolved selector, or the
     /// session's own run when none is given. A surface without an own-run
     /// context requires an explicit run.
@@ -365,6 +411,24 @@ fn run_mark_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
+/// The read twins' shared refusal: a surface that serves no queue,
+/// observation, radius or comment door (ADR-0039 stage D part 2).
+fn read_tool_unavailable_error(tool: &str) -> anyhow::Error {
+    ToolError::message(format!("{tool} is not available on this surface")).into()
+}
+
+/// One observation or comment body's first line, capped — list
+/// renderers show the head; the payload carries the full text.
+pub(super) fn first_line_capped(text: &str, cap: usize) -> String {
+    let head = text.lines().next().unwrap_or("").trim();
+    if head.chars().count() <= cap {
+        return head.to_string();
+    }
+    let mut truncated: String = head.chars().take(cap).collect();
+    truncated.push_str("...");
+    truncated
+}
+
 pub(crate) fn run_sandbox_files_unavailable_error() -> anyhow::Error {
     ToolError::message(
         "reading workflow files from the run sandbox (files_from) is not available on this \
@@ -430,6 +494,10 @@ pub const FABRO_WORK_CREATE_TOOL_NAME: &str = "fabro_work_create";
 pub const FABRO_WORK_CLOSE_TOOL_NAME: &str = "fabro_work_close";
 pub const FABRO_WORK_UPDATE_TOOL_NAME: &str = "fabro_work_update";
 pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
+pub const FABRO_RUN_QUEUE_TOOL_NAME: &str = "fabro_run_queue";
+pub const FABRO_OBSERVATION_LIST_TOOL_NAME: &str = "fabro_observation_list";
+pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
+pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -476,6 +544,22 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunMarkParams>(
             FABRO_RUN_MARK_TOOL_NAME,
             "Mark one orchestration field of ANOTHER run with a verdict (ADR-0039): `merge` (the adjudicator's field) or `closable` (the merger's), verdict `enabled`, `refused`, or `parked` (an operator escalation the next pass resumes). The server refuses a field this run's workflow does not own and a run marking itself.",
+        ),
+        tool_definition::<crate::FabroRunQueueParams>(
+            FABRO_RUN_QUEUE_TOOL_NAME,
+            "Read the adjudication queue (ADR-0039 stage D): terminal runs whose latest verdict on the field is NOT settled — `pending` (never adjudicated) or `parked` (an open operator escalation) — each with the work item of its latest claim. `field` is `merge` (the adjudicator's queue) or `closable` (the merger's); `workflow` narrows to one workflow slug such as `develop`. Re-read it to verify a packet summary before you verdict.",
+        ),
+        tool_definition::<crate::FabroObservationListParams>(
+            FABRO_OBSERVATION_LIST_TOOL_NAME,
+            "Read one run's observation records in seq order (ADR-0038): the painpoints and notes its stages recorded — the facts a packet summarizes. Pass the full run id; a foreign run's facts are readable by design.",
+        ),
+        tool_definition::<crate::FabroWorkRadiusParams>(
+            FABRO_WORK_RADIUS_TOOL_NAME,
+            "Read a work item's closure radius (ADR-0038): the item beside the OPEN work items linked to the observations of its runs. An empty radius blocks nothing; open items are what a merge verdict hinges on.",
+        ),
+        tool_definition::<crate::FabroWorkCommentsParams>(
+            FABRO_WORK_COMMENTS_TOOL_NAME,
+            "Read a work item's comments, oldest first (ADR-0039 stage D part 2): the ANSWER CHANNEL for parked runs. A parked run whose work item carries a fresh operator comment is your signal to re-adjudicate it. Writing comments stays the human's surface.",
         ),
         tool_definition::<crate::FabroObservationRecordParams>(
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
@@ -667,6 +751,10 @@ mod tests {
             FABRO_RUN_EVENTS_TOOL_NAME,
             FABRO_RUN_SET_TITLE_TOOL_NAME,
             FABRO_RUN_MARK_TOOL_NAME,
+            FABRO_RUN_QUEUE_TOOL_NAME,
+            FABRO_OBSERVATION_LIST_TOOL_NAME,
+            FABRO_WORK_RADIUS_TOOL_NAME,
+            FABRO_WORK_COMMENTS_TOOL_NAME,
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,

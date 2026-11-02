@@ -8,10 +8,11 @@
 //!
 //! Each arm drives the COMPILED binary against a dead server (the
 //! probe-28 discipline): a connect refusal proves the argv left the
-//! parser intact; a clap reject would say "unexpected argument".
-
-//! refusal proves the request leaves with the right shape (a connect
-//! refusal, never a clap parse error).
+//! parser intact; a clap reject would say "unexpected argument". The
+//! read doors additionally pin their `--json` STDOUT SHAPE against a
+//! mock server — the adjudicator fast path parses that stdout
+//! (`data`/`observations`/`radius`), so a shape drift is a silent
+//! empty read in production, not a test failure.
 
 #![expect(
     clippy::disallowed_methods,
@@ -35,6 +36,29 @@ fn fabro(args: &[&str]) -> Output {
 
 fn stderr_of(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// Run the compiled binary with a complete argv (the caller seats
+/// `--server` in each facade's grammatically correct position — the
+/// flag is not global: `observation`/`work` take it at the facade
+/// level, `run queue` on the verb) and parse stdout as the JSON the
+/// door's consumers read.
+fn json_on(argv: &[&str]) -> serde_json::Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_fabro"))
+        .args(argv)
+        .env("FABRO_NO_UPGRADE_CHECK", "true")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the CLI child should start")
+        .wait_with_output()
+        .expect("the CLI should finish");
+    assert!(
+        output.status.success(),
+        "the door read must succeed: {}",
+        stderr_of(&output)
+    );
+    serde_json::from_slice(&output.stdout).expect("the door prints JSON on stdout")
 }
 
 /// The verbs parse and reach TRANSPORT against a dead server — a clap
@@ -156,5 +180,163 @@ fn work_radius_reaches_transport() {
         !stderr_of(&output).contains("unexpected argument"),
         "the radius argv must parse: {}",
         stderr_of(&output)
+    );
+}
+
+/// The comment READ verb (ADR-0039 stage D part 2,
+/// denkhaus/work#1107): the answer channel's CLI twin parses and reaches
+/// transport — same shape as the radius read, same server-owned
+/// resolution.
+#[test]
+fn work_comments_reaches_transport() {
+    let output = fabro(&["work", "comments", "--project", "fabro", "denkhaus/work#1"]);
+    assert!(!output.status.success());
+    assert!(
+        !stderr_of(&output).contains("unexpected argument"),
+        "the comments argv must parse: {}",
+        stderr_of(&output)
+    );
+}
+
+// --- The read doors' `--json` stdout shape ---------------------------------
+// The adjudicator fast path (`.fabro/workflows/adjudicator/scripts/
+// fast-path.nu`) parses the CLI's stdout directly: `data` off the
+// queue, `observations` off the list, `radius` off the radius read —
+// and the work-channel shim serves exactly these shapes to the smoke.
+// A record/array drift on either side empties a production read
+// WITHOUT failing anything (the fast path's parse fallback is `[]`),
+// so the contract is pinned against the compiled binary here.
+
+/// The observation list prints the `RunObservationList` RECORD, never a
+/// bare array — the shape bug this test was born red against: the fast
+/// path's `read-observations` reads `.observations`, and a bare array
+/// silently yields zero facts (every run would look painpoint-free).
+#[test]
+fn observation_list_json_is_the_record_the_fast_path_parses() {
+    let server = httpmock::MockServer::start();
+    server.mock(|when, then| {
+        when.method(httpmock::Method::GET)
+            .path("/api/v1/runs/01M5844J1FDD00000000000000/observations");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"observations":[{"seq":1,"category":"note","text":"a fact"}]}"#);
+    });
+    let url = server.base_url();
+    let stdout = json_on(&[
+        "observation",
+        "--server",
+        &url,
+        "list",
+        "--run-id",
+        "01M5844J1FDD00000000000000",
+        "--json",
+    ]);
+    let observations = stdout
+        .get("observations")
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or_else(|| {
+            panic!("stdout is the {{observations}} record, not a bare array: {stdout}")
+        });
+    assert_eq!(
+        observations.len(),
+        1,
+        "the record carries the mock row: {stdout}"
+    );
+}
+
+/// The queue prints the `RunQueueList` record (`data` + `meta`) — the
+/// fast path's `entries-from` reads `.data`.
+#[test]
+fn run_queue_json_is_the_record_the_fast_path_parses() {
+    let server = httpmock::MockServer::start();
+    server.mock(|when, then| {
+        when.method(httpmock::Method::GET)
+            .path("/api/v1/runs/queue");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"data":[],"meta":{"has_more":false}}"#);
+    });
+    let url = server.base_url();
+    let stdout = json_on(&["run", "queue", "--json", "--server", &url]);
+    assert!(
+        stdout.get("data").is_some_and(serde_json::Value::is_array),
+        "stdout carries the data array the fast path reads: {stdout}"
+    );
+    assert!(
+        stdout.get("meta").is_some(),
+        "stdout carries the pagination meta: {stdout}"
+    );
+}
+
+/// The radius read prints the `WorkItemRadiusResponse` record (`item` +
+/// `radius`) — the fast path's `read-radius` reads `.radius`.
+#[test]
+fn work_radius_json_is_the_record_the_fast_path_parses() {
+    let server = httpmock::MockServer::start();
+    server.mock(|when, then| {
+        when.method(httpmock::Method::GET)
+            .path("/api/v1/projects/fabro/work-items/denkhaus%2Fwork%237/radius");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(
+                r#"{"item":{"itemKey":"denkhaus/work#7","title":"t","body":"b","state":"open","labels":[],"priority":2,"url":"https://example.invalid/i/7"},"radius":[]}"#,
+            );
+    });
+    let url = server.base_url();
+    let stdout = json_on(&[
+        "work",
+        "--server",
+        &url,
+        "radius",
+        "--project",
+        "fabro",
+        "denkhaus/work#7",
+        "--json",
+    ]);
+    assert!(
+        stdout
+            .get("radius")
+            .is_some_and(serde_json::Value::is_array),
+        "stdout carries the radius array the fast path reads: {stdout}"
+    );
+    assert_eq!(
+        stdout.get("item").and_then(|item| item.get("itemKey")),
+        Some(&serde_json::json!("denkhaus/work#7")),
+        "stdout names the item the radius belongs to: {stdout}"
+    );
+}
+
+/// The comment read prints the `WorkItemCommentList` record (`comments`)
+/// — the answer channel's wire shape, what the parked-fork reader
+/// consumes.
+#[test]
+fn work_comments_json_is_the_record_shape() {
+    let server = httpmock::MockServer::start();
+    server.mock(|when, then| {
+        when.method(httpmock::Method::GET)
+            .path("/api/v1/projects/fabro/work-items/denkhaus%2Fwork%237/comments");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body(r#"{"comments":[{"author":"denkhaus","body":"the answer"}]}"#);
+    });
+    let url = server.base_url();
+    let stdout = json_on(&[
+        "work",
+        "--server",
+        &url,
+        "comments",
+        "--project",
+        "fabro",
+        "denkhaus/work#7",
+        "--json",
+    ]);
+    let comments = stdout
+        .get("comments")
+        .and_then(serde_json::Value::as_array)
+        .unwrap_or_else(|| panic!("stdout is the {{comments}} record: {stdout}"));
+    assert_eq!(
+        comments.first().and_then(|c| c.get("author")),
+        Some(&serde_json::json!("denkhaus")),
+        "the record carries the comment rows: {stdout}"
     );
 }

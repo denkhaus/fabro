@@ -236,20 +236,19 @@ pub(crate) struct RunArgs {
     #[command(flatten)]
     pub(crate) inputs: InputOverrideArgs,
 
-    /// Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW
+    /// Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not required
+    /// by clap: the orchestration verbs ride as subcommands
+    /// (`fabro run mark`, ADR-0039), so the command path enforces the
+    /// positional when no verb was given.
     #[allow(
         rustdoc::broken_intra_doc_links,
         reason = "the help text's `[@REF]` is an optional segment, not a link"
     )]
-    /// Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not clap-
-    /// required: the orchestration verbs ride as subcommands
-    /// (`fabro run mark`, ADR-0039) — `command::execute` enforces the
-    /// positional when no verb was given.
     pub(crate) workflow: Option<PathBuf>,
 
     /// Acquire workflow source locally from a GitHub OWNER/REPO using native
     /// Git credentials
-    #[arg(long, value_name = "OWNER/REPO")]
+    #[arg(long, requires = "workflow", value_name = "OWNER/REPO")]
     pub(crate) workflow_repo: Option<GitHubRepositorySlug>,
 
     /// Workflow branch, tag, HEAD (default), or full commit SHA; qualify
@@ -1424,6 +1423,12 @@ pub(crate) struct RunQueueArgs {
     /// adjudicator's pass-one queue, default) or closable (the merger's)
     #[arg(long, default_value = "merge")]
     pub(crate) field: String,
+
+    /// Narrow the queue to one workflow's runs (the workflow slug, for
+    /// example develop) — the adjudicator's worklist filter; absent
+    /// means every workflow's terminal runs queue
+    #[arg(long)]
+    pub(crate) workflow: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -1686,6 +1691,7 @@ impl Commands {
                 WorkCommand::Link(_) => "work link",
                 WorkCommand::Unlink(_) => "work unlink",
                 WorkCommand::Radius(_) => "work radius",
+                WorkCommand::Comments(_) => "work comments",
                 WorkCommand::Claims(_) => "work claims",
             },
             Self::Observation(ns) => match &ns.command {
@@ -2324,6 +2330,9 @@ pub(crate) enum WorkCommand {
     /// Show a work item's closure radius: the open items linked to the
     /// observations of its runs (ADR-0038; read door ADR-0039 stage D)
     Radius(WorkRadiusArgs),
+    /// Read a work item's comments, oldest first — the answer channel
+    /// for parked runs (ADR-0039 stage D part 2)
+    Comments(WorkCommentsArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
 }
@@ -2452,6 +2461,15 @@ pub(crate) struct WorkUnlinkArgs {
 
 #[derive(Args)]
 pub(crate) struct WorkRadiusArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkCommentsArgs {
     /// Work project id
     #[arg(long)]
     pub(crate) project:  String,

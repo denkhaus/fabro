@@ -71,10 +71,10 @@ fn help() {
     ----- stdout -----
     Register a workflow version and create a submitted run
 
-    Usage: fabro create [OPTIONS] <WORKFLOW>
+    Usage: fabro create [OPTIONS] [WORKFLOW]
 
     Arguments:
-      <WORKFLOW>  Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW
+      [WORKFLOW]  Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not required by clap: the orchestration verbs ride as subcommands (`fabro run mark`, ADR-0039), so the command path enforces the positional when no verb was given
 
     Options:
           --json                          Output as JSON [env: FABRO_JSON=]

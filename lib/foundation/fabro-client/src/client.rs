@@ -1914,28 +1914,53 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// The orchestration queue (ADR-0039 stage D): terminal runs without
-    /// a verdict on the field — the adjudicator's pass-one worklist
-    /// (`merge`) or the merger's (`closable`).
-    pub async fn run_queue(
+    /// A work item's comments, oldest first (ADR-0039 stage D part 2,
+    /// denkhaus/work#1107): the comment READ verb — the answer channel
+    /// a parked run's fork travels back on.
+    pub async fn work_item_comments(
         &self,
-        field: fabro_types::OrchestrationField,
-    ) -> Result<Vec<types::Run>> {
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<types::WorkItemCommentList> {
         let response = self
             .send_api(|client| async move {
                 client
-                    .list_run_queue()
-                    .field(match field {
-                        fabro_types::OrchestrationField::Merge => types::ListRunQueueField::Merge,
-                        fabro_types::OrchestrationField::Closable => {
-                            types::ListRunQueueField::Closable
-                        }
-                    })
+                    .list_work_item_comments()
+                    .project_id(project_id.to_string())
+                    .item_key(item_key.to_string())
                     .send()
                     .await
             })
             .await?;
-        Ok(response.into_inner().data)
+        Ok(response.into_inner())
+    }
+
+    /// The orchestration queue (ADR-0039 stage D): terminal runs without
+    /// a verdict on the field — the adjudicator's pass-one worklist
+    /// (`merge`) or the merger's (`closable`).
+    /// The adjudication queue (ADR-0039 stage D read door): terminal runs
+    /// whose latest verdict on the field is not settled, optionally
+    /// narrowed to one workflow, each entry decorated with the work item
+    /// of the run's latest claim.
+    pub async fn run_queue(
+        &self,
+        field: fabro_types::OrchestrationField,
+        workflow: Option<&str>,
+    ) -> Result<types::RunQueueList> {
+        let workflow = workflow.map(str::to_string);
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.list_run_queue().field(match field {
+                    fabro_types::OrchestrationField::Merge => types::ListRunQueueField::Merge,
+                    fabro_types::OrchestrationField::Closable => types::ListRunQueueField::Closable,
+                });
+                if let Some(workflow) = workflow {
+                    request = request.workflow(workflow);
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner())
     }
 
     /// A run's observation records in seq order (ADR-0039 stage D read

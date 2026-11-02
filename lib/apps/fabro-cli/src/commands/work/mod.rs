@@ -9,6 +9,7 @@
 
 mod claims;
 mod close;
+mod comments;
 mod create;
 mod lane;
 mod link;
@@ -42,6 +43,7 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Link(args) => link::link_command(&args, &ctx).await,
         WorkCommand::Unlink(args) => unlink::unlink_command(&args, &ctx).await,
         WorkCommand::Radius(args) => radius::radius_command(&args, &ctx).await,
+        WorkCommand::Comments(args) => comments::comments_command(&args, &ctx).await,
         WorkCommand::Claims(args) => claims::claims_command(&args, &ctx).await,
     }
 }

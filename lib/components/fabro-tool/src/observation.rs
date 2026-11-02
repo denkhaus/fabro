@@ -20,8 +20,10 @@
 //! Fabro, `fabro exec`) are refused with a teaching error instead of
 //! writing an unattributed record.
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
+use fabro_api::types::RunObservation;
 use fabro_store::platform_records::{MAX_OBSERVATION_TEXT_CHARS, StagePosition};
 use fabro_types::ObservationCategory;
 use schemars::JsonSchema;
@@ -135,6 +137,80 @@ pub fn record_observation_text(result: &ObservationRecordResult) -> String {
     format!("{} recorded at seq {}", result.category, result.seq)
 }
 
+/// `fabro_observation_list` (ADR-0039 stage D part 2): the read twin of
+/// `fabro observation list` — a run's facts, so a packet's summary can
+/// be verified against the records themselves.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroObservationListParams {
+    /// The run whose observation records to read: a FULL run id (the
+    /// CLI facade's own validation). A foreign run's facts are readable
+    /// by design — the adjudicator verifies other runs' packets.
+    pub run: String,
+}
+
+/// The observation read: the run it was read for and its records in
+/// `seq` order.
+#[derive(Debug, Serialize)]
+pub struct ObservationListResult {
+    /// The run whose facts these are.
+    pub run_id:       String,
+    /// The records in the server's `seq` order.
+    pub observations: Vec<RunObservation>,
+}
+
+/// The target parse: a FULL run id, the rule `fabro observation list`
+/// enforces on its `--run-id` — door symmetry means the tool twin
+/// refuses the same argv the facade refuses.
+fn parse_target_run(run: &str) -> ToolResult<fabro_types::RunId> {
+    let trimmed = run.trim();
+    trimmed
+        .parse()
+        .map_err(|err| ToolError::message(format!("{trimmed} is not a run id: {err}")))
+}
+
+/// Read one run's observation records through the backend. The target
+/// must be a run id — a selector would resolve to a run the caller may
+/// not have meant, and the queue's packets name ids anyway.
+pub async fn list_observations(
+    backend: Arc<dyn FabroToolBackend>,
+    params: FabroObservationListParams,
+) -> ToolResult<ObservationListResult> {
+    let run_id = parse_target_run(&params.run)?;
+    let observations = backend
+        .list_run_observations(&run_id)
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))?;
+    Ok(ObservationListResult {
+        run_id: run_id.to_string(),
+        observations,
+    })
+}
+
+/// The list rendering: count and run, then one line per record with its
+/// seq, category and fact head — the full text rides the JSON payload.
+pub fn list_observations_text(result: &ObservationListResult) -> String {
+    if result.observations.is_empty() {
+        return format!(
+            "no observation records on run {} — nothing its stages recorded",
+            result.run_id
+        );
+    }
+    let mut listed = format!(
+        "{} observation record(s) on run {}:",
+        result.observations.len(),
+        result.run_id
+    );
+    for observation in &result.observations {
+        let head = super::common::first_line_capped(&observation.text, 120);
+        let _ = write!(
+            listed,
+            "\nseq {} ({}): {head}",
+            observation.seq, observation.category
+        );
+    }
+    listed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +285,52 @@ mod tests {
         assert_eq!(
             record_observation_text(&result),
             "painpoint recorded at seq 7"
+        );
+    }
+
+    #[test]
+    fn the_list_read_refuses_anything_but_a_run_id() {
+        let refused =
+            parse_target_run("  not-a-run-id  ").expect_err("a selector must not pass as a run id");
+        assert!(
+            refused.to_string().contains("is not a run id"),
+            "the refusal names the CLI facade's own rule: {refused}"
+        );
+
+        let accepted = parse_target_run("  01M5844J1FDD00000000000000  ").expect("a run id parses");
+        assert_eq!(accepted.to_string(), "01M5844J1FDD00000000000000");
+    }
+
+    #[test]
+    fn the_list_renderer_names_count_run_and_fact_heads() {
+        let listed = list_observations_text(&ObservationListResult {
+            run_id:       "01M5844J1FDD".to_string(),
+            observations: vec![RunObservation {
+                seq:         1,
+                category:    ObservationCategory::Painpoint,
+                text:        "gate.refused_push\nevery push failed".to_string(),
+                execution:   None,
+                firing:      None,
+                recorded_at: None,
+            }],
+        });
+        assert_eq!(
+            listed.lines().next(),
+            Some("1 observation record(s) on run 01M5844J1FDD:"),
+            "the head names count and run: {listed}"
+        );
+        assert!(
+            listed.contains("seq 1 (painpoint): gate.refused_push"),
+            "one line per record with its seq, category and fact head: {listed}"
+        );
+
+        let empty = list_observations_text(&ObservationListResult {
+            run_id:       "01M5844J1FDD".to_string(),
+            observations: Vec::new(),
+        });
+        assert!(
+            empty.contains("nothing its stages recorded"),
+            "the empty arm says the run recorded nothing: {empty}"
         );
     }
 }

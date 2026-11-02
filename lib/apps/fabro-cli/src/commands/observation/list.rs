@@ -1,7 +1,10 @@
 //! `fabro observation list --run-id <id>` (ADR-0039 stage D,
 //! denkhaus/work#1107): a run's observation records in seq order — the
 //! read door the adjudicator's fast path (counting painpoints) and the
-//! agent pass (reading the facts) share.
+//! agent pass (reading the facts) share. The `--json` stdout is the
+//! `RunObservationList` RECORD, never a bare array: the fast path
+//! parses `.observations` off this stdout, and a bare array silently
+//! reads as zero facts.
 
 use anyhow::Result;
 use cli_table::{Cell, CellStruct, Style, Table};
@@ -19,11 +22,12 @@ pub(super) async fn list_command(args: &ObservationListArgs, ctx: &CommandContex
         .parse()
         .map_err(|_| anyhow::anyhow!("`{}` is not a run id", args.run_id))?;
     let client = ctx.server().await?;
-    let observations = client.list_run_observations(&run_id).await?.observations;
+    let response = client.list_run_observations(&run_id).await?;
+    let observations = &response.observations;
 
     let printer = ctx.printer();
     if ctx.json_output() {
-        print_json_pretty(&observations)?;
+        print_json_pretty(&response)?;
         return Ok(());
     }
     if observations.is_empty() {

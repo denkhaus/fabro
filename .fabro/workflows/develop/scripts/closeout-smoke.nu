@@ -10,19 +10,21 @@ const CLOSEOUT = "closeout.nu"
 const SCRIPTS_DIR = (path self | path dirname)
 source $CLOSEOUT
 
+# The shared smoke harness (denkhaus/work#1109): the fail-log marker
+# gate, the shim env fixtures, the run-shaped repo builder, and the
+# real-parser argv pin driver live in .fabro/scripts/lib/ — this smoke
+# is a consumer, never a re-implementation.
+use ../../../scripts/lib/smoke_harness.nu [
+    start-fail-log, fail, end-fail-gate, shim-env, fresh-work-state, run-shaped-repo, pin-argv
+]
+
 # nu 0.115 catches `exit` inside `try` (the e2e arms live in one), so a
 # bare exit-1 fail would print FAIL and still end green — the battery
-# reads exit codes. Every fail also lands in this marker file; the final
-# gate turns any recorded fail into a real non-zero exit. The path rides
-# the environment because a def cannot close over a runtime `let` (and
-# mktemp is not a parse-time command).
-load-env {CLOSEOUT_SMOKE_FAIL_LOG: (mktemp -t closeout-smoke-fails.XXXXXX)}
-
-def fail [what: string]: nothing -> nothing {
-    print -e $"closeout-smoke: FAIL — ($what)"
-    $"($what)\n" | save --append $env.CLOSEOUT_SMOKE_FAIL_LOG
-    exit 1
-}
+# reads exit codes. The harness's fail gate handles it: every fail lands
+# in the marker file, the closing gate turns any recorded fail into a
+# real non-zero exit. The top-level load-env persists (a def's env never
+# reaches the caller — the harness docs name the mechanic).
+load-env {SMOKE_FAIL_LOG: (start-fail-log 'closeout-smoke')}
 
 # Positives: every Dockerfile* segment shape the warning must catch.
 let hits = (dockerfile-hits [
@@ -432,42 +434,21 @@ if (parse-head $"($vf_note.text | lines | first)\nmore prose") == null {
 # in the temp repo, a relative path would not exist there.
 const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 
-def shim-env [state: string]: nothing -> record {
-    {FABRO_BIN: $SHIM, FABRO_SERVER: "http://127.0.0.1:1", FABRO_WORK_SHIM_STATE: $state}
-}
-
-def fresh-state [path: string, title: string]: nothing -> nothing {
-    {items: [{itemKey: "denkhaus/work#1", title: $title, body: "the item body", state: "open", labels: []}],
-     claims: [],
-     nextKey: 8001,
-     log: []} | to json --raw | save -f $path
-}
-
-# Temp git repo shaped like a RUN: branch fabro/run/<id>, an initial
-# commit, then the checkpoint commit whose subject carries the run-id
-# marker (run-base anchors on it) with the title tokens in its diff.
+# Temp git repo shaped like a RUN (the harness builder): the diff
+# carries the title tokens deterministically for the PARK gate.
 const RUN_ID = "01SMOKE0000000000000000000"
 let orig_cwd = (pwd)
-let repo = (mktemp -d -t closeout-e2e.XXXXXX)
+let repo = (run-shaped-repo $RUN_ID "frobnicator queue bounded: the deterministic implementing change")
 try {
     cd $repo
-    git init -q -b $"fabro/run/($RUN_ID)" .
-git config user.email smoke@localhost
-    git config user.name closeout-smoke
     mkdir .fabro/journal
-    echo initial | save -f base.txt
-    git add base.txt
-    git commit -qm "initial"
-    "frobnicator queue bounded: the deterministic implementing change" | save -f impl.txt
-    git add impl.txt
-    git commit -qm $"fabro\(($RUN_ID)\): the fixture implementing checkpoint"
 
     # (a) PARK arm: title tokens absent from the diff -> no close, item
     # stays open, ZERO tracker mutations in the log.
     let park_state = ($repo | path join 'park-state.json')
-    fresh-state $park_state "Rewrite the quantum flux capacitor harness"
+    fresh-work-state $park_state "Rewrite the quantum flux capacitor harness"
     let park_run = (do {
-        with-env (shim-env $park_state) {
+        with-env (shim-env $SHIM $park_state) {
             echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
         }
     } | complete)
@@ -502,14 +483,14 @@ git config user.email smoke@localhost
     # one deferred action, one exemption -> three DIRECT filings with the
     # right labels, then the close.
     let happy_state = ($repo | path join 'happy-state.json')
-    fresh-state $happy_state "Make the frobnicator queue bounded"
+    fresh-work-state $happy_state "Make the frobnicator queue bounded"
     [
         '{"node":"reviewer","data":{"observations":["Non-blocking: the cache key could collide under retries, harmless today."]}}'
         '{"node":"implementer","data":{"observations":["deferred-action: regen the TS client locally (no java in sandbox)"]}}'
         '{"node":"planner","data":{"observations":["exemption: run just image-release plus tofu apply (infra action)"]}}'
     ] | str join "\n" | save -f $"($repo)/.fabro/journal/($RUN_ID).jsonl"
     let happy_run = (do {
-        with-env (shim-env $happy_state) {
+        with-env (shim-env $SHIM $happy_state) {
             echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
         }
     } | complete)
@@ -561,13 +542,13 @@ git config user.email smoke@localhost
     # (c) Dedupe arm: a state already carrying the finding's title -> the
     # sweep skips it, exactly one NEW filing lands.
     let dedupe_state = ($repo | path join 'dedupe-state.json')
-    fresh-state $dedupe_state "Make the frobnicator queue bounded"
+    fresh-work-state $dedupe_state "Make the frobnicator queue bounded"
     {items: [
         {itemKey: "denkhaus/work#1", title: "Make the frobnicator queue bounded", body: "the item body", state: "open", labels: []}
         {itemKey: "denkhaus/work#7999", title: (finding-title "Non-blocking: the cache key could collide under retries, harmless today." "denkhaus/work#1"), body: $"Prior filing from this run. Basis: run \(($RUN_ID)\), closed item denkhaus/work#1", state: "open", labels: ["residual"]}
     ], claims: [], nextKey: 8001, log: []} | to json --raw | save -f $dedupe_state
     let dedupe_run = (do {
-        with-env (shim-env $dedupe_state) {
+        with-env (shim-env $SHIM $dedupe_state) {
             echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
         }
     } | complete)
@@ -585,17 +566,17 @@ git config user.email smoke@localhost
     # (d) Negative arms: no --work-item is a usage error; an empty stdin
     # packet and a malformed packet each hard-fail.
     let neg_state = ($repo | path join 'neg-state.json')
-    fresh-state $neg_state "Make the frobnicator queue bounded"
+    fresh-work-state $neg_state "Make the frobnicator queue bounded"
     let no_flag = (do {
-        with-env (shim-env $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") }
+        with-env (shim-env $SHIM $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") }
     } | complete)
     if $no_flag.exit_code != 2 { fail "closeout without --work-item must be a usage error (exit 2)" }
     let empty_stdin = (do {
-        with-env (shim-env $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
+        with-env (shim-env $SHIM $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
     } | complete)
     if $empty_stdin.exit_code != 1 { fail "empty stdin packet must hard-fail (exit 1)" }
     let bad_packet = (do {
-        with-env (shim-env $neg_state) { echo "not json" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
+        with-env (shim-env $SHIM $neg_state) { echo "not json" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
     } | complete)
     if $bad_packet.exit_code != 1 { fail "malformed packet must hard-fail (exit 1)" }
     let no_server = (do {
@@ -680,12 +661,9 @@ git config user.email smoke@localhost
     rm -rf $repo
 }
 
-# The fail gate (see the marker note above): a fail inside the e2e try
+# The fail gate (see the harness note above): a fail inside the e2e try
 # printed and was caught — the marker file is what the battery reads.
-if ((try { open --raw $env.CLOSEOUT_SMOKE_FAIL_LOG } catch { '' }) | str trim | is-not-empty) {
-    exit 1
-}
-rm -f $env.CLOSEOUT_SMOKE_FAIL_LOG
+end-fail-gate
 print "closeout-smoke: ok — sweep logic plus the direct work-item arms through the channel shim (park, filings, dedupe, close, negatives)"
 
 

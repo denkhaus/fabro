@@ -534,6 +534,36 @@ WHERE run_id = ? AND state IN ('granted', 'active', 'awaiting_merge')
         row.as_ref().map(claim_from_row).transpose()
     }
 
+    /// The latest claim of each run, live or terminal — the run →
+    /// work-item edge the adjudication queue's decoration reads
+    /// (ADR-0039 stage D part 2). A released claim still names the work
+    /// item the run worked; a re-claim supersedes the earlier item. One
+    /// claim per run that ever claimed; runs without claims resolve to
+    /// nothing. Fixed query per run (the `linked_items_for_observations`
+    /// precedent): the caller passes a queue page, bounded small.
+    pub async fn latest_claims_of_runs(&self, run_ids: &[RunId]) -> Result<Vec<WorkClaim>> {
+        let mut latest = Vec::new();
+        for run_id in run_ids {
+            let row = sqlx::query(
+                r"
+SELECT claim_id, project_id, item_key, run_id, lane, state,
+       granted_at_ms, updated_at_ms, released_at_ms, release_reason, pr_url
+FROM work_claims
+WHERE run_id = ?
+ORDER BY granted_at_ms DESC, claim_id DESC
+LIMIT 1
+",
+            )
+            .bind(run_id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
+            if let Some(row) = row {
+                latest.push(claim_from_row(&row)?);
+            }
+        }
+        Ok(latest)
+    }
+
     /// The project's live claims of one lane (assignment backpressure and
     /// lane-queue views).
     pub async fn active_claims_of_lane(
@@ -1174,6 +1204,78 @@ mod tests {
         assert_eq!(conflicts, 15);
     }
 
+    /// The run → work-item edge for the adjudication queue's decoration
+    /// (ADR-0039 stage D part 2): the LATEST claim of each run over the
+    /// WHOLE history — a released claim still names the work item the run
+    /// worked, and a re-claim after a release supersedes the earlier
+    /// item. Runs without claims resolve to nothing.
+    #[tokio::test]
+    async fn latest_claims_of_runs_cover_released_and_re_claimed_history() {
+        let (_directory, store) = store().await;
+        let run_a = fabro_types::RunId::new();
+        let run_b = fabro_types::RunId::new();
+        let run_c = fabro_types::RunId::new();
+
+        // run A: item 1 granted then released, then item 3 granted (live).
+        let first = match store
+            .grant(&request("denkhaus/work#1", run_a))
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(claim) => claim,
+            other => panic!("expected a grant, got {other:?}"),
+        };
+        store
+            .release(&first.claim_id, "test release")
+            .await
+            .unwrap();
+        store
+            .grant(&request("denkhaus/work#3", run_a))
+            .await
+            .unwrap();
+
+        // run B: item 2 granted then released — terminal, still names the item.
+        let second = match store
+            .grant(&request("denkhaus/work#2", run_b))
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(claim) => claim,
+            other => panic!("expected a grant, got {other:?}"),
+        };
+        store
+            .release(&second.claim_id, "test release")
+            .await
+            .unwrap();
+
+        let latest = store
+            .latest_claims_of_runs(&[run_a, run_b, run_c])
+            .await
+            .unwrap();
+        let item_of = |run: &fabro_types::RunId| {
+            latest
+                .iter()
+                .find(|claim| claim.run_id == *run)
+                .map(|claim| claim.item_key.clone())
+        };
+        assert_eq!(
+            item_of(&run_a),
+            Some("denkhaus/work#3".to_string()),
+            "the re-claim supersedes the released earlier item"
+        );
+        assert_eq!(
+            item_of(&run_b),
+            Some("denkhaus/work#2".to_string()),
+            "a released claim still names the work item the run worked"
+        );
+        assert_eq!(
+            item_of(&run_c),
+            None,
+            "a run without claims resolves to no work item"
+        );
+        assert_eq!(latest.len(), 2, "one claim per run that ever claimed");
+    }
+
     #[tokio::test]
     async fn same_run_regrant_is_idempotent() {
         let (_directory, store) = store().await;
@@ -1397,13 +1499,18 @@ mod tests {
             .iter()
             .map(|link| (link.item_key.as_str(), link.run_id, link.seq))
             .collect();
+        // Expected content from the fixture, ordered by the query's
+        // documented rule (item, run, seq) — derived, not minted: two
+        // same-millisecond ULIDs otherwise flip the expected order on a
+        // coin flip (the pre-existing flake this replace fixed).
+        let mut expected = vec![
+            ("denkhaus/work#7", run_id, 3u64),
+            ("denkhaus/work#8", other_run, 1),
+            ("denkhaus/work#8", run_id, 5),
+        ];
+        expected.sort();
         assert_eq!(
-            keys,
-            vec![
-                ("denkhaus/work#7", run_id, 3),
-                ("denkhaus/work#8", other_run, 1),
-                ("denkhaus/work#8", run_id, 5),
-            ],
+            keys, expected,
             "the reverse join returns exactly the linked pairs, ordered deterministically"
         );
         assert!(

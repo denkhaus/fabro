@@ -88,6 +88,16 @@ will not use.
 11. **Markers are data fields on the observation record**: field
     `followup`, values `unfinished | exempt | minor` (the prose
     journal marker sweeps retire with the closeout's authority).
+12. **Door symmetry** (user directive 2026-11-02): every orchestration
+    surface exists as BOTH an agent tool and a CLI facade over the
+    same endpoint and authorization, and the host-side test shim
+    covers both — command stages (script twins) and agent stages
+    (tool twins) can work every surface smoothly. Tool names derive
+    mechanically from the CLI verb path (`fabro run queue` →
+    `fabro_run_queue`). The workflow filter of the adjudication queue
+    (stage-D part-2 grill) narrows decision 3: the adjudicator
+    reviews the runs of the workflows on its worklist (initially
+    `develop`), not literally every run in the store.
 
 ## Consequences
 

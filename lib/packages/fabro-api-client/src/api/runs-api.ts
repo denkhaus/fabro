@@ -82,6 +82,8 @@ import type { RunOrchestrationMarkRequest } from '../models';
 // @ts-ignore
 import type { RunOrchestrationMarkResponse } from '../models';
 // @ts-ignore
+import type { RunQueueList } from '../models';
+// @ts-ignore
 import type { RunSandboxFileMap } from '../models';
 // @ts-ignore
 import type { RunTimelineResponse } from '../models';
@@ -860,13 +862,14 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * The adjudication queue (ADR-0039): terminal runs whose latest verdict on the named orchestration field is not settled — an anti-join of the run summary store\'s terminal runs against the runs the field has settled (`enabled` or `refused`). `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). A `parked` latest verdict keeps the run queued: parked is an open operator escalation that re-enters every pass until resolved (stage D part 2). No cursor, no queue table: repetition is gap-safe. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state. Each entry carries the work item of the run\'s latest claim (released claims included; null when the run never claimed one).
          * @summary List the Orchestration Queue
          * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {string} [workflow] Narrow the queue to one workflow\&#39;s runs (the workflow slug, for example &#x60;develop&#x60;) — the adjudicator\&#39;s worklist filter (ADR-0039 decision 12). Absent means every workflow\&#39;s terminal runs queue.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunQueue: async (field?: ListRunQueueFieldEnum, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listRunQueue: async (field?: ListRunQueueFieldEnum, workflow?: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/runs/queue`;
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
             const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
@@ -887,6 +890,10 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
 
             if (field !== undefined) {
                 localVarQueryParameter['field'] = field;
+            }
+
+            if (workflow !== undefined) {
+                localVarQueryParameter['workflow'] = workflow;
             }
 
             localVarHeaderParameter['Accept'] = 'application/json';
@@ -2155,14 +2162,15 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * The adjudication queue (ADR-0039): terminal runs whose latest verdict on the named orchestration field is not settled — an anti-join of the run summary store\'s terminal runs against the runs the field has settled (`enabled` or `refused`). `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). A `parked` latest verdict keeps the run queued: parked is an open operator escalation that re-enters every pass until resolved (stage D part 2). No cursor, no queue table: repetition is gap-safe. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state. Each entry carries the work item of the run\'s latest claim (released claims included; null when the run never claimed one).
          * @summary List the Orchestration Queue
          * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {string} [workflow] Narrow the queue to one workflow\&#39;s runs (the workflow slug, for example &#x60;develop&#x60;) — the adjudicator\&#39;s worklist filter (ADR-0039 decision 12). Absent means every workflow\&#39;s terminal runs queue.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedRunList>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunQueue(field, options);
+        async listRunQueue(field?: ListRunQueueFieldEnum, workflow?: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunQueueList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listRunQueue(field, workflow, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.listRunQueue']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -2673,14 +2681,15 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.listRunObservations(id, options).then((request) => request(axios, basePath));
         },
         /**
-         * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+         * The adjudication queue (ADR-0039): terminal runs whose latest verdict on the named orchestration field is not settled — an anti-join of the run summary store\'s terminal runs against the runs the field has settled (`enabled` or `refused`). `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). A `parked` latest verdict keeps the run queued: parked is an open operator escalation that re-enters every pass until resolved (stage D part 2). No cursor, no queue table: repetition is gap-safe. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state. Each entry carries the work item of the run\'s latest claim (released claims included; null when the run never claimed one).
          * @summary List the Orchestration Queue
          * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+         * @param {string} [workflow] Narrow the queue to one workflow\&#39;s runs (the workflow slug, for example &#x60;develop&#x60;) — the adjudicator\&#39;s worklist filter (ADR-0039 decision 12). Absent means every workflow\&#39;s terminal runs queue.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedRunList> {
-            return localVarFp.listRunQueue(field, options).then((request) => request(axios, basePath));
+        listRunQueue(field?: ListRunQueueFieldEnum, workflow?: string, options?: RawAxiosRequestConfig): AxiosPromise<RunQueueList> {
+            return localVarFp.listRunQueue(field, workflow, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns every regular text file under one workspace-relative directory of the run\'s sandbox, contents inline, keyed by paths relative to the directory\'s parent (a `.fabro/workflows/<slug>` directory yields `<slug>/workflow.toml` keys).  Serves run-tool `files_from` workflow-version registration: the closure is read from the caller\'s own sandbox instead of being transcribed through tool arguments. Reads are bounded and refuse rather than truncate: at most 200 files, 256 KiB per file, 2 MiB total, tree depth 8, UTF-8 text only. Binary, non-UTF-8, or symlinked entries refuse the whole read.  Only the run\'s own worker token may call this; user principals keep the elided run-files diff view.
@@ -3138,14 +3147,15 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * The adjudication queue (ADR-0039): terminal runs that carry no verdict yet on the named orchestration field — an anti-join of the run summary store\'s terminal runs against the runs named by `run.orchestration` records for that field. `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). No cursor, no queue table: repetition is gap-safe, a run leaves the queue the moment a verdict record for the field exists. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state.
+     * The adjudication queue (ADR-0039): terminal runs whose latest verdict on the named orchestration field is not settled — an anti-join of the run summary store\'s terminal runs against the runs the field has settled (`enabled` or `refused`). `field=merge` (default) is the adjudicator\'s pass-one queue; `field=closable` is the merger\'s queue (runs the adjudicator marked `merge: enabled`). A `parked` latest verdict keeps the run queued: parked is an open operator escalation that re-enters every pass until resolved (stage D part 2). No cursor, no queue table: repetition is gap-safe. Archived terminal runs stay in the queue — archiving is bookkeeping, not adjudication state. Each entry carries the work item of the run\'s latest claim (released claims included; null when the run never claimed one).
      * @summary List the Orchestration Queue
      * @param {ListRunQueueFieldEnum} [field] Which orchestration field the queue filters on.
+     * @param {string} [workflow] Narrow the queue to one workflow\&#39;s runs (the workflow slug, for example &#x60;develop&#x60;) — the adjudicator\&#39;s worklist filter (ADR-0039 decision 12). Absent means every workflow\&#39;s terminal runs queue.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listRunQueue(field?: ListRunQueueFieldEnum, options?: RawAxiosRequestConfig) {
-        return RunsApiFp(this.configuration).listRunQueue(field, options).then((request) => request(this.axios, this.basePath));
+    public listRunQueue(field?: ListRunQueueFieldEnum, workflow?: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listRunQueue(field, workflow, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

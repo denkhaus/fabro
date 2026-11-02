@@ -1,0 +1,42 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# adjudicator (ADR-0039 stage D part 2, denkhaus/work#1107): the
+# content-verdict gear. One pass = one run: the fast path sweeps the
+# merge queue (terminal develop runs without a settled verdict), marks
+# the trivial mass LLM-free, and the agent pass judges the rest —
+# verdicts, follow-up filings, parks on true policy forks. Fired
+# manually for now; the scheduler tick (the three-gear model, stage F)
+# drives it later. The workflow directory name is a CONTRACT: the mark
+# door's allowlist keys on the workflow slug `adjudicator`.
+[run.agent]
+# The run-level switch for node-level x.fabro_tools grants (the flip
+# precedent): inert without it.
+fabro_tools = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# The adjudicator never edits a repository: no clone, no pull request,
+# no merge — every write goes through the platform doors over the run
+# channel. A bare sandbox with the channel mount is the whole workspace
+# need.
+[run.clone]
+enabled = false
+
+# No [run.integrations.github.permissions] (ADR-0019): agent shells get
+# NO forge token; every tracker interaction is engine-mediated through
+# the work tools.
+
+# The terminal notification is the operator's park signal: the pass
+# output names the parked forks, the run title carries the pass verdict.
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

@@ -24,6 +24,8 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
+import type { WorkItemCommentList } from '../models';
+// @ts-ignore
 import type { WorkItemRadiusResponse } from '../models';
 /**
  * WorkApi - axios parameter creator
@@ -44,6 +46,50 @@ export const WorkApiAxiosParamCreator = function (configuration?: Configuration)
             // verify required parameter 'itemKey' is not null or undefined
             assertParamExists('getWorkItemRadius', 'itemKey', itemKey)
             const localVarPath = `/api/v1/projects/{projectId}/work-items/{itemKey}/radius`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)))
+                .replace(`{${"itemKey"}}`, encodeURIComponent(String(itemKey)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107): the work item\'s comments in chronological order (oldest first) — the ANSWER CHANNEL for parked runs. The adjudicator parks a policy fork with a `parked-fork:` question note on the run and the work item carries the demand; the operator answers on the work item; the next pass reads the answer here, and a fresh operator comment resolves the fork. This is the read twin of the comment door: writing stays the human\'s surface (tracker/UI), reading is open to every worker of the project. Same authorization as the radius read.
+         * @summary List a Work Item\'s Comments
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItemComments: async (projectId: string, itemKey: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('listWorkItemComments', 'projectId', projectId)
+            // verify required parameter 'itemKey' is not null or undefined
+            assertParamExists('listWorkItemComments', 'itemKey', itemKey)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/{itemKey}/comments`
                 .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)))
                 .replace(`{${"itemKey"}}`, encodeURIComponent(String(itemKey)));
             // use dummy base URL string because the URL constructor only accepts absolute URLs.
@@ -97,6 +143,20 @@ export const WorkApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['WorkApi.getWorkItemRadius']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107): the work item\'s comments in chronological order (oldest first) — the ANSWER CHANNEL for parked runs. The adjudicator parks a policy fork with a `parked-fork:` question note on the run and the work item carries the demand; the operator answers on the work item; the next pass reads the answer here, and a fresh operator comment resolves the fork. This is the read twin of the comment door: writing stays the human\'s surface (tracker/UI), reading is open to every worker of the project. Same authorization as the radius read.
+         * @summary List a Work Item\'s Comments
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listWorkItemComments(projectId: string, itemKey: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemCommentList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItemComments(projectId, itemKey, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkApi.listWorkItemComments']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -117,6 +177,17 @@ export const WorkApiFactory = function (configuration?: Configuration, basePath?
         getWorkItemRadius(projectId: string, itemKey: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemRadiusResponse> {
             return localVarFp.getWorkItemRadius(projectId, itemKey, options).then((request) => request(axios, basePath));
         },
+        /**
+         * The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107): the work item\'s comments in chronological order (oldest first) — the ANSWER CHANNEL for parked runs. The adjudicator parks a policy fork with a `parked-fork:` question note on the run and the work item carries the demand; the operator answers on the work item; the next pass reads the answer here, and a fresh operator comment resolves the fork. This is the read twin of the comment door: writing stays the human\'s surface (tracker/UI), reading is open to every worker of the project. Same authorization as the radius read.
+         * @summary List a Work Item\'s Comments
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listWorkItemComments(projectId: string, itemKey: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemCommentList> {
+            return localVarFp.listWorkItemComments(projectId, itemKey, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -134,5 +205,17 @@ export class WorkApi extends BaseAPI {
      */
     public getWorkItemRadius(projectId: string, itemKey: string, options?: RawAxiosRequestConfig) {
         return WorkApiFp(this.configuration).getWorkItemRadius(projectId, itemKey, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The comment READ verb (ADR-0039 stage D part 2, denkhaus/work#1107): the work item\'s comments in chronological order (oldest first) — the ANSWER CHANNEL for parked runs. The adjudicator parks a policy fork with a `parked-fork:` question note on the run and the work item carries the demand; the operator answers on the work item; the next pass reads the answer here, and a fresh operator comment resolves the fork. This is the read twin of the comment door: writing stays the human\'s surface (tracker/UI), reading is open to every worker of the project. Same authorization as the radius read.
+     * @summary List a Work Item\'s Comments
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listWorkItemComments(projectId: string, itemKey: string, options?: RawAxiosRequestConfig) {
+        return WorkApiFp(this.configuration).listWorkItemComments(projectId, itemKey, options).then((request) => request(this.axios, this.basePath));
     }
 }
