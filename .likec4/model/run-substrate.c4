@@ -71,14 +71,36 @@ model {
       }
 
       orchestration-mark-surface = service "Orchestration mark surface" {
-        #planned
         description '''
           Writes run.orchestration verdicts on a FOREIGN run — the only
           cross-run write in the system. Doors: `fabro_run_mark` (agent
-          tool) and `fabro run mark` (CLI shim). The server accepts
-          marks ONLY from runs whose workflow is the adjudicator or the
-          merger (workflow allowlist — the ADR-0019 consent).
+          tool) and `fabro run mark` (CLI shim, an optional subcommand
+          of `fabro run`). The server accepts marks ONLY from runs whose
+          workflow is the adjudicator or the merger (hardcoded allowlist
+          pair, structural one-writer-per-field at the door: the
+          adjudicator owns `merge`, the merger owns `closable`; ADR-0039
+          stage D part 1). Landed with stage D part 1.
         '''
+        metadata {
+          status "live"
+          code "lib/apps/fabro-server/src/server/handler/orchestration.rs, lib/components/fabro-tool/src/run_mark.rs, lib/apps/fabro-cli/src/commands/run/mark.rs"
+        }
+      }
+
+      orchestration-read-surface = service "Orchestration read surface" {
+        description '''
+          The gear reads the adjudicator's fast path and the agent pass
+          share: the queue (terminal runs minus the runs a field has a
+          verdict for — the anti-join, `fabro run queue`), a run's
+          observation records (`fabro observation list --run-id`), and a
+          work item's closure radius (`fabro work radius` — the close
+          gate's own computation, generalized into its own read).
+          Landed with stage D part 1.
+        '''
+        metadata {
+          status "live"
+          code "lib/apps/fabro-server/src/server/handler/orchestration.rs, lib/components/fabro-store/src/run_summary_store.rs (adjudication_queue)"
+        }
       }
 
       work-item-surface = service "Work-item surface" {
