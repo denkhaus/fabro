@@ -76,7 +76,7 @@ model {
       }
 
       adjudicator = workflow "Adjudicator" {
-        #planned
+        #evolving
         description '''
           Run-driven, serial, HITL. Pass 1: reviews the observations of
           ALL runs of an item one after another, reconciles painpoints,
@@ -88,7 +88,7 @@ model {
           LLM call.
         '''
         metadata {
-          substrate "orchestration fields + queue query landed; workflow pending"
+          substrate "graph + all four read doors + the mark door landed (stage D, 2026-11-02); manual fire until the stage-F scheduler tick; the sandbox CLI legs wait for the fork.30 toolchain pin (probe-39)"
           epic "denkhaus/work#1107"
         }
         link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
@@ -96,7 +96,7 @@ model {
         // --- internals (detail level, shown in the adjudicator view) ---
 
         fast-path = stage "Mechanical fast path" {
-          #planned
+          #evolving
           description '''
             The trivial case — no markers, no painpoints, empty radius —
             is decided and closed mechanically, without an LLM call
@@ -105,7 +105,7 @@ model {
         }
 
         review-pass = stage "Review pass (pass 1)" {
-          #planned
+          #evolving
           description '''
             Reviews the observations of ALL runs of the item one after
             another; reconciles painpoints, markers and notes; files
@@ -115,7 +115,7 @@ model {
         }
 
         radius-watch = stage "Closure-radius watch" {
-          #planned
+          #evolving
           description '''
             Watches the closure radius: the open work items linked to
             the observations of the item's runs (work item ←
@@ -125,12 +125,13 @@ model {
         }
 
         park-resume = stage "Operator ask & park/resume" {
-          #planned
+          #evolving
           description '''
             The HITL corridor: the pass runs autonomously for clear
             cases; a true policy fork triggers an operator ask; no
             answer within the pass parks the run and pings Slack; the
-            next pass resumes.
+            next pass resumes. The parked-runs Kanban column (#1110)
+            and the HITL instruments (#1111) are filed follow-ups.
           '''
         }
 
