@@ -24,6 +24,20 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
              adjudicator's pass-one queue) and closable (the merger's)"
         ),
     };
+    let verdict = match args.verdict.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            match trimmed {
+                "enabled" => Some(fabro_types::OrchestrationVerdict::Enabled),
+                "refused" => Some(fabro_types::OrchestrationVerdict::Refused),
+                other => anyhow::bail!(
+                    "`{other}` is not a settled verdict — the filter accepts enabled or \
+                     refused (pending and parked runs are the queue's default anti-join)"
+                ),
+            }
+        }
+    };
     let workflow = match args.workflow.as_deref() {
         None => None,
         Some(raw) => {
@@ -39,7 +53,7 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
     };
     let ctx = base_ctx.with_target(&args.server)?;
     let client = ctx.server().await?;
-    let queue = client.run_queue(field, workflow).await?;
+    let queue = client.run_queue(field, workflow, verdict).await?;
 
     let printer = ctx.printer();
     if ctx.json_output() {

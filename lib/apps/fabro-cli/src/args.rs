@@ -1424,6 +1424,12 @@ pub(crate) struct RunQueueArgs {
     #[arg(long, default_value = "merge")]
     pub(crate) field: String,
 
+    /// List exactly the runs settled on this verdict instead of the
+    /// unsettled anti-join: enabled or refused. `--field closable
+    /// --verdict enabled` is the closing pass's worklist (stage E)
+    #[arg(long)]
+    pub(crate) verdict: Option<String>,
+
     /// Narrow the queue to one workflow's runs (the workflow slug, for
     /// example develop) — the adjudicator's worklist filter; absent
     /// means every workflow's terminal runs queue

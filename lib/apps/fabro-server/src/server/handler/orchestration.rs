@@ -40,9 +40,10 @@ use crate::principal_middleware::RequiredRunManagementActor;
 /// decision): the only workflow slugs whose runs may write orchestration
 /// verdicts, each bound to exactly one field. The names are stable,
 /// line-owned contracts — a change is a deliberate code edit, not a
-/// settings knob.
-const MERGE_WRITER_WORKFLOW: &str = "adjudicator";
-const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
+/// settings knob. Shared with the work-item close door (stage E): the
+/// adjudicator is the only workflow that closes work items.
+pub(super) const MERGE_WRITER_WORKFLOW: &str = "adjudicator";
+pub(super) const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
 
 /// How many runs one queue read returns at most. The queue is the
 /// adjudicator's worklist, not an archive walk: a gear that needs more
@@ -60,6 +61,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
 struct QueueQuery {
     field:    Option<OrchestrationField>,
     workflow: Option<String>,
+    /// Settled-verdict filter (stage E): flips the anti-join — the queue
+    /// lists exactly the runs whose latest verdict on the field IS this
+    /// value. The closing pass reads `closable = enabled`.
+    verdict:  Option<OrchestrationVerdict>,
 }
 
 /// The adjudication queue: terminal runs whose latest verdict on the
@@ -78,17 +83,36 @@ async fn list_queue(
     // one page must never read as complete (the fast path would sweep
     // only the first page and route "Queue empty" beside a full
     // backlog).
-    let fetched = match state
-        .stores
-        .run_summaries
-        .adjudication_queue(
-            field,
-            query.workflow.as_deref(),
-            QUEUE_PAGE_LIMIT + 1,
-            Utc::now(),
-        )
-        .await
-    {
+    let fetched = match query.verdict {
+        // The settled-verdict read (stage E): the closing pass's
+        // worklist — exactly the runs settled on the named verdict.
+        Some(verdict) => {
+            state
+                .stores
+                .run_summaries
+                .verdict_queue(
+                    field,
+                    verdict,
+                    query.workflow.as_deref(),
+                    QUEUE_PAGE_LIMIT + 1,
+                    Utc::now(),
+                )
+                .await
+        }
+        None => {
+            state
+                .stores
+                .run_summaries
+                .adjudication_queue(
+                    field,
+                    query.workflow.as_deref(),
+                    QUEUE_PAGE_LIMIT + 1,
+                    Utc::now(),
+                )
+                .await
+        }
+    };
+    let fetched = match fetched {
         Ok(runs) => runs,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
@@ -142,6 +166,8 @@ async fn list_queue(
         .map(|run| {
             let verdict = match verdicts.get(&run.id) {
                 Some(OrchestrationVerdict::Parked) => RunQueueEntryVerdict::Parked,
+                Some(OrchestrationVerdict::Enabled) => RunQueueEntryVerdict::Enabled,
+                Some(OrchestrationVerdict::Refused) => RunQueueEntryVerdict::Refused,
                 _ => RunQueueEntryVerdict::Pending,
             };
             let (work_item, project) = match claim_by_run.get(&run.id) {

@@ -341,6 +341,64 @@ async fn the_queue_lists_terminal_runs_minus_the_field_verdicts() {
     );
 }
 
+/// The verdict-filtered queue (stage E): `verdict=enabled` flips the
+/// join — exactly the runs settled on that verdict list, the closing
+/// pass's worklist. Parked and never-verdicted runs stay out.
+#[tokio::test]
+async fn the_queue_with_a_verdict_filter_lists_exactly_the_settled_runs() {
+    let (app, state, store) = orchestration_app();
+    let merger = RunId::new();
+    let merged = RunId::new();
+    let parked = RunId::new();
+    let fresh = RunId::new();
+    seed_run(&store, merger, "merger", true).await;
+    seed_run(&store, merged, "develop", true).await;
+    seed_run(&store, parked, "develop", true).await;
+    seed_run(&store, fresh, "develop", true).await;
+    let token = state.test_issue_worker_token_with_run_tools(&merger);
+
+    // The merger merged `merged` (closable = enabled); a conflict parked
+    // `parked` (closable = parked); `fresh` carries no verdict at all.
+    for (target, verdict) in [(merged, "enabled"), (parked, "parked")] {
+        let response = mark_call(
+            &app,
+            &token,
+            &target,
+            json!({"field": "closable", "verdict": verdict}),
+        )
+        .await;
+        response_json(response, StatusCode::OK, "seed closable verdict").await;
+    }
+
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(
+            "/runs/queue?field=closable&verdict=enabled&workflow=develop",
+        ))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("closing-pass queue request builds");
+    let response = app.oneshot(request).await.expect("queue request runs");
+    let body = response_json(response, StatusCode::OK, "closing-pass queue read").await;
+    let ids = body["data"]
+        .as_array()
+        .expect("queue entries")
+        .iter()
+        .map(|entry| {
+            entry["run"]["id"]
+                .as_str()
+                .expect("run id inside the entry")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![merged.to_string()],
+        "the closing-pass worklist holds exactly the closable-enabled run — parked and \
+         never-verdicted runs stay out: {body}"
+    );
+}
+
 /// The observations read door: a run's observation records in seq order
 /// with the category that routes adjudication.
 #[tokio::test]

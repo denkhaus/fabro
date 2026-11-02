@@ -27,16 +27,43 @@ pub struct FabroRunQueueParams {
     /// Only runs of this workflow slug, e.g. `develop`. Optional — the
     /// adjudicator reads the develop line only.
     pub workflow: Option<String>,
+    /// List exactly the runs settled on this verdict instead of the
+    /// unsettled anti-join. Optional (stage E). `enabled` or `refused`;
+    /// `field=closable` + `verdict=enabled` is the closing pass's
+    /// worklist — runs the merger merged, whose work items may now
+    /// close. `pending` and `parked` are refused: they ARE the default
+    /// queue.
+    pub verdict:  Option<FabroSettledVerdict>,
 }
 
-/// A validated queue read: the parsed field and a trimmed workflow
-/// filter (absent means no filter; a PRESENT-but-blank value is
-/// refused — the CLI facade's own rule, door symmetry: both twins
-/// refuse the same argv).
+/// The settled-verdict filter (stage E): the two verdicts that free a
+/// run from the anti-join. Pending and parked are refused at validation
+/// — they name the default queue, not a filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FabroSettledVerdict {
+    Enabled,
+    Refused,
+}
+
+impl From<FabroSettledVerdict> for fabro_types::OrchestrationVerdict {
+    fn from(value: FabroSettledVerdict) -> Self {
+        match value {
+            FabroSettledVerdict::Enabled => Self::Enabled,
+            FabroSettledVerdict::Refused => Self::Refused,
+        }
+    }
+}
+
+/// A validated queue read: the parsed field, a trimmed workflow filter
+/// (absent means no filter; a PRESENT-but-blank value is refused — the
+/// CLI facade's own rule, door symmetry: both twins refuse the same
+/// argv), and the optional settled-verdict filter.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidatedRunQueue {
     pub field:    FabroOrchestrationField,
     pub workflow: Option<String>,
+    pub verdict:  Option<FabroSettledVerdict>,
 }
 
 impl TryFrom<FabroRunQueueParams> for ValidatedRunQueue {
@@ -58,6 +85,7 @@ impl TryFrom<FabroRunQueueParams> for ValidatedRunQueue {
         Ok(Self {
             field: params.field,
             workflow,
+            verdict: params.verdict,
         })
     }
 }
@@ -82,6 +110,10 @@ pub struct RunQueueSummary {
     /// The work item of the run's latest claim, when it claimed one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub work_item:    Option<String>,
+    /// The project of the run's latest claim, when it claimed one —
+    /// scoped doors (the closure radius) read with THIS id (work#1113).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project:      Option<String>,
     /// The run's pull request URL, when it carries one — the trivial
     /// split's evidence (`enabled` with a PR, `refused` without).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,7 +137,11 @@ pub async fn run_queue(
     params: ValidatedRunQueue,
 ) -> ToolResult<RunQueueResult> {
     let entries = backend
-        .run_queue(params.field.into(), params.workflow.as_deref())
+        .run_queue_settled(
+            params.field.into(),
+            params.workflow.as_deref(),
+            params.verdict.map(fabro_types::OrchestrationVerdict::from),
+        )
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
     Ok(RunQueueResult {
@@ -119,6 +155,7 @@ pub async fn run_queue(
                 title:        entry.run.title,
                 verdict:      entry.verdict.to_string(),
                 work_item:    entry.work_item,
+                project:      entry.project,
                 pull_request: entry
                     .run
                     .pull_request
@@ -167,6 +204,7 @@ mod tests {
         FabroRunQueueParams {
             field,
             workflow: workflow.map(str::to_string),
+            verdict: None,
         }
     }
 
@@ -178,6 +216,7 @@ mod tests {
             title:        "queued run".to_string(),
             verdict:      verdict.to_string(),
             work_item:    work_item.map(str::to_string),
+            project:      work_item.map(|_| "fabro".to_string()),
             pull_request: None,
         }
     }

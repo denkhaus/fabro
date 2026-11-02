@@ -1549,8 +1549,13 @@ paths:
         every pass until resolved (stage D part 2). No cursor, no queue
         table: repetition is gap-safe. Archived terminal runs stay in
         the queue — archiving is bookkeeping, not adjudication state.
-        Each entry carries the work item of the run's latest claim
-        (released claims included; null when the run never claimed one).
+        Each entry carries the work item and project of the run's
+        latest claim (released claims included; null when the run never
+        claimed one). With `verdict` set, the join flips: the queue
+        lists exactly the runs whose latest verdict on the field IS the
+        named value — `field=closable&verdict=enabled` is the
+        adjudicator's closing-pass worklist (stage E: runs the merger
+        merged and enabled, whose work items may now close).
       parameters:
         - schema:
             type: string
@@ -1559,6 +1564,15 @@ paths:
           in: query
           name: field
           description: Which orchestration field the queue filters on.
+        - schema:
+            type: string
+            enum: [enabled, refused]
+          in: query
+          name: verdict
+          description: List exactly the runs settled on this verdict
+            instead of the unsettled anti-join. `enabled` on `closable`
+            is the closing-pass worklist (ADR-0039 stage E); `refused`
+            names the runs the field rejected.
         - schema:
             type: string
           in: query
@@ -9118,13 +9132,14 @@ components:
             radius) with THIS id — never a hardcoded one (work#1113).
         verdict:
           type: string
-          enum: [pending, parked]
+          enum: [pending, parked, enabled, refused]
           description: The run's latest verdict on the QUERIED field.
             `pending` means the run was never adjudicated on the field
             (absence); `parked` means an open operator escalation keeps
             the run queued — it re-enters every pass until resolved
-            (stage D part 2). `enabled` and `refused` runs have left the
-            queue.
+            (stage D part 2). `enabled` and `refused` appear only under
+            a settled-verdict filter (stage E) — the entry names the
+            verdict the filter selected.
 
     RunQueueList:
       description: The adjudication queue with work-item decoration.

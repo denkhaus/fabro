@@ -435,6 +435,58 @@ impl RunSummaryStore {
         decode_run_rows(&rows, now)
     }
 
+    /// The verdict-filtered queue (ADR-0039 stage E): exactly the runs
+    /// whose LATEST verdict on the field is the named one. The closing
+    /// pass reads `closable = enabled` — runs the merger merged and
+    /// enabled, whose work items may now close. Shares the terminal and
+    /// workflow-filter semantics of the anti-join queue; parked and
+    /// pending runs never match a settled verdict.
+    pub async fn verdict_queue(
+        &self,
+        field: OrchestrationField,
+        verdict: OrchestrationVerdict,
+        workflow: Option<&str>,
+        limit: u32,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<Run>> {
+        // The same one-shot fold the anti-join reads: latest verdict per
+        // run on the field, filtered to the NAMED verdict — the join
+        // flips from NOT IN to IN (stage E's closing-pass worklist).
+        let matching: Vec<String> = self
+            .platform_records()
+            .latest_verdicts_by_run(field)
+            .await?
+            .into_iter()
+            .filter(|(_run_id, latest)| *latest == verdict)
+            .map(|(run_id, _latest)| run_id.to_string())
+            .collect();
+        let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
+        query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
+        if let Some(workflow) = workflow {
+            query.push(" AND workflow_slug = ").push_bind(workflow);
+        }
+        if matching.is_empty() {
+            // Nothing settled on the verdict: the worklist is empty —
+            // return early rather than building an empty IN ().
+            return Ok(Vec::new());
+        }
+        query.push(" AND runs.id IN (");
+        let mut separated = query.separated(", ");
+        for run_id in matching {
+            separated.push_bind(run_id);
+        }
+        query.push(")");
+        push_order(
+            &mut query,
+            RunSummarySort::CreatedAt,
+            RunSummarySortDirection::Desc,
+            now,
+        );
+        query.push(" LIMIT ").push_bind(i64::from(limit));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        decode_run_rows(&rows, now)
+    }
+
     /// Run ids whose latest pull-request record links an open pull request
     /// (fork, fabro-895d staleness supervisor). The latest record per run
     /// must be a created/linked one — an unlinked or later request
@@ -1103,6 +1155,100 @@ mod tests {
             archived_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
             vec![failed.spec.run_id],
             "archiving is bookkeeping, not adjudication state — the run stays queued"
+        );
+    }
+
+    /// The verdict-filtered queue (stage E, denkhaus/work#1107): the join
+    /// flips — exactly the runs whose latest verdict on the field IS the
+    /// named value list. Parked and never-verdicted runs never match;
+    /// the workflow filter narrows like the anti-join; a verdict on
+    /// ANOTHER field never leaks in.
+    #[tokio::test]
+    async fn verdict_queue_lists_exactly_the_runs_settled_on_the_named_verdict() {
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        use crate::platform_records::{PlatformRecord, RunOrchestrationRecord};
+
+        let (_directory, store) = store().await;
+        let base = dt("2026-11-02T12:00:00Z");
+        let mut merged = projection(run_id(4, 1), "merged run", base);
+        merged.status = sample_status(RunStatusKind::Succeeded);
+        merged.spec.workflow_slug = Some("develop".to_string());
+        let mut parked = projection(run_id(5, 2), "conflict run", base);
+        parked.status = sample_status(RunStatusKind::Succeeded);
+        parked.spec.workflow_slug = Some("develop".to_string());
+        let mut noise = projection(run_id(6, 3), "smoke run", base);
+        noise.status = sample_status(RunStatusKind::Succeeded);
+        noise.spec.workflow_slug = Some("smoke".to_string());
+        let mut merged_smoke = projection(run_id(7, 4), "another workflow's merged run", base);
+        merged_smoke.status = sample_status(RunStatusKind::Failed);
+        merged_smoke.spec.workflow_slug = Some("solitaire".to_string());
+        write(&store, &merged).await;
+        write(&store, &parked).await;
+        write(&store, &noise).await;
+        write(&store, &merged_smoke).await;
+
+        let mark = |field, verdict| {
+            PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                field,
+                verdict,
+                by_run: None,
+            })
+        };
+        store
+            .platform_records()
+            .append(
+                &merged.spec.run_id,
+                &mark(OrchestrationField::Closable, OrchestrationVerdict::Enabled),
+                None,
+            )
+            .await
+            .unwrap();
+        store
+            .platform_records()
+            .append(
+                &parked.spec.run_id,
+                &mark(OrchestrationField::Closable, OrchestrationVerdict::Parked),
+                None,
+            )
+            .await
+            .unwrap();
+        store
+            .platform_records()
+            .append(
+                &merged.spec.run_id,
+                &mark(OrchestrationField::Merge, OrchestrationVerdict::Enabled),
+                None,
+            )
+            .await
+            .unwrap();
+        store
+            .platform_records()
+            .append(
+                &merged_smoke.spec.run_id,
+                &mark(OrchestrationField::Closable, OrchestrationVerdict::Enabled),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let now = dt("2026-11-02T13:00:00Z");
+        let closing = store
+            .verdict_queue(
+                OrchestrationField::Closable,
+                OrchestrationVerdict::Enabled,
+                Some("develop"),
+                50,
+                now,
+            )
+            .await
+            .expect("the closing-pass queue reads");
+        assert_eq!(
+            closing.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![merged.spec.run_id],
+            "exactly the closable-enabled develop run lists — parked, unverdicted, and \
+             other-workflow runs stay out, and the merge verdict on the same run does not \
+             leak into the closable filter"
         );
     }
 

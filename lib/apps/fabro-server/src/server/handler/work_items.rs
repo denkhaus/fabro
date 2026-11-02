@@ -30,6 +30,7 @@ use fabro_work::{
 
 use super::super::{
     ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode, get, post,
+    run_records,
 };
 use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
 
@@ -496,9 +497,15 @@ async fn close_work_item(
     }
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
-    // Workers close only items they hold a live claim on — the check
-    // precedes the tracker mutation (denkhaus/work#991).
-    require_claim_held_by_run(&state, &caller, &request.item_key).await?;
+    // Worker closes carry the adjudicator exception (ADR-0039 stage E):
+    // the ONLY worker closer is a run of the adjudicator workflow, and
+    // only for an item whose claim's run the merger enabled
+    // (`closable: enabled`). The own-claim arm is retired — a develop
+    // run never closes its item (decision 1); the adjudicator is the
+    // only closer (decision 6). The authorized close LANDS the claim
+    // (merge-complete) instead of releasing it.
+    let adjudicator_claim =
+        adjudicator_close_authority(&state, &auth, project, &request.item_key).await?;
     // The closure-radius gate (ADR-0038): a claimed item whose radius is
     // open — open work items linked to the observations discovered in
     // its runs — is refused; `force` overrides, and the response lists
@@ -542,19 +549,45 @@ async fn close_work_item(
         .close(project, &request.item_key, &request.reason)
         .await
         .map_err(tracker_failed)?;
-    // A closed item releases any live claim (DB first, projection second).
-    if let Some(claim) = state
-        .work_store()
-        .active_claim_for_item(&project.project_id, &request.item_key)
-        .await
-        .map_err(store_error)?
-    {
-        state
+    if let Some(claim) = adjudicator_claim {
+        // The adjudicator's close is merge-complete (stage E): the claim
+        // LANDS — the supervisor's land path, moved into the door when
+        // its merge arms retired. A failed land fails the close loudly;
+        // the tracker item is closed, the claim heals through the
+        // reconciler's land retry.
+        let landed = state
             .work_store()
-            .release(&claim.claim_id, "item closed")
+            .land(&claim.claim_id, claim.pr_url.as_deref())
             .await
             .map_err(store_error)?;
-        best_effort_clear_claim(&state, project, &claim).await;
+        best_effort_clear_claim(&state, project, &landed).await;
+        let _ = run_records::append(
+            &state,
+            claim.run_id,
+            PlatformRecord::WorkReleased(WorkReleasedRecord {
+                claim_id:   landed.claim_id.clone(),
+                project_id: landed.project_id.clone(),
+                item_key:   landed.item_key.clone(),
+                reason:     "landed".to_string(),
+            }),
+        )
+        .await;
+    } else {
+        // A closed item releases any live claim (DB first, projection
+        // second).
+        if let Some(claim) = state
+            .work_store()
+            .active_claim_for_item(&project.project_id, &request.item_key)
+            .await
+            .map_err(store_error)?
+        {
+            state
+                .work_store()
+                .release(&claim.claim_id, "item closed")
+                .await
+                .map_err(store_error)?;
+            best_effort_clear_claim(&state, project, &claim).await;
+        }
     }
     let item = tracker
         .get(project, &request.item_key)
@@ -1294,6 +1327,91 @@ async fn require_claim_held_by_run(
             format!(
                 "item {item_key} has no live claim — run {run_id} may only close or edit items \
                  it holds a claim on",
+            ),
+        )),
+    }
+}
+
+/// Resolve the worker-close authority (ADR-0039 stage E). `Ok(None)` is
+/// the user path (unchanged). A worker must run the `adjudicator`
+/// workflow AND the item's claim must belong to a run the merger
+/// enabled (`closable: enabled`) — the returned claim is the one the
+/// close will LAND. Every other worker shape refuses, teaching the
+/// rule it broke.
+async fn adjudicator_close_authority(
+    state: &Arc<AppState>,
+    auth: &RequiredRunManagementActor,
+    project: &WorkProject,
+    item_key: &str,
+) -> Result<Option<WorkClaim>, ApiError> {
+    let fabro_types::Principal::Worker { run_id } = &auth.0 else {
+        return Ok(None);
+    };
+    let summary = state
+        .stores
+        .run_summaries
+        .get(run_id, chrono::Utc::now())
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("reading the caller's run summary failed: {error}"),
+            )
+        })?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                "the worker run named by the token does not exist",
+            )
+        })?;
+    if summary.workflow.slug.as_deref() != Some(super::orchestration::MERGE_WRITER_WORKFLOW) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "only the adjudicator closes work items — a run never closes its own item; the \
+             adjudicator's closing pass closes it once the merger enabled closable \
+             (ADR-0039 decisions 1 and 6)",
+        ));
+    }
+    let claim = state
+        .work_store()
+        .active_claim_for_item(&project.project_id, item_key)
+        .await
+        .map_err(store_error)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                format!("item {item_key} has no live claim — there is nothing to land"),
+            )
+        })?;
+    // The verdict the close rides on: the CLAIM RUN's closable verdict,
+    // not the caller's. One read of the field's fold.
+    let verdicts = state
+        .stores
+        .run_summaries
+        .platform_records()
+        .latest_verdicts_by_run(fabro_types::OrchestrationField::Closable)
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("reading the closable verdicts failed: {error}"),
+            )
+        })?;
+    let verdict = verdicts
+        .iter()
+        .find(|(verdict_run, _)| verdict_run == &claim.run_id)
+        .map(|(_, verdict)| *verdict);
+    match verdict {
+        Some(fabro_types::OrchestrationVerdict::Enabled) => Ok(Some(claim)),
+        verdict => Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!(
+                "item {item_key} waits for `closable: enabled` on its run — the close is \
+                 merge-complete, and the merger's latest verdict is {} (ADR-0039 decision 6)",
+                verdict.map_or_else(
+                    || "none (never adjudicated)".to_string(),
+                    |verdict| verdict.to_string()
+                )
             ),
         )),
     }

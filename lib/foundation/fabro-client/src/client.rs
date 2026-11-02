@@ -1938,11 +1938,14 @@ impl Client {
     /// The adjudication queue (ADR-0039 stage D read door): terminal runs
     /// whose latest verdict on the field is not settled, optionally
     /// narrowed to one workflow, each entry decorated with the work item
-    /// of the run's latest claim.
+    /// and project of the run's latest claim. A settled `verdict`
+    /// (stage E) flips the join: exactly the runs settled on that
+    /// verdict list — the closing pass reads closable = enabled.
     pub async fn run_queue(
         &self,
         field: fabro_types::OrchestrationField,
         workflow: Option<&str>,
+        verdict: Option<fabro_types::OrchestrationVerdict>,
     ) -> Result<types::RunQueueList> {
         let workflow = workflow.map(str::to_string);
         let response = self
@@ -1953,6 +1956,24 @@ impl Client {
                 });
                 if let Some(workflow) = workflow {
                     request = request.workflow(workflow);
+                }
+                if let Some(verdict) = verdict {
+                    request = request.verdict(match verdict {
+                        fabro_types::OrchestrationVerdict::Enabled => {
+                            types::ListRunQueueVerdict::Enabled
+                        }
+                        fabro_types::OrchestrationVerdict::Refused => {
+                            types::ListRunQueueVerdict::Refused
+                        }
+                        // Pending is absence (never a settled filter) and
+                        // parked is the default anti-join queue — the CLI
+                        // and tool twins refuse both before this layer.
+                        fabro_types::OrchestrationVerdict::Parked => {
+                            unreachable!(
+                                "the settled-verdict filter accepts only enabled or refused"
+                            )
+                        }
+                    });
                 }
                 request.send().await
             })

@@ -111,12 +111,15 @@ pub trait FabroToolBackend: Send + Sync {
     /// `fabro_run_queue` (ADR-0039 stage D part 2): the adjudication
     /// queue — terminal runs whose latest verdict on `field` is not
     /// settled, optionally narrowed to one workflow, each decorated with
-    /// the work item of its latest claim. The pass-one worklist read,
-    /// the tool twin of `fabro run queue`.
-    async fn run_queue(
+    /// the work item and project of its latest claim. The pass-one
+    /// worklist read, the tool twin of `fabro run queue`. A settled
+    /// `verdict` (stage E) flips the join — the closing pass reads
+    /// `closable = enabled`.
+    async fn run_queue_settled(
         &self,
         _field: OrchestrationField,
         _workflow: Option<&str>,
+        _verdict: Option<OrchestrationVerdict>,
     ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
         Err(read_tool_unavailable_error(FABRO_RUN_QUEUE_TOOL_NAME))
     }

@@ -1306,6 +1306,15 @@ impl AppState {
         &self.petri_projector
     }
 
+    /// The run-summary store, so a test can seed run rows the
+    /// projector's way (workflow slugs, terminal statuses) for
+    /// orchestration fixtures (ADR-0039 stage E).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn test_run_summary_store(&self) -> &Arc<RunSummaryStore> {
+        &self.stores.run_summaries
+    }
+
     /// The status the server holds for a managed run, so a test can wait
     /// for the run to settle in the server's own map (what the delete
     /// precheck reads) and not only in the stored view, which can report

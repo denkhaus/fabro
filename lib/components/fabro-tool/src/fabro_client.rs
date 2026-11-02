@@ -191,14 +191,16 @@ impl FabroToolBackend for ClientBackend {
     }
 
     /// `fabro_run_queue` (ADR-0039 stage D part 2): the same queue the
-    /// CLI facade reads — field and workflow filter ride through, the
-    /// server decorates each entry with its claim's work item.
-    async fn run_queue(
+    /// CLI facade reads — field, workflow filter, and the settled-verdict
+    /// filter (stage E) ride through; the server decorates each entry
+    /// with its claim's work item and project.
+    async fn run_queue_settled(
         &self,
         field: fabro_types::OrchestrationField,
         workflow: Option<&str>,
+        verdict: Option<fabro_types::OrchestrationVerdict>,
     ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
-        Ok(self.client.run_queue(field, workflow).await?.data)
+        Ok(self.client.run_queue(field, workflow, verdict).await?.data)
     }
 
     /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's

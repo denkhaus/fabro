@@ -172,6 +172,47 @@ fn run_queue_field_refusal_and_transport() {
     );
 }
 
+/// The settled-verdict filter (stage E): the closing-pass argv parses
+/// against the real grammar, a bogus verdict refuses naming the two
+/// settled values, and pending/parked are refused as filter values —
+/// they ARE the default queue, not a filter.
+#[test]
+fn run_queue_verdict_filter_parses_and_refuses_teaching() {
+    let transport = fabro(&[
+        "run",
+        "queue",
+        "--field",
+        "closable",
+        "--verdict",
+        "enabled",
+    ]);
+    assert!(!transport.status.success());
+    assert!(
+        !stderr_of(&transport).contains("unexpected argument"),
+        "the closing-pass argv must parse: {}",
+        stderr_of(&transport)
+    );
+
+    let bogus = fabro(&["run", "queue", "--verdict", "bogus"]);
+    assert!(!bogus.status.success());
+    let stderr = stderr_of(&bogus);
+    assert!(
+        stderr.contains("enabled") && stderr.contains("refused"),
+        "the refusal names the settled verdicts: {stderr}"
+    );
+
+    let pending = fabro(&["run", "queue", "--verdict", "pending"]);
+    assert!(
+        !pending.status.success(),
+        "pending is the default queue, not a filter value"
+    );
+    assert!(
+        stderr_of(&pending).contains("default"),
+        "the refusal teaches that pending/parked are the default anti-join: {}",
+        stderr_of(&pending)
+    );
+}
+
 /// The observation read door: a non-run-id refuses before transport;
 /// the happy argv reaches transport.
 #[test]

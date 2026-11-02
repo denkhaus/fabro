@@ -1531,6 +1531,180 @@ mod closure_radius {
         stored.seq
     }
 
+    /// Seed a run row with a workflow slug and a terminal status — the
+    /// adjudicator-close fixture's way (the orchestration IT precedent).
+    /// The slug update is raw SQL on purpose: the intent-created run
+    /// carries no slug, and the close authority reads the summary's
+    /// slug through the run-summary store.
+    async fn seed_adjudicator_run(state: &Arc<AppState>) -> RunId {
+        // The intent path derives the workflow slug from the entrypoint
+        // directory — `adjudicator/workflow.fabro` names the run's
+        // workflow exactly what the close authority's allowlist reads.
+        fabro_server::test_support::create_test_run_with_workflow_dir(
+            state,
+            "denkhaus/fabro",
+            "denkhaus",
+            Some("adjudicator"),
+        )
+        .await
+    }
+
+    /// The adjudicator closing pass (ADR-0039 stage E): a worker of the
+    /// adjudicator workflow closes the item of a run the merger enabled
+    /// — the tracker closes and the claim LANDS (merge-complete), never
+    /// releases. Every other worker shape refuses: the old own-claim
+    /// arm is gone (decision 6 — the adjudicator is the only closer),
+    /// and an item whose run is not closable-enabled refuses teaching
+    /// the verdict it waits for.
+    #[tokio::test]
+    async fn the_adjudicator_close_lands_a_closable_enabled_claim() {
+        use fabro_store::platform_records::RunOrchestrationRecord;
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
+        let (app, state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let adjudicator = seed_adjudicator_run(&state).await;
+        // The develop and merger runs need no run rows: the claim ledger
+        // keys on the run id, and the verdict fold keys on the platform
+        // record's run id.
+        let develop = RunId::new();
+        let merger = RunId::new();
+
+        // The develop run holds the claim on item 1.
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({
+                    "itemKey": "denkhaus/work#1",
+                    "runId": develop.to_string(),
+                    "lane": "loop"
+                }),
+            )
+            .await,
+        )
+        .await;
+        let claim_id = granted["claim"]["claimId"]
+            .as_str()
+            .expect("the seeded claim id")
+            .to_string();
+
+        // The merger enabled closable on the develop run.
+        records
+            .append(
+                &develop,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Closable,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  Some(merger),
+                }),
+                None,
+            )
+            .await
+            .expect("closable verdict seed");
+
+        let close_as = |worker: &RunId, item: &str| {
+            let app = app.clone();
+            let token = state.test_issue_worker_token_with_run_tools(worker);
+            let item = item.to_string();
+            async move {
+                app.oneshot(
+                    Request::builder()
+                        .method(Method::POST)
+                        .uri(api("/projects/fabro/work-items/close"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::from(
+                            serde_json::to_vec(&json!({
+                                "itemKey": item,
+                                "reason": "landed via merger (stage E closing pass)"
+                            }))
+                            .expect("close fixture serializes"),
+                        ))
+                        .expect("close request builds"),
+                )
+                .await
+                .expect("close request runs")
+            }
+        };
+
+        // The adjudicator closes the merged run's item: OK, and the
+        // claim LANDS — the run merged, the item earned its close.
+        let closed = close_as(&adjudicator, "denkhaus/work#1").await;
+        let close_status = closed.status();
+        let close_body = axum::body::to_bytes(closed.into_body(), usize::MAX)
+            .await
+            .expect("close body");
+        assert_eq!(
+            close_status,
+            StatusCode::OK,
+            "the adjudicator closes the closable-enabled item: {}",
+            String::from_utf8_lossy(&close_body)
+        );
+        let claim = body_json(
+            json_call(
+                &app,
+                Method::GET,
+                &format!("/claims/{claim_id}"),
+                &json!({}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            claim["state"], "landed",
+            "merge-complete lands the claim, never releases it: {claim}"
+        );
+
+        // The old own-claim arm is GONE: a non-adjudicator worker close
+        // refuses — the adjudicator is the only closer (decision 6).
+        let develop_worker = fabro_server::test_support::create_test_run_with_target(
+            &state,
+            "denkhaus/fabro",
+            "denkhaus",
+        )
+        .await;
+        let refused = close_as(&develop_worker, "denkhaus/work#1").await;
+        assert_eq!(
+            refused.status(),
+            StatusCode::FORBIDDEN,
+            "a non-adjudicator worker close must refuse"
+        );
+
+        // An adjudicator close without closable:enabled refuses,
+        // teaching the verdict it waits for.
+        let unmerged = RunId::new();
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({
+                    "itemKey": "denkhaus/work#2",
+                    "runId": unmerged.to_string(),
+                    "lane": "loop"
+                }),
+            )
+            .await,
+        )
+        .await;
+        let premature = close_as(&adjudicator, "denkhaus/work#2").await;
+        assert_eq!(
+            premature.status(),
+            StatusCode::FORBIDDEN,
+            "closing an item whose run carries no closable verdict must refuse"
+        );
+        let bytes = axum::body::to_bytes(premature.into_body(), usize::MAX)
+            .await
+            .expect("refusal body");
+        let detail = String::from_utf8_lossy(&bytes);
+        assert!(
+            detail.contains("closable"),
+            "the refusal teaches the verdict it waits for: {detail}"
+        );
+    }
+
     #[tokio::test]
     async fn a_close_over_an_open_radius_is_refused_with_the_listing_and_force_overrides() {
         // Item 1 closes; its run carries one observation; the

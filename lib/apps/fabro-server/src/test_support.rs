@@ -907,14 +907,32 @@ pub async fn create_test_run_with_target(
     repo: &str,
     branch: &str,
 ) -> fabro_types::RunId {
+    create_test_run_with_workflow_dir(state, repo, branch, None).await
+}
+
+/// The workflow-slug variant (ADR-0039 stage E): the intent path derives
+/// the run's workflow slug from the entrypoint directory, so a run of
+/// the `adjudicator` (or `merger`) workflow needs an entrypoint inside
+/// that directory — the orchestration allowlists read the summary's
+/// slug.
+pub async fn create_test_run_with_workflow_dir(
+    state: &Arc<AppState>,
+    repo: &str,
+    branch: &str,
+    workflow_dir: Option<&str>,
+) -> fabro_types::RunId {
     const MINIMAL_DOT: &str = r#"digraph Test {
         graph [goal="Test"]
         start [shape=Mdiamond]
         exit  [shape=Msquare]
         start -> exit
     }"#;
+    let entrypoint_path = match workflow_dir {
+        Some(dir) => format!("{dir}/workflow.fabro"),
+        None => "workflow.fabro".to_string(),
+    };
     let entrypoint =
-        fabro_types::WorkflowPath::new("workflow.fabro").expect("a static workflow path");
+        fabro_types::WorkflowPath::new(&entrypoint_path).expect("a static workflow path");
     let files = std::collections::BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
     let version =
         fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::default())
