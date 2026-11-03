@@ -23,12 +23,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fabro_api::types::{
-    PaginationMeta, RunObservation, RunObservationList, RunOrchestrationMarkRequest,
-    RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict, RunQueueList,
+    PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
+    RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict,
+    RunQueueList,
 };
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
 };
+use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{OrchestrationField, OrchestrationVerdict, Principal, RunId};
 use tracing::info;
 
@@ -54,6 +56,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs/queue", get(list_queue))
         .route("/runs/{id}/orchestration", post(mark_orchestration))
+        .route("/runs/{id}/merge", post(merge_run))
         .route("/runs/{id}/observations", get(list_observations))
 }
 
@@ -314,6 +317,149 @@ async fn owned_field_for_writer(
         Some(CLOSABLE_WRITER_WORKFLOW) => Some(OrchestrationField::Closable),
         _ => None,
     })
+}
+
+/// The merger's merge door (ADR-0039 stage E): merge the TARGET run's
+/// pull request server-side — the technical integration act, the
+/// supervisor's merge machinery moved into a door. The authorization
+/// chain mirrors the verdict door: the worker token names the WRITER,
+/// the writer's workflow must be the merger (the hardcoded allowlist),
+/// and the TARGET must carry a pull request whose latest `merge`
+/// verdict is `enabled` — the adjudicator's content verdict; the merger
+/// never judges content. This door writes NO verdict (one door, one
+/// write): the merger marks `closable` through the verdict door after
+/// the merge (and its smoke) settles.
+async fn merge_run(
+    RequiredRunManagementActor(principal): RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(target): Path<RunId>,
+) -> Result<Response, ApiError> {
+    let Principal::Worker { run_id: writer } = principal else {
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            "Only workflow runs merge pull requests — the merger gear. Users merge through \
+             GitHub.",
+            "merge_not_allowed",
+        ));
+    };
+    if writer == target {
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            "A run cannot merge itself — the merger integrates OTHER runs (ADR-0039 decision 1).",
+            "merge_self",
+        ));
+    }
+    let Some(owned_field) = owned_field_for_writer(&state, &writer).await? else {
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            format!(
+                "This run's workflow is not on the orchestration allowlist — only the \
+                 {MERGE_WRITER_WORKFLOW} and {CLOSABLE_WRITER_WORKFLOW} workflows write \
+                 verdicts or merge."
+            ),
+            "merge_not_allowed",
+        ));
+    };
+    if owned_field != OrchestrationField::Closable {
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            format!(
+                "Only the {CLOSABLE_WRITER_WORKFLOW} merges pull requests — this run's workflow \
+                 writes `{owned_field}` verdicts, it does not integrate."
+            ),
+            "merge_not_merger",
+        ));
+    }
+    // The target must exist and settle its projection — the PR and the
+    // verdict fold read off it.
+    let projection = run_records::require_projection(&state, target).await?;
+    let Some(record) = projection.pull_request.clone() else {
+        return Err(ApiError::with_code(
+            StatusCode::CONFLICT,
+            "The run carries no pull request — there is nothing to merge. The adjudicator's \
+             pass one refuses PR-less runs; the merger never sees one.",
+            "merge_no_pull_request",
+        ));
+    };
+    let verdicts = state
+        .stores
+        .run_summaries
+        .platform_records()
+        .latest_verdicts_by_run(OrchestrationField::Merge)
+        .await
+        .map_err(|err| {
+            tracing::error!(error = ?err, target_run_id = %target, "merge verdict read failed");
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Reading the run's merge verdict failed.",
+            )
+        })?;
+    if !verdicts
+        .iter()
+        .any(|(run, verdict)| run == &target && verdict == &OrchestrationVerdict::Enabled)
+    {
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            "The adjudicator has not enabled this run's merge — the merger integrates only \
+             merge-enabled runs (ADR-0039 decision 6: the content verdict precedes the \
+             technical merge).",
+            "merge_not_enabled",
+        ));
+    }
+
+    // The merge itself: server-side GitHub credentials (the supervisor's
+    // machinery — squash, the line's merge shape).
+    let creds = super::pull_requests::load_server_github_credentials(&state).await?;
+    let github = super::pull_requests::server_github_context(&state, &creds)?;
+    let merge = fabro_github::merge_pull_request(
+        &github,
+        &record.owner,
+        &record.repo,
+        record.number,
+        MergeStrategy::Squash,
+    )
+    .await;
+    match merge {
+        Ok(()) => {
+            info!(
+                target_run_id = %target,
+                writer_run_id = %writer,
+                pr_number = record.number,
+                "run pull request merged (merger door, squash)"
+            );
+            Ok(Json(RunMergeResponse {
+                run_id:       target.to_string(),
+                merged:       true,
+                pull_request: record.html_url(),
+            })
+            .into_response())
+        }
+        Err(fabro_github::PullRequestApiError::Other(error))
+            if error.to_string().contains("merge conflict")
+                || error.to_string().contains("not mergeable") =>
+        {
+            // The conflict signal: the fast path parks the run for the
+            // agent pass on exactly this code.
+            Err(ApiError::with_code(
+                StatusCode::CONFLICT,
+                format!("The pull request cannot merge: {error:#}"),
+                "merge_conflict",
+            ))
+        }
+        Err(error) => {
+            tracing::error!(
+                error = ?error,
+                target_run_id = %target,
+                pr_number = record.number,
+                "run pull request merge failed"
+            );
+            Err(ApiError::with_code(
+                StatusCode::BAD_GATEWAY,
+                format!("The GitHub merge call failed: {error}"),
+                "merge_failed",
+            ))
+        }
+    }
 }
 
 /// A run's observation records in `seq` order: the facts its stages

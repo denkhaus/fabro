@@ -16,6 +16,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::run_mark::RunMarkOutcome;
+use crate::run_merge::RunMergeResult;
 
 #[derive(Debug)]
 pub struct ToolError {
@@ -122,6 +123,13 @@ pub trait FabroToolBackend: Send + Sync {
         _verdict: Option<OrchestrationVerdict>,
     ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
         Err(read_tool_unavailable_error(FABRO_RUN_QUEUE_TOOL_NAME))
+    }
+    /// `fabro_run_merge` (ADR-0039 stage E): the technical integration
+    /// act — merge the target run's pull request server-side. The door
+    /// refuses non-merger workflows and runs without an enabled merge
+    /// verdict; a conflict surfaces as the merge_conflict error.
+    async fn merge_run(&self, _run_id: &fabro_types::RunId) -> anyhow::Result<RunMergeResult> {
+        Err(write_tool_unavailable_error(FABRO_RUN_MERGE_TOOL_NAME))
     }
     /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's
     /// observation records in `seq` order — the facts behind a packet's
@@ -408,6 +416,10 @@ fn observation_tool_unavailable_error() -> anyhow::Error {
     .into()
 }
 
+fn write_tool_unavailable_error(tool: &str) -> anyhow::Error {
+    ToolError::message(format!("{tool} is not available on this surface")).into()
+}
+
 fn run_mark_tool_unavailable_error() -> anyhow::Error {
     ToolError::message(format!(
         "{FABRO_RUN_MARK_TOOL_NAME} is not available on this surface"
@@ -499,6 +511,7 @@ pub const FABRO_WORK_CLOSE_TOOL_NAME: &str = "fabro_work_close";
 pub const FABRO_WORK_UPDATE_TOOL_NAME: &str = "fabro_work_update";
 pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
 pub const FABRO_RUN_QUEUE_TOOL_NAME: &str = "fabro_run_queue";
+pub const FABRO_RUN_MERGE_TOOL_NAME: &str = "fabro_run_merge";
 pub const FABRO_OBSERVATION_LIST_TOOL_NAME: &str = "fabro_observation_list";
 pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
 pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
@@ -552,6 +565,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunQueueParams>(
             FABRO_RUN_QUEUE_TOOL_NAME,
             "Read the adjudication queue (ADR-0039 stage D): terminal runs whose latest verdict on the field is NOT settled — `pending` (never adjudicated) or `parked` (an open operator escalation) — each with the work item of its latest claim. `field` is `merge` (the adjudicator's queue) or `closable` (the merger's); `workflow` narrows to one workflow slug such as `develop`. Re-read it to verify a packet summary before you verdict.",
+        ),
+        tool_definition::<crate::FabroRunMergeParams>(
+            FABRO_RUN_MERGE_TOOL_NAME,
+            "Merge the target run's pull request server-side (ADR-0039 stage E): the technical integration act, the merger gear's write door. The run must carry a pull request the adjudicator marked `merge: enabled` — this tool never judges content and never writes a verdict; mark `closable` through fabro_run_mark after the merge (and your smoke) settles. A conflict answers with the merge_conflict refusal — park the run for the agent pass on exactly that signal.",
         ),
         tool_definition::<crate::FabroObservationListParams>(
             FABRO_OBSERVATION_LIST_TOOL_NAME,
@@ -756,6 +773,7 @@ mod tests {
             FABRO_RUN_SET_TITLE_TOOL_NAME,
             FABRO_RUN_MARK_TOOL_NAME,
             FABRO_RUN_QUEUE_TOOL_NAME,
+            FABRO_RUN_MERGE_TOOL_NAME,
             FABRO_OBSERVATION_LIST_TOOL_NAME,
             FABRO_WORK_RADIUS_TOOL_NAME,
             FABRO_WORK_COMMENTS_TOOL_NAME,

@@ -20,6 +20,7 @@ mod manifest;
 mod observation;
 mod pair;
 pub mod run_mark;
+pub mod run_merge;
 mod run_queue;
 mod run_title;
 mod search;
@@ -39,13 +40,14 @@ pub use common::{
     FABRO_ASK_TOOL_NAME, FABRO_BLOB_TOOL_NAME, FABRO_OBSERVATION_LIST_TOOL_NAME,
     FABRO_OBSERVATION_RECORD_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
-    FABRO_RUN_MARK_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_QUEUE_TOOL_NAME,
-    FABRO_RUN_SEARCH_TOOL_NAME, FABRO_RUN_SET_TITLE_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME,
-    FABRO_SEEDS_SEARCH_TOOL_NAME, FABRO_WORK_CLOSE_TOOL_NAME, FABRO_WORK_COMMENTS_TOOL_NAME,
-    FABRO_WORK_CREATE_TOOL_NAME, FABRO_WORK_LIST_TOOL_NAME, FABRO_WORK_NEXT_TOOL_NAME,
-    FABRO_WORK_RADIUS_TOOL_NAME, FABRO_WORK_RELEASE_TOOL_NAME, FABRO_WORK_SHOW_TOOL_NAME,
-    FABRO_WORK_UPDATE_TOOL_NAME, FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend,
-    RunSeedsSource, RunSummaryResult, ToolDefinition, ToolError, ToolResult, tool_definitions,
+    FABRO_RUN_MARK_TOOL_NAME, FABRO_RUN_MERGE_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME,
+    FABRO_RUN_QUEUE_TOOL_NAME, FABRO_RUN_SEARCH_TOOL_NAME, FABRO_RUN_SET_TITLE_TOOL_NAME,
+    FABRO_RUN_WAIT_TOOL_NAME, FABRO_SEEDS_SEARCH_TOOL_NAME, FABRO_WORK_CLOSE_TOOL_NAME,
+    FABRO_WORK_COMMENTS_TOOL_NAME, FABRO_WORK_CREATE_TOOL_NAME, FABRO_WORK_LIST_TOOL_NAME,
+    FABRO_WORK_NEXT_TOOL_NAME, FABRO_WORK_RADIUS_TOOL_NAME, FABRO_WORK_RELEASE_TOOL_NAME,
+    FABRO_WORK_SHOW_TOOL_NAME, FABRO_WORK_UPDATE_TOOL_NAME,
+    FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSeedsSource, RunSummaryResult,
+    ToolDefinition, ToolError, ToolResult, tool_definitions,
 };
 pub use create::{
     CreateRunOptions, CreateRunSpec, CreateRunsResult, CreatedRunResult, FabroRunCreateParams,
@@ -77,9 +79,12 @@ pub use run_mark::{
     FabroOrchestrationField, FabroOrchestrationVerdict, FabroRunMarkParams, RunMarkOutcome,
     RunMarkResult, ValidatedRunMark, mark_run, mark_run_text,
 };
+pub use run_merge::{
+    FabroRunMergeParams, RunMergeResult, ValidatedRunMerge, run_merge, run_merge_text,
+};
 pub use run_queue::{
-    FabroRunQueueParams, RunQueueResult, RunQueueSummary, ValidatedRunQueue, run_queue,
-    run_queue_text,
+    FabroRunQueueParams, FabroSettledVerdict, RunQueueResult, RunQueueSummary, ValidatedRunQueue,
+    run_queue, run_queue_text,
 };
 pub use run_title::{
     FabroRunSetTitleParams, RunSetTitleResult, ValidatedRunSetTitle, set_run_title,

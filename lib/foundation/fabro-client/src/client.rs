@@ -1981,6 +1981,19 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// The merger's merge door (ADR-0039 stage E): merge the target
+    /// run's pull request server-side. The server enforces the merger
+    /// workflow allowlist and the merge:enabled verdict; a conflict
+    /// surfaces as an error carrying the merge_conflict code.
+    pub async fn run_merge(&self, run_id: &RunId) -> Result<types::RunMergeResponse> {
+        let response = self
+            .send_api(
+                |client| async move { client.merge_run().id(run_id.to_string()).send().await },
+            )
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// A run's observation records in seq order (ADR-0039 stage D read
     /// door): the facts its stages recorded, with the category that
     /// routes adjudication.

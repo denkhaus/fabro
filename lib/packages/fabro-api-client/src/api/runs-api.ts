@@ -76,6 +76,8 @@ import type { RunIntent } from '../models';
 // @ts-ignore
 import type { RunManifest } from '../models';
 // @ts-ignore
+import type { RunMergeResponse } from '../models';
+// @ts-ignore
 import type { RunObservationList } from '../models';
 // @ts-ignore
 import type { RunOrchestrationMarkRequest } from '../models';
@@ -1139,6 +1141,46 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(runOrchestrationMarkRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The merger\'s write door (ADR-0039 stage E): merge the target run\'s pull request server-side — the technical integration act. Authorization mirrors the verdict door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger (the hardcoded allowlist), and the TARGET must carry a pull request whose latest `merge` verdict is `enabled` — the adjudicator\'s content verdict. The merger never judges content; this door never writes a verdict (one door, one write). A declined merge (conflict, not mergeable) answers 409 with the `merge_conflict` code: the merger\'s fast path parks the run for the agent pass on exactly that signal.
+         * @summary Merge a Run\'s Pull Request
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('mergeRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/merge`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -2248,6 +2290,19 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The merger\'s write door (ADR-0039 stage E): merge the target run\'s pull request server-side — the technical integration act. Authorization mirrors the verdict door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger (the hardcoded allowlist), and the TARGET must carry a pull request whose latest `merge` verdict is `enabled` — the adjudicator\'s content verdict. The merger never judges content; this door never writes a verdict (one door, one write). A declined merge (conflict, not mergeable) answers 409 with the `merge_conflict` code: the merger\'s fast path parks the run for the agent pass on exactly that signal.
+         * @summary Merge a Run\'s Pull Request
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async mergeRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunMergeResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.mergeRun(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.mergeRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Merges the stored pull request for a run on GitHub.
          * @summary Merge Run Pull Request
          * @param {string} id Unique run identifier (ULID).
@@ -2753,6 +2808,16 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * The merger\'s write door (ADR-0039 stage E): merge the target run\'s pull request server-side — the technical integration act. Authorization mirrors the verdict door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger (the hardcoded allowlist), and the TARGET must carry a pull request whose latest `merge` verdict is `enabled` — the adjudicator\'s content verdict. The merger never judges content; this door never writes a verdict (one door, one write). A declined merge (conflict, not mergeable) answers 409 with the `merge_conflict` code: the merger\'s fast path parks the run for the agent pass on exactly that signal.
+         * @summary Merge a Run\'s Pull Request
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<RunMergeResponse> {
+            return localVarFp.mergeRun(id, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Merges the stored pull request for a run on GitHub.
          * @summary Merge Run Pull Request
          * @param {string} id Unique run identifier (ULID).
@@ -3222,6 +3287,17 @@ export class RunsApi extends BaseAPI {
      */
     public markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The merger\'s write door (ADR-0039 stage E): merge the target run\'s pull request server-side — the technical integration act. Authorization mirrors the verdict door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger (the hardcoded allowlist), and the TARGET must carry a pull request whose latest `merge` verdict is `enabled` — the adjudicator\'s content verdict. The merger never judges content; this door never writes a verdict (one door, one write). A declined merge (conflict, not mergeable) answers 409 with the `merge_conflict` code: the merger\'s fast path parks the run for the agent pass on exactly that signal.
+     * @summary Merge a Run\'s Pull Request
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public mergeRun(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).mergeRun(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

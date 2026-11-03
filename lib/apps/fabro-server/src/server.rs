@@ -184,9 +184,6 @@ mod fork_run_stall_watchdog_tests;
 #[cfg(test)]
 #[cfg(test)]
 mod fork_slack_recovery_tests;
-pub(crate) mod fork_staleness_supervisor;
-#[cfg(test)]
-mod fork_staleness_supervisor_tests;
 #[cfg(test)]
 mod fork_window_gate_twin_tests;
 pub(crate) mod fork_work_registry;
@@ -194,11 +191,12 @@ pub(crate) mod fork_work_registry;
 mod fork_work_registry_tests;
 #[cfg(test)]
 mod fork_worker_exit_park_tests;
+#[cfg(test)]
+mod merge_door_tests;
 // pub(crate): test-support's run fixture reaches the intent handler;
 // extern stays hidden (denkhaus/work#991).
 pub(crate) mod handler;
 pub(crate) mod petri_runs;
-pub(crate) mod pull_request_conflict;
 mod pull_request_supervisor;
 pub(crate) mod resource_sampler;
 pub(crate) mod run_channel;
@@ -211,7 +209,6 @@ pub(crate) mod work_reconciler;
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
 pub(crate) use fork_run_retention::spawn_run_retention_supervisor;
 pub(crate) use fork_run_stall_watchdog::spawn_run_stall_watchdog;
-pub(crate) use fork_staleness_supervisor::spawn_pull_request_staleness_supervisor;
 pub(crate) use handler::graph::render_graph_bytes;
 #[cfg(test)]
 pub(in crate::server) use handler::graph::{

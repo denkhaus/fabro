@@ -98,6 +98,26 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
                             reconcile_run_state(state, &project, &claim, &mut report).await;
                         }
                         ClaimState::AwaitingMerge => {
+                            // A PR the adjudicator REFUSED never merges:
+                            // the verdict releases the claim (the label
+                            // is removed with it). Every other verdict
+                            // waits for the merger + the closing pass.
+                            if merge_verdict_of_run(state, claim.run_id).await
+                                == Some(fabro_types::OrchestrationVerdict::Refused)
+                            {
+                                if state
+                                    .work_store()
+                                    .release(
+                                        &claim.claim_id,
+                                        "merge refused: the adjudicator rejected the run",
+                                    )
+                                    .await
+                                    .is_ok()
+                                {
+                                    report.orphans_released += 1;
+                                }
+                                continue;
+                            }
                             // The label is removed at run end; the PR carries
                             // the pending state.
                             if let Err(error) = tracker
@@ -225,7 +245,12 @@ async fn drain_outbox(
 
 /// Run-status truth for a live claim: terminal runs move to
 /// `awaiting_merge` (PR) or release (no PR); a missing run releases after
-/// the grace window.
+/// the grace window. Since ADR-0039 stage E the no-PR release is
+/// VERDICT-DRIVEN: the claim holds until the adjudicator verdicts —
+/// `merge: refused` releases (the adjudicator rejected the run), any
+/// other state holds (the lock span is claim to merge-complete; the
+/// adjudicator's pass one refuses PR-less runs, so a refusal is the
+/// expected verdict on this path).
 async fn reconcile_run_state(
     state: &AppState,
     project: &fabro_work::WorkProject,
@@ -266,14 +291,52 @@ async fn reconcile_run_state(
         {
             report.terminal_moved += 1;
         }
-    } else if state
-        .work_store()
-        .release(&claim.claim_id, "run terminal without a pull request")
-        .await
-        .is_ok()
-    {
-        report.orphans_released += 1;
+        return;
     }
+    // A terminal run WITHOUT a pull request: the adjudicator's verdict
+    // decides. No verdict yet: HOLD — the adjudicator's pass one will
+    // refuse it (or escalate it); releasing here would strand the item
+    // outside the closure chain the verdicts carry (stage-A finding,
+    // resolved with the stage-E rewire).
+    let verdict = merge_verdict_of_run(state, claim.run_id).await;
+    if verdict == Some(fabro_types::OrchestrationVerdict::Refused) {
+        if state
+            .work_store()
+            .release(
+                &claim.claim_id,
+                "merge refused: the adjudicator rejected the run",
+            )
+            .await
+            .is_ok()
+        {
+            report.orphans_released += 1;
+        }
+    } else if verdict.is_none() {
+        tracing::debug!(
+            claim_id = %claim.claim_id,
+            run_id = %claim.run_id,
+            "work reconciler: terminal run without a pull request holds its claim until the \
+             adjudicator verdicts (ADR-0039 stage E)"
+        );
+    }
+}
+
+/// The run's latest verdict on the `merge` field, when one exists (the
+/// same fold the queue reads).
+async fn merge_verdict_of_run(
+    state: &AppState,
+    run_id: fabro_types::RunId,
+) -> Option<fabro_types::OrchestrationVerdict> {
+    state
+        .stores
+        .run_summaries
+        .platform_records()
+        .latest_verdicts_by_run(fabro_types::OrchestrationField::Merge)
+        .await
+        .ok()?
+        .into_iter()
+        .find(|(verdict_run, _)| *verdict_run == run_id)
+        .map(|(_, verdict)| verdict)
 }
 
 #[cfg(test)]
@@ -409,6 +472,120 @@ mod tests {
             .await
             .expect("project upserts");
         (state, store)
+    }
+
+    /// The verdict-driven release (ADR-0039 stage E): a terminal run
+    /// WITHOUT a pull request no longer releases its claim at
+    /// run-terminal — the claim holds until the adjudicator's verdict.
+    /// `merge: refused` releases (the adjudicator rejected the run);
+    /// no verdict yet holds (the adjudicator will verdict; the lock span
+    /// is claim to merge-complete).
+    #[tokio::test]
+    async fn a_refused_run_releases_its_claim_and_an_unadjudicated_one_holds() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let refused_run = fabro_types::RunId::new();
+        let pending_run = fabro_types::RunId::new();
+        for run_id in [refused_run, pending_run] {
+            let granted = store
+                .grant(&fabro_work::GrantRequest {
+                    project_id: "fabro".to_string(),
+                    item_key: format!("denkhaus/work/{run_id}"),
+                    run_id,
+                    lane: "loop".to_string(),
+                })
+                .await
+                .expect("grant");
+            assert!(
+                matches!(granted, fabro_work::GrantOutcome::Granted(_)),
+                "the grant wins"
+            );
+            // A terminal run row WITHOUT a pull request (the projection
+            // the reconciler reads).
+            let mut projection = fabro_types::RunProjection::new(
+                "failed run".to_string(),
+                fabro_types::RunSpec {
+                    run_id,
+                    settings: fabro_types::WorkflowSettings::default(),
+                    graph: fabro_types::RunGraph::new("test"),
+                    graph_source: None,
+                    workflow_slug: Some("develop".to_string()),
+                    workflow_version_id: None,
+                    target: None,
+                    automation: None,
+                    source_directory: None,
+                    labels: std::collections::HashMap::new(),
+                    provenance: fabro_types::test_support::test_run_provenance(),
+                    definition_blob: None,
+                    spec_blob: None,
+                    git: None,
+                    fork_source_ref: None,
+                    admission: fabro_types::PetriAdmission::default(),
+                },
+                chrono::Utc::now(),
+            );
+            projection.status = fabro_types::RunStatus::Failed {
+                reason: fabro_types::FailureReason::WorkflowError,
+            };
+            let pool = state.stores.run_summaries.pool();
+            let mut tx = pool.begin().await.expect("seed tx");
+            fabro_store::RunSummaryStore::write_petri_run_row_on_connection(
+                &mut tx,
+                &run_id,
+                &projection,
+            )
+            .await
+            .expect("run row seed");
+            let projection_json = serde_json::to_string(&projection).expect("projection json");
+            sqlx::query(
+                "INSERT INTO petri_projection (run_id, projection_json, fold_json, \
+                 positions_json, stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) \
+                 ON CONFLICT(run_id) DO UPDATE SET projection_json = excluded.projection_json",
+            )
+            .bind(run_id.to_string())
+            .bind(projection_json)
+            .execute(&mut *tx)
+            .await
+            .expect("projection row seed");
+            tx.commit().await.expect("seed commit");
+        }
+
+        // The adjudicator refused ONE of the two runs.
+        state
+            .stores
+            .run_summaries
+            .platform_records()
+            .append(
+                &refused_run,
+                &fabro_store::platform_records::PlatformRecord::RunOrchestration(
+                    fabro_store::platform_records::RunOrchestrationRecord {
+                        field:   fabro_types::OrchestrationField::Merge,
+                        verdict: fabro_types::OrchestrationVerdict::Refused,
+                        by_run:  None,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("verdict seed");
+
+        let _ = run_pass(&state).await;
+
+        let active = store
+            .active_claims("fabro")
+            .await
+            .expect("active claims")
+            .into_iter()
+            .map(|claim| claim.run_id)
+            .collect::<Vec<_>>();
+        assert!(
+            active.contains(&pending_run),
+            "the unadjudicated run's claim HOLDS until the adjudicator verdicts"
+        );
+        assert!(
+            !active.contains(&refused_run),
+            "the refused run's claim released on the verdict"
+        );
     }
 
     #[tokio::test]

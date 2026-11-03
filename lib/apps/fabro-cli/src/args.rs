@@ -1370,6 +1370,9 @@ pub(crate) enum RunVerb {
     /// List the orchestration queue: terminal runs without a verdict on
     /// the field (ADR-0039 stage D)
     Queue(RunQueueArgs),
+    /// Merge a merge-enabled run's pull request server-side (ADR-0039
+    /// stage E — the merger's write door)
+    Merge(RunMergeArgs),
 }
 
 impl RunCommands {
@@ -1378,6 +1381,7 @@ impl RunCommands {
             Self::Run(args) => match &args.verb {
                 Some(RunVerb::Mark(_)) => "run mark",
                 Some(RunVerb::Queue(_)) => "run queue",
+                Some(RunVerb::Merge(_)) => "run merge",
                 None => "run",
             },
             Self::Create(_) => "create",
@@ -1412,6 +1416,17 @@ pub(crate) struct RunMarkArgs {
     /// The field and verdict as `<field>=<verdict>`: merge or closable,
     /// and enabled, refused, or parked
     pub(crate) field_verdict: String,
+}
+
+#[derive(Args)]
+pub(crate) struct RunMergeArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The TARGET run whose pull request merges: the run must carry a
+    /// pull request the adjudicator marked merge:enabled — the merger
+    /// integrates, it never judges content
+    pub(crate) run_id: String,
 }
 
 #[derive(Args)]

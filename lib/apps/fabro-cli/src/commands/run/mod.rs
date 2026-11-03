@@ -19,6 +19,7 @@ pub(crate) mod events;
 pub(crate) mod fork;
 pub(crate) mod logs;
 pub(crate) mod mark;
+pub(crate) mod merge;
 pub(crate) mod output;
 pub(crate) mod overrides;
 pub(crate) mod petri_stream;
@@ -51,6 +52,7 @@ pub(crate) async fn dispatch(
     match cmd {
         RunCommands::Run(args) => match args.verb {
             Some(RunVerb::Mark(mark_args)) => mark::mark_command(&mark_args, base_ctx).await,
+            Some(RunVerb::Merge(merge_args)) => merge::merge_command(&merge_args, base_ctx).await,
             Some(RunVerb::Queue(queue_args)) => queue::queue_command(&queue_args, base_ctx).await,
             None => Box::pin(command::execute(*args.run, base_ctx)).await,
         },

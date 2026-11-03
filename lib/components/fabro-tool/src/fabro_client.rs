@@ -10,7 +10,7 @@ use fabro_types::{
     WorkItemComment,
 };
 
-use crate::{FabroToolBackend, RunMarkOutcome, common, seeds};
+use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, common, seeds};
 
 #[derive(Clone)]
 pub struct ClientBackend {
@@ -201,6 +201,19 @@ impl FabroToolBackend for ClientBackend {
         verdict: Option<fabro_types::OrchestrationVerdict>,
     ) -> anyhow::Result<Vec<types::RunQueueEntry>> {
         Ok(self.client.run_queue(field, workflow, verdict).await?.data)
+    }
+
+    /// `fabro_run_merge` (ADR-0039 stage E): the same merge the CLI
+    /// facade drives — the technical integration act over the run's
+    /// pull request, server-side GitHub credentials, the merger
+    /// workflow allowlist enforced at the door.
+    async fn merge_run(&self, run_id: &fabro_types::RunId) -> anyhow::Result<RunMergeResult> {
+        let merged = self.client.run_merge(run_id).await?;
+        Ok(RunMergeResult {
+            run:          merged.run_id,
+            merged:       merged.merged,
+            pull_request: merged.pull_request,
+        })
     }
 
     /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's

@@ -19,6 +19,14 @@ leak-timeout = "500ms"
     """
     slow-timeout = { period = "30s", terminate-after = 3 }
 
+    # The OpenAPI conformance walk fires one request per spec route
+    # through a fresh test router (~150 requests against in-memory DB
+    # I/O): 15-19s on an idle dev host, over the 20s kill under load.
+    # Same "one long tail test" class as the docker scenarios.
+    [[profile.default.overrides]]
+    filter = "package(fabro-server) & test(=openapi_conformance::all_spec_routes_are_routable)"
+    slow-timeout = { period = "30s", terminate-after = 3 }
+
     [[profile.default.overrides]]
     filter = "package(fabro-server)"
     slow-timeout = { period = "5s", terminate-after = 4 }

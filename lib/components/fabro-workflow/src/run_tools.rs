@@ -256,6 +256,19 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::run_queue_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_MERGE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunMergeParams>(name, args)?;
+            // The merge door (ADR-0039 stage E): the same merge the
+            // fast-path script drives over the CLI — the agent pass
+            // resolves conflicts through the same door.
+            let result = fabro_tool::run_merge(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunMerge::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_merge_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_OBSERVATION_LIST_TOOL_NAME => {
             let params =
                 parse_fabro_tool_args::<fabro_tool::FabroObservationListParams>(name, args)?;

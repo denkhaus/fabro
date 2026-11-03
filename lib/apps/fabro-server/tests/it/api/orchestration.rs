@@ -399,6 +399,127 @@ async fn the_queue_with_a_verdict_filter_lists_exactly_the_settled_runs() {
     );
 }
 
+/// The merge door's refusal arms (stage E): every non-merger shape
+/// refuses BEFORE any GitHub call — a plain worker, the adjudicator
+/// (the content judge never integrates), a self-merge, a PR-less run,
+/// and a run whose merge verdict is not enabled.
+#[tokio::test]
+async fn the_merge_door_refuses_every_non_merger_shape() {
+    let (app, state, store) = orchestration_app();
+    let merger = RunId::new();
+    let adjudicator = RunId::new();
+    let plain = RunId::new();
+    let merged = RunId::new();
+    let pr_less = RunId::new();
+    seed_run(&store, merger, "merger", true).await;
+    seed_run(&store, adjudicator, "adjudicator", true).await;
+    seed_run(&store, plain, "develop", true).await;
+    seed_run(&store, merged, "develop", true).await;
+    seed_run(&store, pr_less, "develop", true).await;
+
+    // The merged run carries a PR and merge = enabled (the adjudicator's
+    // content verdict); the PR-less run carries neither.
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &merged,
+            &fabro_store::platform_records::PlatformRecord::PullRequestCreated(
+                fabro_store::platform_records::PullRequestCreatedRecord {
+                    number:    501,
+                    owner:     "denkhaus".to_string(),
+                    repo:      "fabro".to_string(),
+                    html_url:  "https://github.com/denkhaus/fabro/pull/501".to_string(),
+                    head_sha:  None,
+                    draft:     false,
+                    operation: None,
+                },
+            ),
+            None,
+        )
+        .await
+        .unwrap();
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &merged,
+            &fabro_store::platform_records::PlatformRecord::RunOrchestration(
+                fabro_store::platform_records::RunOrchestrationRecord {
+                    field:   fabro_types::OrchestrationField::Merge,
+                    verdict: fabro_types::OrchestrationVerdict::Enabled,
+                    by_run:  Some(adjudicator),
+                },
+            ),
+            None,
+        )
+        .await
+        .unwrap();
+
+    let merge_as = |worker: &RunId, target: &RunId| {
+        let app = app.clone();
+        let token = state.test_issue_worker_token_with_run_tools(worker);
+        let target = *target;
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api(&format!("/runs/{target}/merge")))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .expect("merge request builds"),
+            )
+            .await
+            .expect("merge request runs")
+        }
+    };
+
+    // A plain develop worker is not on the allowlist at all.
+    let refused = merge_as(&plain, &merged).await;
+    assert_eq!(
+        refused.status(),
+        StatusCode::FORBIDDEN,
+        "a plain worker refuses"
+    );
+    // The adjudicator judges content — it never integrates.
+    let judge = merge_as(&adjudicator, &merged).await;
+    assert_eq!(
+        judge.status(),
+        StatusCode::FORBIDDEN,
+        "the adjudicator refuses"
+    );
+    let judge_body = response_json(judge, StatusCode::FORBIDDEN, "adjudicator refusal").await;
+    assert!(
+        judge_body["errors"][0]["detail"]
+            .as_str()
+            .expect("detail")
+            .contains("merger"),
+        "the refusal names the merger as the only integrator: {judge_body}"
+    );
+    // A run cannot merge itself.
+    let self_merge = merge_as(&merger, &merger).await;
+    assert_eq!(
+        self_merge.status(),
+        StatusCode::FORBIDDEN,
+        "a self-merge refuses"
+    );
+    // A PR-less run has nothing to merge.
+    let no_pr = merge_as(&merger, &pr_less).await;
+    assert_eq!(
+        no_pr.status(),
+        StatusCode::CONFLICT,
+        "a PR-less run refuses"
+    );
+    let no_pr_body = response_json(no_pr, StatusCode::CONFLICT, "PR-less refusal").await;
+    assert!(
+        no_pr_body["errors"][0]["detail"]
+            .as_str()
+            .expect("detail")
+            .contains("no pull request"),
+        "the refusal names the missing pull request: {no_pr_body}"
+    );
+}
+
 /// The observations read door: a run's observation records in seq order
 /// with the category that routes adjudication.
 #[tokio::test]
