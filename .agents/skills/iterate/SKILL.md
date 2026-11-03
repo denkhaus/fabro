@@ -137,6 +137,16 @@ closed with named evidence — or parked with a filed continuation.
   - Rust work: rust-style-guide SKILL.md AND the guideline pages
     covering the diff in the SAME turn, before the first edit; name the
     pages in the cycle report.
+  - SECURITY AUDIT IS SCHEDULED WORK (user directive 2026-11-03): every
+    sprint with Rust work runs `cargo audit` in its verification round.
+    A finding reachable in the attack surface is FIXED in the same
+    sprint — a semver-compatible `cargo update --precise` bump IS the
+    recorded ADR-0027 reason (the frozen-base posture never waves off a
+    vulnerability; it only demands the reason be written down);
+    build-surface and unattainable findings land in the audit tracker
+    item (#1040) with the reachability reason. The finding that made
+    this rule: 24 accumulated advisories (reachable rustls/h2/quinn
+    among them) waved off as "frozen base" for five sprints.
   - Pins are PROVEN, not assumed: after writing a regression pin,
     restore the pre-fix implementation and confirm the pin goes RED,
     then restore. A pin that cannot go red is blind.
