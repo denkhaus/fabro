@@ -189,44 +189,50 @@ async fn the_merger_door_merges_a_merge_enabled_pull_request() {
 }
 
 /// The conflict signal: a declined merge answers 409 with the
-/// `merge_conflict` code — the fast path's park trigger.
+/// `merge_conflict` code — the fast path's park trigger. Both GitHub
+/// decline statuses carry it: 409 (a real conflict) and 405 (not
+/// mergeable — the method or PR state refuses). The 405 arm is the
+/// #1117 pin: the TYPED variant routes it, never a prose match.
 #[tokio::test]
 async fn a_conflicted_merge_answers_409_with_the_conflict_code() {
-    let github = MockServer::start();
-    let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
-    let merger = RunId::new();
-    let adjudicator = RunId::new();
-    let target = RunId::new();
-    seed_run(&state, &merger, "merger", None).await;
-    seed_run(&state, &adjudicator, "adjudicator", None).await;
-    seed_run(
-        &state,
-        &target,
-        "develop",
-        Some(fabro_types::PullRequestLink {
-            owner:  "denkhaus".to_string(),
-            repo:   "fabro".to_string(),
-            number: 501,
-        }),
-    )
-    .await;
-    seed_mergeable_target(&state, &target, &adjudicator).await;
+    for status in [409u16, 405] {
+        let github = MockServer::start();
+        let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+        let merger = RunId::new();
+        let adjudicator = RunId::new();
+        let target = RunId::new();
+        seed_run(&state, &merger, "merger", None).await;
+        seed_run(&state, &adjudicator, "adjudicator", None).await;
+        seed_run(
+            &state,
+            &target,
+            "develop",
+            Some(fabro_types::PullRequestLink {
+                owner:  "denkhaus".to_string(),
+                repo:   "fabro".to_string(),
+                number: 501,
+            }),
+        )
+        .await;
+        seed_mergeable_target(&state, &target, &adjudicator).await;
 
-    github.mock(|when, then| {
-        when.method("PUT")
-            .path("/repos/denkhaus/fabro/pulls/501/merge");
-        then.status(409).json_body(json!({"message": "conflict"}));
-    });
+        github.mock(move |when, then| {
+            when.method("PUT")
+                .path("/repos/denkhaus/fabro/pulls/501/merge");
+            then.status(status)
+                .json_body(json!({"message": "declined"}));
+        });
 
-    let response = merge_call(&state, &merger, &target).await;
-    assert_eq!(
-        response.status(),
-        StatusCode::CONFLICT,
-        "a merge conflict answers 409"
-    );
-    let body = body_json(response).await;
-    assert_eq!(
-        body["errors"][0]["code"], "merge_conflict",
-        "the conflict code names the park trigger: {body}"
-    );
+        let response = merge_call(&state, &merger, &target).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::CONFLICT,
+            "a merge decline (status {status}) answers 409"
+        );
+        let body = body_json(response).await;
+        assert_eq!(
+            body["errors"][0]["code"], "merge_conflict",
+            "the conflict code names the park trigger (status {status}): {body}"
+        );
+    }
 }

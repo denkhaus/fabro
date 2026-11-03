@@ -434,15 +434,12 @@ async fn merge_run(
             })
             .into_response())
         }
-        Err(fabro_github::PullRequestApiError::Other(error))
-            if error.to_string().contains("merge conflict")
-                || error.to_string().contains("not mergeable") =>
-        {
-            // The conflict signal: the fast path parks the run for the
-            // agent pass on exactly this code.
+        Err(fabro_github::PullRequestApiError::Conflict { status, body, .. }) => {
+            // The typed conflict signal (fabro #1117): the fast path
+            // parks the run for the agent pass on exactly this code.
             Err(ApiError::with_code(
                 StatusCode::CONFLICT,
-                format!("The pull request cannot merge: {error:#}"),
+                format!("The pull request cannot merge (status {status}): {body}"),
                 "merge_conflict",
             ))
         }

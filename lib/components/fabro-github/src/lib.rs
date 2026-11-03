@@ -169,11 +169,13 @@ pub enum PullRequestApiError {
         repo:   String,
         number: u64,
     },
-    /// The update-branch endpoint refused the update (HTTP 422, or 409):
-    /// head and base conflict in a way GitHub will not auto-resolve.
-    /// Deliberately distinct from `Other` so the supervisor can keep the PR
-    /// open and count failed attempts (fabro-94e8).
-    #[error("Pull request #{number} update-branch conflict (status {status}): {body}")]
+    /// The pull-request API refused a write because head and base
+    /// conflict in a way GitHub will not auto-resolve (update-branch:
+    /// HTTP 422 or 409; merge: HTTP 409 or 405-not-mergeable).
+    /// Deliberately distinct from `Other` so callers keep the PR open
+    /// and route on the TYPED signal (fabro-94e8; the merger's
+    /// park-on-conflict, fabro #1117).
+    #[error("Pull request #{number} conflict (status {status}): {body}")]
     Conflict {
         number: u64,
         status: u16,
@@ -1944,10 +1946,16 @@ pub async fn merge_pull_request_with_client(
 
     match resp.status {
         200 => Ok(()),
-        405 => Err(
-            anyhow!("Pull request #{number} is not mergeable (method may not be allowed)").into(),
-        ),
-        409 => Err(anyhow!("Pull request #{number} has a merge conflict").into()),
+        // 405 (not mergeable — the method or the PR state refuses) and
+        // 409 (a real merge conflict) are the SAME routing signal for
+        // the merger: the door answers merge_conflict and the fast path
+        // parks the run for the agent pass (fabro #1117 — typed, never
+        // prose-matched).
+        405 | 409 => Err(PullRequestApiError::Conflict {
+            number,
+            status: resp.status,
+            body: resp.text().to_string(),
+        }),
         404 => Err(PullRequestApiError::NotFound {
             owner: owner.to_string(),
             repo: repo.to_string(),
@@ -3625,7 +3633,10 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.to_string().contains("not mergeable"), "got: {err}");
+        assert!(
+            matches!(err, PullRequestApiError::Conflict { status: 405, .. }),
+            "got: {err}"
+        );
     }
 
     #[tokio::test]
@@ -3661,7 +3672,10 @@ mod tests {
         )
         .await
         .unwrap_err();
-        assert!(err.to_string().contains("merge conflict"), "got: {err}");
+        assert!(
+            matches!(err, PullRequestApiError::Conflict { status: 409, .. }),
+            "got: {err}"
+        );
     }
 
     // -----------------------------------------------------------------------
