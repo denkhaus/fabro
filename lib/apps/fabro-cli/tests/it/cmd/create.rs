@@ -1498,7 +1498,7 @@ fn create_invalid_workflow_fails_without_creating_run() {
     ----- stdout -----
     ----- stderr -----
       × could not create run
-      ╰─▶ run intent could not be compiled: Validation failed: attractor.no_start: the workflow has no start node (`shape=Mdiamond`, `type=start`, or an id of `start`)
+      ╰─▶ run intent could not be compiled: Validation failed: attractor.no_start: the workflow has no start node (`shape=Mdiamond`, `type=start`, or an id of `start`) [run_compile_invalid]
     ");
 
     let run_count = run_count_for_test_case(&context);
@@ -1524,7 +1524,7 @@ fn create_rejects_unbound_template_inputs_without_creating_run() {
     ----- stdout -----
     ----- stderr -----
       × could not create run
-      ╰─▶ run intent could not be compiled: Validation failed: unsupported.template.unbound_input: the graph `goal` reads `{{ inputs.app_dir }}`, which no input binds; unsupported.template.unbound_input: node `work` `prompt` reads `{{ inputs.app_dir }}`, which no input binds
+      ╰─▶ run intent could not be compiled: Validation failed: unsupported.template.unbound_input: the graph `goal` reads `{{ inputs.app_dir }}`, which no input binds; unsupported.template.unbound_input: node `work` `prompt` reads `{{ inputs.app_dir }}`, which no input binds [run_compile_invalid]
     ");
 
     let run_count = run_count_for_test_case(&context);

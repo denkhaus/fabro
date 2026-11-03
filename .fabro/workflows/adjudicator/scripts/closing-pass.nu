@@ -6,12 +6,15 @@
 # the claim lands through the door (the adjudicator is the only closer,
 # decision 6).
 #
-# IDEMPOTENCE IS THE DOOR'S OWN REFUSALS (gap-safe, no extra reads):
-#   - 403 "no live claim"        -> already closed (a previous pass or
-#                                   the user); done, not a failure.
-#   - 409 "open closure radius"  -> the radius holds open items; the
-#                                   close waits, the next pass retries.
-#   - 200                        -> landed; the item earned its close.
+# IDEMPOTENCE IS THE DOOR'S OWN ERROR CODES (gap-safe, no prose
+# matching — fabro #1118): the door's refusals carry stable codes the
+# CLI renders as ` [code]` at the detail's end; the pass matches the
+# code, never the prose:
+#   - [close_no_live_claim] -> already closed (a previous pass or the
+#                              user); done, not a failure.
+#   - [close_radius_open]   -> the radius holds open items; the close
+#                              waits, the next pass retries.
+#   - 200                   -> landed; the item earned its close.
 # Any OTHER non-zero exit fails the stage (the standing fact-failure
 # discipline: never absorb a failed write).
 
@@ -57,15 +60,16 @@ def main [--smoke]: nothing -> nothing {
         let project = $entry.project
         let reason = $"landed via merger \(run ($run_id) closable=enabled\)"
         let res = (cli $CALLER (work-close-argv $srv $project $work_item $reason))
+        let stderr = ($res.stderr | str trim)
         if $res.exit_code == 0 {
             $landed = ($landed | append $work_item)
             print $"($CALLER): landed ($work_item) \(run ($run_id)\)"
-        } else if ($res.stderr | str contains 'no live claim') {
+        } else if ($stderr | str contains '[close_no_live_claim]') {
             $already_closed = ($already_closed | append $work_item)
-        } else if ($res.stderr | str contains 'closure radius') {
+        } else if ($stderr | str contains '[close_radius_open]') {
             $open_radius = ($open_radius | append $work_item)
         } else {
-            print -e $"($CALLER): work close failed for ($work_item): ($res.stderr | str trim | str substring 0..300)"
+            print -e $"($CALLER): work close failed for ($work_item): ($stderr | str substring 0..300)"
             exit 1
         }
     }

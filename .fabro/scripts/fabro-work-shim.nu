@@ -179,13 +179,14 @@ def main [
             }
             if $work_item.state == "closed" {
                 # The door's idempotence refusal (a previous pass landed
-                # it; the claim is gone).
-                print -e $"item ($key) has no live claim — there is nothing to land"
+                # it; the claim is gone) — the stable code rides the
+                # rendered detail (fabro #1118).
+                print -e $"item ($key) has no live claim — there is nothing to land [close_no_live_claim]"
                 exit 1
             }
             let radius = ($logged | get -o radius | default {} | get -o $key | default [])
             if not ($radius | is-empty) {
-                print -e $"item ($key) has an open closure radius"
+                print -e $"item ($key) has an open closure radius [close_radius_open]"
                 exit 1
             }
             let closed = ($logged.items | each {|it| if $it.itemKey == $key { $it | update state "closed" } else { $it } })
@@ -259,8 +260,10 @@ def main [
             }
             if ($run | get -o conflicted | default false) {
                 # The door's conflict signal (the fast path's park
-                # trigger): the refusal names the code.
-                print -e $"the pull request cannot merge: conflict — code merge_conflict"
+                # trigger): the stable code rides the rendered detail's
+                # end, bracketed — the same format the real CLI prints
+                # (fabro #1118).
+                print -e $"the pull request cannot merge: conflict [merge_conflict]"
                 exit 1
             }
             let merged = ($logged | update merges (($logged | get -o merges | default []) | append {runId: $run_id, at: (date now)}))

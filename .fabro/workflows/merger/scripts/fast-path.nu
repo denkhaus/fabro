@@ -133,7 +133,7 @@ def main [--smoke]: nothing -> nothing {
         # non-zero is a HARD failure.
         let merge_res = (cli $CALLER (run-merge-argv $srv $run_id))
         if $merge_res.exit_code != 0 {
-            if ($merge_res.stderr | str contains 'merge_conflict') {
+            if ($merge_res.stderr | str contains '[merge_conflict]') {
                 $packets = ($packets | append {run_id: $run_id, verdict: "pending", kind: "conflict", pull_request: ($entry.run | get -o pull_request | default null)})
                 continue
             }

@@ -130,13 +130,25 @@ fn build_structured_error(
 ) -> StructuredApiError {
     let failure = ApiFailure {
         status,
-        code: entry.code,
+        code: entry.code.clone(),
         meta: entry.meta,
     };
     let tagged = tag_with_failure(error, failure.clone());
     StructuredApiError {
         error:   classify_from_status(tagged, status),
         failure: Some(failure),
+    }
+}
+
+/// The rendered line for a coded error: the detail a human reads with
+/// the stable code appended in brackets — `landed nowhere [merge_refused]`.
+/// Scripts match the bracketed code, never the prose (fabro #1118); a
+/// codeless error renders as the detail alone.
+#[must_use]
+pub fn coded_detail(detail: &str, code: Option<&str>) -> String {
+    match code {
+        Some(code) => format!("{detail} [{code}]"),
+        None => detail.to_string(),
     }
 }
 
@@ -152,7 +164,8 @@ where
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
                 entry = parse_error_response_entry(&value);
                 if let Some(detail) = entry.detail.take() {
-                    return build_structured_error(anyhow!("{detail}"), status, entry);
+                    let rendered = coded_detail(&detail, entry.code.as_deref());
+                    return build_structured_error(anyhow!("{rendered}"), status, entry);
                 }
             }
             let error = if body.is_empty() {
@@ -177,7 +190,8 @@ where
             if let Ok(value) = serde_json::to_value(response.into_inner()) {
                 entry = parse_error_response_entry(&value);
                 if let Some(detail) = entry.detail.take() {
-                    return build_structured_error(anyhow!("{detail}"), status, entry);
+                    let rendered = coded_detail(&detail, entry.code.as_deref());
+                    return build_structured_error(anyhow!("{rendered}"), status, entry);
                 }
             }
             build_structured_error(
@@ -210,9 +224,9 @@ where
 
 pub fn raw_response_failure_error(failure: &ApiError) -> anyhow::Error {
     let base = if let Ok(value) = serde_json::from_str::<serde_json::Value>(&failure.body) {
-        let (detail, _) = parse_error_response_value(&value);
-        if let Some(detail) = detail {
-            anyhow!("{detail}")
+        let entry = parse_error_response_entry(&value);
+        if let Some(detail) = entry.detail.clone() {
+            anyhow!(coded_detail(&detail, entry.code.as_deref()))
         } else if failure.body.is_empty() {
             anyhow!("request failed with status {}", failure.status)
         } else {
@@ -347,13 +361,32 @@ mod tests {
             "invalid_manifest",
         ));
 
+        // The rendered line carries the stable code in brackets at the
+        // detail's end (fabro #1118): scripts match the bracketed code,
+        // never the prose.
         assert_eq!(
             err.to_string(),
-            "missing field `dirty` at line 1 column 2834"
+            "missing field `dirty` at line 1 column 2834 [invalid_manifest]"
         );
         let failure = api_failure_for(&err).expect("error should carry API failure metadata");
         assert_eq!(failure.status, fabro_http::StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(failure.code.as_deref(), Some("invalid_manifest"));
+    }
+
+    #[test]
+    fn a_codeless_error_renders_the_detail_alone() {
+        let response = progenitor_client::ResponseValue::new(
+            json!({
+                "errors": [{
+                    "detail": "a codeless refusal",
+                }]
+            }),
+            fabro_http::StatusCode::CONFLICT,
+            fabro_http::HeaderMap::new(),
+        );
+        let err =
+            map_api_error(progenitor_client::Error::<serde_json::Value>::ErrorResponse(response));
+        assert_eq!(err.to_string(), "a codeless refusal");
     }
 
     #[test]

@@ -50,7 +50,7 @@ fn pr_view_missing_pull_request_json_errors() {
     exit_code: 1
     ----- stdout -----
     ----- stderr -----
-      × No pull request found in store. Create one first with: fabro pr create [ULID]
+      × No pull request found in store. Create one first with: fabro pr create [ULID] [no_stored_record]
     ");
 }
 

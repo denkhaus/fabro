@@ -525,7 +525,7 @@ async fn close_work_item(
             open_radius = radius.len(),
             "close refused: the closure radius is open (ADR-0038)"
         );
-        return Err(ApiError::new(
+        return Err(ApiError::with_code(
             StatusCode::CONFLICT,
             format!(
                 "item {} has an open closure radius — {} open item(s) are linked to the \
@@ -534,6 +534,7 @@ async fn close_work_item(
                 request.item_key,
                 radius.len()
             ),
+            "close_radius_open",
         ));
     }
     if !radius.is_empty() && forced {
@@ -1365,11 +1366,12 @@ async fn adjudicator_close_authority(
             )
         })?;
     if summary.workflow.slug.as_deref() != Some(super::orchestration::MERGE_WRITER_WORKFLOW) {
-        return Err(ApiError::new(
+        return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
             "only the adjudicator closes work items — a run never closes its own item; the \
              adjudicator's closing pass closes it once the merger enabled closable \
              (ADR-0039 decisions 1 and 6)",
+            "close_not_adjudicator",
         ));
     }
     let claim = state
@@ -1378,9 +1380,10 @@ async fn adjudicator_close_authority(
         .await
         .map_err(store_error)?
         .ok_or_else(|| {
-            ApiError::new(
+            ApiError::with_code(
                 StatusCode::FORBIDDEN,
                 format!("item {item_key} has no live claim — there is nothing to land"),
+                "close_no_live_claim",
             )
         })?;
     // The verdict the close rides on: the CLAIM RUN's closable verdict,
@@ -1403,7 +1406,7 @@ async fn adjudicator_close_authority(
         .map(|(_, verdict)| *verdict);
     match verdict {
         Some(fabro_types::OrchestrationVerdict::Enabled) => Ok(Some(claim)),
-        verdict => Err(ApiError::new(
+        verdict => Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
             format!(
                 "item {item_key} waits for `closable: enabled` on its run — the close is \
@@ -1413,6 +1416,7 @@ async fn adjudicator_close_authority(
                     |verdict| verdict.to_string()
                 )
             ),
+            "close_not_closable",
         )),
     }
 }
