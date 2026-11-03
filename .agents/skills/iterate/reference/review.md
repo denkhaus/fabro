@@ -149,15 +149,19 @@ classes, and the architecture gate.
   codebase-design vocabulary.
 - Standing path (user directive 2026-10-02, freeze era): the architect
   WORKFLOW is DEACTIVATED on the line — the gate fires the LOCAL
-  improve-codebase-architecture agent; its top recommendations become
-  work items automatically, worked LOCALLY. The autonomous architect
-  workflow returns only on an explicit future user order (then:
-  self-gated by friction, 48h cooldown, files its own items).
+  improve-codebase-architecture agent; ONLY its STRONG recommendations
+  become work items (user directive 2026-11-03), worked LOCALLY. The
+  autonomous architect workflow returns only on an explicit future
+  user order (then: self-gated by friction, 48h cooldown, files its
+  own items).
 - Procedure: delegate the scan to a sub-agent with an output contract
   (candidates to a file: files, scope, problem, solution, benefits,
   deletion-test verdict, strength), curate with the fork-scope filter,
-  then file EVERY non-Speculative candidate IMMEDIATELY with
-  owner-based assignment — nothing survives only in the report. Render
+  then file every non-Speculative STRONG candidate IMMEDIATELY with
+  owner-based assignment — nothing survives only in the report. Medium
+  and Weak candidates are NOT filed (user directive 2026-11-03): they
+  land in the sprint note's gate paragraph, one line each — the
+  tracker stays signal, the gate note stays the archive. Render
   the interactive skill's HTML report on LOCALHOST only — anything
   beyond this machine is an exposure decision that belongs to the user.
   Mark the ledger (`last_arch_review_at_sprint`) and offer the grilling

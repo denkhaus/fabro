@@ -206,10 +206,12 @@ Deepen only when review surfaced structural smells OR the Phase 0
 friction verdict is `architecture-due`; `grind` deepens only on smells;
 `normal` never deepens on score alone. The architecture gate fires the
 LOCAL improve-codebase-architecture agent (the architect WORKFLOW stays
-deactivated on the line); its top recommendations become work items,
-worked LOCALLY. Architect scope is binding: findings restructure ONLY
-the fork's own surface; `lib/**`/`apps/**` is observable, never
-restructurable. The full gate procedure: `reference/review.md`.
+deactivated on the line); only its STRONG recommendations become work
+items (user directive 2026-11-03; Medium/Weak land in the sprint
+note), worked LOCALLY. Architect scope is binding: findings
+restructure ONLY the fork's own surface; `lib/**`/`apps/**` is
+observable, never restructurable. The full gate procedure:
+`reference/review.md`.
 
 ## Phase 5 — Integrate
 

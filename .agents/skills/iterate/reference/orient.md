@@ -88,8 +88,10 @@ index (`incidents.md`) carries the full stories.
     `sprints_completed % 3 == 0` and the marker differs — fire the
     LOCAL improve-codebase-architecture agent (user directive
     2026-10-02: the architect WORKFLOW stays deactivated on the line;
-    never the api trigger). Its top recommendations become work items
-    automatically, worked LOCALLY.
+    never the api trigger). Only its STRONG recommendations become
+    work items automatically (user directive 2026-11-03), worked
+    LOCALLY; Medium/Weak candidates land in the sprint note, not the
+    tracker.
   - RUST-SECURITY (`last_rust_security_review_at_sprint`): due when
     `sprints_completed % 5 == 0` and the marker differs — run the
     rust-security skill over the workspace diff since its last run.
