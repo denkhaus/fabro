@@ -2,6 +2,9 @@
 source: lib/components/fabro-dot/src/tests.rs
 expression: report
 ---
+.fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=6 edges=13
+  goal-inline
+  file:prompt:prompts/adjudicate.md@adjudicate
 .fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
   goal-inline
   file:prompt:prompts/survey.md@survey
@@ -80,6 +83,9 @@ expression: report
   goal-inline
   file:prompt:prompts/merge.md@merge
   file:prompt:prompts/review.md@reviewer
+.fabro/workflows/merger/workflow.fabro: Merger nodes=5 edges=10
+  goal-inline
+  file:prompt:prompts/resolve.md@resolve
 .fabro/workflows/patch-cves/workflow.fabro: PatchCves nodes=3 edges=2
   goal-inline
   stylesheet-inline

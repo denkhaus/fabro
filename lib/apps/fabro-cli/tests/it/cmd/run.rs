@@ -125,6 +125,7 @@ fn help() {
     Commands:
       mark   Mark one orchestration field of another run (ADR-0039 stage D)
       queue  List the orchestration queue: terminal runs without a verdict on the field (ADR-0039 stage D)
+      merge  Merge a merge-enabled run's pull request server-side (ADR-0039 stage E — the merger's write door)
       help   Print this message or the help of the given subcommand(s)
 
     Arguments:

@@ -125,7 +125,7 @@ petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", branch = 
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"
-object_store = { version = "0.12.5", features = ["aws"] }
+object_store = { version = "0.14.2", features = ["aws"] }
 rust-embed = "8"
 percent-encoding = "2"
 minijinja = "=2.19.0"

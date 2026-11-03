@@ -407,8 +407,8 @@ fn attr(e: &BytesStart<'_>, key: &str) -> Result<Option<String>> {
         let attr = attr.context("reading attribute")?;
         if attr.key.as_ref() == key.as_bytes() {
             let value = attr
-                .unescape_value()
-                .context("unescaping attribute value")?
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .context("normalizing attribute value")?
                 .into_owned();
             return Ok(Some(value));
         }

@@ -380,7 +380,11 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
         stdout_of(&create)
     );
 
-    // close: the run's own claim, closed through the channel
+    // close (ADR-0039 stage E): a run NEVER closes its own item — the
+    // own-claim arm retired with the adjudicator close door (decision
+    // 6: the adjudicator is the only closer). The channel grammar is
+    // the scenario's subject; the happy-path close (adjudicator +
+    // closable:enabled, the claim landing) is pinned in the server ITs.
     let close = cli_over_channel(
         &socket,
         &token,
@@ -396,9 +400,13 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
         None,
     );
     assert!(
-        close.status.success(),
-        "work close through the channel: {}",
-        stderr_of(&close)
+        !close.status.success(),
+        "a run closing its own claimed item must refuse"
+    );
+    let close_text = format!("{}{}", stdout_of(&close), stderr_of(&close)).to_lowercase();
+    assert!(
+        close_text.contains("only the adjudicator closes"),
+        "the refusal teaches the only closer: {close_text}"
     );
 
     // beyond scope: another project than the run's target repository —
@@ -419,10 +427,11 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
         "the refusal names the boundary: {refusal_text}"
     );
 
-    // beyond scope (second refusal path): closing an item claimed by
-    // ANOTHER run — close/update require a live claim held by this run
-    // (denkhaus/work#991), so the verb is refused before any tracker
-    // call.
+    // beyond scope (second refusal path): a non-adjudicator run closing
+    // anything — the close door checks the adjudicator workflow BEFORE
+    // the claim, so a foreign item refuses with the same teaching
+    // (the claim-held check it replaced, denkhaus/work#991, retired with
+    // stage E's ownership change).
     seed_foreign_claim(&state, &RunId::new()).await;
     let close_refusal = cli_over_channel(
         &socket,
@@ -445,7 +454,7 @@ async fn the_cli_reaches_the_engine_only_through_the_run_channel() {
     let close_text =
         format!("{}{}", stdout_of(&close_refusal), stderr_of(&close_refusal)).to_lowercase();
     assert!(
-        close_text.contains("belongs to run") || close_text.contains("claim"),
-        "the refusal names the claim boundary: {close_text}"
+        close_text.contains("only the adjudicator closes"),
+        "the refusal names the only closer: {close_text}"
     );
 }

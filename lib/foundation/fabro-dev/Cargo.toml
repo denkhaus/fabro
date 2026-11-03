@@ -35,7 +35,7 @@ fabro-build-support = { path = "../build-support" }
 fabro-config = { path = "../fabro-config" }
 fabro-util = { path = "../fabro-util" }
 fabro-options-metadata.workspace = true
-quick-xml = "0.36"
+quick-xml = "0.41"
 toml_edit.workspace = true
 tracing-subscriber.workspace = true
 walkdir.workspace = true

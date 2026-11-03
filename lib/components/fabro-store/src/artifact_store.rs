@@ -5,9 +5,9 @@ use chrono::Utc;
 use fabro_types::RunId;
 use futures::StreamExt;
 use futures::stream::BoxStream;
-use object_store::ObjectStore;
 use object_store::buffered::BufWriter;
 use object_store::path::Path as ObjectPath;
+use object_store::{ObjectStore, ObjectStoreExt};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 use tokio::io::AsyncWriteExt;
 

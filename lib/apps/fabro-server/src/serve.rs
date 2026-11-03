@@ -134,13 +134,12 @@ impl Default for ObjectStoreBuildOptions {
 struct NoProxyReqwestConnector;
 
 impl HttpConnector for NoProxyReqwestConnector {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "object_store pins reqwest 0.12 and object_store::HttpClient::new requires \
-                  that exact version; we can't route through fabro_http (reqwest 0.13)"
-    )]
+    // object_store 0.14 ships its own `HttpService for reqwest::Client`
+    // (reqwest 0.13, same as fabro_http) — the 0.12 companion-crate
+    // workaround dissolved with the security bump (2026-11-03); a plain
+    // no-proxy reqwest client wraps directly.
     fn connect(&self, options: &ClientOptions) -> object_store::Result<HttpClient> {
-        let mut builder = object_store_reqwest::Client::builder().no_proxy();
+        let mut builder = fabro_http::HttpClientBuilder::new().no_proxy();
         if let Some(raw) = options.get_config_value(&object_store::ClientConfigKey::Timeout) {
             if let Some(duration) = parse_config_duration(&raw) {
                 builder = builder.timeout(duration);

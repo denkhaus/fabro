@@ -2331,7 +2331,7 @@ mod tests {
     use fabro_install::{OBJECT_STORE_ACCESS_KEY_ID_ENV, OBJECT_STORE_SECRET_ACCESS_KEY_ENV};
     use fabro_static::EnvVars;
     use fabro_vault::SecretType as VaultSecretType;
-    use object_store::Error as ObjectStoreError;
+    use object_store::{Error as ObjectStoreError, ObjectStoreExt};
     use serde_json::json;
 
     use super::{
