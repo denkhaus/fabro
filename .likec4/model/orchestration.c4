@@ -136,10 +136,18 @@ model {
         }
 
         closing-pass = stage "Closing pass (pass 2)" {
-          #planned
+          #evolving
           description '''
             Once the merger marked closable = enabled, closes the item —
-            the ONLY closer in the system.
+            the ONLY closer in the system. Landed with stage E
+            (2026-11-03): a mechanical script stage reading the
+            verdict-flipped queue (`closable = enabled`), closing every
+            claimed entry whose radius is empty; the close lands the
+            claim server-side (merge-complete). The door's own
+            refusals make the sweep idempotent (no live claim =
+            already closed; open radius = retry next pass). Manual fire
+            until the stage-F scheduler tick; the CLI legs wait for
+            the fork.30 toolchain pin.
           '''
         }
       }
@@ -151,16 +159,19 @@ model {
           repo/project — serializes, merges, resolves conflicts — and
           marks `closable` on the run record. Owns technical
           integration, never the content verdict; parks on unresolvable
-          conflicts. Today it runs as the ADR-0031 run-PR landing path
-          (window-gated, base-first squash via `fabro pr merge`) and
-          still closes items itself; that close authority moves to the
-          adjudicator.
+          conflicts. Landed with stage E (2026-11-03): the workflow
+          graph (guard → fast path → resolve agent pass, soft exits)
+          merges through the platform door (squash, server-side
+          credentials) and smokes every integrated tree (cargo check);
+          the ADR-0031 run-PR supervisor is retired. Manual fire until
+          the stage-F scheduler tick; the CLI legs wait for the
+          fork.30 toolchain pin (probe-40).
         '''
         metadata {
-          status "live as run-PR landing path; ADR-0039 rework pending"
-          code "lib/apps/fabro-cli/src/commands/pr/merge.rs + lib/apps/fabro-server/src/server/run_publish.rs"
+          status "graph + merge door landed (stage E, 2026-11-03); manual fire until the stage-F tick"
+          code ".fabro/workflows/merger"
         }
-        link ../../docs/adr/0031-run-pr-merger-replaces-auto-merge.md
+        link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
       }
 
       reconciler = service "Work reconciler" {
@@ -208,7 +219,6 @@ model {
   fabro.orchestration.develop -[uses]-> llm-providers "agent stages: plan → implement → test → review"
   fabro.orchestration.develop -[create]-> github "opens the PR — artifact only, never a gate"
   fabro.orchestration.develop.reporter -[report]-> fabro.run-substrate.observation-record-surface "reports facts: patch visibility, Dockerfile touches"
-  fabro.orchestration.develop -[close]-> fabro.run-substrate.work-item-surface "closeout closes its own item (pre-ADR-0039)" #retiring
 
   // --- adjudicator ---------------------------------------------------------
   // Edges live at the OWNING stage (single source). Views that show the
@@ -228,9 +238,8 @@ model {
 
   // --- merger --------------------------------------------------------------
   fabro.orchestration.merger -[read]-> fabro.records.run-record "reads its queue: merge-enabled runs"
-  fabro.orchestration.merger -[write]-> fabro.run-substrate.orchestration-mark-surface "writes closable = enabled | parked" #planned
-  fabro.orchestration.merger -[integrate]-> github "integrates base-first, resolves conflicts"
-  fabro.orchestration.merger -[close]-> fabro.run-substrate.work-item-surface "lands claim + closes item (ADR-0031 form)" #retiring
+  fabro.orchestration.merger -[write]-> fabro.run-substrate.orchestration-mark-surface "writes closable = enabled | parked"
+  fabro.orchestration.merger -[integrate]-> github "merges through the door (squash, server-side credentials), resolves conflicts on the run branch, smokes the integrated tree"
 
   // --- reconciler & watch --------------------------------------------------
   fabro.orchestration.reconciler -[heal]-> fabro.records.work-ledger "heals ledger, drains outbox"

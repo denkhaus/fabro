@@ -86,19 +86,38 @@ digraph Adjudicator {
         x.observations="required"
     ]
 
+    // The closing pass (stage E, pass two's mechanical half): after the
+    // merge-queue work, ONE LLM-free command stage reads the
+    // verdict-flipped queue (closable = enabled — runs the merger
+    // merged and smoked) and closes every entry whose run claimed a
+    // work item. The close lands the claim server-side (merge-complete,
+    // decision 6 — the adjudicator is the only closer); the door's own
+    // refusals make the sweep idempotent (no live claim = already
+    // closed; open radius = retry next pass).
+    closing_pass [
+        label="Closing pass: land closable-enabled items",
+        shape=parallelogram,
+        script="nu .fabro/workflows/adjudicator/scripts/closing-pass.nu",
+        output_schema="routing",
+        x.context_allow_keys="output.closing",
+        timeout="5m",
+        max_retries=1
+    ]
+
     start -> env_guard
     env_guard -> fast_path
 
-    // The empty worklist is natural completion: every terminal develop
-    // run carries a settled verdict.
-    fast_path -> exit [label="Queue empty", condition="preferred_label=\"Queue empty\""]
+    // The empty worklist is natural completion of pass one: every
+    // terminal develop run carries a settled verdict. The closing pass
+    // still runs — a settled closable queue is its own worklist.
+    fast_path -> closing_pass [label="Queue empty", condition="preferred_label=\"Queue empty\""]
     fast_path -> adjudicate [label="Runs pending adjudication"]
 
     // The pass works packets serially; a verdict on one run routes the
     // next visit. The self-edge is bounded by max_visits and the
     // generation caps below.
     adjudicate -> adjudicate [label="Next run", condition="preferred_label=\"Next run\""]
-    adjudicate -> exit [label="Queue settled", condition="preferred_label=\"Queue settled\""]
+    adjudicate -> closing_pass [label="Queue settled", condition="preferred_label=\"Queue settled\""]
     // A policy fork parks the run and CONTINUES: the sweep never waits
     // on a human. The same edge covers a parked run the operator
     // resolved through the tracker — the next pass re-adjudicates it.
@@ -115,4 +134,10 @@ digraph Adjudicator {
     // the queue keeps the run for the next pass.
     adjudicate -> exit [x.kind="soft", label="Unrouted adjudication outcome (queue stays)"]
     fast_path -> exit [x.kind="soft", label="Fast path failed (queue stays, next pass re-enters)", condition="outcome=failed"]
+
+    // The closing pass ends the pass: its refusals are retry semantics
+    // (radius open), never failures of the sweep.
+    closing_pass -> exit [label="Closing pass done", condition="preferred_label=\"Closing pass done\""]
+    closing_pass -> exit [x.kind="soft", label="Closing pass failed (settled queue stays, next pass re-enters)", condition="outcome=failed"]
+    closing_pass -> exit [x.kind="soft", label="Unrouted closing outcome"]
 }

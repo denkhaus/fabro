@@ -80,20 +80,6 @@ def refuse-foreign-flags [facade: string, sub: string, provided: record, owned: 
     }
 }
 
-# The runs state.marks has SETTLED on the field (latest verdict wins;
-# parked does NOT settle — the store's own semantics, stage D part 2).
-def settled-runs [state: any, field: string]: nothing -> list<string> {
-    let marks = ($state | get -o marks | default [])
-    mut settled = []
-    for run_id in ($marks | get runId | uniq) {
-        let latest = (last-or-null ($marks | where {|m| $m.runId == $run_id}))
-        if $latest.field == $field and $latest.verdict in ["enabled" "refused"] {
-            $settled = ($settled | append $run_id)
-        }
-    }
-    $settled
-}
-
 # main's signature is the interpreter-forced UNION of every facade's
 # flags (see the header); dispatch scopes them per subcommand.
 def main [
@@ -112,6 +98,7 @@ def main [
     # run
     --field: string,              # run queue
     --workflow: string,           # run queue
+    --verdict: string,            # run queue (the settled filter, stage E)
     # observation
     --run-id: string,             # binds $run_id (observation list/record)
     --category: string,           # observation record
@@ -132,7 +119,7 @@ def main [
     let facade = ($argv | get 0)
     let sub = ($argv | get 1)
     let positional = ($argv | skip 2)
-    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
+    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
 
     match [$facade $sub] {
         ["work" "show"] => {
@@ -185,9 +172,20 @@ def main [
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let key = ($positional | get -o 0 | default '')
-            let work_item = ($logged.items | where {|it| $it.itemKey == $key and $it.state == "open"} | get -o 0 | default null)
+            let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
             if $work_item == null {
-                print -e $"no open item '($key)' to close in the shim state"
+                print -e $"no work item '($key)' in the shim state"
+                exit 2
+            }
+            if $work_item.state == "closed" {
+                # The door's idempotence refusal (a previous pass landed
+                # it; the claim is gone).
+                print -e $"item ($key) has no live claim — there is nothing to land"
+                exit 1
+            }
+            let radius = ($logged | get -o radius | default {} | get -o $key | default [])
+            if not ($radius | is-empty) {
+                print -e $"item ($key) has an open closure radius"
                 exit 1
             }
             let closed = ($logged.items | each {|it| if $it.itemKey == $key { $it | update state "closed" } else { $it } })
@@ -222,21 +220,54 @@ def main [
             {comments: $comments} | to json --raw | print
         }
         ["run" "queue"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "field" "workflow" "json"]
-            let flags = {server: $server, field: $field, workflow: $workflow, json: $json}
+            refuse-foreign-flags $facade $sub $provided ["server" "field" "workflow" "verdict" "json"]
+            let flags = {server: $server, field: $field, workflow: $workflow, verdict: $verdict, json: $json}
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let wanted_field = ($field | default "merge")
-            let settled = (settled-runs $logged $wanted_field)
             let marks = ($logged | get -o marks | default [])
             let runs = ($logged | get -o runs | default [])
+            let verdict_filter = ($verdict | default '')
             let data = ($runs | where {|r|
-                ($r.status in ["succeeded" "failed" "dead"]) and (not ($r.runId in $settled)) and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
+                let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
+                let terminal = ($r.status in ["succeeded" "failed" "dead"])
+                # Without a filter: the anti-join (pending or parked —
+                # the settled runs left). With a filter (stage E):
+                # exactly the runs settled on that verdict.
+                let verdict_ok = if ($verdict_filter | is-empty) {
+                    ($latest == null) or ($latest.verdict == "parked")
+                } else {
+                    ($latest != null) and ($latest.verdict == $verdict_filter)
+                }
+                $terminal and $verdict_ok and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
             } | each {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
                 {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: $r.status}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null), project: ($r | get -o project | default null)}
             })
             {data: $data, meta: {has_more: false, total: ($data | length)}} | to json --raw | print
+        }
+        ["run" "merge"] => {
+            refuse-foreign-flags $facade $sub $provided ["server" "json"]
+            let flags = {server: $server, json: $json}
+            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+            save-state $p $logged
+            let run_id = ($positional | get -o 0 | default '')
+            let run = ($logged | get -o runs | default [] | where {|r| $r.runId == $run_id} | get -o 0 | default null)
+            if $run == null {
+                print -e $"fabro-work-shim: no fixture run '($run_id)'"
+                exit 2
+            }
+            if ($run | get -o conflicted | default false) {
+                # The door's conflict signal (the fast path's park
+                # trigger): the refusal names the code.
+                print -e $"the pull request cannot merge: conflict — code merge_conflict"
+                exit 1
+            }
+            let merged = ($logged | update merges (($logged | get -o merges | default []) | append {runId: $run_id, at: (date now)}))
+            save-state $p $merged
+            let pr = ($run | get -o pullRequest | default null)
+            let url = (if $pr == null { '' } else { $"https://github.com/($pr.owner)/($pr.repo)/pull/($pr.number)" })
+            print $"run ($run_id) merged — ($url)"
         }
         ["run" "mark"] => {
             refuse-foreign-flags $facade $sub $provided ["server" "json"]

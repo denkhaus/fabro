@@ -1,0 +1,53 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# merger (ADR-0039 stage E, denkhaus/work#1107): the technical-
+# integration gear. One pass = one run: the fast path reads the closable
+# queue (runs the adjudicator marked merge:enabled), merges the clean
+# mass through the merge door (LLM-free), smokes each integrated tree,
+# and marks the verdict; the agent pass resolves real conflicts the
+# merge door reports. Fired manually for now; the scheduler tick (the
+# three-gear model, stage F) drives it later. The workflow directory
+# name is a CONTRACT: the merge door's allowlist keys on the workflow
+# slug `merger`.
+[run.agent]
+# The run-level switch for node-level x.fabro_tools grants (the flip
+# precedent): inert without it.
+fabro_tools = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# The merger DOES clone: the cheap integration smoke (cargo check on
+# the merged tree) needs the workspace, and the agent pass resolves
+# conflicts in a real checkout. The merge itself NEVER happens here —
+# the door merges server-side with the server's credentials; the
+# checkout is read-only integration evidence.
+[run.clone]
+depth = 0
+
+# No [run.integrations.github.permissions] (ADR-0019): agent shells get
+# NO forge token; the merge door is engine-mediated, and the run branch
+# a conflict resolution pushes rides the engine's own clone credentials
+# (the develop lane's run-branch mechanism, nothing new).
+
+# The run branch is the conflict-resolution vehicle ONLY: a resolution
+# commit lands on the run's branch (never on the line branch — the
+# merge door is the only line writer). No pull request: the merger
+# produces verdicts and merged trees, its own run is not content.
+[run.run_branch]
+push = true
+
+# The terminal notification is the operator's park signal: the pass
+# output names the conflict parks, the run title carries the pass
+# verdict.
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+events = ["run.completed", "run.failed"]
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"

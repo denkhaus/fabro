@@ -1,0 +1,112 @@
+digraph Merger {
+    graph [
+        goal="Integrate the merge-enabled runs of the line: sweep the closable queue, merge the clean mass through the door, smoke every integrated tree, resolve or park the conflicts",
+        rankdir=LR,
+        // The fast path's sweep is bounded by the queue page (200 runs);
+        // each merge is one door call plus one fetch; the smoke (cargo
+        // check) dominates at minutes per run on a cold cache. The 45m
+        // ceiling leaves room for a full page of cold smokes without
+        // tripping the default watchdog mid-pass.
+        stall_timeout="46m",
+        max_node_visits=40,
+        x.preamble_budget_kb=24,
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Exit kinds: soft exits classify the terminal event; a failed pass
+    // leaves every unmerged run queued (the anti-join is gap-safe, the
+    // next pass re-enters cleanly — no cleanup path exists).
+    exit  [shape=Msquare, label="Exit"]
+
+    // Toolchain-placement guard (the develop lane's pattern): a manual
+    // fire WITHOUT --environment falls to the server default and dies
+    // cryptically at the first nu stage (the smoke needs cargo). POSIX
+    // sh, NOT nu: the failure mode it guards is a sandbox without nu.
+    // Fail-closed with a teaching error naming the correct fire command.
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh merger",
+        timeout="30s",
+        max_retries=0
+    ]
+
+    // The fast path (stage E, grilled mirror of the adjudicator's): ONE
+    // LLM-free command stage walks the closable queue — runs the
+    // adjudicator marked merge:enabled without a closable verdict. For
+    // each: merge through the door, fetch the merged line, smoke it
+    // (cargo check on the merged tree — the grilled cheap verification),
+    // then mark (green -> closable:enabled, red -> closable:parked with
+    // the smoke failure as the escalation). A merge the door declines
+    // (the merge_conflict signal) emits a packet for the agent pass
+    // through output.integration. Parked runs re-enter as packets: an
+    // open escalation is a judgment, never a mechanical skip. Every
+    // door call is HARD (a failed call fails the stage; the engine
+    // retries the sweep — the anti-join makes re-sweeps gap-safe).
+    fast_path [
+        label="Fast path: merge the clean mass, smoke, mark",
+        shape=parallelogram,
+        script="nu .fabro/workflows/merger/scripts/fast-path.nu",
+        output_schema="routing",
+        x.context_allow_keys="output.integration",
+        timeout="40m",
+        max_retries=1
+    ]
+
+    // The agent pass: works the conflict packets one per visit, serially
+    // — the evidence pipe lands the packets in ## Context. The agent has
+    // the checkout: it resolves the conflict on the RUN branch (never
+    // the line branch), pushes, retries the door, smokes, and marks.
+    // True unresolvable conflicts park (closable:parked with the fork
+    // question as an observation note on THIS run); the pass never
+    // waits on the operator.
+    resolve [
+        label="Resolve: conflicts, parks, marks",
+        prompt="@prompts/resolve.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=30,
+        retry_policy="standard",
+        reasoning_effort="low",
+        fidelity="summary:high",
+        x.preamble_stages_ignore="resolve",
+        x.preamble_allow_keys="output.integration",
+        x.context_allow_keys="output.integration,journal",
+        // The checkout is the work surface: read, search, and shell (the
+        // git calls a resolution needs — fetch, rebase, push to the run
+        // branch). Writes beyond the run branch have no credential.
+        x.tools="read_file,grep,glob,shell",
+        x.fs_write="",
+        // The integration toolbox: the merge door, the verdict write,
+        // the queue re-read, and the observation recorder (the presence
+        // contract — every agent session records its observations
+        // through the tool).
+        x.fabro_tools="fabro_run_merge,fabro_run_mark,fabro_run_queue,fabro_observation_record",
+        x.observations="required"
+    ]
+
+    start -> env_guard
+    env_guard -> fast_path
+
+    // The empty worklist is natural completion: every merge-enabled run
+    // carries a settled closable verdict.
+    fast_path -> exit [label="Queue empty", condition="preferred_label=\"Queue empty\""]
+    fast_path -> resolve [label="Runs pending integration"]
+
+    // The pass works packets serially; a verdict on one run routes the
+    // next visit. The self-edge is bounded by max_visits.
+    resolve -> resolve [label="Next run", condition="preferred_label=\"Next run\""]
+    resolve -> exit [label="Queue settled", condition="preferred_label=\"Queue settled\""]
+    // An unresolvable conflict parks the run and CONTINUES: the sweep
+    // never waits on a human. The same edge covers a parked run the
+    // operator resolved — the next pass re-integrates it.
+    resolve -> resolve [label="Parked a conflict, continue", condition="preferred_label=\"Parked a conflict\""]
+    // Structural guards: the worklist self-loop is bounded by
+    // max_visits and outcome=failed — the anti-join keeps every
+    // unmerged run queued for the next pass.
+    resolve -> exit [x.kind="soft", label="Resolve failed (queue stays, next pass re-enters)", condition="outcome=failed"]
+    // Unconditional safety net (the engine requires one): an unrouted
+    // resolution outcome exits softly — no verdict happens silently.
+    resolve -> exit [x.kind="soft", label="Unrouted resolution outcome (queue stays)"]
+    fast_path -> exit [x.kind="soft", label="Fast path failed (queue stays, next pass re-enters)", condition="outcome=failed"]
+}

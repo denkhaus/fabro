@@ -87,15 +87,25 @@ export def observation-record-argv [srv: string, category: string, text: string]
 # their subcommands).
 
 # Pure: the argv for one run-queue read (the adjudicator's worklist).
-export def run-queue-argv [srv: string, field: string, workflow: string]: nothing -> list<string> {
-    [
-        'run' 'queue' '--field' $field '--workflow' $workflow '--json' '--server' $srv
-    ]
+# The optional settled-verdict filter (ADR-0039 stage E) flips the join:
+# `--verdict enabled` on closable is the closing pass's worklist.
+export def run-queue-argv [srv: string, field: string, workflow: string, verdict: string = '']: nothing -> list<string> {
+    if ($verdict | is-empty) {
+        ['run' 'queue' '--field' $field '--workflow' $workflow '--json' '--server' $srv]
+    } else {
+        ['run' 'queue' '--field' $field '--workflow' $workflow '--verdict' $verdict '--json' '--server' $srv]
+    }
 }
 
 # Pure: the argv for one run-mark write (the verdict door).
 export def run-mark-argv [srv: string, run_id: string, field: string, verdict: string]: nothing -> list<string> {
     ['run' 'mark' $run_id $"($field)=($verdict)" '--server' $srv]
+}
+
+# Pure: the argv for one run-merge call (the merger's write door,
+# ADR-0039 stage E): merge the target run's pull request server-side.
+export def run-merge-argv [srv: string, run_id: string]: nothing -> list<string> {
+    ['run' 'merge' $run_id '--server' $srv]
 }
 
 # Pure: the argv for one observation-list read (a run's facts).
@@ -114,6 +124,13 @@ export def work-radius-argv [srv: string, project: string, work_item: string]: n
 # ADR-0039 stage D part 2).
 export def work-comments-argv [srv: string, project: string, work_item: string]: nothing -> list<string> {
     ['work' '--server' $srv 'comments' '--project' $project $work_item '--json']
+}
+
+# Pure: the argv for one work-close write (the closing pass's door,
+# ADR-0039 stage E): the adjudicator closes the merged run's item; the
+# claim lands server-side (merge-complete).
+export def work-close-argv [srv: string, project: string, work_item: string, reason: string]: nothing -> list<string> {
+    ['work' '--server' $srv 'close' '--project' $project $work_item '--reason' $reason]
 }
 
 # One CLI call over the channel with a COMPLETE argv (the builders

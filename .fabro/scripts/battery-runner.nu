@@ -78,6 +78,14 @@ const SMOKES = [
     # filter, routing envelope — driven through the channel shim over
     # the shared smoke harness.
     '.fabro/workflows/adjudicator/scripts/fast-path-smoke.nu'
+    # The closing pass (ADR-0039 stage E): the verdict-flipped queue
+    # read, the empty-radius landing, the open-radius wait, the closed
+    # item's idempotent done, the entry's project — through the shim.
+    '.fabro/workflows/adjudicator/scripts/closing-pass-smoke.nu'
+    # The merger fast path (ADR-0039 stage E): clean merge + enabled
+    # mark through the door, the merge_conflict packet, the malformed
+    # PR-less park, parked re-entry, workflow filter — through the shim.
+    '.fabro/workflows/merger/scripts/fast-path-smoke.nu'
     # close-claim battery RETIRED 2026-10-26 (cutover stage 5,
     # denkhaus/work#988): close-claim-check guarded commit subjects
     # claiming a seeds close the file tracker never saw; the tracker is
