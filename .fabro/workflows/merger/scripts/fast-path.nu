@@ -60,14 +60,18 @@ def mark-run [run_id: string, verdict: string]: nothing -> nothing {
 
 # The cheap integration smoke (grilled): fetch the line, check out the
 # merged tip in-place, cargo check the workspace, restore the original
-# checkout. Returns 'green' or 'red' — transport failures are RED too
-# (fail-closed: an unverifiable tree never enables a close).
+# checkout. The restore keys on the HEAD SHA (a branch NAME round-trips
+# dirty through nu strings and once detached the session's HEAD — the
+# 2026-11-03 incident this comment memorializes). Returns 'green' or
+# 'red' — transport failures are RED too (fail-closed: an
+# unverifiable tree never enables a close).
 def smoke-merged-tree []: nothing -> string {
-    let original = (do { git rev-parse --abbrev-ref HEAD } | complete)
+    let original = (do { git rev-parse HEAD } | complete)
     if $original.exit_code != 0 {
         print -e $"($CALLER): smoke cannot resolve the checkout: ($original.stderr | str trim | str substring 0..200)"
         return 'red'
     }
+    let original_sha = ($original.stdout | str trim)
     let fetch = (do { git fetch origin denkhaus } | complete)
     if $fetch.exit_code != 0 {
         print -e $"($CALLER): smoke fetch failed: ($fetch.stderr | str trim | str substring 0..200)"
@@ -79,8 +83,10 @@ def smoke-merged-tree []: nothing -> string {
         return 'red'
     }
     let check = (do { cargo check --workspace --quiet } | complete)
-    # Restore the engine's checkout whatever the check said.
-    let restore = (do { git checkout -q $original.stdout | str trim } | complete)
+    # Restore the engine's checkout WHATEVER the check said — the SHA is
+    # the unambiguous target (a branch name would detach a session that
+    # started on one).
+    let restore = (do { git checkout -q $original_sha } | complete)
     if $restore.exit_code != 0 {
         print -e $"($CALLER): smoke restore failed: ($restore.stderr | str trim | str substring 0..200)"
     }
