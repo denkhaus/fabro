@@ -1,8 +1,8 @@
 {
   "sprints_completed": 75,
-  "sprints_reflected": 74,
+  "sprints_reflected": 75,
   "last_arch_review_at_sprint": 75,
-  "last_reflection": "2026-11-02",
+  "last_reflection": "2026-11-04",
   "last_code_review_at_sprint": 74,
   "last_rust_security_review_at_sprint": 75,
   "sprints": [
@@ -67,7 +67,7 @@
     {
       "sprint": 75,
       "notes": [
-        "/tmp/opencode/sprint75-note.txt"
+        "SPRINT 75 2026-11-02/03 (batch = epic #1107 STAGE E WHOLE + #1113 companion; counts once; NOTE RECONSTRUCTED 2026-11-04 from commits + epic body + the ledger-close message — the original draft died as a /tmp pointer in the ledger; the pointer loss is the retro finding: notes live IN the ledger, never in /tmp): STAGE E landed whole: #1113 first (85f692ad6 queue decoration carries the claim's project — the fast path's radius read stops hardcoding fabro), part 1 (3a4db923d + 2253f479d: closing-pass read + adjudicator close door + api-client regen), part 2 (d803ed65f: merge door POST /runs/{id}/merge + fabro run merge + fabro_run_merge door-symmetric, supervisor retirement — fork_staleness_supervisor + pull_request_conflict deleted, -2558 lines, TOUCHPOINTS row removed, parity green; verdict-driven release: the reconciler holds a terminal claim until the merge verdict, refused releases both Granted/Active and AwaitingMerge arms — the stage-A lock-span finding resolved), part 3 (2f7423f07: merger workflow .fabro/workflows/merger mirroring the adjudicator graph + the closing pass as a mechanical stage; the chain assembled), fast-path fix 7cae5af80 (smoke checkout restored by SHA). CLOSE DOOR: worker close requires the adjudicator workflow AND closable:enabled, the authorized close LANDS the claim (the supervisor's land path moved into the door); the own-claim worker arm retired -> #1115 filed (develop planner's stale close arms). SETTLED-VERDICT QUEUE: --verdict enabled|refused flips the anti-join (store verdict_queue, API, CLI, tool). MERGE AUTHORITY executed (stage-E grill decision 1): the dogfood-gate workflow DISABLED on denkhaus/fabro 2026-11-02 — the session pushes directly, the merger takes up integration at the fork.30 deploy. SECURITY: the scheduled-audit rule born (user directive 2026-11-03; skill edit b9bec8dfb) after 24 accumulated advisories had been waved off as frozen base for five sprints — bump pass aea06820a cleared cargo audit 24 -> 0; audit tracker #1040 carries the delta. GATES at close: %3 architecture ran (skill edit bfde88754: the gate files ONLY strong recommendations) and filed #1116 (dead store read), #1117 (typed merge-conflict variant), #1118 (close-door error codes) — all three worked by the FOLLOW-UP session as sprint 76; %5 rust-security ran (1 Low rode #1117); markers := 75 both. BENCH: merger fast-path + closing-pass smokes in the battery runner (25 batteries); fabro-test probe-40 (PR #128) drives the merge-door refusal + verdict-flipped read — RED until the fork.30 toolchain pin (rows 35/37/39 skew precedent). THE fork.30 WINDOW PLANNED AT SPRINT CLOSE DID NOT HAPPEN (window posture local-until-done holds): the server still runs fork.29 (9a983b7c; the comments read verb is server-skewed, 400, until the window). NEXT: stage F gears (three scheduler ticks + dead-man watch) + stage G cutover (GitHub automerge/CI retirement, reporter rename, sweeps/close retirement), then the fork.30 window ships the chain whole."
       ]
     }
   ]
