@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use cli_table::{Cell, CellStruct, Style, Table};
+use fabro_tool::FabroSettledVerdict;
 use fabro_types::OrchestrationField;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
@@ -28,14 +29,13 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
         None => None,
         Some(raw) => {
             let trimmed = raw.trim();
-            match trimmed {
-                "enabled" => Some(fabro_types::OrchestrationVerdict::Enabled),
-                "refused" => Some(fabro_types::OrchestrationVerdict::Refused),
-                other => anyhow::bail!(
-                    "`{other}` is not a settled verdict — the filter accepts enabled or \
+            let parsed: FabroSettledVerdict = trimmed.parse().map_err(|_| {
+                anyhow::anyhow!(
+                    "`{trimmed}` is not a settled verdict — the filter accepts enabled or \
                      refused (pending and parked runs are the queue's default anti-join)"
-                ),
-            }
+                )
+            })?;
+            Some(parsed.into())
         }
     };
     let workflow = match args.workflow.as_deref() {

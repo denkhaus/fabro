@@ -97,6 +97,17 @@ export def run-queue-argv [srv: string, field: string, workflow: string, verdict
     }
 }
 
+# Pure: the queue entries from a run-queue call's stdout, [] on any
+# parse failure (the caller's transport check already failed hard on a
+# non-zero exit). One parser for every queue consumer — the adjudicator
+# fast path, the closing pass, and the merger fast path.
+export def entries-from [stdout: string]: nothing -> list<any> {
+    let parsed = (try { $stdout | from json } catch { null })
+    if ($parsed | describe | str starts-with "record") {
+        $parsed | get -o data | default []
+    } else { [] }
+}
+
 # Pure: the argv for one run-mark write (the verdict door).
 export def run-mark-argv [srv: string, run_id: string, field: string, verdict: string]: nothing -> list<string> {
     ['run' 'mark' $run_id $"($field)=($verdict)" '--server' $srv]

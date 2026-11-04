@@ -24,22 +24,12 @@
 
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
 use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, run-mark-argv, observation-list-argv, work-radius-argv, cli
+    server, run-queue-argv, entries-from, run-mark-argv, observation-list-argv, work-radius-argv, cli
 ]
 
 const CALLER = 'adjudicator-fast-path'
 const FIELD = 'merge'
 const WORKFLOW = 'develop'
-
-# Pure: the queue entries from a run-queue call's stdout, [] on any
-# parse failure (the transport check above already failed hard on a
-# non-zero exit).
-def entries-from [stdout: string]: nothing -> list<any> {
-    let parsed = (try { $stdout | from json } catch { null })
-    if ($parsed | describe | str starts-with "record") {
-        $parsed | get -o data | default []
-    } else { [] }
-}
 
 # Pure: the DISTINCT painpoints of a run's observations — dedupe on the
 # machine head (line one): an engine retry of the reporter re-records

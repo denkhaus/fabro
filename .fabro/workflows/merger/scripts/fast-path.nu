@@ -28,22 +28,12 @@
 # signal (the merge_conflict refusal): that is a packet, not a failure.
 
 use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, run-mark-argv, run-merge-argv, cli
+    server, run-queue-argv, entries-from, run-mark-argv, run-merge-argv, cli
 ]
 
 const CALLER = 'merger-fast-path'
 const FIELD = 'closable'
 const WORKFLOW = 'develop'
-
-# Pure: the queue entries from a run-queue call's stdout, [] on any
-# parse failure (the transport check above already failed hard on a
-# non-zero exit).
-def entries-from [stdout: string]: nothing -> list<any> {
-    let parsed = (try { $stdout | from json } catch { null })
-    if ($parsed | describe | str starts-with "record") {
-        $parsed | get -o data | default []
-    } else { [] }
-}
 
 # One verdict write through the door (HARD: a failed mark fails the
 # stage — the engine retries the whole sweep; marks are idempotent at

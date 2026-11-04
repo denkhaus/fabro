@@ -562,7 +562,7 @@ async fn close_work_item(
             .await
             .map_err(store_error)?;
         best_effort_clear_claim(&state, project, &landed).await;
-        let _ = run_records::append(
+        if let Err(error) = run_records::append(
             &state,
             claim.run_id,
             PlatformRecord::WorkReleased(WorkReleasedRecord {
@@ -572,7 +572,15 @@ async fn close_work_item(
                 reason:     "landed".to_string(),
             }),
         )
-        .await;
+        .await
+        {
+            tracing::warn!(
+                claim_id = %landed.claim_id,
+                run_id = %claim.run_id,
+                error = ?error,
+                "work item close: land record append failed"
+            );
+        }
     } else {
         // A closed item releases any live claim (DB first, projection
         // second).

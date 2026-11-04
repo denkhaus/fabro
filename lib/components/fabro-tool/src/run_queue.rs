@@ -39,8 +39,9 @@ pub struct FabroRunQueueParams {
 /// The settled-verdict filter (stage E): the two verdicts that free a
 /// run from the anti-join. Pending and parked are refused at validation
 /// — they name the default queue, not a filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, JsonSchema, Deserialize, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum FabroSettledVerdict {
     Enabled,
     Refused,

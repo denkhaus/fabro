@@ -105,16 +105,20 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
                             if merge_verdict_of_run(state, claim.run_id).await
                                 == Some(fabro_types::OrchestrationVerdict::Refused)
                             {
-                                if state
+                                match state
                                     .work_store()
                                     .release(
                                         &claim.claim_id,
                                         "merge refused: the adjudicator rejected the run",
                                     )
                                     .await
-                                    .is_ok()
                                 {
-                                    report.orphans_released += 1;
+                                    Ok(_released) => report.orphans_released += 1,
+                                    Err(error) => tracing::warn!(
+                                        claim_id = %claim.claim_id,
+                                        error = ?error,
+                                        "work reconciler: refused-verdict release failed"
+                                    ),
                                 }
                                 continue;
                             }
@@ -300,16 +304,20 @@ async fn reconcile_run_state(
     // resolved with the stage-E rewire).
     let verdict = merge_verdict_of_run(state, claim.run_id).await;
     if verdict == Some(fabro_types::OrchestrationVerdict::Refused) {
-        if state
+        match state
             .work_store()
             .release(
                 &claim.claim_id,
                 "merge refused: the adjudicator rejected the run",
             )
             .await
-            .is_ok()
         {
-            report.orphans_released += 1;
+            Ok(_released) => report.orphans_released += 1,
+            Err(error) => tracing::warn!(
+                claim_id = %claim.claim_id,
+                error = ?error,
+                "work reconciler: refused-verdict release failed"
+            ),
         }
     } else if verdict.is_none() {
         tracing::debug!(

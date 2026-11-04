@@ -19,21 +19,13 @@
 # discipline: never absorb a failed write).
 
 use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, work-close-argv, cli
+    server, run-queue-argv, entries-from, work-close-argv, cli
 ]
 
 const CALLER = 'adjudicator-closing-pass'
 const FIELD = 'closable'
 const VERDICT = 'enabled'
 const WORKFLOW = 'develop'
-
-# Pure: the queue entries from a run-queue call's stdout.
-def entries-from [stdout: string]: nothing -> list<any> {
-    let parsed = (try { $stdout | from json } catch { null })
-    if ($parsed | describe | str starts-with "record") {
-        $parsed | get -o data | default []
-    } else { [] }
-}
 
 def main [--smoke]: nothing -> nothing {
     let srv = (server $CALLER)
