@@ -236,3 +236,74 @@ async fn a_conflicted_merge_answers_409_with_the_conflict_code() {
         );
     }
 }
+
+/// Idempotence (work#1127): a re-drive of an ALREADY-MERGED pull
+/// request answers 200 immediately — the explicit state read
+/// short-circuits before the merge call. A crash between merge and the
+/// closable mark must not strand a merged run as a phantom conflict
+/// packet. No PUT mock exists: a merge call would hit the mock
+/// server's unmatched 404 and fail the 200 assertion.
+#[tokio::test]
+async fn a_re_drive_of_an_already_merged_pull_request_answers_200() {
+    let github = MockServer::start();
+    let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+    let merger = RunId::new();
+    let adjudicator = RunId::new();
+    let target = RunId::new();
+    seed_run(&state, &merger, "merger", None).await;
+    seed_run(&state, &adjudicator, "adjudicator", None).await;
+    seed_run(
+        &state,
+        &target,
+        "develop",
+        Some(fabro_types::PullRequestLink {
+            owner:  "denkhaus".to_string(),
+            repo:   "fabro".to_string(),
+            number: 501,
+        }),
+    )
+    .await;
+    seed_mergeable_target(&state, &target, &adjudicator).await;
+
+    let state_mock = github.mock(|when, then| {
+        when.method("GET")
+            .path("/repos/denkhaus/fabro/pulls/501")
+            .header("authorization", "Bearer ghu_test");
+        then.status(200).json_body(json!({
+            "number": 501,
+            "title": "the merged run's pull request",
+            "state": "closed",
+            "draft": false,
+            "merged": true,
+            "merged_at": "2026-11-04T20:00:00Z",
+            "mergeable": true,
+            "additions": 10,
+            "deletions": 2,
+            "changed_files": 2,
+            "html_url": "https://github.com/denkhaus/fabro/pull/501",
+            "user": {"login": "fabro-run"},
+            "head": {"ref": "fabro/run/01TARGET"},
+            "base": {"ref": "denkhaus"},
+            "created_at": "2026-11-04T19:00:00Z",
+            "updated_at": "2026-11-04T20:00:00Z"
+        }));
+    });
+
+    let response = merge_call(&state, &merger, &target).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "a re-drive of an already-merged PR answers 200 (no phantom conflict)"
+    );
+    let body = body_json(response).await;
+    assert_eq!(body["merged"], json!(true), "the response reports merged");
+    assert_eq!(
+        body["pull_request"], "https://github.com/denkhaus/fabro/pull/501",
+        "the response names the PR: {body}"
+    );
+    assert_eq!(
+        state_mock.calls(),
+        1,
+        "exactly one state read short-circuits the merge call"
+    );
+}

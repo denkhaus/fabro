@@ -505,6 +505,44 @@ async fn merge_run(
     // machinery — squash, the line's merge shape).
     let creds = super::pull_requests::load_server_github_credentials(&state).await?;
     let github = super::pull_requests::server_github_context(&state, &creds)?;
+
+    // Idempotence (work#1127, the grilled explicit state read): a
+    // re-drive of an already-merged pull request answers 200
+    // immediately — a crash between the merge and the closable mark
+    // must not strand a merged run as a phantom conflict packet. The
+    // probe FAILS OPEN: on a read error the merge call itself stays
+    // the authority (GitHub answers 405/409 for an already-merged PR
+    // only when the state read could not prove it).
+    let already_merged =
+        match fabro_github::get_pull_request(&github, &record.owner, &record.repo, record.number)
+            .await
+        {
+            Ok(detail) => detail.merged,
+            Err(error) => {
+                tracing::warn!(
+                    error = ?error,
+                    target_run_id = %target,
+                    pr_number = record.number,
+                    "merge door: the idempotence state read failed — proceeding to the merge call"
+                );
+                false
+            }
+        };
+    if already_merged {
+        info!(
+            target_run_id = %target,
+            writer_run_id = %writer,
+            pr_number = record.number,
+            "run pull request already merged (merger door, idempotent re-drive)"
+        );
+        return Ok(Json(RunMergeResponse {
+            run_id:       target.to_string(),
+            merged:       true,
+            pull_request: record.html_url(),
+        })
+        .into_response());
+    }
+
     let merge = fabro_github::merge_pull_request(
         &github,
         &record.owner,
