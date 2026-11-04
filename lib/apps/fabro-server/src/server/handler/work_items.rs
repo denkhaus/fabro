@@ -20,7 +20,7 @@ use fabro_api::types::{
     WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{
-    PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkReleasedRecord,
+    PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkLandedRecord, WorkReleasedRecord,
 };
 use fabro_types::RunId;
 use fabro_work::{
@@ -565,11 +565,10 @@ async fn close_work_item(
         if let Err(error) = run_records::append(
             &state,
             claim.run_id,
-            PlatformRecord::WorkReleased(WorkReleasedRecord {
+            PlatformRecord::WorkLanded(WorkLandedRecord {
                 claim_id:   landed.claim_id.clone(),
                 project_id: landed.project_id.clone(),
                 item_key:   landed.item_key.clone(),
-                reason:     "landed".to_string(),
             }),
         )
         .await

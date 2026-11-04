@@ -67,6 +67,12 @@ impl RunView {
             PlatformRecord::WorkReleased(_) => {
                 projection.current_work_item = None;
             }
+            PlatformRecord::WorkLanded(_) => {
+                // Merge-complete also ends the run's claim (work#1128):
+                // the land folds like the release — the item leaves the
+                // run's current-work-item slot.
+                projection.current_work_item = None;
+            }
             PlatformRecord::RunBranch(record) => {
                 self.state.run_branch.clone_from(&record.run_branch);
                 self.state.base_sha.clone_from(&record.base_sha);

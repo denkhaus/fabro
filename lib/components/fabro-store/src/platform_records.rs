@@ -159,6 +159,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "work.released")]
     #[strum(serialize = "work.released")]
     WorkReleased,
+    #[serde(rename = "work.landed")]
+    #[strum(serialize = "work.landed")]
+    WorkLanded,
     #[serde(rename = "observation.recorded")]
     #[strum(serialize = "observation.recorded")]
     ObservationRecorded,
@@ -226,6 +229,12 @@ pub enum PlatformRecord {
     /// The run's claim on one work item ended (released or landed).
     #[serde(rename = "work.released")]
     WorkReleased(WorkReleasedRecord),
+    /// The run's claim on one work item LANDED — merge-complete, the
+    /// adjudicator's close of a closable-enabled item (work#1128: land
+    /// and release are distinct events; consumers match the kind, never
+    /// a reason string).
+    #[serde(rename = "work.landed")]
+    WorkLanded(WorkLandedRecord),
     /// A pull request was asked for: the supervisor creates it.
     #[serde(rename = "pull_request.requested")]
     PullRequestRequested(PullRequestRequestedRecord),
@@ -288,6 +297,7 @@ impl PlatformRecord {
             Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
             Self::WorkClaimed(_) => PlatformRecordKind::WorkClaimed,
             Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
+            Self::WorkLanded(_) => PlatformRecordKind::WorkLanded,
             Self::ObservationRecorded(_) => PlatformRecordKind::ObservationRecorded,
             Self::RunOrchestration(_) => PlatformRecordKind::RunOrchestration,
         }
@@ -322,6 +332,7 @@ impl PlatformRecord {
             | Self::RunBranchPublished(_)
             | Self::WorkClaimed(_)
             | Self::WorkReleased(_)
+            | Self::WorkLanded(_)
             | Self::ObservationRecorded(_)
             | Self::RunOrchestration(_) => None,
         }
@@ -440,6 +451,16 @@ pub struct WorkReleasedRecord {
     pub project_id: String,
     pub item_key:   String,
     pub reason:     String,
+}
+
+/// A LANDED work-item claim (work#1128): merge-complete, the close door
+/// land path. The WorkReleased shape MINUS the reason string — the kind
+/// itself carries the meaning; no free text rides the typed channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkLandedRecord {
+    pub claim_id:   String,
+    pub project_id: String,
+    pub item_key:   String,
 }
 
 /// One observation entry a stage's agent recorded through the
@@ -973,6 +994,11 @@ mod tests {
                 project_id: "fabro".to_string(),
                 item_key:   "denkhaus/work#1".to_string(),
                 reason:     "run failed".to_string(),
+            }),
+            PlatformRecordKind::WorkLanded => PlatformRecord::WorkLanded(WorkLandedRecord {
+                claim_id:   "claim-1".to_string(),
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1".to_string(),
             }),
             PlatformRecordKind::RunParent => PlatformRecord::RunParent(RunParentRecord {
                 parent_id:          Some(fixtures::RUN_2),

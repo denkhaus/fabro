@@ -1316,7 +1316,7 @@ mod closure_radius {
     use fabro_server::server::AppState;
     use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
     use fabro_store::platform_records::{
-        ObservationRecordedRecord, PlatformRecord, PlatformRecordStore,
+        ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, PlatformRecordStore,
     };
     use fabro_types::RunId;
     use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
@@ -1655,6 +1655,42 @@ mod closure_radius {
         assert_eq!(
             claim["state"], "landed",
             "merge-complete lands the claim, never releases it: {claim}"
+        );
+
+        // The land event is its OWN kind (work#1128): exactly one
+        // work.landed record with the no-reason payload — a
+        // work.released with a reason string must never carry a land.
+        let land_records = records
+            .read_kind(&develop, PlatformRecordKind::WorkLanded)
+            .await
+            .expect("work.landed records read");
+        assert_eq!(
+            land_records.len(),
+            1,
+            "merge-complete appends exactly one work.landed record"
+        );
+        let land = serde_json::to_value(&land_records[0].record).expect("record serializes");
+        assert_eq!(land["kind"], "work.landed", "the kind is the discriminator");
+        assert_eq!(
+            land["claim_id"],
+            claim_id.to_string(),
+            "the record names the claim"
+        );
+        assert_eq!(
+            land["item_key"], "denkhaus/work#1",
+            "the record names the item"
+        );
+        assert!(
+            land.get("reason").is_none(),
+            "the land record carries no reason string — the kind is the meaning: {land}"
+        );
+        let released_after_land = records
+            .read_kind(&develop, PlatformRecordKind::WorkReleased)
+            .await
+            .expect("work.released records read");
+        assert!(
+            released_after_land.is_empty(),
+            "merge-complete never writes work.released — land and release are distinct events"
         );
 
         // The old own-claim arm is GONE: a non-adjudicator worker close
