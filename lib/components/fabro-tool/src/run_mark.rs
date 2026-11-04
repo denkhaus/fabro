@@ -20,7 +20,18 @@ use super::common::{FabroToolBackend, ToolError, ToolResult};
 
 /// The wire form of [`OrchestrationField`] (schema-facing twin, the
 /// `FabroObservationCategory` pattern: fabro-types carries no schemars).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema, strum::Display)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Deserialize,
+    Serialize,
+    JsonSchema,
+    strum::Display,
+    strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum FabroOrchestrationField {

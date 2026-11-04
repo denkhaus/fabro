@@ -385,19 +385,26 @@ impl RunSummaryStore {
     /// until resolved, stage D part 2). The optional `workflow` filter
     /// narrows the worklist to one workflow's runs. Newest first. No
     /// cursor, no queue table: repetition is gap-safe.
+    /// the runs this field has SETTLED — latest verdict `enabled` or
+    /// `refused` — read once in Rust. Verdict records are rare, so
+    /// the fold stays cheap (the same trade `latest_verdicts_by_run`
+    /// names). A `parked` latest verdict does NOT settle: parked is
+    /// an open operator escalation that re-enters every pass until
+    /// resolved (stage D part 2).
+    ///
+    /// The optional `requirement` (work#1126) names another field's
+    /// required latest verdict: when set, only runs whose LATEST
+    /// verdict on the NAMED other field IS that verdict list — the
+    /// merger's worklist is the `closable` anti-join restricted to
+    /// `merge = enabled`.
     pub async fn adjudication_queue(
         &self,
         field: OrchestrationField,
+        requirement: Option<(OrchestrationField, OrchestrationVerdict)>,
         workflow: Option<&str>,
         limit: u32,
         now: DateTime<Utc>,
     ) -> Result<Vec<Run>> {
-        // The runs this field has SETTLED — latest verdict `enabled` or
-        // `refused` — read once in Rust. Verdict records are rare, so
-        // the fold stays cheap (the same trade `latest_verdicts_by_run`
-        // names). A `parked` latest verdict does NOT settle: parked is
-        // an open operator escalation that re-enters every pass until
-        // resolved (stage D part 2).
         let settled: Vec<String> = self
             .platform_records()
             .latest_verdicts_by_run(field)
@@ -411,10 +418,41 @@ impl RunSummaryStore {
             })
             .map(|(run_id, _verdict)| run_id.to_string())
             .collect();
+        // The other-field requirement (work#1126): the runs whose LATEST
+        // verdict on the OTHER field IS the required one — the IN half of
+        // the merger's worklist. An empty required set answers empty (no
+        // run anywhere carries the required verdict yet).
+        let required: Option<Vec<String>> = match requirement {
+            None => None,
+            Some((other_field, required_verdict)) => {
+                let ids = self
+                    .platform_records()
+                    .latest_verdicts_by_run(other_field)
+                    .await?
+                    .into_iter()
+                    .filter(|(_run_id, latest)| *latest == required_verdict)
+                    .map(|(run_id, _latest)| run_id.to_string())
+                    .collect::<Vec<String>>();
+                if ids.is_empty() {
+                    return Ok(Vec::new());
+                }
+                Some(ids)
+            }
+        };
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
         query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
         if let Some(workflow) = workflow {
             query.push(" AND workflow_slug = ").push_bind(workflow);
+        }
+        if let Some(required) = required.as_ref() {
+            if !required.is_empty() {
+                query.push(" AND runs.id IN (");
+                let mut separated = query.separated(", ");
+                for run_id in required {
+                    separated.push_bind(run_id.clone());
+                }
+                query.push(")");
+            }
         }
         if !settled.is_empty() {
             query.push(" AND runs.id NOT IN (");
@@ -921,7 +959,7 @@ mod tests {
         RunSummaryVisibility,
     };
     use crate::platform_records::{
-        PlatformRecord, PullRequestCreatedRecord, PullRequestFailedRecord,
+        PlatformRecord, PlatformRecordKind, PullRequestCreatedRecord, PullRequestFailedRecord,
         PullRequestRequestedRecord, RunBranchPublishOutcome, RunBranchPublishedRecord,
     };
     use crate::test_support as store_test_support;
@@ -1095,7 +1133,7 @@ mod tests {
 
         let now = dt("2026-11-01T13:00:00Z");
         let merge_queue = store
-            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, None, 50, now)
             .await
             .expect("the merge queue reads");
         assert_eq!(
@@ -1106,7 +1144,7 @@ mod tests {
 
         // The merge verdict does not free the closable field.
         let closable_queue = store
-            .adjudication_queue(OrchestrationField::Closable, None, 50, now)
+            .adjudication_queue(OrchestrationField::Closable, None, None, 50, now)
             .await
             .expect("the closable queue reads");
         let mut closable_ids = closable_queue.iter().map(|run| run.id).collect::<Vec<_>>();
@@ -1126,7 +1164,7 @@ mod tests {
             .await
             .unwrap();
         let archived_queue = store
-            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, None, 50, now)
             .await
             .expect("the queue reads after archiving");
         assert_eq!(
@@ -1298,7 +1336,7 @@ mod tests {
 
         let now = dt("2026-11-02T13:00:00Z");
         let queue = store
-            .adjudication_queue(OrchestrationField::Merge, None, 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, None, 50, now)
             .await
             .expect("the unfiltered queue reads");
         assert_eq!(
@@ -1309,13 +1347,137 @@ mod tests {
         );
 
         let develop_queue = store
-            .adjudication_queue(OrchestrationField::Merge, Some("develop"), 50, now)
+            .adjudication_queue(OrchestrationField::Merge, None, Some("develop"), 50, now)
             .await
             .expect("the filtered queue reads");
         assert_eq!(
             develop_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
             vec![parked.spec.run_id],
             "the workflow filter narrows the worklist to the named workflow's runs"
+        );
+    }
+
+    /// The other-field requirement (work#1126): the merger's worklist is
+    /// the `closable` anti-join INTERSECTED with `merge = enabled` — a
+    /// merge:pending or merge:refused run must never reach the merge
+    /// door, and a closable-settled run stays drained even when its
+    /// merge verdict is enabled.
+    #[tokio::test]
+    async fn adjudication_queue_requirement_restricts_to_the_other_fields_verdict() {
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        use crate::platform_records::{PlatformRecord, RunOrchestrationRecord};
+
+        let (_directory, store) = store().await;
+        let base = dt("2026-11-04T12:00:00Z");
+        // Four terminal develop runs: merge enabled, merge pending (no
+        // record), merge refused, merge parked. Only the FIRST may ever
+        // reach the merger worklist.
+        let mut enabled_run = projection(run_id(10, 1), "merge enabled", base);
+        let mut pending_run = projection(run_id(11, 2), "merge pending", base);
+        let mut refused_run = projection(run_id(12, 3), "merge refused", base);
+        let mut parked_run = projection(run_id(13, 4), "merge parked", base);
+        for run in [
+            &mut enabled_run,
+            &mut pending_run,
+            &mut refused_run,
+            &mut parked_run,
+        ] {
+            run.status = sample_status(RunStatusKind::Succeeded);
+            run.spec.workflow_slug = Some("develop".to_string());
+            write(&store, run).await;
+        }
+        for (run, verdict) in [
+            (&enabled_run, OrchestrationVerdict::Enabled),
+            (&refused_run, OrchestrationVerdict::Refused),
+            (&parked_run, OrchestrationVerdict::Parked),
+        ] {
+            store
+                .platform_records()
+                .append(
+                    &run.spec.run_id,
+                    &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                        field: OrchestrationField::Merge,
+                        verdict,
+                        by_run: None,
+                    }),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+        // The enabled run already carries a settled closable verdict:
+        // the merger processed it — the anti-join half keeps it drained.
+        store
+            .platform_records()
+            .append(
+                &enabled_run.spec.run_id,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Closable,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let now = dt("2026-11-04T13:00:00Z");
+        let requirement = Some((OrchestrationField::Merge, OrchestrationVerdict::Enabled));
+        let merger_queue = store
+            .adjudication_queue(
+                OrchestrationField::Closable,
+                requirement,
+                Some("develop"),
+                50,
+                now,
+            )
+            .await
+            .expect("the merger worklist reads");
+        assert!(
+            merger_queue.is_empty(),
+            "the merger worklist holds ONLY merge:enabled runs without a settled \
+             closable verdict — the enabled run is closable-settled (drained), and \
+             pending/refused/parked runs never reach the merge door; got {:?}",
+            merger_queue.iter().map(|run| run.id).collect::<Vec<_>>()
+        );
+
+        // Drop every verdict on the enabled run, then re-write ONLY the
+        // merge verdict: merge:enabled with an unsettled closable field
+        // re-enters (a crash between merge and mark re-drives the run).
+        sqlx::query("DELETE FROM platform_records WHERE kind = ? AND run_id = ?")
+            .bind(PlatformRecordKind::RunOrchestration.to_string())
+            .bind(enabled_run.spec.run_id.to_string())
+            .execute(&store.pool())
+            .await
+            .unwrap();
+        store
+            .platform_records()
+            .append(
+                &enabled_run.spec.run_id,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Merge,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  None,
+                }),
+                None,
+            )
+            .await
+            .unwrap();
+        let re_driven = store
+            .adjudication_queue(
+                OrchestrationField::Closable,
+                requirement,
+                Some("develop"),
+                50,
+                now,
+            )
+            .await
+            .expect("the re-read works");
+        assert_eq!(
+            re_driven.iter().map(|run| run.id).collect::<Vec<_>>(),
+            vec![enabled_run.spec.run_id],
+            "merge:enabled with an unsettled closable verdict re-enters the worklist"
         );
     }
 

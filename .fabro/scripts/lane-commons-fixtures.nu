@@ -155,6 +155,15 @@ def test-probe-literal-equality []: nothing -> nothing {
     ]
     assert-eq (work_channel run-queue-argv 'http://127.0.0.1:32276' 'merge' 'develop') $probe39_queue 'run-queue-argv equals the probe-39 bench literal'
 
+    # The merger worklist literal (work#1126): the closable anti-join
+    # restricted to merge:enabled — the argv the merger fast path reads
+    # and probe-40's merger arm drives.
+    let merger_queue = [
+        'run' 'queue' '--field' 'closable' '--requires' 'merge=enabled'
+        '--workflow' 'develop' '--json' '--server' 'http://127.0.0.1:32276'
+    ]
+    assert-eq (work_channel run-queue-argv 'http://127.0.0.1:32276' 'closable' 'develop' '' 'merge=enabled') $merger_queue 'run-queue-argv equals the merger worklist literal (work#1126)'
+
     let probe39_facts = [
         'observation' '--server' 'http://127.0.0.1:32276' 'list'
         '--run-id' '01M5844J1FDD00000000000000' '--json'

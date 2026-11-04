@@ -869,6 +869,24 @@ impl PlatformRecordStore {
         }
         Ok(latest.into_iter().collect())
     }
+
+    /// The LATEST verdict ONE run carries on one orchestration field
+    /// (work#1126): the single-run form of [`Self::latest_verdicts_by_run`]
+    /// — the doors and the reconciler read one run's verdict without
+    /// folding every run's records into a map first. `None` means the
+    /// field is pending on that run (no verdict record exists).
+    pub async fn latest_verdict_of_run(
+        &self,
+        field: OrchestrationField,
+        run_id: &RunId,
+    ) -> Result<Option<OrchestrationVerdict>> {
+        Ok(self
+            .latest_verdicts_by_run(field)
+            .await?
+            .into_iter()
+            .find(|(candidate, _verdict)| candidate == run_id)
+            .map(|(_run_id, verdict)| verdict))
+    }
 }
 
 fn decode_row(row: &SqliteRow) -> Result<StoredPlatformRecord> {

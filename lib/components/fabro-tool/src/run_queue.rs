@@ -24,6 +24,11 @@ pub struct FabroRunQueueParams {
     /// Which orchestration field's queue to read: `merge` (the
     /// adjudicator's pass-one queue) or `closable` (the merger's).
     pub field:    FabroOrchestrationField,
+    /// Restrict the anti-join to runs whose latest verdict on the
+    /// NAMED OTHER field IS this verdict — `<field>=<verdict>`, for
+    /// example `merge=enabled`. The merger's worklist. The requirement
+    /// must name the OTHER field and cannot combine with `verdict`.
+    pub requires: Option<String>,
     /// Only runs of this workflow slug, e.g. `develop`. Optional — the
     /// adjudicator reads the develop line only.
     pub workflow: Option<String>,
@@ -59,12 +64,16 @@ impl From<FabroSettledVerdict> for fabro_types::OrchestrationVerdict {
 /// A validated queue read: the parsed field, a trimmed workflow filter
 /// (absent means no filter; a PRESENT-but-blank value is refused — the
 /// CLI facade's own rule, door symmetry: both twins refuse the same
-/// argv), and the optional settled-verdict filter.
+/// argv), the optional settled-verdict filter, and the parsed
+/// other-field requirement (work#1126).
 #[derive(Debug, PartialEq, Eq)]
 pub struct ValidatedRunQueue {
     pub field:    FabroOrchestrationField,
     pub workflow: Option<String>,
     pub verdict:  Option<FabroSettledVerdict>,
+    /// The `<field>=<verdict>` requirement, parsed — the OTHER field's
+    /// required latest verdict (the merger's worklist half).
+    pub requires: Option<(FabroOrchestrationField, FabroSettledVerdict)>,
 }
 
 impl TryFrom<FabroRunQueueParams> for ValidatedRunQueue {
@@ -83,10 +92,52 @@ impl TryFrom<FabroRunQueueParams> for ValidatedRunQueue {
             }
             None => None,
         };
+        let requires = match params.requires.as_deref() {
+            Some(raw) => {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    if params.verdict.is_some() {
+                        return Err(ToolError::message(
+                            "requires belongs to the unsettled anti-join; it cannot combine with \
+                             the verdict filter",
+                        ));
+                    }
+                    let (raw_field, raw_verdict) = trimmed.split_once('=').ok_or_else(|| {
+                        ToolError::message(format!(
+                            "`{trimmed}` is not a field=verdict pair; the requirement reads, \
+                             for example, merge=enabled"
+                        ))
+                    })?;
+                    let field: FabroOrchestrationField = raw_field.parse().map_err(|_| {
+                        ToolError::message(format!(
+                            "`{raw_field}` is not an orchestration field; the fields are merge \
+                             and closable"
+                        ))
+                    })?;
+                    if field == params.field {
+                        return Err(ToolError::message(
+                            "the requirement must name the OTHER field; a run settled on the \
+                             queue's own field has already left the anti-join",
+                        ));
+                    }
+                    let verdict: FabroSettledVerdict = raw_verdict.parse().map_err(|_| {
+                        ToolError::message(format!(
+                            "`{raw_verdict}` is not a settled verdict; the requirement accepts \
+                             enabled or refused"
+                        ))
+                    })?;
+                    Some((field, verdict))
+                }
+            }
+            None => None,
+        };
         Ok(Self {
             field: params.field,
             workflow,
             verdict: params.verdict,
+            requires,
         })
     }
 }
@@ -142,6 +193,12 @@ pub async fn run_queue(
             params.field.into(),
             params.workflow.as_deref(),
             params.verdict.map(fabro_types::OrchestrationVerdict::from),
+            params.requires.map(|(field, verdict)| {
+                (
+                    field.into(),
+                    fabro_types::OrchestrationVerdict::from(verdict),
+                )
+            }),
         )
         .await
         .map_err(|err| ToolError::from_anyhow(&err))?;
@@ -206,7 +263,61 @@ mod tests {
             field,
             workflow: workflow.map(str::to_string),
             verdict: None,
+            requires: None,
         }
+    }
+
+    /// The other-field requirement (work#1126): the pair parses into the
+    /// validated read; every malformed shape refuses with a teaching
+    /// message; the same-field and verdict-combination arms refuse too.
+    #[test]
+    fn the_requirement_parses_and_every_malformed_shape_refuses() {
+        let mut merger_read = params(FabroOrchestrationField::Closable, Some("develop"));
+        merger_read.requires = Some("merge=enabled".to_string());
+        let validated =
+            ValidatedRunQueue::try_from(merger_read).expect("the merger worklist read validates");
+        assert_eq!(
+            validated.requires,
+            Some((FabroOrchestrationField::Merge, FabroSettledVerdict::Enabled)),
+            "the pair parses into field and settled verdict"
+        );
+
+        let malformed = "merge";
+        for (raw, needle) in [
+            (malformed, "field=verdict"),
+            ("bogus=enabled", "orchestration field"),
+            ("merge=bogus", "enabled or refused"),
+            ("merge=parked", "enabled or refused"),
+        ] {
+            let mut params = params(FabroOrchestrationField::Closable, None);
+            params.requires = Some(raw.to_string());
+            let error = ValidatedRunQueue::try_from(params)
+                .expect_err("the malformed requirement must fail");
+            assert!(
+                error.to_string().contains(needle),
+                "the refusal teaches `{needle}`: {error}"
+            );
+        }
+
+        // The same-field arm: the requirement must name the OTHER field.
+        let mut same_field = params(FabroOrchestrationField::Closable, None);
+        same_field.requires = Some("closable=enabled".to_string());
+        let error =
+            ValidatedRunQueue::try_from(same_field).expect_err("the same-field pair must fail");
+        assert!(
+            error.to_string().contains("OTHER field"),
+            "the refusal teaches the direction: {error}"
+        );
+
+        // The combination arm: the requirement never rides a settled read.
+        let mut combined = params(FabroOrchestrationField::Closable, None);
+        combined.verdict = Some(FabroSettledVerdict::Enabled);
+        combined.requires = Some("merge=enabled".to_string());
+        let error = ValidatedRunQueue::try_from(combined).expect_err("the combination must fail");
+        assert!(
+            error.to_string().contains("anti-join"),
+            "the refusal names the unsettled anti-join: {error}"
+        );
     }
 
     fn summary(run: &str, verdict: &str, work_item: Option<&str>) -> RunQueueSummary {

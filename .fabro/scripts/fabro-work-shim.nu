@@ -99,6 +99,7 @@ def main [
     --field: string,              # run queue
     --workflow: string,           # run queue
     --verdict: string,            # run queue (the settled filter, stage E)
+    --requires: string,           # run queue (the other-field requirement, work#1126)
     # observation
     --run-id: string,             # binds $run_id (observation list/record)
     --category: string,           # observation record
@@ -119,7 +120,7 @@ def main [
     let facade = ($argv | get 0)
     let sub = ($argv | get 1)
     let positional = ($argv | skip 2)
-    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
+    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
 
     match [$facade $sub] {
         ["work" "show"] => {
@@ -221,14 +222,25 @@ def main [
             {comments: $comments} | to json --raw | print
         }
         ["run" "queue"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "field" "workflow" "verdict" "json"]
-            let flags = {server: $server, field: $field, workflow: $workflow, verdict: $verdict, json: $json}
+            refuse-foreign-flags $facade $sub $provided ["server" "field" "workflow" "verdict" "requires" "json"]
+            let flags = {server: $server, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, json: $json}
             let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
             save-state $p $logged
             let wanted_field = ($field | default "merge")
             let marks = ($logged | get -o marks | default [])
             let runs = ($logged | get -o runs | default [])
             let verdict_filter = ($verdict | default '')
+            # The other-field requirement (work#1126): `<field>=<verdict>`
+            # — only runs whose LATEST verdict on the OTHER field IS this
+            # verdict list (the server-side worklist semantics).
+            let requirement = ($requires | default '')
+            let require_parts = (if ($requirement | is-empty) { null } else { $requirement | split row '=' })
+            if ($require_parts != null) and (($require_parts | length) != 2) {
+                print -e $"fabro-work-shim: run queue requires '<field>=<verdict>', got: ($requirement)"
+                exit 2
+            }
+            let require_field = (if $require_parts == null { '' } else { $require_parts | get 0 })
+            let require_verdict = (if $require_parts == null { '' } else { $require_parts | get 1 })
             let data = ($runs | where {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
                 let terminal = ($r.status in ["succeeded" "failed" "dead"])
@@ -240,7 +252,15 @@ def main [
                 } else {
                     ($latest != null) and ($latest.verdict == $verdict_filter)
                 }
-                $terminal and $verdict_ok and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
+                # The requirement half: the OTHER field's latest verdict
+                # must BE the required one (absent marks read pending).
+                let require_ok = if $require_parts == null {
+                    true
+                } else {
+                    let other = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $require_field}))
+                    ($other != null) and ($other.verdict == $require_verdict)
+                }
+                $terminal and $verdict_ok and $require_ok and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
             } | each {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
                 {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: $r.status}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null), project: ($r | get -o project | default null)}

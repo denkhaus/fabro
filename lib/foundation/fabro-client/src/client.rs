@@ -1940,12 +1940,19 @@ impl Client {
     /// narrowed to one workflow, each entry decorated with the work item
     /// and project of the run's latest claim. A settled `verdict`
     /// (stage E) flips the join: exactly the runs settled on that
-    /// verdict list — the closing pass reads closable = enabled.
+    /// verdict list — the closing pass reads closable = enabled. The
+    /// optional `requires` pair (work#1126) restricts the anti-join to
+    /// runs whose latest verdict on the OTHER field IS the named one —
+    /// the merger's worklist is closable anti-join + merge = enabled.
     pub async fn run_queue(
         &self,
         field: fabro_types::OrchestrationField,
         workflow: Option<&str>,
         verdict: Option<fabro_types::OrchestrationVerdict>,
+        requires: Option<(
+            fabro_types::OrchestrationField,
+            fabro_types::OrchestrationVerdict,
+        )>,
     ) -> Result<types::RunQueueList> {
         let workflow = workflow.map(str::to_string);
         let response = self
@@ -1974,6 +1981,15 @@ impl Client {
                             )
                         }
                     });
+                }
+                if let Some((other_field, required_verdict)) = requires {
+                    // Pattern-constrained by construction: both halves are
+                    // typed enums whose wire forms the pattern names.
+                    let pair = format!("{other_field}={required_verdict}");
+                    request = request.requires(
+                        pair.parse::<types::ListRunQueueRequires>()
+                            .expect("a typed field/verdict pair always satisfies the pattern"),
+                    );
                 }
                 request.send().await
             })

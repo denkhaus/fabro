@@ -1396,11 +1396,11 @@ async fn adjudicator_close_authority(
         })?;
     // The verdict the close rides on: the CLAIM RUN's closable verdict,
     // not the caller's. One read of the field's fold.
-    let verdicts = state
+    let verdict = state
         .stores
         .run_summaries
         .platform_records()
-        .latest_verdicts_by_run(fabro_types::OrchestrationField::Closable)
+        .latest_verdict_of_run(fabro_types::OrchestrationField::Closable, &claim.run_id)
         .await
         .map_err(|error| {
             ApiError::new(
@@ -1408,10 +1408,6 @@ async fn adjudicator_close_authority(
                 format!("reading the closable verdicts failed: {error}"),
             )
         })?;
-    let verdict = verdicts
-        .iter()
-        .find(|(verdict_run, _)| verdict_run == &claim.run_id)
-        .map(|(_, verdict)| *verdict);
     match verdict {
         Some(fabro_types::OrchestrationVerdict::Enabled) => Ok(Some(claim)),
         verdict => Err(ApiError::with_code(

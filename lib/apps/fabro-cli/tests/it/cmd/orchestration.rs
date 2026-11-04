@@ -213,6 +213,84 @@ fn run_queue_verdict_filter_parses_and_refuses_teaching() {
     );
 }
 
+/// The other-field requirement (work#1126): the merger worklist argv
+/// parses; every malformed shape refuses with a teaching message; the
+/// same-field and verdict-combination arms refuse too.
+#[test]
+fn run_queue_requires_filter_parses_and_refuses_teaching() {
+    let transport = fabro(&[
+        "run",
+        "queue",
+        "--field",
+        "closable",
+        "--requires",
+        "merge=enabled",
+    ]);
+    assert!(!transport.status.success());
+    assert!(
+        !stderr_of(&transport).contains("unexpected argument"),
+        "the merger worklist argv must parse: {}",
+        stderr_of(&transport)
+    );
+
+    let malformed = fabro(&["run", "queue", "--requires", "merge"]);
+    assert!(!malformed.status.success());
+    let stderr = stderr_of(&malformed);
+    assert!(
+        stderr.contains("field=verdict"),
+        "the refusal names the pair shape: {stderr}"
+    );
+
+    let bogus_field = fabro(&["run", "queue", "--requires", "bogus=enabled"]);
+    assert!(!bogus_field.status.success());
+    assert!(
+        stderr_of(&bogus_field).contains("orchestration field"),
+        "the refusal names the fields: {}",
+        stderr_of(&bogus_field)
+    );
+
+    let bogus_verdict = fabro(&["run", "queue", "--requires", "merge=bogus"]);
+    assert!(!bogus_verdict.status.success());
+    assert!(
+        stderr_of(&bogus_verdict).contains("enabled")
+            && stderr_of(&bogus_verdict).contains("refused"),
+        "the refusal names the settled verdicts: {}",
+        stderr_of(&bogus_verdict)
+    );
+
+    let same_field = fabro(&[
+        "run",
+        "queue",
+        "--field",
+        "closable",
+        "--requires",
+        "closable=enabled",
+    ]);
+    assert!(!same_field.status.success());
+    assert!(
+        stderr_of(&same_field).contains("OTHER field"),
+        "the same-field refusal teaches the requirement's direction: {}",
+        stderr_of(&same_field)
+    );
+
+    let combined = fabro(&[
+        "run",
+        "queue",
+        "--field",
+        "closable",
+        "--verdict",
+        "enabled",
+        "--requires",
+        "merge=enabled",
+    ]);
+    assert!(!combined.status.success());
+    assert!(
+        stderr_of(&combined).contains("anti-join"),
+        "the combination refusal teaches which read owns the requirement: {}",
+        stderr_of(&combined)
+    );
+}
+
 /// The observation read door: a non-run-id refuses before transport;
 /// the happy argv reaches transport.
 #[test]

@@ -88,7 +88,11 @@ def smoke-merged-tree []: nothing -> string {
 
 def main [--smoke]: nothing -> nothing {
     let srv = (server $CALLER)
-    let queue_res = (cli $CALLER (run-queue-argv $srv $FIELD $WORKFLOW))
+    # The merger's worklist (work#1126): the closable anti-join
+    # RESTRICTED to merge:enabled runs — a merge:pending run cannot kill
+    # the sweep at the door and a merge:refused run cannot become an
+    # immortal parked packet.
+    let queue_res = (cli $CALLER (run-queue-argv $srv $FIELD $WORKFLOW '' 'merge=enabled'))
     if $queue_res.exit_code != 0 {
         print -e $"($CALLER): run queue read failed: ($queue_res.stderr | str trim | str substring 0..240)"
         exit 1

@@ -1543,8 +1543,10 @@ paths:
         anti-join of the run summary store's terminal runs against the
         runs the field has settled (`enabled` or `refused`). `field=merge`
         (default) is the adjudicator's pass-one queue; `field=closable`
-        is the merger's queue (runs the adjudicator marked
-        `merge: enabled`). A `parked` latest verdict keeps the run
+        with `requires=merge=enabled` is the merger's queue (runs the
+        adjudicator marked `merge: enabled` and the merger has not
+        settled a `closable` verdict on yet). A `parked` latest verdict
+        keeps the run
         queued: parked is an open operator escalation that re-enters
         every pass until resolved (stage D part 2). No cursor, no queue
         table: repetition is gap-safe. Archived terminal runs stay in
@@ -1573,6 +1575,19 @@ paths:
             instead of the unsettled anti-join. `enabled` on `closable`
             is the closing-pass worklist (ADR-0039 stage E); `refused`
             names the runs the field rejected.
+        - schema:
+            type: string
+            pattern: "^(merge|closable)=(enabled|refused)$"
+          in: query
+          name: requires
+          description: Restrict the anti-join to runs whose latest
+            verdict on the NAMED OTHER field IS this verdict — the
+            second half of the merger's worklist
+            (`field=closable&requires=merge=enabled`, the merge-enabled
+            runs without a settled closable verdict; a merge-pending or
+            merge-refused run never reaches the merge door). The
+            requirement must name the OTHER field and cannot combine
+            with `verdict`.
         - schema:
             type: string
           in: query

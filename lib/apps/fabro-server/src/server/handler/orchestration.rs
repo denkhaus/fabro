@@ -68,6 +68,94 @@ struct QueueQuery {
     /// lists exactly the runs whose latest verdict on the field IS this
     /// value. The closing pass reads `closable = enabled`.
     verdict:  Option<OrchestrationVerdict>,
+    /// The other-field requirement (work#1126): `<field>=<verdict>`
+    /// restricts the anti-join to runs whose latest verdict on the
+    /// NAMED OTHER field IS this verdict — the merger's worklist is
+    /// `field=closable` + `requires=merge=enabled`.
+    requires: Option<String>,
+}
+
+/// Parse the `requires` pair (`<field>=<verdict>`) with teaching
+/// refusals: exactly one `=`, both halves known enums, the OTHER field
+/// (never the queue's own), and never beside a `verdict` filter (the
+/// requirement belongs to the unsettled anti-join only).
+fn parse_queue_requirement(
+    raw: &str,
+    field: OrchestrationField,
+    verdict_filter_present: bool,
+) -> Result<Option<(OrchestrationField, OrchestrationVerdict)>, ApiError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let raw = trimmed;
+    if verdict_filter_present {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "`requires` belongs to the unsettled anti-join — it cannot combine with `verdict` \
+             (the settled read flips the join; the requirement has no meaning there)",
+            "queue_requires_conflict",
+        ));
+    }
+    let Some((raw_field, raw_verdict)) = raw.split_once('=') else {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{raw}` is not a field=verdict pair — the requirement reads, for example, \
+                 merge=enabled"
+            ),
+            "queue_requires_malformed",
+        ));
+    };
+    let other_field: OrchestrationField = serde_json::from_value(serde_json::Value::String(
+        raw_field.to_string(),
+    ))
+    .map_err(|_| {
+        ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{raw_field}` is not an orchestration field — the fields are merge and closable"
+            ),
+            "queue_requires_unknown_field",
+        )
+    })?;
+    if other_field == field {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "the requirement must name the OTHER field — `{raw_field}` is the queue's own \
+                 field (a run settled on it has already left the anti-join)"
+            ),
+            "queue_requires_same_field",
+        ));
+    }
+    let verdict: OrchestrationVerdict = serde_json::from_value(serde_json::Value::String(
+        raw_verdict.to_string(),
+    ))
+    .map_err(|_| {
+        ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{raw_verdict}` is not a verdict — the requirement accepts enabled or \
+                         refused (pending is absence, parked re-enters the queue by itself)"
+            ),
+            "queue_requires_unknown_verdict",
+        )
+    })?;
+    if !matches!(
+        verdict,
+        OrchestrationVerdict::Enabled | OrchestrationVerdict::Refused
+    ) {
+        return Err(ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "`{raw_verdict}` is not a settled verdict — the requirement accepts enabled or \
+                 refused (pending is absence, parked re-enters the queue by itself)"
+            ),
+            "queue_requires_not_settled",
+        ));
+    }
+    Ok(Some((other_field, verdict)))
 }
 
 /// The adjudication queue: terminal runs whose latest verdict on the
@@ -82,6 +170,13 @@ async fn list_queue(
     Query(query): Query<QueueQuery>,
 ) -> Response {
     let field = query.field.unwrap_or(OrchestrationField::Merge);
+    let requirement = match &query.requires {
+        Some(raw) => match parse_queue_requirement(raw, field, query.verdict.is_some()) {
+            Ok(requirement) => requirement,
+            Err(error) => return error.into_response(),
+        },
+        None => None,
+    };
     // The +1 probe: `has_more` must be honest — a worklist bigger than
     // one page must never read as complete (the fast path would sweep
     // only the first page and route "Queue empty" beside a full
@@ -108,6 +203,7 @@ async fn list_queue(
                 .run_summaries
                 .adjudication_queue(
                     field,
+                    requirement,
                     query.workflow.as_deref(),
                     QUEUE_PAGE_LIMIT + 1,
                     Utc::now(),
@@ -381,11 +477,11 @@ async fn merge_run(
             "merge_no_pull_request",
         ));
     };
-    let verdicts = state
+    if state
         .stores
         .run_summaries
         .platform_records()
-        .latest_verdicts_by_run(OrchestrationField::Merge)
+        .latest_verdict_of_run(OrchestrationField::Merge, &target)
         .await
         .map_err(|err| {
             tracing::error!(error = ?err, target_run_id = %target, "merge verdict read failed");
@@ -393,10 +489,8 @@ async fn merge_run(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Reading the run's merge verdict failed.",
             )
-        })?;
-    if !verdicts
-        .iter()
-        .any(|(run, verdict)| run == &target && verdict == &OrchestrationVerdict::Enabled)
+        })?
+        != Some(OrchestrationVerdict::Enabled)
     {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,

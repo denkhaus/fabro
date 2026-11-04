@@ -339,12 +339,10 @@ async fn merge_verdict_of_run(
         .stores
         .run_summaries
         .platform_records()
-        .latest_verdicts_by_run(fabro_types::OrchestrationField::Merge)
+        .latest_verdict_of_run(fabro_types::OrchestrationField::Merge, &run_id)
         .await
-        .ok()?
-        .into_iter()
-        .find(|(verdict_run, _)| *verdict_run == run_id)
-        .map(|(_, verdict)| verdict)
+        .ok()
+        .flatten()
 }
 
 #[cfg(test)]

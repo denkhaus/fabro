@@ -88,13 +88,21 @@ export def observation-record-argv [srv: string, category: string, text: string]
 
 # Pure: the argv for one run-queue read (the adjudicator's worklist).
 # The optional settled-verdict filter (ADR-0039 stage E) flips the join:
-# `--verdict enabled` on closable is the closing pass's worklist.
-export def run-queue-argv [srv: string, field: string, workflow: string, verdict: string = '']: nothing -> list<string> {
-    if ($verdict | is-empty) {
-        ['run' 'queue' '--field' $field '--workflow' $workflow '--json' '--server' $srv]
-    } else {
-        ['run' 'queue' '--field' $field '--workflow' $workflow '--verdict' $verdict '--json' '--server' $srv]
+# `--verdict enabled` on closable is the closing pass's worklist. The
+# optional requirement (work#1126) restricts the anti-join to runs whose
+# latest verdict on the OTHER field IS the named one: `--requires
+# merge=enabled` on closable is the merger's worklist — a merge-pending
+# or merge-refused run never reaches the merge door.
+export def run-queue-argv [srv: string, field: string, workflow: string, verdict: string = '', requirement: string = '']: nothing -> list<string> {
+    mut argv = ['run' 'queue' '--field' $field]
+    if not ($requirement | is-empty) {
+        $argv = ($argv | append ['--requires' $requirement])
     }
+    if not ($verdict | is-empty) {
+        $argv = ($argv | append ['--verdict' $verdict])
+    }
+    $argv = ($argv | append ['--workflow' $workflow '--json' '--server' $srv])
+    $argv
 }
 
 # Pure: the queue entries from a run-queue call's stdout, [] on any

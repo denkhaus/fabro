@@ -7,7 +7,7 @@
 
 use anyhow::Result;
 use cli_table::{Cell, CellStruct, Style, Table};
-use fabro_tool::FabroSettledVerdict;
+use fabro_tool::{FabroOrchestrationField, FabroSettledVerdict};
 use fabro_types::OrchestrationField;
 use fabro_util::printer::Printer;
 use fabro_util::terminal::Styles;
@@ -38,6 +38,55 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
             Some(parsed.into())
         }
     };
+    // The other-field requirement (work#1126): `<field>=<verdict>`,
+    // door-symmetric with the tool twin's validation.
+    let requires = match args.requires.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                if verdict.is_some() {
+                    anyhow::bail!(
+                        "--requires belongs to the unsettled anti-join — it cannot combine \
+                         with --verdict (the settled read flips the join; the requirement has \
+                         no meaning there)"
+                    );
+                }
+                let (raw_field, raw_verdict) = trimmed.split_once('=').ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "`{trimmed}` is not a field=verdict pair — the requirement reads, for \
+                         example, merge=enabled"
+                    )
+                })?;
+                let parsed_field: FabroOrchestrationField = raw_field.parse().map_err(|_| {
+                    anyhow::anyhow!(
+                        "`{raw_field}` is not an orchestration field — the fields are merge \
+                             and closable"
+                    )
+                })?;
+                let required_field = match parsed_field {
+                    FabroOrchestrationField::Merge => OrchestrationField::Merge,
+                    FabroOrchestrationField::Closable => OrchestrationField::Closable,
+                };
+                if required_field == field {
+                    anyhow::bail!(
+                        "the requirement must name the OTHER field — `{raw_field}` is the \
+                         queue's own field (a run settled on it has already left the anti-join)"
+                    );
+                }
+                let parsed_verdict: FabroSettledVerdict = raw_verdict.parse().map_err(|_| {
+                    anyhow::anyhow!(
+                        "`{raw_verdict}` is not a settled verdict — the requirement accepts \
+                             enabled or refused (pending is absence, parked re-enters the queue \
+                             by itself)"
+                    )
+                })?;
+                Some((required_field, parsed_verdict.into()))
+            }
+        }
+    };
     let workflow = match args.workflow.as_deref() {
         None => None,
         Some(raw) => {
@@ -53,7 +102,7 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
     };
     let ctx = base_ctx.with_target(&args.server)?;
     let client = ctx.server().await?;
-    let queue = client.run_queue(field, workflow, verdict).await?;
+    let queue = client.run_queue(field, workflow, verdict, requires).await?;
 
     let printer = ctx.printer();
     if ctx.json_output() {

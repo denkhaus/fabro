@@ -23,7 +23,10 @@ const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim
 
 # The fixture worklist: three merge-enabled develop runs (clean,
 # conflicted, PR-less malformed), one parked re-entry, one smoke
-# workflow's run (the filter keeps it out).
+# workflow's run (the filter keeps it out), and the work#1126 arms —
+# one merge-pending run (never adjudicated) and one merge-refused run
+# (content rejected): the REQUIREMENT must keep both out of the merger
+# worklist entirely.
 const MERGER_RUN = "01MERGER00000000000000000A"
 let state = (mktemp -t merger-fast-path.XXXXXX.json)
 write-shim-state $state {
@@ -40,15 +43,19 @@ write-shim-state $state {
         {runId: "01PRLESSRUN0000000000000000C", workflowSlug: "develop", status: "failed", title: "malformed enabled run", claimedItem: null, project: null}
         {runId: "01PARKEDMERGE00000000000000D", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: {owner: "denkhaus", repo: "fabro", number: 603}, claimedItem: null, project: null}
         {runId: "01SMOKERUN0000000000000000E", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null, project: null}
+        {runId: "01PENDINGRUN000000000000000F", workflowSlug: "develop", status: "succeeded", title: "the never-adjudicated run", pullRequest: {owner: "denkhaus", repo: "fabro", number: 604}, claimedItem: null, project: null}
+        {runId: "01REFUSEDRUN0000000000000010", workflowSlug: "develop", status: "failed", title: "the content-refused run", claimedItem: null, project: null}
     ],
     marks: [
         # The adjudicator enabled every worklist run's merge (the
         # closable queue's premise); one carries a parked CLOSABLE from
-        # an earlier pass.
+        # an earlier pass. The pending run carries NO merge mark; the
+        # refused run's merge verdict is refused — the work#1126 arms.
         {runId: "01CLEANRUN0000000000000000A", field: "merge", verdict: "enabled", byRun: "01PREVPASS0000000000000000"}
         {runId: "01CONFLICTRUN00000000000000B", field: "merge", verdict: "enabled", byRun: "01PREVPASS0000000000000000"}
         {runId: "01PRLESSRUN0000000000000000C", field: "merge", verdict: "enabled", byRun: "01PREVPASS0000000000000000"}
         {runId: "01PARKEDMERGE00000000000000D", field: "merge", verdict: "enabled", byRun: "01PREVPASS0000000000000000"}
+        {runId: "01REFUSEDRUN0000000000000010", field: "merge", verdict: "refused", byRun: "01PREVPASS0000000000000000"}
         {runId: "01PARKEDMERGE00000000000000D", field: "closable", verdict: "parked", byRun: "01PREVMERGER00000000000000F"}
     ],
     observations: [],
@@ -114,6 +121,21 @@ if ("01SMOKERUN0000000000000000E" in ($merges | get -o runId | default [])) {
     fail "the smoke workflow's run leaked through the filter"
 }
 
+# The work#1126 arms: the merge-pending and merge-refused runs never
+# reach the merge door, never carry a verdict, never packet — the
+# requirement keeps them out of the worklist entirely.
+for excluded in ["01PENDINGRUN000000000000000F" "01REFUSEDRUN0000000000000010"] {
+    if ($excluded in ($merges | get -o runId | default [])) {
+        fail $"($excluded) must never reach the merge door — the requirement excludes it"
+    }
+    if (($closable_marks | where {|m| $m.runId == $excluded}) | length) != 0 {
+        fail $"($excluded) must carry no fast-path verdict — the requirement excludes it"
+    }
+    if ($excluded in $packet_ids) {
+        fail $"($excluded) must not packet for the agent pass — the requirement excludes it"
+    }
+}
+
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
 let no_server = (do {
     with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $state} {
@@ -124,13 +146,13 @@ let no_server = (do {
 if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
 
 # --- The real-parser argv pin (the closeout-smoke precedent): the
-# merge facade's grammar is verb-first, and the queue's new verdict
+# merge facade's grammar is verb-first, and the queue's requirement
 # filter must parse against the REAL binary on a dead server.
 do {
     let tree_bin = ($SCRIPTS_DIR | path join '..' '..' '..' '..' 'target' 'debug' 'fabro')
     let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
     let dead = "http://127.0.0.1:1"
-    pin-argv $fabro_bin $dead [run queue --field closable --verdict enabled --workflow develop --json --server $dead]
+    pin-argv $fabro_bin $dead [run queue --field closable --requires merge=enabled --workflow develop --json --server $dead]
     pin-argv $fabro_bin $dead [run merge "01M5844J1FDD" --server $dead]
     print 'ok: every outbound argv parses against the real CLI grammar'
 }

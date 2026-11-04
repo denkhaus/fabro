@@ -1445,6 +1445,14 @@ pub(crate) struct RunQueueArgs {
     #[arg(long)]
     pub(crate) verdict: Option<String>,
 
+    /// Restrict the anti-join to runs whose latest verdict on the NAMED
+    /// OTHER field IS this verdict: <field>=<verdict>, for example
+    /// merge=enabled. `--field closable --requires merge=enabled` is the
+    /// merger's worklist (merge-enabled runs the merger has not settled
+    /// a closable verdict on). Cannot combine with --verdict
+    #[arg(long)]
+    pub(crate) requires: Option<String>,
+
     /// Narrow the queue to one workflow's runs (the workflow slug, for
     /// example develop) — the adjudicator's worklist filter; absent
     /// means every workflow's terminal runs queue

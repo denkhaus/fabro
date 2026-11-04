@@ -399,6 +399,132 @@ async fn the_queue_with_a_verdict_filter_lists_exactly_the_settled_runs() {
     );
 }
 
+/// The other-field requirement (work#1126): `requires=merge=enabled`
+/// on `field=closable` is the merger's worklist — exactly the
+/// merge-enabled runs without a settled closable verdict. A
+/// merge-pending or merge-refused run never reaches the merge door;
+/// the malformed shapes refuse with teaching codes.
+#[tokio::test]
+async fn the_queue_requirement_lists_exactly_the_merger_worklist() {
+    let (app, state, store) = orchestration_app();
+    let adjudicator = RunId::new();
+    let merger = RunId::new();
+    let enabled = RunId::new();
+    let pending = RunId::new();
+    let refused = RunId::new();
+    let drained = RunId::new();
+    seed_run(&store, adjudicator, "adjudicator", true).await;
+    seed_run(&store, merger, "merger", true).await;
+    for run in [&enabled, &pending, &refused, &drained] {
+        seed_run(&store, *run, "develop", true).await;
+    }
+    let token = state.test_issue_worker_token_with_run_tools(&adjudicator);
+    let merger_token = state.test_issue_worker_token_with_run_tools(&merger);
+
+    // merge:enabled on `enabled`; merge:refused on `refused`; `pending`
+    // carries nothing; `drained` is merge:enabled AND closable:enabled
+    // (the merger already processed it). The adjudicator writes merge;
+    // the merger writes closable (field ownership at the door).
+    for (target, field, verdict) in [
+        (enabled, "merge", "enabled"),
+        (refused, "merge", "refused"),
+        (drained, "merge", "enabled"),
+    ] {
+        let response = mark_call(
+            &app,
+            &token,
+            &target,
+            json!({"field": field, "verdict": verdict}),
+        )
+        .await;
+        response_json(response, StatusCode::OK, "seed merge verdict").await;
+    }
+    let response = mark_call(
+        &app,
+        &merger_token,
+        &drained,
+        json!({"field": "closable", "verdict": "enabled"}),
+    )
+    .await;
+    response_json(response, StatusCode::OK, "seed closable verdict").await;
+
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(
+            "/runs/queue?field=closable&requires=merge=enabled&workflow=develop",
+        ))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("merger worklist request builds");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("merger worklist request runs");
+    let body = response_json(response, StatusCode::OK, "merger worklist read").await;
+    let ids = body["data"]
+        .as_array()
+        .expect("queue entries")
+        .iter()
+        .map(|entry| {
+            entry["run"]["id"]
+                .as_str()
+                .expect("run id inside the entry")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        vec![enabled.to_string()],
+        "the merger worklist holds exactly the merge-enabled run without a settled closable \
+         verdict — pending and refused never reach the merge door, the drained run stays \
+         out: {body}"
+    );
+
+    // The teaching refusals: the same field, the verdict combination,
+    // the malformed pair, the unknown halves.
+    for (query, code) in [
+        (
+            "/runs/queue?field=closable&requires=closable=enabled",
+            "queue_requires_same_field",
+        ),
+        (
+            "/runs/queue?field=closable&verdict=enabled&requires=merge=enabled",
+            "queue_requires_conflict",
+        ),
+        (
+            "/runs/queue?field=closable&requires=merge",
+            "queue_requires_malformed",
+        ),
+        (
+            "/runs/queue?field=closable&requires=bogus=enabled",
+            "queue_requires_unknown_field",
+        ),
+        (
+            "/runs/queue?field=closable&requires=merge=parked",
+            "queue_requires_not_settled",
+        ),
+    ] {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(api(query))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("refusal request builds");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("refusal request runs");
+        let body = response_json(response, StatusCode::BAD_REQUEST, "requirement refusal").await;
+        assert_eq!(
+            body["errors"][0]["code"].as_str().unwrap_or_default(),
+            code,
+            "the refusal carries its teaching code: {body}"
+        );
+    }
+}
+
 /// The merge door's refusal arms (stage E): every non-merger shape
 /// refuses BEFORE any GitHub call — a plain worker, the adjudicator
 /// (the content judge never integrates), a self-merge, a PR-less run,
