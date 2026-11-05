@@ -123,6 +123,7 @@ fn pool() -> DbPool {
         fabro_db::BLOBS_MIGRATION_SQL,
         fabro_db::RUNS_MIGRATION_SQL,
         fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
+        fabro_db::RUNS_HUMAN_NEEDED_MIGRATION_SQL,
         fabro_db::PETRI_RECORDS_MIGRATION_SQL,
         fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
         fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,
@@ -1721,6 +1722,43 @@ const SOLE_SOFT_EXIT_WORKFLOW: &str = r#"digraph SoleSoft {
     start -> select
     select -> exit [x.kind="soft", label="Unrouted select outcome"]
 }"#;
+
+const SOLE_DEADLOCK_EXIT_WORKFLOW: &str = r#"digraph SoleDeadlock {
+    graph [goal="Leave only through the deadlock exit"]
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    select [shape=parallelogram, script="echo select"]
+    start -> select
+    select -> exit [x.kind="deadlock", label="Needs a human decision"]
+}"#;
+
+/// A sole `x.kind="deadlock"` exit on a green finish parks the run as a
+/// HUMAN DECISION request (#1072): the projection concludes
+/// `HumanNeeded`, never `Failed { Deadlock }` — the deadlock-exit family
+/// is a decision inbox, not a failure column.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sole_deadlock_kind_edge_projects_human_needed() {
+    let scenario = scenario(
+        "deadlock-sole",
+        &[
+            ("workflow.fabro", SOLE_DEADLOCK_EXIT_WORKFLOW),
+            ("workflow.toml", SETTINGS),
+        ],
+        false,
+    )
+    .await;
+    run_live(&scenario).await;
+    let stored = petri_support::stored_projection(&scenario.pool, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(
+        stored.status,
+        RunStatus::HumanNeeded,
+        "the sole deadlock route parks the green finish as a decision request"
+    );
+    assert_view_equals_rebuild(&scenario.pool, scenario.run_id).await;
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_sole_soft_kind_edge_still_downgrades_a_green_finish() {

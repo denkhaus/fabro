@@ -169,6 +169,7 @@ fn dry_run_create_start_attach_works_with_default_run_lookup() {
                 fabro_types::RunStatus::Removing => "removing",
                 fabro_types::RunStatus::Succeeded { .. } => "succeeded",
                 fabro_types::RunStatus::Failed { .. } => "failed",
+                fabro_types::RunStatus::HumanNeeded => "human_needed",
                 fabro_types::RunStatus::Dead => "dead",
                 }
             },

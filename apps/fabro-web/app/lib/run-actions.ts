@@ -43,6 +43,7 @@ const CANCELABLE_STATUSES = new Set<RunStatus>([
 const TERMINAL_RUN_STATUSES = new Set<RunStatus>([
   "succeeded",
   "failed",
+  "human_needed",
   "dead",
 ]);
 

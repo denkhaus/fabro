@@ -24,6 +24,12 @@ pub const BLOBS_MIGRATION_SQL: &str = include_str!("../migrations/2026081301_blo
 /// the production schema without a filesystem path into this crate.
 pub const RUNS_MIGRATION_SQL: &str = include_str!("../migrations/2026071104_runs.sql");
 
+/// The `human_needed` terminal status (work#1072): rebuilds `runs` with the
+/// extended status CHECK. Exposed so fixtures that install
+/// [`RUNS_MIGRATION_SQL`] can apply it next and get the production schema.
+pub const RUNS_HUMAN_NEEDED_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026110501_runs_human_needed_status.sql");
+
 /// The migration that drops the legacy run event log and narrows the `runs`
 /// row to its final shape, exposed so fixtures that install
 /// [`RUNS_MIGRATION_SQL`] can apply it next and get the production schema.

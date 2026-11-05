@@ -100,6 +100,7 @@ def main [
     --workflow: string,           # run queue
     --verdict: string,            # run queue (the settled filter, stage E)
     --requires: string,           # run queue (the other-field requirement, work#1126)
+    --all,                        # ps (the dead-man watch's pass read, stage F)
     # observation
     --run-id: string,             # binds $run_id (observation list/record)
     --category: string,           # observation record
@@ -113,12 +114,14 @@ def main [
     let stdin_text = (cat | str join)
     let s = (load-state $p)
 
-    if ($argv | length) < 2 {
-        print -e $"fabro-work-shim: expected '<facade> <subcommand> [--server <srv>] ...', got: ($argv | str join ' ')"
+    if ($argv | is-empty) {
+        print -e $"fabro-work-shim: expected '<facade> [subcommand] [--server <srv>] ...', got nothing"
         exit 2
     }
     let facade = ($argv | get 0)
-    let sub = ($argv | get 1)
+    # Single-facade verbs (ps, stage F) carry no subcommand: their flags
+    # parse at the top level, so the second slot is ''.
+    let sub = ($argv | get -o 1 | default '')
     let positional = ($argv | skip 2)
     let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
 
@@ -243,7 +246,7 @@ def main [
             let require_verdict = (if $require_parts == null { '' } else { $require_parts | get 1 })
             let data = ($runs | where {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
-                let terminal = ($r.status in ["succeeded" "failed" "dead"])
+                let terminal = ($r.status in ["succeeded" "failed" "human_needed" "dead"])
                 # Without a filter: the anti-join (pending or parked —
                 # the settled runs left). With a filter (stage E):
                 # exactly the runs settled on that verdict.
@@ -263,7 +266,7 @@ def main [
                 $terminal and $verdict_ok and $require_ok and (($workflow | is-empty) or ($r.workflowSlug == $workflow))
             } | each {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
-                {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: $r.status}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null), project: ($r | get -o project | default null)}
+                {run: {id: $r.runId, title: ($r | get -o title | default "the fixture run"), lifecycle: {status: {kind: $r.status}}, workflow: {slug: $r.workflowSlug}, pull_request: ($r | get -o pullRequest | default null)}, verdict: (if $latest == null { "pending" } else { $latest.verdict }), work_item: ($r | get -o claimedItem | default null), project: ($r | get -o project | default null)}
             })
             {data: $data, meta: {has_more: false, total: ($data | length)}} | to json --raw | print
         }
@@ -334,6 +337,37 @@ def main [
             let wanted_run = ($run_id | default '')
             let hits = ($logged | get -o observations | default [] | where {|o| $o.runId == $wanted_run} | each {|o| {seq: $o.seq, category: $o.category, text: $o.text}})
             {observations: $hits} | to json --raw | print
+        }
+        ["automations" "list"] => {
+            # The dead-man watch's gear read (ADR-0039 stage F): the
+            # fixture's automation rows render verbatim; the schedule
+            # trigger's enabled flag is the stall semantics' input (a
+            # disabled gear stays silent — the pause is authoritative).
+            refuse-foreign-flags $facade $sub $provided ["server" "json"]
+            let flags = {server: $server, json: $json}
+            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+            save-state $p $logged
+            let rows = ($logged | get -o automations | default [] | each {|a|
+                {workflow: $a.workflow, triggers: [{type: "schedule", id: "schedule", enabled: $a.scheduleEnabled}]}
+            })
+            $rows | to json --raw | print
+        }
+        ["ps" ""] => {
+            # The dead-man watch's pass read (stage F): the fixture's runs
+            # render in the real `ps -a --json` row shape; start_time
+            # derives from startedMinutesAgo so the smoke can pin fresh
+            # and stale passes without wall-clock gymnastics.
+            refuse-foreign-flags $facade $sub $provided ["server" "workflow" "json" "all"]
+            let flags = {server: $server, workflow: $workflow, json: $json, all: $all}
+            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+            save-state $p $logged
+            let rows = ($logged | get -o runs | default []
+                | where {|r| ($workflow | is-empty) or ($r.workflowSlug == $workflow)}
+                | each {|r|
+                    let started = ((date now) - (($r | get -o startedMinutesAgo | default 60) * 1min))
+                    {run_id: $r.runId, workflow_name: $r.workflowSlug, workflow_slug: $r.workflowSlug, status: {kind: $r.status}, start_time: ($started | format date "%+"), labels: []}
+                })
+            $rows | to json --raw | print
         }
         _ => {
             print -e $"fabro-work-shim: unsupported facade/subcommand '($facade) ($sub)'"

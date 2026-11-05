@@ -10858,6 +10858,7 @@ components:
         - $ref: "#/components/schemas/RunStatusRemoving"
         - $ref: "#/components/schemas/RunStatusSucceeded"
         - $ref: "#/components/schemas/RunStatusFailed"
+        - $ref: "#/components/schemas/RunStatusHumanNeeded"
         - $ref: "#/components/schemas/RunStatusDead"
       discriminator:
         propertyName: kind
@@ -10872,6 +10873,7 @@ components:
           removing: "#/components/schemas/RunStatusRemoving"
           succeeded: "#/components/schemas/RunStatusSucceeded"
           failed: "#/components/schemas/RunStatusFailed"
+          human_needed: "#/components/schemas/RunStatusHumanNeeded"
           dead: "#/components/schemas/RunStatusDead"
 
     RunStatusSubmitted:
@@ -10990,6 +10992,20 @@ components:
             - failed
         reason:
           $ref: "#/components/schemas/FailureReason"
+
+    RunStatusHumanNeeded:
+      description: >
+        Terminal decision request (the deadlock-exit family): work is
+        preserved and a human decides. The run boards in the decision
+        column, never in the failure column.
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - human_needed
 
     RunStatusDead:
       type: object
@@ -15326,6 +15342,7 @@ components:
         - initializing
         - running
         - blocked
+        - human_needed
         - succeeded
         - failed
         - archived

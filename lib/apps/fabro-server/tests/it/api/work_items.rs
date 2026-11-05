@@ -1673,7 +1673,7 @@ mod closure_radius {
         assert_eq!(land["kind"], "work.landed", "the kind is the discriminator");
         assert_eq!(
             land["claim_id"],
-            claim_id.to_string(),
+            claim_id,
             "the record names the claim"
         );
         assert_eq!(

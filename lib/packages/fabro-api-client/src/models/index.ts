@@ -426,6 +426,7 @@ export * from './run-status';
 export * from './run-status-blocked';
 export * from './run-status-dead';
 export * from './run-status-failed';
+export * from './run-status-human-needed';
 export * from './run-status-paused';
 export * from './run-status-pending';
 export * from './run-status-removing';

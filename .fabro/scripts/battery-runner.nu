@@ -78,6 +78,12 @@ const SMOKES = [
     # filter, routing envelope — driven through the channel shim over
     # the shared smoke harness.
     '.fabro/workflows/adjudicator/scripts/fast-path-smoke.nu'
+    # watchdog stall check (ADR-0039 stage F, denkhaus/work#1107): the
+    # dead-man watch's three arms — silent when disabled (the pause is
+    # authoritative), healthy when fresh completed passes sit inside the
+    # window, GEAR STALL alarm past it — through the channel shim's
+    # automations/ps doors.
+    '.fabro/workflows/watchdog/scripts/stall-check-smoke.nu'
     # The closing pass (ADR-0039 stage E): the verdict-flipped queue
     # read, the empty-radius landing, the open-radius wait, the closed
     # item's idempotent done, the entry's project — through the shim.

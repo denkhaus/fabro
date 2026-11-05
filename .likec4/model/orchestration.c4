@@ -189,14 +189,26 @@ model {
         link ../../docs/adr/0032-central-work-item-tracker.md
       }
 
-      dead-man-watch = service "Dead-man watch" {
-        #planned
+      watchdog = workflow "Watchdog" {
+        #evolving
         description '''
-          Alarms when a gear makes no progress (ADR-0039 decision 9):
-          no adjudication pass in its window, a merger stall, a queue
-          that only grows. The alarm lands in Slack with the evidence
-          window in Rootprint — a stalled gear must never be silent.
+          The dead-man watch (ADR-0039 decision 9, stage F 2026-11-05):
+          an LLM-free workflow on its own hourly tick that reads every
+          gear's automation state and pass history through the read
+          doors (`fabro automations list`, `fabro ps -a`) and ALARMS by
+          failing its own run — the Slack lifecycle notification carries
+          the alarm. A gear stalls when its automation is ENABLED and no
+          completed pass sits within 3x its tick interval. A disabled
+          gear stays silent: the user pause is authoritative. Nothing
+          watches the watchdog — its automation row and `fabro ps -a
+          --workflow watchdog` carry the meta-stall visibility (grilled:
+          list visibility).
         '''
+        metadata {
+          status "graph + stall check landed (stage F, 2026-11-05); hourly automation created at the fork.30 cutover"
+          code ".fabro/workflows/watchdog"
+        }
+        link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
       }
     }
   }
@@ -245,8 +257,10 @@ model {
   fabro.orchestration.reconciler -[heal]-> fabro.records.work-ledger "heals ledger, drains outbox"
   fabro.orchestration.reconciler -[heal]-> github "heals tracker projection (labels)"
   fabro.orchestration.reconciler -[read]-> fabro.records.run-record "terminal runs → awaiting_merge | release"
-  fabro.orchestration.dead-man-watch -[read]-> fabro.records.run-record "progress per gear (verdicts advance?)"
-  fabro.orchestration.dead-man-watch -[notify]-> slack "stall alarm — evidence window in Rootprint"
+  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.watchdog "tick — hourly, the watch's own gear"
+  fabro.orchestration.watchdog -[read]-> fabro.orchestration.scheduler "gear automation state (enabled? the pause is authoritative)"
+  fabro.orchestration.watchdog -[read]-> fabro.records.run-record "last completed pass per gear (ps -a)"
+  fabro.orchestration.watchdog -[notify]-> slack "the alarm IS the failed watchdog run — Slack lifecycle notification"
 
   // --- operator ------------------------------------------------------------
   operator -[create]-> github "files work items (painpoints channel)"

@@ -173,10 +173,11 @@ fn board_column_rank(column: BoardColumn) -> Option<u8> {
         BoardColumn::Initializing => Some(2),
         BoardColumn::Running => Some(3),
         BoardColumn::Blocked => Some(4),
-        BoardColumn::Succeeded => Some(5),
-        BoardColumn::Failed => Some(6),
+        BoardColumn::HumanNeeded => Some(5),
+        BoardColumn::Succeeded => Some(6),
+        BoardColumn::Failed => Some(7),
         BoardColumn::Archived => None,
-        BoardColumn::Removing => Some(8),
+        BoardColumn::Removing => Some(9),
     }
 }
 

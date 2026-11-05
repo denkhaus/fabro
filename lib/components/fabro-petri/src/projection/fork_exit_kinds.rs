@@ -10,9 +10,9 @@
 //! - `x.kind="boundary"` + a failed finish → `Succeeded { Boundary }`
 //!   (fabro-08b4: the failure parked the loop at a boundary; green with an
 //!   attached failure).
-//! - `x.kind="deadlock"` + a success-shaped finish → `Failed { Deadlock }`
-//!   (fabro-b907: the guard routed green work to a deadlock exit; work is
-//!   preserved, a human decides).
+//! - `x.kind="deadlock"` + a success-shaped finish → `HumanNeeded`
+//!   (fabro-b907/#1072: the guard routed green work to a deadlock exit; work is
+//!   preserved, a human decides — the decision inbox, never a failure).
 //! - `x.kind="soft"` + a success-shaped finish → `Failed { SoftStop }`
 //!   (infrastructure could not finish; the next run re-enters).
 
@@ -83,9 +83,7 @@ impl ExitKinds {
             ("boundary", _) => Some(RunStatus::Succeeded {
                 reason: SuccessReason::Boundary,
             }),
-            ("deadlock", "success") if sole_exit_route => Some(RunStatus::Failed {
-                reason: FailureReason::Deadlock,
-            }),
+            ("deadlock", "success") if sole_exit_route => Some(RunStatus::HumanNeeded),
             ("soft", "success") if sole_exit_route => Some(RunStatus::Failed {
                 reason: FailureReason::SoftStop,
             }),
@@ -169,26 +167,24 @@ digraph Develop {
     #[test]
     fn a_sole_kind_exit_still_fires_on_success() {
         // probe-06's shape: the deadlock edge is the only exit route.
+        // #1072: the deadlock exit is a HUMAN DECISION request — the run
+        // parks as `human_needed`, never as a failure.
         let source =
             "flaky -> exit [x.kind=\"deadlock\", condition=\"nodes.flaky.generation >= 2\"]";
         let kinds = ExitKinds::parse(source);
         assert_eq!(
             kinds.classify("success", Some("flaky"), "exit"),
-            Some(RunStatus::Failed {
-                reason: FailureReason::Deadlock,
-            })
+            Some(RunStatus::HumanNeeded)
         );
     }
 
     #[test]
-    fn deadlock_and_soft_success_downgrade_to_failure() {
+    fn deadlock_success_parks_human_needed_and_soft_stays_soft() {
         let kinds = ExitKinds::parse(SOURCE);
-        assert!(matches!(
+        assert_eq!(
             kinds.classify("success", Some("reviewer"), "exit"),
-            Some(RunStatus::Failed {
-                reason: FailureReason::Deadlock,
-            })
-        ));
+            Some(RunStatus::HumanNeeded)
+        );
         assert!(matches!(
             kinds.classify("success", Some("planner"), "exit"),
             Some(RunStatus::Failed {

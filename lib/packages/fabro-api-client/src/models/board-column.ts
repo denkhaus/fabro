@@ -24,6 +24,7 @@ export const BoardColumn = {
     INITIALIZING: 'initializing',
     RUNNING: 'running',
     BLOCKED: 'blocked',
+    HUMAN_NEEDED: 'human_needed',
     SUCCEEDED: 'succeeded',
     FAILED: 'failed',
     ARCHIVED: 'archived',

@@ -97,6 +97,12 @@ fn run_status_json_matches_openapi_shape() {
         }),
     );
     assert_json(
+        RunStatus::HumanNeeded,
+        json!({
+            "kind": "human_needed"
+        }),
+    );
+    assert_json(
         RunStatus::Dead,
         json!({
             "kind": "dead"

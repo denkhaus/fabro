@@ -44,6 +44,10 @@ pub struct ScheduleBreakerState {
 /// Whether a terminal run status counts as a breaker failure. Parked shapes
 /// (`Succeeded{Boundary}` park points, `Failed{SoftStop}`, `Failed{Deadlock}`)
 /// and ordinary failures count; other successes reset the count.
+/// `HumanNeeded` (#1072) neither counts nor resets: a human decision
+/// request is not a fault, and the watchdog owns gear-stall visibility —
+/// a repeated ask must never park the automation out from under the
+/// operator it is waiting for.
 #[must_use]
 pub fn counts_as_breaker_failure(status: RunStatus) -> bool {
     matches!(
@@ -118,6 +122,7 @@ fn park_reason_key(status: RunStatus) -> &'static str {
             reason: FailureReason::ApprovalTimeout,
         } => "approval_timeout",
         RunStatus::Dead => "dead",
+        RunStatus::HumanNeeded => "human_needed",
         _ => "other",
     }
 }

@@ -1,0 +1,17 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# watchdog (ADR-0039 stage F, denkhaus/work#1107; grilled 2026-11-05):
+# the dead-man watch over the scheduler gears. One pass = one LLM-free
+# command stage: every ENABLED gear automation must have completed a
+# pass within 3x its tick interval (adjudicator */15 -> 45m, merger and
+# develop -> 90m); a stall exits non-zero and the red run rides the
+# Slack lifecycle notification to the operator. A disabled gear stays
+# silent — the user's pause is authoritative. Fired hourly by its own
+# automation (0 * * * *, created at the fork.30 cutover); nothing
+# watches the watchdog — its automation row and `fabro ps -a --workflow
+# watchdog` carry meta-stall visibility (grilled: list visibility).
+# Read doors only: `fabro automations list` + `fabro ps` over the run
+# channel; no agent stage, no model, no writes.

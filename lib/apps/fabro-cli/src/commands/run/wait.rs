@@ -100,10 +100,12 @@ fn print_human_output(
     let (style, label) = match status {
         RunStatus::Succeeded { .. } => (&styles.bold_green, "Succeeded"),
         RunStatus::Failed { .. } => (&styles.bold_red, "Failed"),
+        RunStatus::HumanNeeded => (&styles.bold_yellow, "Needs human"),
         RunStatus::Dead => (&styles.bold_red, "Dead"),
-        // Poll loop only breaks on is_terminal() which is the three arms above.
+        // Poll loop only breaks on is_terminal() — the four arms above.
         _ => unreachable!(
-            "print_human_output is only called after is_terminal(), which returns true only for Succeeded, Failed, and Dead"
+            "print_human_output is only called after is_terminal(), which returns true only for \
+             Succeeded, Failed, HumanNeeded, and Dead"
         ),
     };
     let status_display = style.apply_to(label);

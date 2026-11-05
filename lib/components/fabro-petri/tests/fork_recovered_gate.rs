@@ -118,6 +118,7 @@ fn pool() -> DbPool {
         fabro_db::BLOBS_MIGRATION_SQL,
         fabro_db::RUNS_MIGRATION_SQL,
         fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
+        fabro_db::RUNS_HUMAN_NEEDED_MIGRATION_SQL,
         fabro_db::PETRI_RECORDS_MIGRATION_SQL,
         fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
         fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,

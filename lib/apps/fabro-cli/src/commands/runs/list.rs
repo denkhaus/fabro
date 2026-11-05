@@ -177,7 +177,9 @@ fn status_cell(status: RunStatus, use_color: bool) -> CellStruct {
         RunStatus::Submitted | RunStatus::Pending { .. } | RunStatus::Dead => {
             Some(Color::Ansi256(8))
         }
-        RunStatus::Blocked { .. } | RunStatus::Removing => Some(Color::Yellow),
+        RunStatus::Blocked { .. } | RunStatus::Removing | RunStatus::HumanNeeded => {
+            Some(Color::Yellow)
+        }
         RunStatus::Paused { .. } => Some(Color::Magenta),
     };
     text.cell()

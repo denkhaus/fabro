@@ -18,6 +18,12 @@
 # they route to the agent pass again — an open escalation is a judgment
 # the fast path cannot resolve.
 #
+# HUMAN_NEEDED (work#1072, stage-F consequence): a run whose terminal
+# kind is human_needed parks DIRECTLY, LLM-free — the deadlock exit
+# itself means a human decision pends; the park needs no judgment. The
+# operator answers through the work-item comment channel; the next
+# passes re-enter as parked and the agent pass verdicts once answered.
+#
 # FACT FAILURE DISCIPLINE (user decision 2026-11-01): a door call that
 # fails FAILS THE STAGE — exit non-zero, the engine retries; never
 # absorb a failed read or write.
@@ -109,6 +115,7 @@ def main [--smoke]: nothing -> nothing {
     mut packets = []
     mut marked_enabled = []
     mut marked_refused = []
+    mut parked_human = []
     mut skipped_parked = []
     for entry in $entries {
         let run_id = $entry.run.id
@@ -121,6 +128,19 @@ def main [--smoke]: nothing -> nothing {
             # agent pass re-engages with the fork's context.
             $skipped_parked = ($skipped_parked | append $run_id)
             $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints (read-observations $run_id)), radius_items: (read-radius $project $work_item | length), has_pull_request: $has_pr})
+            continue
+        }
+
+        let terminal_kind = ($entry.run | get -o lifecycle | get -o status | get -o kind | default '')
+        if $terminal_kind == "human_needed" {
+            # work#1072 (stage-F design consequence, grilled 2026-11-05):
+            # the run itself asks for a human — the deadlock exit means a
+            # decision pends. Park directly, LLM-free: the park needs no
+            # judgment; the operator answers through the work-item
+            # comment channel; the next passes re-enter (parked stays
+            # queued) and the agent pass verdicts once answered.
+            mark-run $run_id "parked"
+            $parked_human = ($parked_human | append $run_id)
             continue
         }
 
@@ -145,6 +165,7 @@ def main [--smoke]: nothing -> nothing {
         packets: $packets,
         marked_enabled: $marked_enabled,
         marked_refused: $marked_refused,
+        parked_human_needed: $parked_human,
         parked_reentered: $skipped_parked,
     }
     if $smoke {

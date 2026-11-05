@@ -26,6 +26,7 @@ pub fn test_blob_store() -> Arc<BlobStore> {
 const RUN_SUMMARY_MIGRATIONS: &[&str] = &[
     fabro_db::RUNS_MIGRATION_SQL,
     fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
+    fabro_db::RUNS_HUMAN_NEEDED_MIGRATION_SQL,
     fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
     fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,
 ];

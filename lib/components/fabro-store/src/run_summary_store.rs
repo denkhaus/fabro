@@ -361,7 +361,7 @@ impl RunSummaryStore {
             .push(" WHERE automation_id = ")
             .push_bind(automation_id.to_string())
             .push(
-                " AND (status IN ('succeeded', 'failed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
+                " AND (status IN ('succeeded', 'failed', 'human_needed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
             );
         push_order(
             &mut query,
@@ -440,7 +440,7 @@ impl RunSummaryStore {
             }
         };
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
-        query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
+        query.push(" WHERE status IN ('succeeded', 'failed', 'human_needed', 'dead')");
         if let Some(workflow) = workflow {
             query.push(" AND workflow_slug = ").push_bind(workflow);
         }
@@ -499,7 +499,7 @@ impl RunSummaryStore {
             .map(|(run_id, _latest)| run_id.to_string())
             .collect();
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
-        query.push(" WHERE status IN ('succeeded', 'failed', 'dead')");
+        query.push(" WHERE status IN ('succeeded', 'failed', 'human_needed', 'dead')");
         if let Some(workflow) = workflow {
             query.push(" AND workflow_slug = ").push_bind(workflow);
         }
@@ -537,7 +537,7 @@ impl RunSummaryStore {
             r"
 SELECT id
 FROM runs
-WHERE status NOT IN ('succeeded', 'failed', 'dead', 'removing')
+WHERE status NOT IN ('succeeded', 'failed', 'human_needed', 'dead', 'removing')
   AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
   AND (
     automation_id = ?
@@ -837,10 +837,11 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
 }
 
 /// Status sort rank derived from [`RunStatusKind::board_rank`], so the SQL
-/// order and the board column order share one source. Archived runs rank 7,
-/// matching the `archived` board column.
+/// order and the board column order share one source. Archived runs rank 8,
+/// matching the `archived` board column (the decision column at 5 shifted
+/// the outcome columns, #1072).
 static STATUS_RANK_CASE_SQL: LazyLock<String> = LazyLock::new(|| {
-    let mut case = String::from("CASE WHEN archived_at_ms IS NOT NULL THEN 7");
+    let mut case = String::from("CASE WHEN archived_at_ms IS NOT NULL THEN 8");
     for kind in RunStatusKind::VARIANTS {
         let _ = write!(case, " WHEN status = '{kind}' THEN {}", kind.board_rank());
     }
@@ -1031,6 +1032,7 @@ mod tests {
             RunStatusKind::Succeeded => RunStatus::Succeeded {
                 reason: SuccessReason::Completed,
             },
+            RunStatusKind::HumanNeeded => RunStatus::HumanNeeded,
             RunStatusKind::Failed => RunStatus::Failed {
                 reason: FailureReason::WorkflowError,
             },

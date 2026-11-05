@@ -70,6 +70,7 @@ const columnStyles: Record<BoardColumn, ColumnStyle> = {
   initializing: { actions: [] },
   running:      { actions: [] },
   blocked:      { actions: ["Answer Question"] },
+  human_needed: { actions: [] },
   succeeded:    { actions: [] },
   failed:       { actions: [] },
   archived:     { actions: [] },

@@ -30,6 +30,9 @@ import type { RunStatusDead } from './run-status-dead';
 import type { RunStatusFailed } from './run-status-failed';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunStatusHumanNeeded } from './run-status-human-needed';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunStatusPaused } from './run-status-paused';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -57,4 +60,4 @@ import type { RunStatusSucceeded } from './run-status-succeeded';
  * @type RunStatus
  * Execution status of a run. Archive state is represented separately on `RunLifecycle.archived` so terminal status payloads remain intact.
  */
-export type RunStatus = { kind: 'blocked' } & RunStatusBlocked | { kind: 'dead' } & RunStatusDead | { kind: 'failed' } & RunStatusFailed | { kind: 'paused' } & RunStatusPaused | { kind: 'pending' } & RunStatusPending | { kind: 'removing' } & RunStatusRemoving | { kind: 'runnable' } & RunStatusRunnable | { kind: 'running' } & RunStatusRunning | { kind: 'starting' } & RunStatusStarting | { kind: 'submitted' } & RunStatusSubmitted | { kind: 'succeeded' } & RunStatusSucceeded;
+export type RunStatus = { kind: 'blocked' } & RunStatusBlocked | { kind: 'dead' } & RunStatusDead | { kind: 'failed' } & RunStatusFailed | { kind: 'human_needed' } & RunStatusHumanNeeded | { kind: 'paused' } & RunStatusPaused | { kind: 'pending' } & RunStatusPending | { kind: 'removing' } & RunStatusRemoving | { kind: 'runnable' } & RunStatusRunnable | { kind: 'running' } & RunStatusRunning | { kind: 'starting' } & RunStatusStarting | { kind: 'submitted' } & RunStatusSubmitted | { kind: 'succeeded' } & RunStatusSucceeded;

@@ -17,6 +17,7 @@ pub struct Styles {
     pub bold_cyan:  Style,
     pub bold_green: Style,
     pub bold_red:   Style,
+    pub bold_yellow: Style,
 }
 
 impl Styles {
@@ -36,6 +37,7 @@ impl Styles {
             bold_cyan: Style::new().bold().cyan().force_styling(use_color),
             bold_green: Style::new().bold().green().force_styling(use_color),
             bold_red: Style::new().bold().red().force_styling(use_color),
+            bold_yellow: Style::new().bold().yellow().force_styling(use_color),
         }
     }
 

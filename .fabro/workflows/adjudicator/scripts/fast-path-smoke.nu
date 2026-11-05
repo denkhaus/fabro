@@ -36,6 +36,7 @@ write-shim-state $state {
         {runId: "01TRIVIALNOPR0000000000000000", workflowSlug: "develop", status: "failed", title: "failed without a pull request", claimedItem: null, project: null}
         {runId: "01PAINPoinTRUN000000000000000", workflowSlug: "develop", status: "succeeded", title: "run with painpoints", pullRequest: {owner: "denkhaus", repo: "fabro", number: 502}, claimedItem: "denkhaus/work#2", project: "fabro-test"}
         {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro"}
+        {runId: "01HUMANNEEDED00000000000000A", workflowSlug: "develop", status: "human_needed", title: "the deadlock ask", pullRequest: {owner: "denkhaus", repo: "fabro", number: 503}, claimedItem: "denkhaus/work#3", project: "fabro"}
         {runId: "01SMOKERUN000000000000000000", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null, project: null}
         {runId: "01LIVERUN00000000000000000000", workflowSlug: "develop", status: "running", title: "still going", claimedItem: null, project: null}
     ],
@@ -92,6 +93,18 @@ if ($enabled | length) != 1 or $enabled.0.runId != "01TRIVIALPR00000000000000000
 let refused = ($merge_marks | where {|m| $m.verdict == "refused"})
 if ($refused | length) != 1 or $refused.0.runId != "01TRIVIALNOPR0000000000000000" {
     fail $"the trivial no-pull-request run must be the only refused mark: ($merge_marks | to json -r)"
+}
+
+# work#1072: the human_needed run parks DIRECTLY, LLM-free — the exit
+# itself means a human decision pends. It carries a pull request and an
+# empty radius: neither the PR split nor any fact read may run — the
+# terminal kind alone routes.
+let parked_human = ($merge_marks | where {|m| $m.verdict == "parked" and $m.runId == "01HUMANNEEDED00000000000000A"})
+if ($parked_human | length) != 1 {
+    fail $"the human_needed run must be parked directly by the sweep: ($merge_marks | to json -r)"
+}
+if ($adjudication.parked_human_needed | default []) != ["01HUMANNEEDED00000000000000A"] {
+    fail $"the envelope names the human-needed parking: ($adjudication | to json -r)"
 }
 
 # The packets: painpoint run, parked run — never the trivial pair, never

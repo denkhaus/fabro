@@ -161,6 +161,7 @@ async fn control_run(
                         _,
                         RunStatus::Failed { .. }
                         | RunStatus::Succeeded { .. }
+                        | RunStatus::HumanNeeded
                         | RunStatus::Removing
                         | RunStatus::Dead,
                     ) => {

@@ -137,3 +137,26 @@ visibility and Dockerfile touches as observation records. Supersedes
 the closeout — the name retires with the close authority, because the
 run never closes its own item.
 
+
+## human_needed
+
+A terminal run status (work#1072): the deadlock-exit family parks a
+run as a DECISION REQUEST — work is preserved, a human decides. The
+run boards in the decision column (ahead of the outcome columns),
+never in the failure column; the claimed work item's claim holds
+until the adjudicator's verdict. Not a **failure**: a human ask is not
+a fault (the breaker never counts it; the watchdog owns stall
+visibility). Not **blocked**: a block waits for an answer mid-run;
+human_needed is terminal.
+
+## Watchdog
+
+The scheduler-driven dead-man watch (ADR-0039 stage F): an LLM-free
+workflow on its own hourly tick that reads every gear's automation
+state and pass history through the read doors and ALARMS by failing
+its own run — the Slack lifecycle notification carries the alarm. A
+gear stalls when its automation is ENABLED and no completed pass sits
+within 3x its tick interval. A disabled gear stays silent: the user
+pause is authoritative. Nothing watches the watchdog — its automation
+row and `fabro ps -a --workflow watchdog` carry the meta-stall
+visibility.

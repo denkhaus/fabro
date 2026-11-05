@@ -1,0 +1,57 @@
+digraph Watchdog {
+    graph [
+        goal="Watch the scheduler gears: alarm loudly when an enabled gear completes no pass within its stall window — a dead gear must never die silently",
+        rankdir=LR,
+        // One sweep: three automations reads plus three ps reads over the
+        // run channel, seconds each. The 5m ceiling is generous.
+        stall_timeout="5m",
+        max_node_visits=10,
+        x.preamble_budget_kb=8,
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // The alarm is the run's OWN failure: the stall check exits non-zero
+    // and the red run rides the Slack lifecycle notification to the
+    // operator. No soft exit softens a stall — silence means health.
+    exit  [shape=Msquare, label="Exit"]
+
+    // Toolchain-placement guard (the gear graphs' pattern): a manual
+    // fire WITHOUT --environment falls to the server default and dies
+    // cryptically at the nu stage. POSIX sh, NOT nu: the failure mode
+    // it guards is a sandbox without nu.
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh watchdog",
+        timeout="30s",
+        max_retries=0
+    ]
+
+    // The dead-man check (stage F, grilled 2026-11-05): for every gear,
+    // the automation's schedule trigger must be ENABLED and the gear
+    // must have COMPLETED a pass within 3x its tick interval. A
+    // user-disabled gear stays silent — the pause is authoritative. An
+    // enabled gear with no completed pass in its window is a stall:
+    // exit non-zero, name the gear and the age of its last pass.
+    stall_check [
+        label="Stall check: three gears, K=3 ticks each",
+        shape=parallelogram,
+        script="nu .fabro/workflows/watchdog/scripts/stall-check.nu",
+        timeout="5m",
+        max_retries=0
+    ]
+
+    start -> env_guard
+    env_guard -> stall_check
+
+    // Health is natural completion.
+    stall_check -> exit [label="All gears healthy", condition="preferred_label=\"All gears healthy\""]
+    // The alarm routes to exit as a FAILURE: the stage exited non-zero,
+    // the run concludes red, the Slack lifecycle notification pings the
+    // operator (the fact-failure discipline — the check IS the
+    // contract, never absorbed).
+    stall_check -> exit [label="Gear stall alarm", condition="outcome=failed"]
+    // Unconditional fallback (the engine requires one): an unrouted
+    // outcome still ends the pass; the next hourly tick re-checks.
+    stall_check -> exit [x.kind="soft", label="Unrouted check outcome"]
+}

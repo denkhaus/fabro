@@ -62,6 +62,7 @@ export const columnStatuses = [
   BoardColumn.INITIALIZING,
   BoardColumn.RUNNING,
   BoardColumn.BLOCKED,
+  BoardColumn.HUMAN_NEEDED,
   BoardColumn.SUCCEEDED,
   BoardColumn.FAILED,
   BoardColumn.ARCHIVED,
@@ -74,6 +75,7 @@ export const columnStatusDisplay: Record<BoardColumn, { label: string; dot: stri
   initializing: { label: "Initializing", dot: "bg-amber",     text: "text-amber" },
   running:      { label: "Running",      dot: "bg-teal-500",  text: "text-teal-500" },
   blocked:      { label: "Blocked",      dot: "bg-amber",     text: "text-amber" },
+  human_needed: { label: "Needs human",  dot: "bg-amber",     text: "text-amber" },
   succeeded:    { label: "Succeeded",    dot: "bg-teal-300",  text: "text-teal-300" },
   failed:       { label: "Failed",       dot: "bg-coral",     text: "text-coral" },
   archived:     { label: "Archived",     dot: "bg-fg-muted",  text: "text-fg-muted" },
@@ -156,6 +158,8 @@ export function columnForStatus(status: ApiRunStatus | null | undefined): BoardC
       return "running";
     case "blocked":
       return "blocked";
+    case "human_needed":
+      return "human_needed";
     case "succeeded":
       return "succeeded";
     case "failed":
@@ -200,6 +204,7 @@ export type RunStatus =
   | "removing"
   | "succeeded"
   | "failed"
+  | "human_needed"
   | "dead"
   | "archived";
 
@@ -214,6 +219,7 @@ export const runStatusDisplay: Record<RunStatus, { label: string; dot: string; t
   removing: { label: "Removing", dot: "bg-fg-muted", text: "text-fg-muted" },
   succeeded: { label: "Succeeded", dot: "bg-mint", text: "text-mint" },
   failed: { label: "Failed", dot: "bg-coral", text: "text-coral" },
+  human_needed: { label: "Needs human", dot: "bg-amber", text: "text-amber" },
   dead: { label: "Dead", dot: "bg-coral", text: "text-coral" },
   archived: { label: "Archived", dot: "bg-fg-muted", text: "text-fg-muted" },
 };

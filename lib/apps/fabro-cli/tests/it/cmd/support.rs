@@ -701,6 +701,7 @@ pub(crate) fn wait_for_status(run_dir: &Path, expected: &[&str]) -> String {
                 fabro_types::RunStatus::Removing => "removing",
                 fabro_types::RunStatus::Succeeded { .. } => "succeeded",
                 fabro_types::RunStatus::Failed { .. } => "failed",
+                fabro_types::RunStatus::HumanNeeded => "human_needed",
                 fabro_types::RunStatus::Dead => "dead",
             }
         };

@@ -30,15 +30,17 @@ pub enum RunStatusKind {
     Removing,
     Succeeded,
     Failed,
+    HumanNeeded,
     Dead,
 }
 
 impl RunStatusKind {
     /// Position of this status in the run-board column order. Ranks mirror
     /// the API `BoardColumn` enum: pending 0, runnable 1, initializing 2,
-    /// running 3, blocked 4, succeeded 5, failed 6, archived 7, removing 8.
-    /// Rank 7 is reserved for archived runs, which is an overlay flag rather
-    /// than a status.
+    /// running 3, blocked 4, human_needed 5, succeeded 6, failed 7,
+    /// archived 8, removing 9. The decision column (#1072) sits between
+    /// the attention states and the outcome columns. Rank 8 is reserved
+    /// for archived runs, which is an overlay flag rather than a status.
     #[must_use]
     pub fn board_rank(self) -> u8 {
         match self {
@@ -47,9 +49,10 @@ impl RunStatusKind {
             Self::Starting => 2,
             Self::Running | Self::Paused => 3,
             Self::Blocked => 4,
-            Self::Succeeded => 5,
-            Self::Failed | Self::Dead => 6,
-            Self::Removing => 8,
+            Self::HumanNeeded => 5,
+            Self::Succeeded => 6,
+            Self::Failed | Self::Dead => 7,
+            Self::Removing => 9,
         }
     }
 }
@@ -67,6 +70,7 @@ pub enum RunStatus {
     Removing,
     Succeeded { reason: SuccessReason },
     Failed { reason: FailureReason },
+    HumanNeeded,
     Dead,
 }
 
@@ -80,7 +84,7 @@ impl RunStatus {
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
-            Self::Succeeded { .. } | Self::Failed { .. } | Self::Dead
+            Self::Succeeded { .. } | Self::Failed { .. } | Self::HumanNeeded | Self::Dead
         )
     }
 
@@ -105,7 +109,7 @@ impl RunStatus {
     pub fn is_immutable(self) -> bool {
         matches!(
             self,
-            Self::Succeeded { .. } | Self::Failed { .. } | Self::Dead
+            Self::Succeeded { .. } | Self::Failed { .. } | Self::HumanNeeded | Self::Dead
         )
     }
 
@@ -160,6 +164,7 @@ impl RunStatus {
         match self {
             Self::Succeeded { reason } => Some(TerminalStatus::Succeeded { reason }),
             Self::Failed { reason } => Some(TerminalStatus::Failed { reason }),
+            Self::HumanNeeded => Some(TerminalStatus::HumanNeeded),
             Self::Dead => Some(TerminalStatus::Dead),
             _ => None,
         }
@@ -216,7 +221,7 @@ impl RunStatus {
                         | Self::Blocked { .. }
                         | Self::Paused { .. }
                         | Self::Removing,
-                    Self::Failed { .. }
+                    Self::Failed { .. } | Self::HumanNeeded,
                 )
                 | (
                     Self::Running,
@@ -254,6 +259,7 @@ impl From<RunStatus> for RunStatusKind {
             RunStatus::Removing => Self::Removing,
             RunStatus::Succeeded { .. } => Self::Succeeded,
             RunStatus::Failed { .. } => Self::Failed,
+            RunStatus::HumanNeeded => Self::HumanNeeded,
             RunStatus::Dead => Self::Dead,
         }
     }
@@ -275,6 +281,7 @@ impl fmt::Display for RunStatus {
             Self::Removing => f.write_str("removing"),
             Self::Succeeded { reason } => write!(f, "succeeded({reason})"),
             Self::Failed { reason } => write!(f, "failed({reason})"),
+            Self::HumanNeeded => f.write_str("human_needed"),
             Self::Dead => f.write_str("dead"),
         }
     }
@@ -402,6 +409,7 @@ impl FailureReason {
 pub enum TerminalStatus {
     Succeeded { reason: SuccessReason },
     Failed { reason: FailureReason },
+    HumanNeeded,
     Dead,
 }
 
@@ -410,6 +418,7 @@ impl fmt::Display for TerminalStatus {
         match self {
             Self::Succeeded { reason } => write!(f, "succeeded({reason})"),
             Self::Failed { reason } => write!(f, "failed({reason})"),
+            Self::HumanNeeded => f.write_str("human_needed"),
             Self::Dead => f.write_str("dead"),
         }
     }
@@ -420,6 +429,7 @@ impl From<TerminalStatus> for RunStatus {
         match value {
             TerminalStatus::Succeeded { reason } => Self::Succeeded { reason },
             TerminalStatus::Failed { reason } => Self::Failed { reason },
+            TerminalStatus::HumanNeeded => Self::HumanNeeded,
             TerminalStatus::Dead => Self::Dead,
         }
     }
@@ -457,6 +467,53 @@ mod tests {
     use super::{
         BlockedReason, FailureReason, InvalidTransition, PendingReason, RunStatus, SuccessReason,
     };
+
+    /// #1072: `human_needed` is a TERMINAL kind — the deadlock-exit
+    /// family parks a run as a decision request, never as a failure.
+    /// It is immutable, boards in the DECISION column (rank 5, ahead of
+    /// the outcome columns), and only active states reach it.
+    #[test]
+    fn human_needed_is_a_terminal_decision_request() {
+        let status = RunStatus::HumanNeeded;
+
+        assert_eq!(status.to_string(), "human_needed");
+        assert!(status.is_terminal());
+        assert!(status.is_immutable());
+        assert!(!status.is_active());
+        assert_eq!(
+            status.terminal_status(),
+            Some(super::TerminalStatus::HumanNeeded)
+        );
+        assert_eq!(RunStatus::HumanNeeded.kind().board_rank(), 5);
+
+        // Wire names (OpenAPI parity rides the same serde tag).
+        assert_eq!(
+            serde_json::to_string(&status).unwrap(),
+            r#"{"kind":"human_needed"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&RunStatus::HumanNeeded.kind()).unwrap(),
+            "\"human_needed\""
+        );
+    }
+
+    #[test]
+    fn active_states_reach_human_needed_and_it_is_frozen() {
+        let running = RunStatus::Running;
+        let blocked = RunStatus::Blocked {
+            blocked_reason: BlockedReason::HumanInputRequired,
+        };
+        let paused = RunStatus::Paused { prior_block: None };
+        let needed = RunStatus::HumanNeeded;
+
+        assert!(running.can_transition_to(needed));
+        assert!(blocked.can_transition_to(needed));
+        assert!(paused.can_transition_to(needed));
+        // Terminal: no outbound transition except the escape hatches.
+        assert!(!needed.can_transition_to(RunStatus::Running));
+        assert!(!needed.can_transition_to(RunStatus::Submitted));
+        assert!(needed.can_transition_to(RunStatus::Dead));
+    }
 
     #[test]
     fn pending_runnable_and_blocked_are_active() {
