@@ -249,13 +249,19 @@ fn run_queue_requires_filter_parses_and_refuses_teaching() {
         stderr_of(&bogus_field)
     );
 
-    let bogus_verdict = fabro(&["run", "queue", "--requires", "merge=bogus"]);
+    let bogus_verdict = fabro(&[
+        "run",
+        "queue",
+        "--field",
+        "closable",
+        "--requires",
+        "merge=bogus",
+    ]);
     assert!(!bogus_verdict.status.success());
+    let bogus_verdict_stderr = stderr_of(&bogus_verdict);
     assert!(
-        stderr_of(&bogus_verdict).contains("enabled")
-            && stderr_of(&bogus_verdict).contains("refused"),
-        "the refusal names the settled verdicts: {}",
-        stderr_of(&bogus_verdict)
+        bogus_verdict_stderr.contains("enabled") && bogus_verdict_stderr.contains("refused"),
+        "the refusal names the settled verdicts: {bogus_verdict_stderr}"
     );
 
     let same_field = fabro(&[
