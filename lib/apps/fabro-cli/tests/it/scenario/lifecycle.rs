@@ -158,20 +158,7 @@ fn dry_run_create_start_attach_works_with_default_run_lookup() {
             "status": if state.archived_at.is_some() {
                 "archived"
             } else {
-                match state.status {
-                fabro_types::RunStatus::Submitted => "submitted",
-                fabro_types::RunStatus::Pending { .. } => "pending",
-                fabro_types::RunStatus::Runnable => "runnable",
-                fabro_types::RunStatus::Starting => "starting",
-                fabro_types::RunStatus::Running => "running",
-                fabro_types::RunStatus::Blocked { .. } => "blocked",
-                fabro_types::RunStatus::Paused { .. } => "paused",
-                fabro_types::RunStatus::Removing => "removing",
-                fabro_types::RunStatus::Succeeded { .. } => "succeeded",
-                fabro_types::RunStatus::Failed { .. } => "failed",
-                fabro_types::RunStatus::HumanNeeded => "human_needed",
-                fabro_types::RunStatus::Dead => "dead",
-                }
+                crate::cmd::support::status_kind_str(state.status)
             },
             "has_conclusion": state.conclusion.is_some(),
         }),

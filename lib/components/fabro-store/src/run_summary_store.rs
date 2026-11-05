@@ -360,9 +360,10 @@ impl RunSummaryStore {
         query
             .push(" WHERE automation_id = ")
             .push_bind(automation_id.to_string())
-            .push(
-                " AND (status IN ('succeeded', 'failed', 'human_needed', 'dead')                    OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
-            );
+            .push(format!(
+                " AND (status IN ({list}) OR (status = 'blocked' AND completed_at_ms IS NOT NULL))",
+                list = TERMINAL_STATUS_LIST_SQL.as_str()
+            ));
         push_order(
             &mut query,
             RunSummarySort::CreatedAt,
@@ -440,7 +441,10 @@ impl RunSummaryStore {
             }
         };
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
-        query.push(" WHERE status IN ('succeeded', 'failed', 'human_needed', 'dead')");
+        query.push(format!(
+            " WHERE status IN ({list})",
+            list = TERMINAL_STATUS_LIST_SQL.as_str()
+        ));
         if let Some(workflow) = workflow {
             query.push(" AND workflow_slug = ").push_bind(workflow);
         }
@@ -499,7 +503,10 @@ impl RunSummaryStore {
             .map(|(run_id, _latest)| run_id.to_string())
             .collect();
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
-        query.push(" WHERE status IN ('succeeded', 'failed', 'human_needed', 'dead')");
+        query.push(format!(
+            " WHERE status IN ({list})",
+            list = TERMINAL_STATUS_LIST_SQL.as_str()
+        ));
         if let Some(workflow) = workflow {
             query.push(" AND workflow_slug = ").push_bind(workflow);
         }
@@ -533,24 +540,25 @@ impl RunSummaryStore {
     /// lane's scheduled fires — the 2026-10-19 incident kept the loop
     /// automation skipped for 10+ hours on a ghost row.
     pub async fn active_run_for_automation(&self, automation_id: &str) -> Result<Option<RunId>> {
-        let stored: Option<String> = sqlx::query_scalar(
-            r"
-SELECT id
-FROM runs
-WHERE status NOT IN ('succeeded', 'failed', 'human_needed', 'dead', 'removing')
-  AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)
-  AND (
-    automation_id = ?
-    OR parent_id IN (SELECT id FROM runs WHERE automation_id = ?)
-  )
-ORDER BY created_at_ms DESC
-LIMIT 1
-",
-        )
-        .bind(automation_id)
-        .bind(automation_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        // QueryBuilder (the store's sanctioned dynamic path): the terminal
+        // set derives from the enum slice, never a hand-typed list.
+        let mut query = QueryBuilder::<Sqlite>::new("SELECT id FROM runs WHERE status NOT IN (");
+        let mut separated = query.separated(", ");
+        for kind in TERMINAL_STATUS_KINDS {
+            separated.push_bind(kind.to_string());
+        }
+        separated.push("'removing')");
+        query
+            .push(" AND NOT (status = 'blocked' AND completed_at_ms IS NOT NULL)")
+            .push(" AND (automation_id = ")
+            .push_bind(automation_id.to_string())
+            .push(" OR parent_id IN (SELECT id FROM runs WHERE automation_id = ")
+            .push_bind(automation_id.to_string())
+            .push(")) ORDER BY created_at_ms DESC LIMIT 1");
+        let stored: Option<String> = query
+            .build_query_scalar()
+            .fetch_optional(&self.pool)
+            .await?;
         stored.map(parse_stored_run_id).transpose()
     }
 
@@ -836,6 +844,27 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
     }
 }
 
+/// The terminal status kinds as SQL bind-free literals, derived from one
+/// enum-anchored slice (the [`STATUS_RANK_CASE_SQL`] precedent): the
+/// terminal set can never drift from the taxonomy. Pinned by
+/// `terminal_set_covers_exactly_the_terminal_statuses` below.
+static TERMINAL_STATUS_LIST_SQL: LazyLock<String> = LazyLock::new(|| {
+    TERMINAL_STATUS_KINDS
+        .iter()
+        .map(|kind| format!("'{kind}'"))
+        .collect::<Vec<_>>()
+        .join(", ")
+});
+
+/// The terminal kinds of [`fabro_types::RunStatusKind`], one source for
+/// every terminal-set SQL fragment in this store.
+const TERMINAL_STATUS_KINDS: [RunStatusKind; 4] = [
+    RunStatusKind::Succeeded,
+    RunStatusKind::Failed,
+    RunStatusKind::HumanNeeded,
+    RunStatusKind::Dead,
+];
+
 /// Status sort rank derived from [`RunStatusKind::board_rank`], so the SQL
 /// order and the board column order share one source. Archived runs rank 8,
 /// matching the `archived` board column (the decision column at 5 shifted
@@ -957,7 +986,7 @@ mod tests {
 
     use super::{
         RunSummaryListQuery, RunSummarySort, RunSummarySortDirection, RunSummaryStore,
-        RunSummaryVisibility,
+        RunSummaryVisibility, TERMINAL_STATUS_KINDS,
     };
     use crate::platform_records::{
         PlatformRecord, PlatformRecordKind, PullRequestCreatedRecord, PullRequestFailedRecord,
@@ -967,6 +996,22 @@ mod tests {
 
     fn dt(value: &str) -> DateTime<Utc> {
         value.parse().unwrap()
+    }
+
+    /// The derived terminal SQL set covers EXACTLY the terminal statuses:
+    /// every kind in the slice is terminal and every terminal kind is in
+    /// the slice — the taxonomy and the SQL cannot drift apart (#1072's
+    /// review fold).
+    #[test]
+    fn terminal_set_covers_exactly_the_terminal_statuses() {
+        for kind in RunStatusKind::VARIANTS {
+            let terminal = sample_status(*kind).is_terminal();
+            let in_slice = TERMINAL_STATUS_KINDS.contains(kind);
+            assert_eq!(
+                terminal, in_slice,
+                "kind {kind}: terminal={terminal} in-slice={in_slice}"
+            );
+        }
     }
 
     fn run_id(timestamp_ms: u64, random: u128) -> RunId {

@@ -79,6 +79,26 @@ fn command_timeout() -> Duration {
 
 /// Returns the repo-relative path to a test fixture.
 ///
+/// The snake_case status kind of a run state, as the scenario snapshots
+/// and wait helpers print it — ONE mapping for every IT harness (the
+/// #1072 review fold: two exhaustive matches had drifted once already).
+pub(crate) fn status_kind_str(status: fabro_types::RunStatus) -> &'static str {
+    match status {
+        fabro_types::RunStatus::Submitted => "submitted",
+        fabro_types::RunStatus::Pending { .. } => "pending",
+        fabro_types::RunStatus::Runnable => "runnable",
+        fabro_types::RunStatus::Starting => "starting",
+        fabro_types::RunStatus::Running => "running",
+        fabro_types::RunStatus::Blocked { .. } => "blocked",
+        fabro_types::RunStatus::Paused { .. } => "paused",
+        fabro_types::RunStatus::Removing => "removing",
+        fabro_types::RunStatus::Succeeded { .. } => "succeeded",
+        fabro_types::RunStatus::Failed { .. } => "failed",
+        fabro_types::RunStatus::HumanNeeded => "human_needed",
+        fabro_types::RunStatus::Dead => "dead",
+    }
+}
+
 /// Prefer `TestContext::install_fixture` for tests that run `fabro run`,
 /// since config discovery walks from the workflow file's parent directory
 /// and can find the repo's `.fabro/project.toml`.
@@ -690,20 +710,7 @@ pub(crate) fn wait_for_status(run_dir: &Path, expected: &[&str]) -> String {
         let status = if state.archived_at.is_some() {
             "archived"
         } else {
-            match state.status {
-                fabro_types::RunStatus::Submitted => "submitted",
-                fabro_types::RunStatus::Pending { .. } => "pending",
-                fabro_types::RunStatus::Runnable => "runnable",
-                fabro_types::RunStatus::Starting => "starting",
-                fabro_types::RunStatus::Running => "running",
-                fabro_types::RunStatus::Blocked { .. } => "blocked",
-                fabro_types::RunStatus::Paused { .. } => "paused",
-                fabro_types::RunStatus::Removing => "removing",
-                fabro_types::RunStatus::Succeeded { .. } => "succeeded",
-                fabro_types::RunStatus::Failed { .. } => "failed",
-                fabro_types::RunStatus::HumanNeeded => "human_needed",
-                fabro_types::RunStatus::Dead => "dead",
-            }
+            status_kind_str(state.status)
         };
         if expected.contains(&status) {
             return status.to_string();

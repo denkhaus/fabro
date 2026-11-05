@@ -88,7 +88,7 @@ pub fn ensure_terminal(source: &RunProjection, run_id: &RunId, verb: &str) -> Re
         Ok(())
     } else {
         Err(Error::Precondition(format!(
-            "run {run_id} must be terminal (succeeded, failed, human-needed, or dead) or a \
+            "run {run_id} must be terminal (succeeded, failed, human_needed, or dead) or a \
              resumable quota-class park to {verb}; current status is {current}"
         )))
     }

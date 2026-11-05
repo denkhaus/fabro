@@ -123,7 +123,7 @@ def main [
     # parse at the top level, so the second slot is ''.
     let sub = ($argv | get -o 1 | default '')
     let positional = ($argv | skip 2)
-    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json}
+    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json, all: $all}
 
     match [$facade $sub] {
         ["work" "show"] => {
