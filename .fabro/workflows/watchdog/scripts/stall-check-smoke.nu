@@ -10,26 +10,15 @@
 
 const SCRIPTS_DIR = (path self | path dirname)
 
-use ../../../scripts/lib/smoke_harness.nu [start-fail-log, fail, end-fail-gate, shim-env, write-shim-state]
+use ../../../scripts/lib/smoke_harness.nu [start-fail-log, fail, end-fail-gate, write-shim-state, drive]
 load-env {SMOKE_FAIL_LOG: (start-fail-log 'watchdog-stall-check-smoke')}
-
-const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
-
-# Drive the stall check against a shim state; returns the complete run.
-def drive [state: string]: nothing -> any {
-    do {
-        with-env (shim-env $SHIM $state) {
-            nu ($SCRIPTS_DIR | path join "stall-check.nu")
-        }
-    } | complete
-}
 
 # --- Arm 1: no automations at all (the pre-window posture) — every
 # gear reads disabled, the check exits 0 with the healthy line. The
 # pause is authoritative: silence, never an alarm.
 let silent_state = (mktemp -t watchdog-silent.XXXXXX.json)
 write-shim-state $silent_state {items: [], claims: [], nextKey: 9100, log: [], runs: [], marks: [], observations: [], radius: {}, automations: []}
-let silent = (drive $silent_state)
+let silent = (drive ($SCRIPTS_DIR | path join "stall-check.nu") $silent_state)
 if $silent.exit_code != 0 {
     fail $"no automations must stay silent and green: ($silent.stderr | str substring 0..300)"
 }
@@ -57,7 +46,7 @@ write-shim-state $healthy_state {
         {runId: "01ADJLIVE000000000000000000A", workflowSlug: "adjudicator", status: "running", startedMinutesAgo: 1}
     ],
 }
-let healthy = (drive $healthy_state)
+let healthy = (drive ($SCRIPTS_DIR | path join "stall-check.nu") $healthy_state)
 if $healthy.exit_code != 0 {
     fail $"fresh passes must stay healthy: ($healthy.stderr | str substring 0..300)"
 }
@@ -86,7 +75,7 @@ write-shim-state $stalled_state {
         {runId: "01DEVOK0000000000000000000A", workflowSlug: "develop", status: "succeeded", startedMinutesAgo: 35}
     ],
 }
-let stalled = (drive $stalled_state)
+let stalled = (drive ($SCRIPTS_DIR | path join "stall-check.nu") $stalled_state)
 if $stalled.exit_code == 0 {
     fail "a stalled gear must exit non-zero — the red run IS the alarm"
 }
@@ -111,7 +100,7 @@ write-shim-state $mixed_state {
         {runId: "01DEVOK20000000000000000A", workflowSlug: "develop", status: "succeeded", startedMinutesAgo: 35}
     ],
 }
-let mixed = (drive $mixed_state)
+let mixed = (drive ($SCRIPTS_DIR | path join "stall-check.nu") $mixed_state)
 if $mixed.exit_code == 0 {
     fail "the stalled adjudicator must alarm even with merger absent"
 }

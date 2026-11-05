@@ -15,6 +15,10 @@
 
 const EVIDENCE = "evidence.nu"
 const SCRIPTS_DIR = (path self | path dirname)
+# The harness's drive (the residual-boilerplate extraction, #1131):
+# evidence keeps its own local fail and negative arm (it predates the
+# harness's fail gate), but the drive idiom is shared.
+use ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'lib' 'smoke_harness.nu') [drive]
 source $EVIDENCE
 
 def fail [what: string]: nothing -> nothing {
@@ -446,21 +450,13 @@ try {
     git add base.txt
     git commit -qm "initial"
 
-    def shim-env [state: string]: nothing -> record {
-        {FABRO_BIN: $SHIM, FABRO_SERVER: "http://127.0.0.1:1", FABRO_WORK_SHIM_STATE: $state}
-    }
-
     # (a) Positive: the run holds a live claim on the item -> the capture's
     # header names the CHANNEL-resolved key and title.
     let ok_state = ($erepo | path join 'ok-state.json')
     {items: [{itemKey: "denkhaus/work#1", title: "Channel resolved title", body: "Edit lib/a.rs", state: "open", labels: []}],
      claims: [{claimId: "c1", itemKey: "denkhaus/work#1", runId: $RUN_ID, lane: "", state: "granted"}],
      nextKey: 8001, log: []} | to json --raw | save -f $ok_state
-    let ev_ok = (do {
-        with-env (shim-env $ok_state) {
-            echo '{"itemKey":"denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
-        }
-    } | complete)
+    let ev_ok = (drive ($SCRIPTS_DIR | path join "evidence.nu") $ok_state [--work-item] '' '{"itemKey":"denkhaus/work#1"}')
     if $ev_ok.exit_code != 0 {
         fail $"evidence --work-item positive run failed: ($ev_ok.stderr | str substring 0..240)"
     }
@@ -473,11 +469,7 @@ try {
     {items: [{itemKey: "denkhaus/work#1", title: "T", body: "b", state: "open", labels: []}],
      claims: [{claimId: "c9", itemKey: "denkhaus/work#1", runId: "01FOREIGN00000000000000000", lane: "loop", state: "active"}],
      nextKey: 8001, log: []} | to json --raw | save -f $foreign_state
-    let ev_foreign = (do {
-        with-env (shim-env $foreign_state) {
-            echo '{"itemKey":"denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
-        }
-    } | complete)
+    let ev_foreign = (drive ($SCRIPTS_DIR | path join "evidence.nu") $foreign_state [--work-item] '' '{"itemKey":"denkhaus/work#1"}')
     if $ev_foreign.exit_code == 0 {
         fail "a run without a live claim on the item must hard-fail (the integrity check)"
     }
@@ -488,11 +480,7 @@ try {
     # (c) Unresolvable item: the channel cannot show it -> hard-fail.
     let ghost_state = ($erepo | path join 'ghost-state.json')
     {items: [], claims: [{claimId: "c2", itemKey: "denkhaus/work#404", runId: $RUN_ID, lane: "", state: "granted"}], nextKey: 8001, log: []} | to json --raw | save -f $ghost_state
-    let ev_ghost = (do {
-        with-env (shim-env $ghost_state) {
-            echo '{"itemKey":"denkhaus/work#404"}' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item
-        }
-    } | complete)
+    let ev_ghost = (drive ($SCRIPTS_DIR | path join "evidence.nu") $ghost_state [--work-item] '' '{"itemKey":"denkhaus/work#404"}')
     if $ev_ghost.exit_code == 0 {
         fail "an unresolvable item must hard-fail (the channel is the resolver)"
     }
@@ -500,9 +488,7 @@ try {
     # (d) Malformed packet -> hard-fail before ANY channel call.
     let bad_state = ($erepo | path join 'bad-state.json')
     {items: [], claims: [], nextKey: 8001, log: []} | to json --raw | save -f $bad_state
-    let ev_bad = (do {
-        with-env (shim-env $bad_state) { echo 'not-json' | nu ($SCRIPTS_DIR | path join "evidence.nu") --work-item }
-    } | complete)
+    let ev_bad = (drive ($SCRIPTS_DIR | path join "evidence.nu") $bad_state [--work-item] '' 'not-json')
     if $ev_bad.exit_code == 0 {
         fail "evidence --work-item must hard-fail on a malformed packet — a silent fallback would reintroduce the wrong-item capture class"
     }

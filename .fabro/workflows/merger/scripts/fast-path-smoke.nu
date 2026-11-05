@@ -15,11 +15,9 @@
 const SCRIPTS_DIR = (path self | path dirname)
 
 use ../../../scripts/lib/smoke_harness.nu [
-    start-fail-log, fail, end-fail-gate, shim-env, write-shim-state, pin-argv
+    start-fail-log, fail, end-fail-gate, write-shim-state, drive, refuses-missing-server, pin-argvs
 ]
 load-env {SMOKE_FAIL_LOG: (start-fail-log 'merger-fast-path-smoke')}
-
-const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 
 # The fixture worklist: three merge-enabled develop runs (clean,
 # conflicted, PR-less malformed), one parked re-entry, one smoke
@@ -64,13 +62,7 @@ write-shim-state $state {
 }
 
 # --- The sweep drive (engine-mode argv; the routing envelope must land)
-let sweep = (do {
-    with-env (shim-env $SHIM $state) {
-        with-env {FABRO_RUN_ID: $MERGER_RUN} {
-            nu ($SCRIPTS_DIR | path join "fast-path.nu") --smoke
-        }
-    }
-} | complete)
+let sweep = (drive ($SCRIPTS_DIR | path join "fast-path.nu") $state [--smoke] $MERGER_RUN)
 if $sweep.exit_code != 0 {
     fail $"the sweep must exit 0: ($sweep.stderr | str substring 0..300)"
 }
@@ -137,24 +129,17 @@ for excluded in ["01PENDINGRUN000000000000000F" "01REFUSEDRUN0000000000000010"] 
 }
 
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
-let no_server = (do {
-    with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $state} {
-        hide-env FABRO_SERVER
-        nu ($SCRIPTS_DIR | path join "fast-path.nu")
-    }
-} | complete)
-if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+refuses-missing-server ($SCRIPTS_DIR | path join "fast-path.nu") $state
 
 # --- The real-parser argv pin (the closeout-smoke precedent): the
 # merge facade's grammar is verb-first, and the queue's requirement
 # filter must parse against the REAL binary on a dead server.
 do {
-    let tree_bin = ($SCRIPTS_DIR | path join '..' '..' '..' '..' 'target' 'debug' 'fabro')
-    let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
     let dead = "http://127.0.0.1:1"
-    pin-argv $fabro_bin $dead [run queue --field closable --requires merge=enabled --workflow develop --json --server $dead]
-    pin-argv $fabro_bin $dead [run merge "01M5844J1FDD" --server $dead]
-    print 'ok: every outbound argv parses against the real CLI grammar'
+    pin-argvs $dead [
+        [run queue --field closable --requires merge=enabled --workflow develop --json --server $dead]
+        [run merge "01M5844J1FDD" --server $dead]
+    ]
 }
 
 rm -f $state

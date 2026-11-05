@@ -15,7 +15,8 @@ source $CLOSEOUT
 # real-parser argv pin driver live in .fabro/scripts/lib/ — this smoke
 # is a consumer, never a re-implementation.
 use ../../../scripts/lib/smoke_harness.nu [
-    start-fail-log, fail, end-fail-gate, shim-env, fresh-work-state, run-shaped-repo, pin-argv
+    start-fail-log, fail, end-fail-gate, fresh-work-state, run-shaped-repo, drive,
+    refuses-missing-server, pin-argvs, tree-bin
 ]
 
 # nu 0.115 catches `exit` inside `try` (the e2e arms live in one), so a
@@ -432,7 +433,6 @@ if (parse-head $"($vf_note.text | lines | first)\nmore prose") == null {
 # AND negative arms, per the edited-script dry-run rule. The shim path
 # resolves ABSOLUTE from the smoke's own location — the subprocess runs
 # in the temp repo, a relative path would not exist there.
-const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 
 # Temp git repo shaped like a RUN (the harness builder): the diff
 # carries the title tokens deterministically for the PARK gate.
@@ -447,11 +447,7 @@ try {
     # stays open, ZERO tracker mutations in the log.
     let park_state = ($repo | path join 'park-state.json')
     fresh-work-state $park_state "Rewrite the quantum flux capacitor harness"
-    let park_run = (do {
-        with-env (shim-env $SHIM $park_state) {
-            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
-        }
-    } | complete)
+    let park_run = (drive ($SCRIPTS_DIR | path join "closeout.nu") $park_state [--work-item] '' '{"itemKey": "denkhaus/work#1"}')
     if $park_run.exit_code != 0 {
         fail $"PARK arm must exit 0 \(a park is a hold, not a failure\): ($park_run.stderr | str substring 0..200)"
     }
@@ -489,11 +485,7 @@ try {
         '{"node":"implementer","data":{"observations":["deferred-action: regen the TS client locally (no java in sandbox)"]}}'
         '{"node":"planner","data":{"observations":["exemption: run just image-release plus tofu apply (infra action)"]}}'
     ] | str join "\n" | save -f $"($repo)/.fabro/journal/($RUN_ID).jsonl"
-    let happy_run = (do {
-        with-env (shim-env $SHIM $happy_state) {
-            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
-        }
-    } | complete)
+    let happy_run = (drive ($SCRIPTS_DIR | path join "closeout.nu") $happy_state [--work-item] '' '{"itemKey": "denkhaus/work#1"}')
     if $happy_run.exit_code != 0 {
         fail $"happy path failed: ($happy_run.stderr | str substring 0..300)"
     }
@@ -547,11 +539,7 @@ try {
         {itemKey: "denkhaus/work#1", title: "Make the frobnicator queue bounded", body: "the item body", state: "open", labels: []}
         {itemKey: "denkhaus/work#7999", title: (finding-title "Non-blocking: the cache key could collide under retries, harmless today." "denkhaus/work#1"), body: $"Prior filing from this run. Basis: run \(($RUN_ID)\), closed item denkhaus/work#1", state: "open", labels: ["residual"]}
     ], claims: [], nextKey: 8001, log: []} | to json --raw | save -f $dedupe_state
-    let dedupe_run = (do {
-        with-env (shim-env $SHIM $dedupe_state) {
-            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
-        }
-    } | complete)
+    let dedupe_run = (drive ($SCRIPTS_DIR | path join "closeout.nu") $dedupe_state [--work-item] '' '{"itemKey": "denkhaus/work#1"}')
     if $dedupe_run.exit_code != 0 {
         fail $"dedupe arm failed: ($dedupe_run.stderr | str substring 0..300)"
     }
@@ -567,27 +555,15 @@ try {
     # packet and a malformed packet each hard-fail.
     let neg_state = ($repo | path join 'neg-state.json')
     fresh-work-state $neg_state "Make the frobnicator queue bounded"
-    let no_flag = (do {
-        with-env (shim-env $SHIM $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") }
-    } | complete)
+    let no_flag = (drive ($SCRIPTS_DIR | path join "closeout.nu") $neg_state)
     if $no_flag.exit_code != 2 { fail "closeout without --work-item must be a usage error (exit 2)" }
-    let empty_stdin = (do {
-        with-env (shim-env $SHIM $neg_state) { echo "" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
-    } | complete)
+    let empty_stdin = (drive ($SCRIPTS_DIR | path join "closeout.nu") $neg_state [--work-item])
     if $empty_stdin.exit_code != 1 { fail "empty stdin packet must hard-fail (exit 1)" }
-    let bad_packet = (do {
-        with-env (shim-env $SHIM $neg_state) { echo "not json" | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item }
-    } | complete)
+    let bad_packet = (drive ($SCRIPTS_DIR | path join "closeout.nu") $neg_state [--work-item] '' 'not json')
     if $bad_packet.exit_code != 1 { fail "malformed packet must hard-fail (exit 1)" }
-    let no_server = (do {
-        with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $neg_state} {
-            # the ambient shell may carry FABRO_SERVER (direnv) — the arm
-            # must test the ABSENCE, so drop it for the child
-            hide-env FABRO_SERVER
-            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "closeout.nu") --work-item
-        }
-    } | complete)
-    if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+    # The ambient shell may carry FABRO_SERVER (direnv) — the harness
+    # arm hides it so the child tests the ABSENCE.
+    refuses-missing-server ($SCRIPTS_DIR | path join "closeout.nu") $neg_state [--work-item] '{"itemKey": "denkhaus/work#1"}'
 
     # The real-parser argv pin (run 01M60NX9W7N65DEPXYN09CE9BR lost its
     # deferred-action filing to this): the work shim is position-blind
@@ -608,8 +584,7 @@ try {
         # back to whatever `fabro` resolves to. The verb-presence check is
         # part of the pin — an installed CLI that predates the verb names
         # itself (the fork.26/fork.27 skew class).
-        let tree_bin = ($SCRIPTS_DIR | path join '../../../..' 'target' 'debug' 'fabro')
-        let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
+        let fabro_bin = (tree-bin)
         let dead_server = "http://127.0.0.1:1"
         # the fact call, exactly as the closeout emits it (facts fire
         # first, so this is the one argv a dead-server closeout run
@@ -636,13 +611,6 @@ try {
             [work --server $dead_server list --project fabro --label "residual"]
             [work --server $dead_server close --project fabro "denkhaus/work#1" --reason "r"]
         ]
-        for shape in $work_shapes {
-            let run = (do { ^$fabro_bin ...$shape } | complete)
-            let combined = ($run.stdout + $run.stderr)
-            if ($combined | str contains 'unexpected argument') {
-                fail $"a work argv drifted out of the real parser's grammar: ($combined | str substring 0..240)"
-            }
-        }
         # the create shape (the historically buggy one, run
         # 01M60NX9W7N65DEPXYN09CE9BR) carries its body on stdin
         let create_run = (do {
@@ -652,7 +620,9 @@ try {
         if ($create_combined | str contains 'unexpected argument') {
             fail $"the create argv drifted out of the real parser's grammar: ($create_combined | str substring 0..240)"
         }
-        print 'ok: every outbound argv parses against the real CLI grammar'
+        # The pin-argvs ok line closes the block (shapes last, after the
+        # create arm — the original print's position).
+        pin-argvs $dead_server $work_shapes
     }
 } finally {
     # fail-exits bypass this (nu cannot catch exit); mktemp -t keeps any

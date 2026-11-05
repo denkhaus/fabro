@@ -11,11 +11,9 @@
 const SCRIPTS_DIR = (path self | path dirname)
 
 use ../../../scripts/lib/smoke_harness.nu [
-    start-fail-log, fail, end-fail-gate, shim-env, write-shim-state, pin-argv
+    start-fail-log, fail, end-fail-gate, write-shim-state, drive, refuses-missing-server, pin-argvs
 ]
 load-env {SMOKE_FAIL_LOG: (start-fail-log 'adjudicator-closing-pass-smoke')}
-
-const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 
 # The fixture worklist: three closable-enabled develop runs — an
 # empty-radius landing, an open-radius waiter, an already-closed re-entry
@@ -52,14 +50,9 @@ write-shim-state $state {
     merges: [],
 }
 
-# --- The closing drive (engine-mode argv).
-let closing = (do {
-    with-env (shim-env $SHIM $state) {
-        with-env {FABRO_RUN_ID: $ADJUDICATOR_RUN} {
-            nu ($SCRIPTS_DIR | path join "closing-pass.nu")
-        }
-    }
-} | complete)
+# --- The closing drive (engine-mode argv; the harness drive carries
+# the shim env and the run id).
+let closing = (drive ($SCRIPTS_DIR | path join "closing-pass.nu") $state [] $ADJUDICATOR_RUN)
 if $closing.exit_code != 0 {
     fail $"the closing pass must exit 0: ($closing.stderr | str substring 0..300)"
 }
@@ -92,24 +85,15 @@ if (($close_log | where {|l| ($l.argv | str join ' ') =~ 'work#2'}) | length) !=
 }
 
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
-let no_server = (do {
-    with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $state} {
-        hide-env FABRO_SERVER
-        nu ($SCRIPTS_DIR | path join "closing-pass.nu")
-    }
-} | complete)
-if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+refuses-missing-server ($SCRIPTS_DIR | path join "closing-pass.nu") $state
 
 # --- The real-parser argv pin: the verdict-flipped queue read and the
 # work close grammar against the REAL binary on a dead server.
-do {
-    let tree_bin = ($SCRIPTS_DIR | path join '..' '..' '..' '..' 'target' 'debug' 'fabro')
-    let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
-    let dead = "http://127.0.0.1:1"
-    pin-argv $fabro_bin $dead [run queue --field closable --verdict enabled --workflow develop --json --server $dead]
-    pin-argv $fabro_bin $dead [work --server $dead close --project fabro "denkhaus/work#1" --reason "landed via merger"]
-    print 'ok: every outbound argv parses against the real CLI grammar'
-}
+let dead = "http://127.0.0.1:1"
+pin-argvs $dead [
+    [run queue --field closable --verdict enabled --workflow develop --json --server $dead]
+    [work --server $dead close --project fabro "denkhaus/work#1" --reason "landed via merger"]
+]
 
 rm -f $state
 end-fail-gate

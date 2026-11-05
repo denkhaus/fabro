@@ -55,6 +55,68 @@ export def shim-env [shim: string, state: string]: nothing -> record {
     {FABRO_BIN: $shim, FABRO_SERVER: "http://127.0.0.1:1", FABRO_WORK_SHIM_STATE: $state}
 }
 
+# --- The residual boilerplate extraction (#1131, the sprint-78
+# architecture gate): four blocks the smokes re-grew 4-6 copies each
+# after the #1109 state/git/fail-gate extraction. This module resolves
+# them relative to ITSELF — a smoke names its script and state, never
+# counts `../` levels or re-resolves the real binary.
+
+# The work-channel shim next to this module (.fabro/scripts/). Kills
+# the up-level counting every smoke re-derived. A const (path self only
+# exists at parse time).
+export const SHIM = (path self | path dirname | path join '..' 'fabro-work-shim.nu')
+
+# Drive one shim-backed script end to end and return the
+# complete-wrapped record: shim env, optional FABRO_RUN_ID (the
+# observation-record smoke arms), optional stdin (the closeout/evidence
+# packet arms), optional extra args. The caller asserts the record.
+export def drive [script: string, state: string, args: list<string> = [], run_id: string = '', stdin_text: string = '']: nothing -> any {
+    let extra = (if ($run_id | is-empty) { {} } else { {FABRO_RUN_ID: $run_id} })
+    do {
+        with-env (shim-env $SHIM $state) {
+            with-env $extra {
+                $stdin_text | ^nu $script ...$args
+            }
+        }
+    } | complete
+}
+
+# The negative arm five smokes re-state verbatim: with FABRO_SERVER
+# hidden (the ambient shell may carry it — the arm must test the
+# ABSENCE), the script must refuse at the channel guard, exit 1.
+export def refuses-missing-server [script: string, state: string, args: list<string> = [], stdin_text: string = '']: nothing -> nothing {
+    let run = (do {
+        with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $state} {
+            hide-env FABRO_SERVER
+            $stdin_text | ^nu $script ...$args
+        }
+    } | complete)
+    if $run.exit_code != 1 {
+        fail $"a missing FABRO_SERVER must be refused loudly (exit 1) for ($script): exit ($run.exit_code)"
+    }
+}
+
+# The tree CLI every argv pin drives (the closeout-smoke resolution):
+# target/debug/fabro beside this repo, else the PATH fabro. (path self
+# is parse-time — the path rides a const.)
+const TREE_BIN = (path self | path dirname | path join '..' '..' '..' 'target' 'debug' 'fabro')
+export def tree-bin []: nothing -> string {
+    if ($TREE_BIN | path exists) { $TREE_BIN } else { which fabro | get 0.path }
+}
+
+# Pin a list of argv shapes against the REAL clap parser on a dead
+# server (the shim is position-blind — only the real parser catches a
+# grammar drift). Resolves the binary once for the whole list; the
+# dead-server string is the caller's (its shapes embed it). Prints the
+# shared ok line.
+export def pin-argvs [dead: string, shapes: list<list<string>>]: nothing -> nothing {
+    let bin = (tree-bin)
+    for shape in $shapes {
+        pin-argv $bin $dead $shape
+    }
+    print 'ok: every outbound argv parses against the real CLI grammar'
+}
+
 # Write one full shim state (the caller owns the shape; fresh-work-state
 # is the common one-item starting point).
 export def write-shim-state [path: string, state: record]: nothing -> nothing {

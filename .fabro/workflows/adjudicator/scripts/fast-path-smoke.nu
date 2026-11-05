@@ -12,11 +12,9 @@
 const SCRIPTS_DIR = (path self | path dirname)
 
 use ../../../scripts/lib/smoke_harness.nu [
-    start-fail-log, fail, end-fail-gate, shim-env, write-shim-state, pin-argv
+    start-fail-log, fail, end-fail-gate, write-shim-state, drive, refuses-missing-server, pin-argvs
 ]
 load-env {SMOKE_FAIL_LOG: (start-fail-log 'adjudicator-fast-path-smoke')}
-
-const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 
 # The fixture worklist: four develop runs plus a smoke run (the filter
 # keeps it out), one live run (never queues).
@@ -61,13 +59,7 @@ write-shim-state $state {
 }
 
 # --- The sweep drive (engine-mode argv; the routing envelope must land)
-let sweep = (do {
-    with-env (shim-env $SHIM $state) {
-        with-env {FABRO_RUN_ID: $ADJUDICATOR_RUN} {
-            nu ($SCRIPTS_DIR | path join "fast-path.nu")
-        }
-    }
-} | complete)
+let sweep = (drive ($SCRIPTS_DIR | path join "fast-path.nu") $state [] $ADJUDICATOR_RUN)
 if $sweep.exit_code != 0 {
     fail $"the sweep must exit 0: ($sweep.stderr | str substring 0..300)"
 }
@@ -155,11 +147,7 @@ if ("01LIVERUN00000000000000000000" in ($marks | get runId)) { fail "a live run 
 # "Queue empty".
 let empty_state = (mktemp -t adjudicator-empty.XXXXXX.json)
 write-shim-state $empty_state {items: [], claims: [], nextKey: 9000, log: [], runs: [], marks: [], observations: [], radius: {}}
-let empty_run = (do {
-    with-env (shim-env $SHIM $empty_state) {
-        nu ($SCRIPTS_DIR | path join "fast-path.nu")
-    }
-} | complete)
+let empty_run = (drive ($SCRIPTS_DIR | path join "fast-path.nu") $empty_state)
 if $empty_run.exit_code != 0 {
     fail $"the empty sweep must exit 0: ($empty_run.stderr | str substring 0..240)"
 }
@@ -168,13 +156,7 @@ if not ($empty_run.stdout | str contains '"Queue empty"') {
 }
 
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
-let no_server = (do {
-    with-env {FABRO_BIN: $SHIM, FABRO_WORK_SHIM_STATE: $state} {
-        hide-env FABRO_SERVER
-        nu ($SCRIPTS_DIR | path join "fast-path.nu")
-    }
-} | complete)
-if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
+refuses-missing-server ($SCRIPTS_DIR | path join "fast-path.nu") $state
 
 # --- Hard-transport arm (#1132): a CLI that answers non-zero fails the
 # stage — the read-queue-hard wrapper's shared policy for all three
@@ -199,15 +181,14 @@ if not ($dead_bin.stderr | str contains "run queue read failed") {
 # facade's grammar is verb-first (the workflow positional would eat a
 # leading subcommand after a flag).
 do {
-    let tree_bin = ($SCRIPTS_DIR | path join '..' '..' '..' '..' 'target' 'debug' 'fabro')
-    let fabro_bin = (if ($tree_bin | path exists) { $tree_bin } else { which fabro | get 0.path })
     let dead = "http://127.0.0.1:1"
-    pin-argv $fabro_bin $dead [run queue --field merge --workflow develop --json --server $dead]
-    pin-argv $fabro_bin $dead [run mark "01M5844J1FDD" merge=enabled --server $dead]
-    pin-argv $fabro_bin $dead [observation --server $dead list --run-id "01M5844J1FDD" --json]
-    pin-argv $fabro_bin $dead [work --server $dead radius --project fabro "denkhaus/work#1" --json]
-    pin-argv $fabro_bin $dead [work --server $dead comments --project fabro "denkhaus/work#1" --json]
-    print 'ok: every outbound argv parses against the real CLI grammar'
+    pin-argvs $dead [
+        [run queue --field merge --workflow develop --json --server $dead]
+        [run mark "01M5844J1FDD" merge=enabled --server $dead]
+        [observation --server $dead list --run-id "01M5844J1FDD" --json]
+        [work --server $dead radius --project fabro "denkhaus/work#1" --json]
+        [work --server $dead comments --project fabro "denkhaus/work#1" --json]
+    ]
 }
 
 rm -f $state $empty_state

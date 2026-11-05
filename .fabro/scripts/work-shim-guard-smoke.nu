@@ -9,10 +9,8 @@
 # versa) refuses or falls through, and this battery sees it.
 
 const SCRIPTS_DIR = (path self | path dirname)
-use (($SCRIPTS_DIR | path join 'lib' 'smoke_harness.nu')) [start-fail-log, fail, end-fail-gate, shim-env]
+use (($SCRIPTS_DIR | path join 'lib' 'smoke_harness.nu')) [start-fail-log, fail, end-fail-gate, shim-env, SHIM]
 load-env {SMOKE_FAIL_LOG: (start-fail-log 'work-shim-guard-smoke')}
-
-const SHIM = ($SCRIPTS_DIR | path join 'fabro-work-shim.nu')
 
 # One drive: the argv against the shim with a fixture state. Returns
 # the complete-wrapped record.
