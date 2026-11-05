@@ -1671,11 +1671,7 @@ mod closure_radius {
         );
         let land = serde_json::to_value(&land_records[0].record).expect("record serializes");
         assert_eq!(land["kind"], "work.landed", "the kind is the discriminator");
-        assert_eq!(
-            land["claim_id"],
-            claim_id,
-            "the record names the claim"
-        );
+        assert_eq!(land["claim_id"], claim_id, "the record names the claim");
         assert_eq!(
             land["item_key"], "denkhaus/work#1",
             "the record names the item"
