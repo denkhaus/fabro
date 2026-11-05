@@ -28,7 +28,7 @@
 # signal (the merge_conflict refusal): that is a packet, not a failure.
 
 use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, entries-from, run-mark-argv, run-merge-argv, cli
+    server, run-merge-argv, cli, read-queue-hard, mark-run-hard, emit-envelope
 ]
 
 const CALLER = 'merger-fast-path'
@@ -38,14 +38,10 @@ const WORKFLOW = 'develop'
 # One verdict write through the door (HARD: a failed mark fails the
 # stage — the engine retries the whole sweep; marks are idempotent at
 # the fold, a re-sweep is gap-safe).
+# The verdict write (HARD: the wrapper is the shared policy, #1132);
+# this alias carries the script's FIELD.
 def mark-run [run_id: string, verdict: string]: nothing -> nothing {
-    let srv = (server $CALLER)
-    let res = (cli $CALLER (run-mark-argv $srv $run_id $FIELD $verdict))
-    if $res.exit_code != 0 {
-        print -e $"($CALLER): run mark failed for ($run_id) \(($verdict)\): ($res.stderr | str trim | str substring 0..240)"
-        exit 1
-    }
-    print $"($CALLER): marked ($run_id) \($FIELD = ($verdict)\)"
+    mark-run-hard $CALLER $FIELD $run_id $verdict
 }
 
 # The cheap integration smoke (grilled): fetch the line, check out the
@@ -92,13 +88,7 @@ def main [--smoke]: nothing -> nothing {
     # RESTRICTED to merge:enabled runs — a merge:pending run cannot kill
     # the sweep at the door and a merge:refused run cannot become an
     # immortal parked packet.
-    let queue_res = (cli $CALLER (run-queue-argv $srv $FIELD $WORKFLOW '' 'merge=enabled'))
-    if $queue_res.exit_code != 0 {
-        print -e $"($CALLER): run queue read failed: ($queue_res.stderr | str trim | str substring 0..240)"
-        exit 1
-    }
-    let entries = (entries-from $queue_res.stdout)
-    print $"($CALLER): worklist holds ($entries | length) run\(s\) on \($FIELD)/($WORKFLOW)\)"
+    let entries = (read-queue-hard $CALLER $FIELD $WORKFLOW '' 'merge=enabled')
 
     mut packets = []
     mut merged_enabled = []
@@ -157,12 +147,6 @@ def main [--smoke]: nothing -> nothing {
         smoke_parked: $smoke_parked,
         malformed_parked: $malformed_parked,
     }
-    if $smoke {
-        # The smoke drive: print the packet record for assertion, no
-        # routing envelope (no engine consumes this output).
-        $integration | to json --raw | print
-        return
-    }
     let label = (if ($packets | is-empty) { "Queue empty" } else { "Runs pending integration" })
-    {preferred_next_label: $label, context_updates: {output.integration: $integration}} | to json --raw | print
+    emit-envelope $label 'integration' $integration $smoke
 }

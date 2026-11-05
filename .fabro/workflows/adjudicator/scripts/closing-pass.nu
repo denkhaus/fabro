@@ -18,9 +18,7 @@
 # Any OTHER non-zero exit fails the stage (the standing fact-failure
 # discipline: never absorb a failed write).
 
-use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, entries-from, work-close-argv, cli
-]
+use ../../../scripts/lib/work_channel.nu [server, work-close-argv, cli, read-queue-hard, emit-envelope]
 
 const CALLER = 'adjudicator-closing-pass'
 const FIELD = 'closable'
@@ -29,19 +27,14 @@ const WORKFLOW = 'develop'
 
 def main [--smoke]: nothing -> nothing {
     let srv = (server $CALLER)
-    let queue_res = (cli $CALLER (run-queue-argv $srv $FIELD $WORKFLOW $VERDICT))
-    if $queue_res.exit_code != 0 {
-        print -e $"($CALLER): closing-pass queue read failed: ($queue_res.stderr | str trim | str substring 0..240)"
-        exit 1
-    }
-    let entries = (entries-from $queue_res.stdout)
+    let entries = (read-queue-hard $CALLER $FIELD $WORKFLOW $VERDICT)
     # Only entries with BOTH decoration halves can close: the work item
     # names the target, the project scopes the close (work#1113 — the
     # project rides the entry, never a hardcode).
     let closable = ($entries | where {|e|
         ($e | get -o work_item | default '') != '' and ($e | get -o project | default '') != ''
     })
-    print $"($CALLER): \(($entries | length)\) run\(s\) settled on ($FIELD)=($VERDICT); \(($closable | length)\) carry a claimable work item"
+    print $"($CALLER): \(($closable | length)\) of them carry a claimable work item"
 
     mut landed = []
     mut open_radius = []
@@ -72,9 +65,5 @@ def main [--smoke]: nothing -> nothing {
         radius_open: $open_radius,
         already_closed: $already_closed,
     }
-    if $smoke {
-        $closing | to json --raw | print
-        return
-    }
-    {preferred_next_label: 'Closing pass done', context_updates: {output.closing: $closing}} | to json --raw | print
+    emit-envelope 'Closing pass done' 'closing' $closing $smoke
 }

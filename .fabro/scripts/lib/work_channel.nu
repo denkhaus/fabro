@@ -192,3 +192,50 @@ export def observation-record [caller: string, category: string, text: string]: 
     let exe = (bin)
     do { ^$exe ...$argv } | complete
 }
+
+# --- The hard pass-script policies (#1132, the sprint-78 architecture
+# gate): the three pass scripts (adjudicator fast-path, closing pass,
+# merger fast-path) chose IDENTICAL failure policies beside the pure
+# builders — these wrappers are those policies, one home. The pure
+# builders stay pure; an advisory caller keeps composing `cli` directly.
+
+# The hard queue read (HARD: a failed read fails the stage — the engine
+# retries the sweep; the anti-join makes re-sweeps gap-safe). Prints the
+# worklist line and returns the entries.
+export def read-queue-hard [caller: string, field: string, workflow: string, verdict: string = '', requirement: string = '']: nothing -> list<any> {
+    let srv = (server $caller)
+    let res = (cli $caller (run-queue-argv $srv $field $workflow $verdict $requirement))
+    if $res.exit_code != 0 {
+        print -e $"($caller): run queue read failed: ($res.stderr | str trim | str substring 0..240)"
+        exit 1
+    }
+    let entries = (entries-from $res.stdout)
+    print $"($caller): worklist holds ($entries | length) run\(s\) on ($field)/($workflow)"
+    $entries
+}
+
+# The hard verdict write (HARD: a failed mark fails the stage — the
+# engine retries the whole sweep; marks are idempotent at the fold, a
+# re-sweep is gap-safe).
+export def mark-run-hard [caller: string, field: string, run_id: string, verdict: string]: nothing -> nothing {
+    let srv = (server $caller)
+    let res = (cli $caller (run-mark-argv $srv $run_id $field $verdict))
+    if $res.exit_code != 0 {
+        print -e $"($caller): run mark failed for ($run_id) \(($verdict)\): ($res.stderr | str trim | str substring 0..240)"
+        exit 1
+    }
+    print $"($caller): marked ($run_id) \($field = ($verdict)\)"
+}
+
+# The routing envelope tail: the smoke drive prints the record bare (a
+# smoke asserts it directly, no engine consumes it); the engine drive
+# prints the routing envelope — the preferred label plus the record
+# under `output.<key>` (the command-stage contract every pass script
+# ends with).
+export def emit-envelope [label: string, key: string, record: any, smoke: bool = false]: nothing -> nothing {
+    if $smoke {
+        $record | to json --raw | print
+        return
+    }
+    {preferred_next_label: $label, context_updates: {($"output.($key)"): $record}} | to json --raw | print
+}

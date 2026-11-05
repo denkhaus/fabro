@@ -30,7 +30,7 @@
 
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
 use ../../../scripts/lib/work_channel.nu [
-    server, run-queue-argv, entries-from, run-mark-argv, observation-list-argv, work-radius-argv, cli
+    server, cli, observation-list-argv, work-radius-argv, read-queue-hard, mark-run-hard, emit-envelope
 ]
 
 const CALLER = 'adjudicator-fast-path'
@@ -91,26 +91,14 @@ def read-radius [project: string, work_item: string]: nothing -> list<any> {
 
 # One verdict write through the door (HARD: a failed mark fails the
 # stage — the engine retries the whole sweep; marks are idempotent at
-# the fold, a re-sweep is gap-safe).
+# the fold, a re-sweep is gap-safe). The wrapper is the shared policy
+# (#1132); this alias carries the script's FIELD.
 def mark-run [run_id: string, verdict: string]: nothing -> nothing {
-    let srv = (server $CALLER)
-    let res = (cli $CALLER (run-mark-argv $srv $run_id $FIELD $verdict))
-    if $res.exit_code != 0 {
-        print -e $"($CALLER): run mark failed for ($run_id) \(($verdict)\): ($res.stderr | str trim | str substring 0..240)"
-        exit 1
-    }
-    print $"($CALLER): marked ($run_id) \($FIELD = ($verdict)\)"
+    mark-run-hard $CALLER $FIELD $run_id $verdict
 }
 
 def main [--smoke]: nothing -> nothing {
-    let srv = (server $CALLER)
-    let queue_res = (cli $CALLER (run-queue-argv $srv $FIELD $WORKFLOW))
-    if $queue_res.exit_code != 0 {
-        print -e $"($CALLER): run queue read failed: ($queue_res.stderr | str trim | str substring 0..240)"
-        exit 1
-    }
-    let entries = (entries-from $queue_res.stdout)
-    print $"($CALLER): worklist holds ($entries | length) run\(s\) on \($FIELD)/($WORKFLOW)\)"
+    let entries = (read-queue-hard $CALLER $FIELD $WORKFLOW)
 
     mut packets = []
     mut marked_enabled = []
@@ -168,14 +156,8 @@ def main [--smoke]: nothing -> nothing {
         parked_human_needed: $parked_human,
         parked_reentered: $skipped_parked,
     }
-    if $smoke {
-        # The smoke drive: print the packet record for assertion, no
-        # routing envelope (no engine consumes this output).
-        $adjudication | to json --raw | print
-        return
-    }
     let label = (if ($packets | is-empty) { "Queue empty" } else { "Runs pending adjudication" })
-    {preferred_next_label: $label, context_updates: {output.adjudication: $adjudication}} | to json --raw | print
+    emit-envelope $label 'adjudication' $adjudication $smoke
 }
 
 # Pure: null for an empty work-item string, the string otherwise (the

@@ -176,6 +176,22 @@ let no_server = (do {
 } | complete)
 if $no_server.exit_code != 1 { fail "a missing FABRO_SERVER must be refused loudly (exit 1)" }
 
+# --- Hard-transport arm (#1132): a CLI that answers non-zero fails the
+# stage — the read-queue-hard wrapper's shared policy for all three
+# pass scripts. /bin/false stands in for a dying binary; the sweep must
+# exit 1 naming the queue read, never swallow the failure.
+let dead_bin = (do {
+    with-env {FABRO_BIN: "/bin/false", FABRO_SERVER: "http://127.0.0.1:1"} {
+        nu ($SCRIPTS_DIR | path join "fast-path.nu")
+    }
+} | complete)
+if $dead_bin.exit_code != 1 {
+    fail $"a non-zero queue read must fail the stage: exit ($dead_bin.exit_code)"
+}
+if not ($dead_bin.stderr | str contains "run queue read failed") {
+    fail $"the hard wrapper must name the failed read: ($dead_bin.stderr | str substring 0..160)"
+}
+
 # --- The real-parser argv pin (the closeout-smoke precedent): the shim
 # is position-blind, so every outbound argv is pinned against the REAL
 # binary on a dead server — a clap parse error ('unexpected argument')
