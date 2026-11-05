@@ -80,6 +80,56 @@ def refuse-foreign-flags [facade: string, sub: string, provided: record, owned: 
     }
 }
 
+# THE ARM SPECS (#1130, the sprint-78 architecture gate): one row per
+# facade/subcommand pair, OWNED (the per-facade guard's list) and LOGGED
+# (the log entry's flags) declared ADJACENTLY — the two per-arm sync
+# points that lived pages apart (the signature, the provided record,
+# the refuse list, the flags record) collapse to this row beside the
+# arm body. The --all drift class (sprint-78's review fold: a flag that
+# reached the signature and the arm but not the provided record) is
+# structurally harder: a new flag touches the signature, the provided
+# record, and THIS row — all three named in the enter path.
+const ARMS = [
+    [facade sub owned logged];
+    ["work" "show" [server project json] [server project json]]
+    ["work" "claims" [server project json] [server project json]]
+    ["work" "list" [server project query limit lane json] [server project query json]]
+    ["work" "create" [server project title type label priority body_file json] [server project title type label]]
+    ["work" "close" [server project reason json] [server project reason]]
+    ["work" "radius" [server project json] [server project json]]
+    ["work" "comments" [server project json] [server project json]]
+    ["run" "queue" [server field workflow verdict requires json] [server field workflow verdict requires json]]
+    ["run" "merge" [server json] [server json]]
+    ["run" "mark" [server json] [server json]]
+    ["observation" "record" [server run_id category text execution firing json] [server run_id category text]]
+    ["observation" "list" [server run_id json] [server run_id json]]
+    ["automations" "list" [server json] [server json]]
+    ["ps" "" [server workflow json all] [server workflow json all]]
+]
+
+# The spec row for one facade/subcommand pair; refuses loudly on an
+# unknown pair (the match's fallback owns that path, this never misses).
+def arm-spec [facade: string, sub: string]: nothing -> record {
+    let row = ($ARMS | where {|a| $a.facade == $facade and $a.sub == $sub} | get -o 0 | default null)
+    if $row == null {
+        print -e $"fabro-work-shim: no arm spec for '($facade) ($sub)' — the ARMS table and the match must stay in lockstep"
+        exit 2
+    }
+    $row
+}
+
+# The arm prologue (#1130): refuse foreign flags per the spec's OWNED
+# list, build the log's flags record from the spec's LOGGED list, append
+# the log entry, save, and return the logged state. Every arm body
+# starts with `let logged = (enter ...)` and keeps only its semantics.
+def enter [spec: record, p: string, s: any, argv: list<string>, stdin_text: string, provided: record]: nothing -> any {
+    refuse-foreign-flags $spec.facade $spec.sub $provided $spec.owned
+    let flags = ($provided | select ...$spec.logged)
+    let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+    save-state $p $logged
+    $logged
+}
+
 # main's signature is the interpreter-forced UNION of every facade's
 # flags (see the header); dispatch scopes them per subcommand.
 def main [
@@ -127,10 +177,7 @@ def main [
 
     match [$facade $sub] {
         ["work" "show"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "json"]
-            let flags = {server: $server, project: $project, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "show") $p $s $argv $stdin_text $provided)
             let key = ($positional | get -o 0 | default '')
             let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
             if $work_item == null {
@@ -140,17 +187,11 @@ def main [
             if $json { $work_item | to json --raw | print } else { print $"($work_item.itemKey): ($work_item.title)" }
         }
         ["work" "claims"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "json"]
-            let flags = {server: $server, project: $project, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "claims") $p $s $argv $stdin_text $provided)
             $logged.claims | to json --raw | print
         }
         ["work" "list"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "query" "limit" "lane" "json"]
-            let flags = {server: $server, project: $project, query: $query, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "list") $p $s $argv $stdin_text $provided)
             let hits = ($logged.items | where {|it|
                 ($it.state == "open") and (
                     ($query | is-empty) or ($it.title | str contains $query) or ($it.body | str contains $query)
@@ -159,9 +200,7 @@ def main [
             $hits | to json --raw | print
         }
         ["work" "create"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "title" "type" "label" "priority" "body_file" "json"]
-            let flags = {server: $server, project: $project, title: $title, type: $type, label: $label}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+            let logged = (enter (arm-spec "work" "create") $p $s $argv $stdin_text $provided)
             let n = ($logged | get -o nextKey | default 9000)
             let key = $"denkhaus/work#($n)"
             let labels = (if ($label | is-empty) { [] } else { $label | split row "," })
@@ -171,10 +210,7 @@ def main [
             print $key
         }
         ["work" "close"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "reason" "json"]
-            let flags = {server: $server, project: $project, reason: $reason}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "close") $p $s $argv $stdin_text $provided)
             let key = ($positional | get -o 0 | default '')
             let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
             if $work_item == null {
@@ -198,10 +234,7 @@ def main [
             print $"Closed ($key)."
         }
         ["work" "radius"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "json"]
-            let flags = {server: $server, project: $project, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "radius") $p $s $argv $stdin_text $provided)
             let key = ($positional | get -o 0 | default '')
             let radius = ($logged | get -o radius | default {} | get -o $key | default [])
             let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default {itemKey: $key, title: "the fixture work item", body: "", state: "open", labels: []})
@@ -211,10 +244,7 @@ def main [
             # The comment READ verb's fake (ADR-0039 stage D part 2): the
             # item must exist (the endpoint's 404 gate), then its
             # fixture comments come back oldest first, untouched.
-            refuse-foreign-flags $facade $sub $provided ["server" "project" "json"]
-            let flags = {server: $server, project: $project, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "work" "comments") $p $s $argv $stdin_text $provided)
             let key = ($positional | get -o 0 | default '')
             let work_item = ($logged.items | where {|it| $it.itemKey == $key} | get -o 0 | default null)
             if $work_item == null {
@@ -225,10 +255,7 @@ def main [
             {comments: $comments} | to json --raw | print
         }
         ["run" "queue"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "field" "workflow" "verdict" "requires" "json"]
-            let flags = {server: $server, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "run" "queue") $p $s $argv $stdin_text $provided)
             let wanted_field = ($field | default "merge")
             let marks = ($logged | get -o marks | default [])
             let runs = ($logged | get -o runs | default [])
@@ -271,10 +298,7 @@ def main [
             {data: $data, meta: {has_more: false, total: ($data | length)}} | to json --raw | print
         }
         ["run" "merge"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "json"]
-            let flags = {server: $server, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "run" "merge") $p $s $argv $stdin_text $provided)
             let run_id = ($positional | get -o 0 | default '')
             let run = ($logged | get -o runs | default [] | where {|r| $r.runId == $run_id} | get -o 0 | default null)
             if $run == null {
@@ -296,10 +320,7 @@ def main [
             print $"run ($run_id) merged — ($url)"
         }
         ["run" "mark"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "json"]
-            let flags = {server: $server, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "run" "mark") $p $s $argv $stdin_text $provided)
             let run_id = ($positional | get -o 0 | default '')
             let pair = ($positional | get -o 1 | default '')
             let parts = ($pair | split row '=')
@@ -319,9 +340,7 @@ def main [
             print $"run ($run_id) marked ($wanted_field): ($verdict) \(by run ($writer)\)"
         }
         ["observation" "record"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "run_id" "category" "text" "execution" "firing" "json"]
-            let flags = {server: $server, run_id: $run_id, category: $category, text: $text}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
+            let logged = (enter (arm-spec "observation" "record") $p $s $argv $stdin_text $provided)
             let claimed_run = ($run_id | default ($env.FABRO_RUN_ID? | default "shim"))
             let seen = ($logged | get -o observations | default [] | where {|o| $o.runId == $claimed_run})
             let next = (($seen | length) + 1)
@@ -330,10 +349,7 @@ def main [
             print $"($category) recorded at seq ($next)"
         }
         ["observation" "list"] => {
-            refuse-foreign-flags $facade $sub $provided ["server" "run_id" "json"]
-            let flags = {server: $server, run_id: $run_id, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "observation" "list") $p $s $argv $stdin_text $provided)
             let wanted_run = ($run_id | default '')
             let hits = ($logged | get -o observations | default [] | where {|o| $o.runId == $wanted_run} | each {|o| {seq: $o.seq, category: $o.category, text: $o.text}})
             {observations: $hits} | to json --raw | print
@@ -343,10 +359,7 @@ def main [
             # fixture's automation rows render verbatim; the schedule
             # trigger's enabled flag is the stall semantics' input (a
             # disabled gear stays silent — the pause is authoritative).
-            refuse-foreign-flags $facade $sub $provided ["server" "json"]
-            let flags = {server: $server, json: $json}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "automations" "list") $p $s $argv $stdin_text $provided)
             let rows = ($logged | get -o automations | default [] | each {|a|
                 {workflow: $a.workflow, triggers: [{type: "schedule", id: "schedule", enabled: $a.scheduleEnabled}]}
             })
@@ -357,10 +370,7 @@ def main [
             # render in the real `ps -a --json` row shape; start_time
             # derives from startedMinutesAgo so the smoke can pin fresh
             # and stale passes without wall-clock gymnastics.
-            refuse-foreign-flags $facade $sub $provided ["server" "workflow" "json" "all"]
-            let flags = {server: $server, workflow: $workflow, json: $json, all: $all}
-            let logged = ($s | update log ($s.log | append {argv: $argv, flags: $flags, stdin: $stdin_text}))
-            save-state $p $logged
+            let logged = (enter (arm-spec "ps" "") $p $s $argv $stdin_text $provided)
             let rows = ($logged | get -o runs | default []
                 | where {|r| ($workflow | is-empty) or ($r.workflowSlug == $workflow)}
                 | each {|r|

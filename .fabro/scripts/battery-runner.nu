@@ -84,6 +84,11 @@ const SMOKES = [
     # window, GEAR STALL alarm past it — through the channel shim's
     # automations/ps doors.
     '.fabro/workflows/watchdog/scripts/stall-check-smoke.nu'
+    # work shim per-facade flag guard (#1130, born from the sprint-78
+    # --all incident): foreign flags refuse naming the pair, owned flags
+    # parse, the log entry carries exactly the spec's LOGGED flags —
+    # the ARMS table's three-way lockstep pinned end to end.
+    '.fabro/scripts/work-shim-guard-smoke.nu'
     # The closing pass (ADR-0039 stage E): the verdict-flipped queue
     # read, the empty-radius landing, the open-radius wait, the closed
     # item's idempotent done, the entry's project — through the shim.
