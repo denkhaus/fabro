@@ -119,14 +119,12 @@ def check-loop-assets [] {
     print '== checking loop-asset scripts =='
     # One battery-runner surface (fabro-eae5): the smokes/batteries
     # registry lives in .fabro/scripts/battery-runner.nu and only
-    # there — this gate and the loop lane's tester gate
-    # (.fabro/workflows/loop/scripts/loop-gate.nu) both call the SAME
-    # runner (`all` scope), so a red battery REDs both callers and the
-    # path lists can no longer drift between lanes. Loop-asset tiers
-    # (fabro-bfe1 lint, fabro-41de prompt-lint, fabro-ac84 fixture
-    # batteries) run in BOTH main paths — crates touched or not — so a
-    # loop-asset-only diff is no longer a 4s no-op gate (run
-    # 01M23TE61D4Y).
+    # there — this gate calls the runner (`all` scope); the loop
+    # lane's tester gate that shared it retired with the loop
+    # workflow (ADR-0039 stage G). Loop-asset tiers (fabro-bfe1 lint,
+    # fabro-41de prompt-lint, fabro-ac84 fixture batteries) run in
+    # BOTH main paths — crates touched or not — so a loop-asset-only
+    # diff is no longer a 4s no-op gate (run 01M23TE61D4Y).
     let res = (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)
     print $res.stdout
     if ($res.exit_code != 0) {

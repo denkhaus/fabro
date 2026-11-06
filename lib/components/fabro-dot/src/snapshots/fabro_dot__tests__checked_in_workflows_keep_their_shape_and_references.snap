@@ -5,119 +5,20 @@ expression: report
 .fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=6 edges=13
   goal-inline
   file:prompt:prompts/adjudicate.md@adjudicate
-.fabro/workflows/architect/workflow.fabro: Architect nodes=6 edges=10
-  goal-inline
-  file:prompt:prompts/survey.md@survey
-  file:prompt:prompts/analyze.md@analyze
-  file:prompt:prompts/file.md@file
-.fabro/workflows/ask-e2e/workflow.fabro: AskE2E nodes=3 edges=2
-  goal-inline
-  file:prompt:prompts/ask.md@ask
-.fabro/workflows/card-game/workflow.fabro: CardGame nodes=20 edges=31
-  goal-inline
-  inline@expand_spec
-  inline@impl_setup
-  inline@verify_setup
-  inline@impl_data
-  inline@verify_data
-  inline@impl_logic
-  inline@verify_logic
-  inline@impl_ui
-  inline@verify_ui
-  inline@impl_integration
-  inline@verify_integration
-  inline@review
-.fabro/workflows/card-game-fast/workflow.fabro: CardGameFast nodes=6 edges=7
-  goal-inline
-  inline@plan_app
-  inline@implement_app
-  inline@verify_app
-  inline@fix_app
-.fabro/workflows/conductor/workflow.fabro: Conductor nodes=4 edges=10
-  goal-inline
-  file:prompt:prompts/survey.md@survey
-  file:output_schema:schemas/develop-output.schema.json@develop
-  file:prompt:prompts/develop-leg.md@develop
-.fabro/workflows/context-demo/workflow.fabro: ContextDemo nodes=3 edges=2
-  goal-inline
-  inline@emit
-.fabro/workflows/cutover-probe/workflow.fabro: CutoverProbe nodes=6 edges=5
-  goal-inline
-  file:output_schema:schemas/ctx.schema.json@ctx
-  file:prompt:prompts/ctx.md@ctx
-  file:prompt:prompts/mulch.md@mulch
-  file:prompt:prompts/product.md@product
-.fabro/workflows/daytona-medium/workflow.fabro: DaytonaMedium nodes=3 edges=2
-  goal-inline
-.fabro/workflows/develop/workflow.fabro: Develop nodes=10 edges=25
+.fabro/workflows/develop/workflow.fabro: Develop nodes=10 edges=26
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner
   file:prompt:prompts/implementer.md@implementer
   file:prompt:prompts/reviewer.md@reviewer
-.fabro/workflows/goal/workflow.fabro: Goal nodes=6 edges=8
-  goal-inline
-  file:prompt:prompts/continue.md@work
-  file:prompt:prompts/audit.md@audit
-  inline@fixup
 .fabro/workflows/hello/workflow.fabro: Hello nodes=3 edges=2
   goal-inline
   inline@greet
-.fabro/workflows/implement-plan/workflow.fabro: ImplementPlan nodes=11 edges=14
-  goal-inline
-  inline@fix_lints
-  inline@implement
-  file:prompt:prompts/simplify.md@simplify_opus
-  file:prompt:prompts/simplify.md@simplify_sol
-  inline@fixup
-.fabro/workflows/interview/workflow.fabro: Interview nodes=8 edges=15
-  goal-inline
-  inline@summarize
-.fabro/workflows/loop/workflow.fabro: Loop nodes=10 edges=24
-  goal-inline
-  file:output_schema:schemas/planner-output.schema.json@planner
-  file:prompt:prompts/planner.md@planner
-  file:prompt:prompts/implementer.md@implementer
-  file:prompt:prompts/reviewer.md@reviewer
-.fabro/workflows/merge-upstream/workflow.fabro: MergeUpstream nodes=4 edges=7
-  goal-inline
-  file:prompt:prompts/merge.md@merge
-  file:prompt:prompts/review.md@reviewer
 .fabro/workflows/merger/workflow.fabro: Merger nodes=5 edges=10
   goal-inline
   file:prompt:prompts/resolve.md@resolve
-.fabro/workflows/patch-cves/workflow.fabro: PatchCves nodes=3 edges=2
+.fabro/workflows/watchdog/workflow.fabro: Watchdog nodes=4 edges=5
   goal-inline
-  stylesheet-inline
-  file:prompt:prompts/patch-cves.md@patch
-.fabro/workflows/pr-simplify/workflow.fabro: PrSimplify nodes=3 edges=2
-  goal-inline
-  file:prompt:prompts/simplify.md@simplify
-.fabro/workflows/sleeper/workflow.fabro: Sleeper nodes=3 edges=2
-  goal-inline
-  inline@nap
-.fabro/workflows/smoke/workflow.fabro: Smoke nodes=8 edges=7
-  goal-inline
-.fabro/workflows/solitaire/workflow.fabro: Solitaire nodes=20 edges=31
-  goal-inline
-  inline@expand_spec
-  inline@impl_setup
-  inline@verify_setup
-  inline@impl_data
-  inline@verify_data
-  inline@impl_logic
-  inline@verify_logic
-  inline@impl_ui
-  inline@verify_ui
-  inline@impl_integration
-  inline@verify_integration
-  inline@review
-.fabro/workflows/solitaire-fast/workflow.fabro: SolitaireFast nodes=6 edges=7
-  goal-inline
-  inline@plan_app
-  inline@implement_app
-  inline@verify_app
-  inline@fix_app
 test/dot-compatibility/acp-agent-chain.fabro: AcpAgentChain nodes=4 edges=3
   goal-inline
 test/dot-compatibility/human-default-choice.fabro: HumanDefaultChoice nodes=5 edges=5

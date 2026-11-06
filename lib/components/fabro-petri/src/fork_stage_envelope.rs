@@ -917,19 +917,20 @@ digraph W {
         );
     }
 
-    /// fabro-e901 on a real graph whose merge leg is commented out
-    /// (`.fabro/workflows/conductor/workflow.fabro`): no comment fragment
+    /// fabro-e901 on a real graph whose merge leg is commented out.
+    /// Re-pointed from the conductor graph to the develop graph when
+    /// the conductor retired (ADR-0039 stage G): no comment fragment
     /// becomes a node or an `x.*` subject. Before the fix the walk read
     /// the commented block as a node named `//` and its attributes as
     /// envelope sites.
     #[expect(
         clippy::disallowed_methods,
-        reason = "the regression test reads the checked-in conductor graph synchronously"
+        reason = "the regression test reads the checked-in develop graph synchronously"
     )]
     #[test]
-    fn the_real_conductor_graph_reads_no_envelope_from_a_comment() {
+    fn the_real_develop_graph_reads_no_envelope_from_a_comment() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../.fabro/workflows/conductor/workflow.fabro");
+            .join("../../../.fabro/workflows/develop/workflow.fabro");
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
         let envelopes = StageEnvelopes::parse(&source);

@@ -3,8 +3,9 @@
 # loop-asset battery registry lives HERE and only here. Before this
 # script the path lists sat as literals in scripts/qualitygate.nu
 # (check-loop-assets) and the loop lane's tester gate
-# (.fabro/workflows/loop/scripts/loop-gate.nu) ran none of them — the
-# only defense was prose telling a session to run batteries by hand.
+# (.fabro/workflows/loop/scripts/loop-gate.nu — retired with the loop
+# workflow, ADR-0039 stage G); the only defense was prose telling a
+# session to run batteries by hand.
 #
 # Both callers route through this file:
 #   product gate:  nu .fabro/scripts/battery-runner.nu all
@@ -50,10 +51,9 @@ const SMOKES = [
     # the develop graph must keep its deterministic-exit contract —
     # planner ungated, preflight report-only, guard exits intact.
     '.fabro/workflows/develop/scripts/graph-contract-smoke.nu'
-    # Loop-lane graph-contract pin (fabro-70b5): lane wiring flags,
-    # the implementer envelope pin, the red bounce — the meta lane's
-    # load-bearing contracts, same tier as the develop pin.
-    '.fabro/workflows/loop/scripts/graph-contract-smoke.nu'
+    # Loop-lane graph-contract pin (fabro-70b5): RETIRED with the loop
+    # workflow (ADR-0039 stage G — the cutover's workflow cull); the
+    # lane classification machinery it pinned died with the graph.
     # Revisor graph-contract pin (fabro-2357): RETIRED with the revisor
     # workflow (ADR-0038 stage 4 — the run-end observation filing
     # replaced it); its three fixture batteries left with it.
@@ -192,13 +192,11 @@ const BATTERIES = [
     # must resolve from the tree instead of a git source again.
     'scripts/vendor-pins-fixtures.nu'
     # planner-output schema parity battery (fabro-899b, arch-gate sprint 42
-    # candidate 2): develop and loop carry the last measured live copy pair
-    # of the fabro-8922 family (0.913-similar); a schema edit on one side
-    # silently stops matching the other. The battery asserts loop == develop
-    # modulo the explicit LANE_AXIS allow-list (title, description, the
-    # loop-gate ban superset) and REDs on any other divergence — cross-root
-    # file sharing is NOT the fix (fabro-aeb7).
-    '.fabro/scripts/schema-parity-fixtures.nu'
+    # The schema-parity battery (fabro-899b) retired with the loop
+    # workflow (ADR-0039 stage G): it existed to pin the develop/loop
+    # planner-output schema pair, and the loop schema is gone. The
+    # develop schema's loop-gate ban entry stays as a harmless vacuous
+    # ban until the next schema revision.
     # seed-spec path fixtures (fabro-8a60): the pure core of the
     # qualitygate seed-spec tier — spec-named loop-asset path
     # extraction (globs/prefixes/URLs excluded), the missing-path RED

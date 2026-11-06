@@ -48,9 +48,7 @@ const SYNTHETIC_IDS_MARKER = '# prompt-lint: ' + 'synthetic-seed-ids'
 use lib/seed_id.nu seed-ids-in
 
 def lint-files [] {
-    (glob .fabro/workflows/conductor/**/*)
-    | append (glob .fabro/workflows/develop/**/*)
-    | append (glob .fabro/workflows/loop/**/*)
+    (glob .fabro/workflows/develop/**/*)
     | append (glob .fabro/scripts/*.nu)
     | where {|p| ([$p '.md' '.fabro' '.toml' '.nu'] | any {|ext| ($p | str ends-with $ext)})}
     | where {|p| ($p | path type) == 'file'}
@@ -177,7 +175,6 @@ def tracker-known-ids [] {
 
 def vendor-cli-files [] {
     (glob .fabro/workflows/develop/**/*)
-    | append (glob .fabro/workflows/loop/**/*)
     | where {|p| (not ($p | str contains '/scripts/')) and ($p | path type) == 'file'}
 }
 

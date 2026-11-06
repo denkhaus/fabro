@@ -102,7 +102,7 @@ const PIN_EXACT_LIB = '($p == "justfile")'
 let evidence_src = (open --raw ($SCRIPT_DIR | path join '../workflows/develop/scripts/evidence.nu'))
 let lib_src = (open --raw ($SCRIPT_DIR | path join 'lib/spec_paths.nu'))
 if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str contains $PIN_EXACT_EVIDENCE) {
-    fail $"drift pin: evidence.nu loop-work-path set changed — realign with lib/spec_paths.nu loop-asset? \(and the loop graph x.fs_write\)"
+    fail $"drift pin: evidence.nu loop-work-path set changed — realign with lib/spec_paths.nu loop-asset? \(the loop graph mirror retired with the loop workflow, ADR-0039 stage G\)"
 }
 if not ($lib_src | str contains $PIN_PREFIXES_LIB) or not ($lib_src | str contains $PIN_EXACT_LIB) {
     fail "drift pin: lib/spec_paths.nu loop-asset? set changed — realign with evidence.nu loop-work-path \(and the loop graph x.fs_write\)"

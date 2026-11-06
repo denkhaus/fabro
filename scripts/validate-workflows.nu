@@ -19,8 +19,9 @@
 # workflow directory, a `workflow.toml` path, or a graph file path.
 # Default: every `.fabro/workflows/*/workflow.toml` graph.
 #
-# Scope (fabro-0d77): graph admission + stage-journal coverage + the
-# conductor schema probe ONLY. The nushell and prompt-lint tiers that
+# Scope (fabro-0d77): graph admission + stage-journal coverage ONLY
+# (the conductor schema probe retired with the conductor workflow,
+# ADR-0039 stage G). The nushell and prompt-lint tiers that
 # used to run here were removed — they duplicated battery-runner's lint
 # scope on every loop-gate pass. `nu .fabro/scripts/battery-runner.nu
 # lint` is the single lint entry (fabro-eae5); `just lint-nu` stays the
@@ -72,95 +73,9 @@ def main [target: string = ""] {
     }
     # Stage-journal inspects coverage (fabro-e907) — always over ALL graphs.
     stage_journal_coverage_check
-    # Conductor develop-output schema probe (fabro-3196) — deterministic
-    # pin of the pass-continuity teeth.
-    conductor_develop_schema_probe
-}
-
-# Conductor develop-output schema probe (fabro-3196): the conductor
-# develop node routes through a file schema
-# (`.fabro/workflows/conductor/schemas/develop-output.schema.json`,
-# the fabro-017f teeth pattern) whose if/then REJECTS a
-# 'Develop integrated', 'Gate stuck — parked', or
-# 'Develop child failed' routing unless
-# context_updates.child_run_id is a non-empty string. Basis: run
-# 01M2X6AT3V4CPSJC08SMCVB172 dropped the id and run
-# 01M2X6EC95G76YFNF1YTCJZG7P went unrecorded.
-# Nushell has no built-in JSON Schema validator, so this probe pins the
-# contract structurally: schema shape (enum + if/then keys) and a
-# simulation of the if/then semantics on the arm payloads.
-def conductor_develop_schema_probe [] {
-    let schema_path = '.fabro/workflows/conductor/schemas/develop-output.schema.json'
-    let schema = (open $schema_path)
-
-    # Wiring: the conductor develop node must reference the file schema.
-    let graph = (open --raw .fabro/workflows/conductor/workflow.fabro)
-    if not ($graph | str contains 'output_schema="@schemas/develop-output.schema.json"') {
-        print -e $"validate-workflows: conductor develop node lost its file-schema wiring \(($schema_path)\)"
-        exit 1
-    }
-
-    # Routing contract: the enum covers exactly the develop node's four
-    # LLM-routable outgoing labels (the 'Unrouted develop outcome' soft
-    # exit is engine-side and deliberately excluded).
-    let expected_labels = ["Develop integrated", "Gate stuck — parked", "Tracker empty", "Develop child failed"]
-    let labels = ($schema | get -o properties | get -o preferred_next_label | get -o enum | default [])
-    if ($labels != $expected_labels) {
-        print -e $"validate-workflows: conductor develop schema enum drifted: ($labels | to json -r)"
-        exit 1
-    }
-
-    # Teeth: the allOf if/then arm must require a non-empty
-    # context_updates.child_run_id on the three child-naming labels.
-    let handoff = ["Develop integrated", "Gate stuck — parked", "Develop child failed"]
-    let arm = ($schema | get -o allOf | default [] | where {|a|
-        let if_labels = ($a | get -o if | get -o properties | get -o preferred_next_label | get -o enum | default [])
-        ($if_labels | any {|l| $l in $handoff })
-    })
-    if ($arm | length) != 1 {
-        print -e "validate-workflows: conductor develop schema lost its if/then pass-continuity arm"
-        exit 1
-    }
-    let then = ($arm | first | get then)
-    let cu_required = ($then | get -o required | default [])
-    let cu = ($then | get -o properties | get -o context_updates | default {})
-    let child_required = ($cu | get -o required | default [])
-    let child = ($cu | get -o properties | get -o child_run_id | default {})
-    if ("context_updates" not-in $cu_required) or ("child_run_id" not-in $child_required) or (($child | get -o minLength | default 0) < 1) or (($child | get -o type | default "") != "string") {
-        print -e "validate-workflows: conductor develop schema if/then arm no longer requires a non-empty child_run_id"
-        exit 1
-    }
-
-    # Simulate the if/then semantics on the arm payloads (rejection
-    # predicate mirrors the schema exactly: handoff label AND missing
-    # context_updates OR missing/zero-length child_run_id).
-    def rejected [payload: record, handoff: list] {
-        let label = ($payload | get -o preferred_next_label | default "")
-        if ($label not-in $handoff) { false } else {
-            let cu = ($payload | get -o context_updates)
-            if ($cu == null) { true } else {
-                (($cu | get -o child_run_id | default "") | str length) == 0
-            }
-        }
-    }
-    let cases = [
-        {name: "gate-stuck WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — parked", context_updates: {journal: {}}}, want: true}
-        {name: "gate-stuck WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — parked", context_updates: {child_run_id: "01M2X6EC95G76YFNF1YTCJZG7P", journal: {}}}, want: false}
-        {name: "merged-path WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated", context_updates: {child_run_id: "01M2X6EC95G76YFNF1YTCJZG7P"}}, want: false}
-        {name: "merged-path WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Develop integrated"}, want: true}
-        {name: "empty child_run_id rejected (minLength)", payload: {outcome: "succeeded", preferred_next_label: "Gate stuck — parked", context_updates: {child_run_id: ""}}, want: true}
-        {name: "failed-child WITHOUT child_run_id rejected", payload: {outcome: "succeeded", preferred_next_label: "Develop child failed"}, want: true}
-        {name: "failed-child WITH child_run_id accepted", payload: {outcome: "succeeded", preferred_next_label: "Develop child failed", context_updates: {child_run_id: "01M2E7VZYX8V", journal: {}}}, want: false}
-        {name: "tracker-empty needs NO child_run_id", payload: {outcome: "succeeded", preferred_next_label: "Tracker empty"}, want: false}
-    ]
-    for $case in $cases {
-        let got = (rejected $case.payload $handoff)
-        if $got != $case.want {
-            print -e $"validate-workflows: conductor develop schema probe FAILED: ($case.name) \(got rejected=($got), want=($case.want))"
-            exit 1
-        }
-    }
-    print $"validate-workflows: conductor develop schema probe ok \(($cases | length) cases\)"
+    # The conductor develop-output schema probe (fabro-3196) retired
+    # with the conductor workflow (ADR-0039 stage G): the pass-continuity
+    # teeth died with the graph that carried them.
 }
 
 # Class-level inspects-coverage lint (fabro-e907): every workflow whose
@@ -172,16 +87,14 @@ def conductor_develop_schema_probe [] {
 # denkhaus/work#1060: the stage-journal hook lives ONCE in
 # .fabro/project.toml (engine layer merge: settings < project <
 # workflow), so EVERY workflow journals — including demo/toy workflows
-# no one inspects. Engine-side coverage is required for the workflows
-# named in a remaining inspects list (the conductor's: develop and
-# merge-upstream) — the revisor, which inspected architect/conductor
-# journals, retired with the run-end observation filing (ADR-0038
-# stage 4). Architect/conductor/loop journals stay consumed
-# SESSION-side (the loop digest and the salvage arms read the files
-# directly); the project-layer hook's presence check below is the
-# anti-loss guard for every workflow's journal.
+# no one inspects. Since the stage-G cutover (ADR-0039) the only
+# journal consumer is the develop workflow itself (x.inspects="develop"
+# — its own journals feed its evidence capture); the conductor,
+# architect, loop, and revisor consumers retired with their workflows.
+# The project-layer hook's presence check below is the anti-loss guard
+# for every workflow's journal.
 const JOURNAL_CONSUMED_WORKFLOWS = [
-    develop, merge-upstream
+    develop
 ]
 
 def stage_journal_coverage_check [] {

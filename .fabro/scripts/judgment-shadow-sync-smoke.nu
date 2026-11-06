@@ -22,7 +22,7 @@
 # Exit 0 = green; any red prints and exits 1.
 
 const SOURCE = '.fabro/scripts/judgment-shadow.nu'
-const LANES = [loop develop conductor]
+const LANES = [develop]
 const SCRIPT_FORM = 'nu "${FABRO_HOOK_ASSETS:-.}/.fabro/scripts/judgment-shadow.nu"'
 const DECLARED_FILE = '../../scripts/judgment-shadow.nu'
 
@@ -88,7 +88,7 @@ def simulate [tmp: string, run_id: string, assets?, workspace?] {
         open --raw $SOURCE | save --raw $"($cwd)/.fabro/scripts/judgment-shadow.nu"
     }
     {event: stage_complete, run_id: $run_id, node_id: reviewer, context_updates: {anomaly_files: [a.rs]}} | to json | save --raw $"($tmp)/ctx.json"
-    let script = (open ./.fabro/workflows/loop/workflow.toml | get run.hooks | where name == 'judgment-shadow' | get 0.script)
+    let script = (open ./.fabro/workflows/develop/workflow.toml | get run.hooks | where name == 'judgment-shadow' | get 0.script)
     let env_base = {FABRO_HOOK_CONTEXT: $"($tmp)/ctx.json", FABRO_STORAGE_DIR: $"($tmp)/storage", OPENROUTER_API_KEY: ''}
     let hook_env = (if $assets == null { $env_base } else { $env_base | insert FABRO_HOOK_ASSETS $assets })
     let res = (

@@ -201,31 +201,33 @@ digraph Develop {
     }
 
     /// The regression pin for fabro-8615, originally on the revisor
-    /// graph that exposed it and ported to the conductor graph when the
-    /// revisor retired (ADR-0038 stage 4): comment lines carry `->` and
-    /// `]`, and bare edges sit beside them. Both shapes used to swallow
-    /// plain routes, so a green pass classified as `Failed { SoftStop }`
-    /// and the run showed a misleading `failed` (fabro-79ba).
+    /// graph that exposed it, ported to the conductor graph when the
+    /// revisor retired (ADR-0038 stage 4), and re-pointed to the
+    /// develop graph when the conductor retired (ADR-0039 stage G):
+    /// comment lines carry `->` and `]`, and bare edges sit beside
+    /// them. Both shapes used to swallow plain routes, so a green pass
+    /// classified as `Failed { SoftStop }` and the run showed a
+    /// misleading `failed` (fabro-79ba).
     #[expect(
         clippy::disallowed_methods,
-        reason = "the regression test reads the checked-in conductor graph synchronously"
+        reason = "the regression test reads the checked-in develop graph synchronously"
     )]
     #[test]
-    fn the_real_conductor_graph_keeps_its_plain_edges_against_comment_lines() {
+    fn the_real_develop_graph_keeps_its_plain_edges_against_comment_lines() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../.fabro/workflows/conductor/workflow.fabro");
+            .join("../../../.fabro/workflows/develop/workflow.fabro");
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
         let kinds = ExitKinds::parse(&source);
         assert!(
-            kinds.has_plain_edge("start", "survey"),
+            kinds.has_plain_edge("start", "env_guard"),
             "the plain start edge survives the comment lines"
         );
-        assert_eq!(kinds.kind_of("survey", "exit"), Some("soft"));
+        assert_eq!(kinds.kind_of("reporter", "exit"), Some("soft"));
         assert_eq!(
-            kinds.classify("success", Some("survey"), "exit"),
+            kinds.classify("success", Some("reporter"), "exit"),
             None,
-            "a green survey pass stays green beside the soft kind edge"
+            "a green reporter pass stays green beside the soft kind edge"
         );
         assert!(
             kinds
