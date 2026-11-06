@@ -155,15 +155,14 @@ the minimal fix lands, a default-features break still fails your
 
 Painpoints here: dev-loop friction in loop assets.
 
-Report context through `context_updates.journal` on EVERY pass. Silence
-is a missing report, not an empty one — two full runs shipped zero
-journal lines because answering was optional. Emit the key:
+Report `context_updates.journal` observations ONLY when the pass
+produced something worth carrying forward: a surprise, a near-miss, a
+shortcut risk, a workaround you performed, a known-bug lookup hit. An
+unremarkable pass writes NO journal entry — the mandatory "none"
+answer retired with the journal marker sweeps (every durable fact rides
+the observation records now):
 
 {"journal": {"observations": ["<a surprise, near-miss, or shortcut risk you hit while implementing: file, what, why it matters>"]}}
-
-- `observations`: at least one entry. The literal `"none"` is a valid
-  answer when the pass was genuinely unremarkable — but the key must be
-  present every time.
 - `deferred-action:` fact (the sweep's successor
   channel): every deferred human follow-up you disclose in
   `implementation_summary` (a regen-confirm step you could not run
@@ -234,7 +233,6 @@ Implemented:
   "context_updates": {
     "implementation_summary": "<files touched and what was built, one short paragraph, including one clause naming the lesson-capture mx-id or the justified skip; then the per-criterion PASS/FAIL verification report, naming any flagged material semantic risks (changed retry semantics, contract changes, ordering assumptions)>",
     "lesson_capture": "<mx-xxxxxx | nothing durable — skipped>",
-    "journal": {"observations": ["none"]}
   }
 }
 

@@ -56,16 +56,13 @@ non-blocking verdict ("non-blocking: …"). Without the record, the
 residual vanishes at merge — that erodes the closure discipline the
 sweep existed for.
 
-Report context through `context_updates.journal` on EVERY pass —
-judging friction is your job too. Silence is a missing report, not an
-empty one — two full runs shipped zero journal lines because answering
-was optional. Emit the key:
+Report `context_updates.journal` observations ONLY when there is
+something to carry forward: friction in the evidence pipe, a risk you
+noticed but did not block on. An unremarkable pass writes NO journal
+entry — your per-pass record duty lives in the observation contract
+(the `fabro_observation_record` tool), not the journal:
 
 {"journal": {"observations": ["<what verification actually checked vs. assumed, or a risk you noticed but did not block on>"]}}
-
-- `observations`: at least one entry. The literal `"none"` is a valid
-  answer when the pass was genuinely unremarkable — but the key must be
-  present every time.
 The engine records it durably per stage (no restating, no last-writer-wins
 relay); nobody re-reads your prose, only the JSON survives.
 
@@ -90,7 +87,6 @@ Approved:
   "preferred_next_label": "Approved",
   "context_updates": {
     "review_verdict": "approved",
-    "journal": {"observations": ["none"]}
   }
 }
 
@@ -101,7 +97,6 @@ Changes requested (minor — exactly one mechanical edit; re-enters the Implemen
   "context_updates": {
     "review_verdict": "changes_requested",
     "review_feedback": "<the single mechanical edit, phrased as an instruction for the Implementer>",
-    "journal": {"observations": ["none"]}
   }
 }
 

@@ -88,15 +88,14 @@ When you write text that flows into context (briefs, feedback), wrap absolute pa
 Painpoints here: friction in the dev loop itself (workflow, scripts,
 gate). Do not fix loop assets — record them here.
 
-Report context through `context_updates.journal` on EVERY pass. Silence
-is a missing report, not an empty one — two full runs shipped zero
-journal lines because answering was optional. Emit the key:
+Report `context_updates.journal` observations ONLY when the pass
+produced something worth carrying forward: a surprise in the tracker or
+spec, a stale item, a contradiction you resolved in the brief. An
+unremarkable pass writes NO journal entry — the mandatory "none"
+answer retired with the journal marker sweeps (every durable fact rides
+the observation records now):
 
-{"journal": {"observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}}
-
-- `observations`: at least one entry. The literal `"none"` is a valid
-  answer when the pass was genuinely unremarkable — but the key must be
-  present every time.
+{"journal": {"observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 
@@ -123,7 +122,6 @@ Claimed an item:
     "current_seed_title": "<its title, verbatim>",
     "current_seed_brief": "<one short paragraph: what must be built, acceptance criteria, review feedback if re-plan>",
     "current_item_json": {"itemKey": "<verbatim>", "title": "<verbatim>", "body": "<the item body, verbatim>"},
-    "journal": {"observations": ["none"]}
   }
 }
 
@@ -135,7 +133,6 @@ Tracker empty (the goal is achieved, not an error):
   "preferred_next_label": "Tracker empty",
   "context_updates": {
     "review_verdict": "",
-    "journal": {"observations": ["none"]}
   }
 }
 
@@ -144,7 +141,6 @@ Already landed (the fix landed before the cycle; exit without a lap):
   "outcome": "succeeded",
   "preferred_next_label": "Already landed",
   "context_updates": {
-    "journal": {"observations": ["none"]}
   }
 }
 
@@ -153,7 +149,6 @@ Stale basis (the granted item's basis does not resolve; exit without a lap):
   "outcome": "succeeded",
   "preferred_next_label": "Stale basis",
   "context_updates": {
-    "journal": {"observations": ["none"]}
   }
 }
 
