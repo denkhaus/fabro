@@ -32,8 +32,8 @@ in the journal, never silently work around it.
   the engine-mediated run tools — `fabro_work_next` (the atomic claim;
   the candidate source IS the tool grant, never a list), `fabro_work_show`,
   `fabro_work_list` (with `query`, a title+body search including closed
-  items), `fabro_work_create`, `fabro_work_update`, `fabro_work_close`,
-  `fabro_work_release`. No tracker CLI, no tracker file, no forge client
+  items), `fabro_work_create`, `fabro_work_update`, `fabro_work_release`,
+  `fabro_observation_record`. No tracker CLI, no tracker file, no forge client
   (ADR-0019). Item keys are provider-stable and look like
   `<owner>/<repo>#<n>` — copy them verbatim, never truncated. The
   develop line claims lane `develop` — the tracker label is

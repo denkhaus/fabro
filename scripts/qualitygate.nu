@@ -111,7 +111,7 @@ def check-fmt [] {
 # dev loop's own .nu scripts. Two parts: a side-effect-free parse check of
 # every develop-workflow script (`nu --ide-check` parses only — a bare
 # `source <file>` would auto-invoke the script's `def main` after import;
-# see the closeout-smoke.nu header), then the checked-in evidence-smoke
+# see the reporter-smoke.nu header), then the checked-in evidence-smoke
 # regression over evidence.nu's pure helpers. Runs in BOTH main paths —
 # crates touched or not — so a loop-asset-only diff is no longer a 4s
 # no-op gate (run 01M23TE61D4Y).

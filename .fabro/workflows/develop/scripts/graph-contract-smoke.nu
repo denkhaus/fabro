@@ -2,7 +2,7 @@
 # Graph-contract smoke (fabro-83df / fabro-92e2, 2026-09-19; rewritten for
 # the ADR-0032 phase-3 topology): pins the develop graph's deterministic
 # contracts. Pure file assertions, no tracker, no git — the same
-# closeout-smoke pattern (checked into the repo, wired into
+# reporter-smoke pattern (checked into the repo, wired into
 # scripts/qualitygate.nu's loop-asset tier via .fabro/scripts/battery-runner.nu).
 #
 #   nu .fabro/workflows/develop/scripts/graph-contract-smoke.nu
@@ -28,7 +28,7 @@
 #      EXIST — the drained-queue and superseded-close exits are the
 #      planner's own since the tracker guard retired.
 #   7. The work-item tool grants: the planner's x.fabro_tools names
-#      fabro_work_next (the atomic claim), the closeout node's names
+#      fabro_work_next (the atomic claim), the reporter node names
 #      fabro_work_close, and the evidence node runs --work-item with the
 #      packet on stdin (fork 7 context flow).
 
@@ -114,25 +114,37 @@ def main [] {
     if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
         fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
     }
+    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Stale basis')}) {
+        fail 'planner -> exit ("Stale basis") edge missing: the stale-basis note exit (ADR-0039 stage G, #1115) lost'
+    }
 
-    # 7. closeout files and closes through the capability channel; the
+    # 7. the reporter records facts through the capability channel; the
     # evidence node runs --work-item with the packet on stdin
     if not ($code | any {|l| ($l | str contains 'evidence.nu --work-item')}) {
         fail 'evidence script line missing --work-item — the capture must read the granted-item packet mode'
     }
-    let cout_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'closeout ['} | get -o index | first | default null)
-    if $cout_start == null { fail 'closeout node not found' }
-    let cout_end = ($lines | enumerate | where {|e| $e.index > $cout_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
-    if $cout_end == null { fail 'closeout node block not terminated' }
-    let cout_block = ($lines | skip ($cout_start + 1) | take ($cout_end - $cout_start - 1))
-    if not ($cout_block | any {|l| ($l | str contains 'closeout.nu --work-item')}) {
-        fail 'closeout node must run closeout.nu --work-item — the deterministic channel form (denkhaus/work#990)'
+    let rep_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'reporter ['} | get -o index | first | default null)
+    if $rep_start == null { fail 'reporter node not found' }
+    let rep_end = ($lines | enumerate | where {|e| $e.index > $rep_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
+    if $rep_end == null { fail 'reporter node block not terminated' }
+    let rep_block = ($lines | skip ($rep_start + 1) | take ($rep_end - $rep_start - 1))
+    if not ($rep_block | any {|l| ($l | str contains 'reporter.nu --work-item')}) {
+        fail 'reporter node must run reporter.nu --work-item — the deterministic channel form (denkhaus/work#990)'
     }
-    if not ($cout_block | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
-        fail 'closeout stdin_source lost current_item_json — the packet must reach the close node too'
+    if not ($rep_block | any {|l| ($l | str trim | str trim -r -c ',') == 'stdin_source="current_item_json"'}) {
+        fail 'reporter stdin_source lost current_item_json — the packet must reach the facts stage too'
     }
-    if ($cout_block | any {|l| ($l | str contains 'prompt=')}) {
-        fail 'closeout must NOT be an agent node anymore — the channel carries the tracker calls (denkhaus/work#990)'
+    if ($rep_block | any {|l| ($l | str contains 'prompt=')}) {
+        fail 'reporter must NOT be an agent node — the channel carries the observation calls (denkhaus/work#990)'
+    }
+    # The stage-G strip (ADR-0039, #1115): the planner holds NO close
+    # grant and no closeout node exists — the adjudicator is the only
+    # closer. (Pinned over $code — comment lines name the history.)
+    if ($code | any {|l| ($l | str contains 'fabro_work_close')}) {
+        fail 'fabro_work_close grant in the develop graph — a run never closes items (ADR-0039 stage G, #1115)'
+    }
+    if ($code | any {|l| ($l | str contains 'closeout')}) {
+        fail 'a closeout reference survived the stage-G rename — the node is the reporter now'
     }
 
     # 7. gate-red bounce edge is EXPLICIT conditional (work#1029): an
@@ -167,5 +179,5 @@ def main [] {
         fail 'the tester deadlock fallback must stay UNCONDITIONAL — a condition on it would leave the third red and unroutable outcomes with no edge (work#1057)'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, closeout files and closes through the channel'
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority'
 }

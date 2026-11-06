@@ -15,7 +15,7 @@ The claimed item reaches you in the BRIEF's first bullets (item key + title, wri
 Review feedback: when the Reviewer's minor verdict re-enters this node directly (its own edge — no Planner re-plan), the bullet arrives in the context as its own `review_feedback` key — fixing exactly that bullet IS this pass's job. On Planner re-entries the feedback is folded into the brief instead, so act on whichever carrier the context shows.
 
 Tracker mechanics (the run tools are the only tracker surface — ADR-0032):
-- The item is ALREADY claimed — the Planner's `fabro_work_next` grant holds it for THIS run. Do NOT claim, close, release, or edit items; those are the Planner's and Closeout's tools.
+- The item is ALREADY claimed — the Planner's `fabro_work_next` grant holds it for THIS run. Do NOT claim, close, release, or edit items; the Planner owns the item tools, and NO run role closes — the chain (adjudicator, merger, closing pass) lands every closure.
 - You hold exactly two read tools: `fabro_work_show` (one item by key) and `fabro_work_list` (with `query`, a title+body search including closed items). Never parse tracker files, never call forge clients or raw APIs.
 - If the brief carries review feedback, fixing those deviations IS this pass's job.
 - Gate-red bounce known-bug lookup: on a gate-red re-entry (the tester section in context carries the failure), run `fabro_work_list {"query": "<the failure tail's most distinctive token — an error message fragment, a failing check name, one keyword>"}` — an OPEN item whose body covers this failure class is known-bug context: read it via `fabro_work_show` BEFORE re-deriving root cause from the gate logs, and journal the hit (key + why it covers the tail). One focused keyword per query; on zero hits proceed with normal root-cause derivation — the lookup is a shortcut, never a blocker.
@@ -39,7 +39,7 @@ Hard rules (each measured at ~50s of wasted implementer recovery):
 2. Implement it in the current worktree: create and edit files, keep the project's conventions (commands run through its `just` recipes).
 3. Write or update tests exactly as the item demands.
 4. TESTING BELONGS TO THE TESTER STEP (hard rule): you WRITE and UPDATE tests, you do not EXECUTE the suites that test them — the deterministic tester step after you owns test execution. Your verification lane is ONE call: `git diff --stat && just verify implementer` in a single chained shell invocation (timeout_ms of at least 60000); inside a run, `just verify` alone suffices — the engine injects FABRO_STAGE and scripts/verify.nu derives the stage and the touched-crate scope deterministically: fmt + clippy per code-touched crate, the new tests BY NAME FILTER for crates whose diff only ADDS test files, the full crate suite for test-file-touched crates that EDIT existing tests, a compile check otherwise — never the gate, never the workspace suite, and the default-features clippy pass always included (a known default-features break in a touched crate FAILS your self-assessment: fix it or route Blocked). If verify and any prose disagree, verify wins and the disagreement is a painpoint observation (category painpoint through the observation recorder). Do NOT run the quality gate — NOT the PROJECT_FACTS gate command, NOT its equivalent; a redundant implementer-side gate wastes a cold cache's tens of seconds and blurs role boundaries. Any focused test you run BEYOND the derived touched-crate classes must name the acceptance bullet it serves in your summary — an extra test with no bullet behind it is policy-exceeding tool spend (zero-signal focused runs while the suite that matters goes unrun); if no acceptance bullet needs it, do not run it.
-5. Do NOT close the item and do NOT review — the Reviewer decides, the Closeout step closes through the work-item tools.
+5. Do NOT close the item and do NOT review — the Reviewer decides, the Reporter records the facts, and the chain lands the closure.
 6. If this pass revealed a durable convention, pattern, or failure worth keeping, record it: `mulch record <domain> --type ... --description ...`. This includes REUSABLE PATTERNS, not only near-miss lessons: any observation naming a reusable pattern (a self-test technique, a structuring convention, a trick that generalizes) is a record, and answering 'nothing durable — skipped' over it is a violation. Skip only if nothing surfaced. Either way, the answer has a required home: name the mx-id (format `mx-xxxxxx`) or the literal skip text in `lesson_capture` — see 'Lesson capture' below. ONE record per lesson (hard rule): a correction or follow-up AMENDS the existing record — `mulch record` upserts by `--name`, merging outcomes — or is folded into the same filing; never file a second record for the same lesson. Duplicate stub records beat the real record in `mulch search` and starve it of confirmation evidence.
 
 ## Inline verification report — required in every summary
@@ -164,21 +164,20 @@ journal lines because answering was optional. Emit the key:
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
-- `deferred-action:` marker: every deferred human follow-up
-  you disclose in `implementation_summary` (a regen-confirm step you
-  could not run in-sandbox — e.g. a pending TS client regen — a manual
-  confirmation pending on the user, a local-only step) must ALSO be
-  emitted as a journal observation starting with the deterministic
-  marker `deferred-action: ` — one observation per action, the action
-  text self-contained after the marker. Closeout's deferred-action sweep
-  files exactly those marker observations as open items BEFORE closing
-  the item; an action disclosed only in `implementation_summary` dies
-  with the item (the observed failure mode this channel exists for).
-  Marker at the START of the observation — mid-sentence mentions never match.
-  No deferred actions -> omit the marker entirely: never emit the marker
-  with a bare `none` (or empty) payload — a marker observation with no
-  real action text is skipped by the sweep, not filed, but it is channel
-  noise.
+- `deferred-action:` fact (ADR-0039 stage G, the sweep's successor
+  channel): every deferred human follow-up you disclose in
+  `implementation_summary` (a regen-confirm step you could not run
+  in-sandbox — e.g. a pending TS client regen — a manual confirmation
+  pending on the user, a local-only step) must ALSO be recorded as a
+  PAINPOINT observation record — one record per action, the action
+  text self-contained ("deferred-action: <the action>"). The
+  deterministic closeout sweep that re-filed marker observations
+  retired with the closeout authority; the painpoint now forces the
+  adjudicator's agent pass, which files the follow-up item. An action
+  disclosed only in `implementation_summary` dies with the run (the
+  observed failure mode this channel exists for). No deferred actions
+  -> record no such fact (the presence contract's "none" note still
+  applies); never record a bare `none` payload as a deferred action.
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 

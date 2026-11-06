@@ -45,6 +45,17 @@ INCLUDING friction you worked around successfully (a blob ref you had
 to page through, a truncated capture, a documented path that did not
 exist): a workaround you performed is a painpoint, not a note.
 
+RESIDUAL findings (ADR-0039 stage G, the sweep's successor channel): a
+defect you approve past — non-blocking, noted but not blocking — is a
+PAINPOINT observation record, never a mere journal line: the
+deterministic closeout sweep that re-filed residuals retired with the
+closeout authority, and a journal line dies with the run. The
+painpoint forces the adjudicator's agent pass, which files the
+follow-up; the record's text carries the finding and names the
+non-blocking verdict ("non-blocking: …"). Without the record, the
+residual vanishes at merge — that erodes the closure discipline the
+sweep existed for.
+
 Report context through `context_updates.journal` on EVERY pass —
 judging friction is your job too. Silence is a missing report, not an
 empty one — two full runs shipped zero journal lines because answering
@@ -60,7 +71,7 @@ relay); nobody re-reads your prose, only the JSON survives.
 
 ## Decision
 
-- Approved: every item requirement is met in the diff and nothing harmful rode along. Route Approved. The Closeout step will close the item through `fabro_work_close`; the planner picks the next one.
+- Approved: every item requirement is met in the diff and nothing harmful rode along. Route Approved. The Reporter records the run's facts; the chain (adjudicator verdict, merger integration, closing pass) lands the closure; the planner of the next run picks the next item.
 - Changes requested (minor): the feedback is EXACTLY ONE mechanical edit, fully specified — one file or a named handful of production lines, no design or policy tradeoff, so the second visit is mechanically diffable with no re-plan. Route Changes requested (minor). The Implementer re-enters directly with your bullet; the Planner's re-plan is skipped. Any second change, any design or policy tradeoff, anything needing the brief re-read, or any doubt that the bullet alone suffices → the general arm below.
 - Changes requested: the CODE deviates — name the concrete deviations from the item or hygiene problems. Route Changes requested. The Planner will re-plan the same item with your feedback.
 - Verification blocked: the EVIDENCE is missing or unreadable (a blob ref you could not read even with tools, a capture cut mid-diff, counts that contradict what is visible) and you cannot verify the code either way. This is about delivery, not the code. Route Verification blocked naming exactly what is missing. It re-runs ONLY the evidence capture — no implementer or gate cycle. Use it AT MOST ONCE per item: if the re-captured evidence is still insufficient, decide anyway — route Changes requested naming what stayed missing, or Approved if the code you verified with tools satisfies the spec. Never use Verification blocked for code problems you CAN see.

@@ -143,7 +143,7 @@ def bare-paren-check [file: string] {
 # fabro-eae5, called by both scripts/qualitygate.nu and the loop lane's
 # loop-gate.nu), so a new battery that nobody registers is silently
 # un-gated — the class that produced fabro-ac84 and, caught by this
-# check's first run, tracker-guard-smoke.nu + closeout-smoke.nu (both
+# check's first run, tracker-guard-smoke.nu + the closeout smoke (both
 # existed, both ran green, nothing executed them). Convention:
 # *-smoke.nu belongs in the `smokes` list, *-fixtures.nu in
 # `batteries`. Scripts that match a suffix but are not batteries go in

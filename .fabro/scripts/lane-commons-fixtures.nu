@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 # Lane-script commons battery (denkhaus/work#1108): the work-channel and
-# run-anchor modules exist so the MIRRORED closeout/evidence helpers
+# run-anchor modules exist so the MIRRORED reporter/evidence helpers
 # ("reuse this shape, do not invent a new one" comments) become ONE
 # implementation. Two pin families:
 #
@@ -16,7 +16,7 @@
 #      still mirrored), green after.
 #
 # The transport arms (server refusal, end-to-end argv against a channel)
-# stay pinned by the closeout/evidence smokes, which drive the real
+# stay pinned by the reporter/evidence smokes, which drive the real
 # scripts end to end.
 
 const DIR = (path self | path dirname)
@@ -26,9 +26,10 @@ use lib/work_channel.nu
 
 # The consumers whose mirrors retired into the lib (#1108): the develop
 # graph's stage scripts. check-transcript only consumed the run-anchor
-# triple; closeout and evidence consumed both modules.
+# triple; reporter (the stage-G facts stage, closeout's successor) and
+# evidence consumed both modules.
 const CONSUMERS_BOTH = [
-    'closeout.nu'
+    'reporter.nu'
     'evidence.nu'
 ]
 const CONSUMER_ANCHOR = [

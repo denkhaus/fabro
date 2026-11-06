@@ -68,10 +68,11 @@ const SMOKES = [
     # real work, journal-only bookkeeping, the green-lie, a diff-less
     # run, and a clean green run — with no live server in reach.
     '.fabro/scripts/salvage-sweep-smoke.nu'
-    # closeout pure-decision logic (fabro-5af4/591a era): reviewer
-    # journal, deferred-action and exemption-arm sweep. Same finding —
-    # unregistered until fabro-8b38.
-    '.fabro/workflows/develop/scripts/closeout-smoke.nu'
+    # reporter fact logic (ADR-0039 stages C+G): Dockerfile detection,
+    # demand tokens, visibility verdicts, fact heads, and the facts-only
+    # run through the channel shim (no close, no filings — the closeout
+    # authority retired at stage G).
+    '.fabro/workflows/develop/scripts/reporter-smoke.nu'
     # adjudicator fast-path sweep (ADR-0039 stage D part 2,
     # denkhaus/work#1107): trivial marks split by pull request, packets
     # for painpoint/radius/parked runs, fact-head dedupe, workflow

@@ -144,6 +144,10 @@ def terminal-tip? [run: string, subject: string, age_sec: int, grace_min: float]
     # every bare (...) as interpolation, so paren-heavy regex cannot be
     # interpolated safely — prefix/suffix matching needs no escapes.
     if ($s | str starts-with $"fabro\(($run)\): closeout ") { return true }
+    # the stage-G rename (ADR-0039): the terminal node is `reporter`
+    # now; historical run branches keep their `closeout` tips (the arm
+    # above) — both prove the run completed its graph.
+    if ($s | str starts-with $"fabro\(($run)\): reporter ") { return true }
     if ($s =~ '\(#\d+\)$') { return true }
     if ($s | str starts-with $"fabro\(($run)\): ") and ($s | str ends-with " (failed)") {
         return ($age_sec > ($grace_min * 60))

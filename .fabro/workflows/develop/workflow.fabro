@@ -180,9 +180,11 @@ digraph Develop {
         // claims (the atomic grant IS the candidate source), show/list
         // read, update records stale-spec corrections, release returns a
         // misrouted/stale claim to the queue (then the planner asks
-        // again), close lands the superseded-close arms. No tracker CLI,
-        // no tracker file, no forge client (ADR-0019).
-        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_work_close,fabro_observation_record",
+        // again). No tracker CLI, no tracker file, no forge client
+        // (ADR-0019). ADR-0039 stage G (#1115): fabro_work_close is GONE
+        // — the adjudicator is the only closer; the superseded-close
+        // arms record an observation note and end the run PR-less.
+        x.fabro_tools="fabro_run_search,fabro_run_set_title,fabro_work_next,fabro_work_show,fabro_work_list,fabro_work_update,fabro_work_release,fabro_observation_record",
         // ADR-0038 flip (2026-10-31): the presence contract — this
         // stage's session must call fabro_observation_record at least
         // once per pass; a stage that never calls it is INVALID
@@ -271,8 +273,8 @@ digraph Develop {
         // (the implementer's whole job; a pinned .mulch-only list killed
         // the next pass the same way). Unset + narrowed hide = hidden
         // paths stay denied, every product path stays writable; the
-        // tracker stays hidden (the closeout command stage owns the seed
-        // write) and seed work may legitimately touch files outside
+        // tracker stays hidden (the reporter command stage owns the
+        // observation writes) and seed work may legitimately touch files outside
         // the primary code areas (README,
         // fixtures). Gate
         // re-runs keep working through the shell escape hatch.
@@ -451,19 +453,18 @@ digraph Develop {
     // scans run branches for journals. Delivery is
     // intrinsic — no exit-bound path can miss it.
 
-    // Closeout: post-approval bookkeeping (ADR-0010), deterministic
-    // again since denkhaus/work#990 — the capability channel carries
-    // the tracker calls (`fabro work` over FABRO_RUN_CHANNEL_SOCK with
-    // the run's principal, claim-bound by #991), so the fork-7/8 agent
-    // split (plan-only script + a tool-executing closeout stage)
-    // collapses back into the script: granted-item packet on stdin,
-    // PARK gate (channel-resolved title), the three advisory sweeps as
-    // direct filings with the deterministic fork-8 dedupe, then the
-    // claim-bound close. One item per run; exits "Item closed".
-    closeout [
-        label="Closeout",
+    // Reporter (ADR-0039 stages C+G, denkhaus/work#1107/#1115): the
+    // post-approval FACTS stage — patch-visibility and Dockerfile-touch
+    // through `fabro observation record` over the run channel. The
+    // closeout authority retired at the stage-G cutover: no park gate,
+    // no marker sweeps, no claim-bound close (the stage-E door made the
+    // adjudicator the only closer). Granted-item packet on stdin; a
+    // failed fact record fails the stage (fact-failure discipline).
+    // Exits "Facts reported".
+    reporter [
+        label="Reporter",
         shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/closeout.nu --work-item",
+        script="nu .fabro/workflows/develop/scripts/reporter.nu --work-item",
         stdin_source="current_item_json",
         timeout="3m",
         max_retries=1
@@ -493,13 +494,25 @@ digraph Develop {
     // implementation with no seed claimed (GRAPH-03, gate red since
     // the journal-contract prompt). Plain edge: natural completion.
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    // Already landed (fabro-d183): the planner's claim-time check found a
-    // fix commit referencing the seed already in base history with its
-    // acceptance criteria satisfied — it closes the seed via the
-    // superseded-close and exits here instead of burning a full
-    // verification cycle on a stale tracker row. Plain edge, natural
-    // completion, same family as "Tracker empty" above.
+    // Already landed (fabro-d183; ADR-0039 stage G re-shape #1115): the
+    // planner's claim-time check found a fix commit referencing the work
+    // item already in base history with its acceptance criteria
+    // satisfied — it records an already-landed NOTE (the evidence for
+    // the human triage that closes the superseded item) and exits here
+    // PR-less instead of burning a full verification cycle. Plain edge,
+    // natural completion, same family as "Tracker empty" above. The
+    // superseded-CLOSE retired with the closeout authority: the chain
+    // refuses a PR-less run (merge:refused), the claim releases, the
+    // item stays open for the user.
     planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
+    // Stale basis (ADR-0015 arm; ADR-0039 stage G re-shape #1115): the
+    // granted item's Basis no longer resolves against the current tree —
+    // the planner records a stale-basis NOTE with what changed and ends
+    // the run PR-less (the same chain shape as "Already landed": the
+    // adjudicator's fast path marks merge:refused, the claim releases,
+    // the item waits for the user's triage close). Plain edge, natural
+    // completion.
+    planner -> exit [label="Stale basis", condition="preferred_label=\"Stale basis\""]
     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
     // after the third review/gate cycle on one seed, but the graph had no
     // matching edge — the guard could never fire. Seed stays open for a
@@ -587,7 +600,7 @@ digraph Develop {
     // infrastructure hiccup, work preserved, the next run re-enters.
     evidence -> exit [x.kind="soft", label="Capture failed (next run re-enters)"]
 
-    reviewer -> closeout  [label="Approved", condition="preferred_label=\"Approved\""]
+    reviewer -> reporter  [label="Approved", condition="preferred_label=\"Approved\""]
     // Structural review-guard (fabro-6baf): conditions outrank unconditional
     // edges, so at nodes.reviewer.generation >= 3 the deadlock exit wins
     // over re-planning — the loop terminates without model compliance.
@@ -614,9 +627,10 @@ digraph Develop {
     reviewer -> exit [x.kind="soft", label="Reviewer failed (next run re-enters)", condition="outcome=failed"]
 
     // One seed per run (user directive 2026-09-04): after the approved
-    // seed is closed the run EXITS — natural completion, publish-eligible
-    // (the work passed gate + review). The next seed is the next run's
-    // job; bounded runs keep the working field single-item.
-    closeout -> exit [label="Item closed"]
-    closeout -> exit [x.kind="soft", label="Closeout failed (item stays open)", condition="outcome=failed"]
+    // Facts reported = the run's own work is DONE (gate + review passed,
+    // the verdicts ride the observation records). The item's closure is
+    // the chain's job now: the adjudicator verdicts, the merger
+    // integrates, the closing pass closes (ADR-0039 stage G).
+    reporter -> exit [label="Facts reported"]
+    reporter -> exit [x.kind="soft", label="Reporter failed (facts missing)", condition="outcome=failed"]
 }
