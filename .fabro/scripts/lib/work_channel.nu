@@ -186,7 +186,7 @@ export def create [caller: string, title: string, body: string, item_type: strin
 # One observation-record call (the script-stage door). Returns the
 # complete-wrapped result record; callers own the failure policy — the
 # reporter's facts are HARD by contract (a failed record fails the
-# stage), so closeout's wrapper exits non-zero on it.
+# stage), so the reporter's wrapper exits non-zero on it.
 export def observation-record [caller: string, category: string, text: string]: nothing -> any {
     let argv = (observation-record-argv (server $caller) $category $text)
     let exe = (bin)

@@ -45,7 +45,7 @@ INCLUDING friction you worked around successfully (a blob ref you had
 to page through, a truncated capture, a documented path that did not
 exist): a workaround you performed is a painpoint, not a note.
 
-RESIDUAL findings (ADR-0039 stage G, the sweep's successor channel): a
+RESIDUAL findings (the sweep's successor channel): a
 defect you approve past — non-blocking, noted but not blocking — is a
 PAINPOINT observation record, never a mere journal line: the
 deterministic closeout sweep that re-filed residuals retired with the

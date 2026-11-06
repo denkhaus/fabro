@@ -246,7 +246,30 @@ try {
         fail "the not-visible arm must leave the item open"
     }
 
-    # (c) Negative arms: no --work-item is a usage error; an empty stdin
+    # (d) Fact-failure discipline (the spec's stage-C decision 4, pinned
+    # discriminating): a FAILED observation record FAILS THE STAGE. With
+    # the run identity bound (FABRO_RUN_ID) and a dead server, the title
+    # show degrades (advisory) but the FACT call fails on transport —
+    # the run must exit 1 naming the failed record. The absorbing
+    # mutation (print + return) exits 0 here and REDs this arm: this arm
+    # exists because the dead-server argv arm above proved blind to
+    # exactly that mutation (the sprint-80 review's hard finding).
+    let disc_state = ($repo | path join 'disc-state.json')
+    fresh-work-state $disc_state "Make the frobnicator queue bounded"
+    let disc_run = (do {
+        with-env {FABRO_BIN: (tree-bin), FABRO_SERVER: "http://127.0.0.1:1", FABRO_RUN_ID: $RUN_ID} {
+            echo '{"itemKey": "denkhaus/work#1"}' | nu ($SCRIPTS_DIR | path join "reporter.nu") --work-item
+        }
+    } | complete)
+    if $disc_run.exit_code != 1 {
+        fail $"a failed fact record must fail the stage — the absorb regression: exit ($disc_run.exit_code)"
+    }
+    let disc_combined = ($disc_run.stdout + $disc_run.stderr)
+    if not ($disc_combined | str contains "observation record failed") {
+        fail $"the failure must name the failed fact record: ($disc_combined | str substring 0..200)"
+    }
+
+    # (e) Negative arms: no --work-item is a usage error; an empty stdin
     # packet and a malformed packet each hard-fail.
     let neg_state = ($repo | path join 'neg-state.json')
     fresh-work-state $neg_state "Make the frobnicator queue bounded"

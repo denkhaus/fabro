@@ -90,15 +90,16 @@ def dockerfile-fact [hits: list<string>]: nothing -> any {
 
 # One fact through the CLI door (`fabro observation record`, the agent
 # tool's twin — door symmetry, ADR-0039 decision 12). HARD by contract
-# (user decision 2026-11-01): the work channel's observation door itself
-# exits non-zero on a failed record (a failed fact fails the stage) —
-# the engine retries, the caller fixes the error, never absorbs it.
+# (user decision 2026-11-01, stage-C decision 4): a failed record FAILS
+# THE STAGE — exit non-zero, the engine retries, the caller fixes the
+# error, never absorbs it. The channel's door returns the complete
+# record; the failure policy lives HERE, at the wrapper.
 def record-fact [fact: any]: nothing -> nothing {
     if ($fact | is-empty) { return }
     let res = (work_channel observation-record 'reporter' $fact.category $fact.text)
     if $res.exit_code != 0 {
         print -e $"reporter: observation record failed \(category ($fact.category)\): ($res.stderr | str trim | str substring 0..240)"
-        return
+        exit 1
     }
     print $"reporter: reported fact — ($res.stdout | str trim)"
 }

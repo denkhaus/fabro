@@ -14,7 +14,7 @@ load-env {SMOKE_FAIL_LOG: (start-fail-log 'work-shim-guard-smoke')}
 
 # One drive: the argv against the shim with a fixture state. Returns
 # the complete-wrapped record.
-def drive [state: string, argv: list<string>]: nothing -> any {
+def drive-shim [state: string, argv: list<string>]: nothing -> any {
     do {
         with-env (shim-env $SHIM $state) {
             ^$SHIM ...$argv
@@ -30,7 +30,7 @@ def main []: nothing -> nothing {
     # ps owns server/workflow/json/all — the work facade's project is
     # foreign there (the --all incident's exact shape: a flag from
     # another facade's domain must not be silently eaten).
-    let ps_foreign = (drive $state [ps --server http://127.0.0.1:1 --all --project fabro])
+    let ps_foreign = (drive-shim $state [ps --server http://127.0.0.1:1 --all --project fabro])
     if $ps_foreign.exit_code == 0 {
         fail "ps must refuse the work facade's --project (the --all drift class)"
     }
@@ -41,7 +41,7 @@ def main []: nothing -> nothing {
     # run queue owns the orchestration reads — the observation facade's
     # run-id is foreign there (a smoke asserting a queue read would
     # otherwise not see a silently eaten --run-id).
-    let queue_foreign = (drive $state [run queue --server http://127.0.0.1:1 --run-id 01X])
+    let queue_foreign = (drive-shim $state [run queue --server http://127.0.0.1:1 --run-id 01X])
     if $queue_foreign.exit_code == 0 {
         fail "run queue must refuse the observation facade's --run-id"
     }
@@ -51,14 +51,14 @@ def main []: nothing -> nothing {
 
     # work show owns only server/project/json — the run facade's field
     # is foreign (the classic cross-eat the #1109 guard exists for).
-    let show_foreign = (drive $state [work show --server http://127.0.0.1:1 --project fabro --field merge])
+    let show_foreign = (drive-shim $state [work show --server http://127.0.0.1:1 --project fabro --field merge])
     if $show_foreign.exit_code == 0 {
         fail "work show must refuse the run facade's --field"
     }
 
     # --- The OWNED list must actually cover the arm's own flags: ps
     # --all parses (it is OWNED) — the positive arm beside the refusals.
-    let ps_owned = (drive $state [ps --server http://127.0.0.1:1 --all --json])
+    let ps_owned = (drive-shim $state [ps --server http://127.0.0.1:1 --all --json])
     if $ps_owned.exit_code != 0 {
         fail $"ps --all is owned and must parse: ($ps_owned.stderr | str substring 0..160)"
     }
@@ -67,7 +67,7 @@ def main []: nothing -> nothing {
     # a spec'd pair), and the log entry carries exactly the LOGGED
     # flags of the spec (work list logs 4 of its 6 owned — limit and
     # lane stay out of the entry).
-    let listed = (drive $state [work list --server http://127.0.0.1:1 --project fabro --limit 5])
+    let listed = (drive-shim $state [work list --server http://127.0.0.1:1 --project fabro --limit 5])
     if $listed.exit_code != 0 {
         fail $"every ARMS row must answer without the fallback refusal: ($listed.stderr | str substring 0..160)"
     }

@@ -164,7 +164,7 @@ journal lines because answering was optional. Emit the key:
 - `observations`: at least one entry. The literal `"none"` is a valid
   answer when the pass was genuinely unremarkable — but the key must be
   present every time.
-- `deferred-action:` fact (ADR-0039 stage G, the sweep's successor
+- `deferred-action:` fact (the sweep's successor
   channel): every deferred human follow-up you disclose in
   `implementation_summary` (a regen-confirm step you could not run
   in-sandbox — e.g. a pending TS client regen — a manual confirmation
