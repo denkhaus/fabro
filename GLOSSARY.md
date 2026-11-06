@@ -164,3 +164,12 @@ within 3x its tick interval. A disabled gear stays silent: the user
 pause is authoritative. Nothing watches the watchdog — its automation
 row and `fabro ps -a --workflow watchdog` carry the meta-stall
 visibility.
+
+## Gear
+
+A scheduler-driven workflow (ADR-0039 decision 9) with its own cron
+tick and `on_overlap: skip`, coupled to the other gears ONLY through
+the orchestration fields — no messaging conventions. The three serial
+line gears: develop (item-driven, direct fire), adjudicator
+(run-driven), merger (merge-marker-driven). The watchdog watches the
+gears but is not a gear itself.
