@@ -20,12 +20,15 @@ fabro_tools = true
 provider = "zai"
 name = "glm-5.3"
 
-# The adjudicator never edits a repository: no clone, no pull request,
-# no merge — every write goes through the platform doors over the run
-# channel. A bare sandbox with the channel mount is the whole workspace
-# need.
+# The adjudicator's WRITES are door-only (no repo edits, no PR, no
+# merge — every write goes through the platform doors over the run
+# channel). The automation carrier requires a Git target, and Git
+# targets require a clone-enabled run (target_environment_unsupported
+# otherwise — caught by the first supervised tick, 2026-11-06): the run
+# carries a depth-1 shallow checkout it never writes to. A bare
+# sandbox with the channel mount remains the whole workspace NEED.
 [run.clone]
-enabled = false
+depth = 1
 
 # No [run.integrations.github.permissions] (ADR-0019): agent shells get
 # NO forge token; every tracker interaction is engine-mediated through
