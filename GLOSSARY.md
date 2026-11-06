@@ -135,7 +135,11 @@ on unresolvable conflicts.
 The develop run's facts-only final stage (ADR-0039): reports patch
 visibility and Dockerfile touches as observation records. Supersedes
 the closeout — the name retires with the close authority, because the
-run never closes its own item.
+run never closes its own item. Landed with the stage-G cutover
+(2026-11-06): the closeout's park gate, marker sweeps, and claim-bound
+close retired; the residuals, deferred actions, and EXEMPTION arms
+ride painpoint observation records to the adjudicator's agent pass
+(their filer), and reviewer residuals record as painpoints too.
 
 
 ## human_needed

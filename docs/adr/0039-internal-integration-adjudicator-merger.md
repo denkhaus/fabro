@@ -99,6 +99,40 @@ will not use.
     reviews the runs of the workflows on its worklist (initially
     `develop`), not literally every run in the store.
 
+## Stage-G decisions (grilled 2026-11-06, sprint 80)
+
+13. **The transition is a named commit series in one change**: strip
+    (closeout → reporter + the planner arms), cull (workflow
+    directories + GitHub CI), docs — one review, one push.
+14. **The automation swap is a window ceremony**: the four gear
+    automation creates and the five old automation deletes are runtime
+    API operations at the fork.30 window, after the deploy. No code
+    carrier (the #1007 one-shot-cutover-tools precedent); the
+    constants' provenance lives in the epic and the watchdog's
+    workflow.toml.
+15. **The gear laps are the first enabled ticks**: deploy, swap
+    automations, enable the gears one at a time — the first ticks ARE
+    the supervised laps (each log-cross-checked); the lap IS the
+    go-live.
+16. **The planner's superseded-close arms retire outright** (#1115):
+    stale-basis and already-landed findings become observation notes
+    plus a PR-less run end; the chain refuses, the claim releases, and
+    the item waits open for the human triage close. DEVIATION named:
+    the agent pass does NOT superseded-close — the close door requires
+    an active closable-enabled claim, so a refused-release item is
+    unreachable for every worker.
+17. **The workflow cull**: nineteen workflow directories deleted
+    (conductor, loop, architect, merge-upstream, smoke, interview, and
+    fourteen dead demos/one-shots) plus the GitHub CI files
+    (dogfood-gate, rust, typescript). The chain and the hello test
+    fixture survive. This class of workflow gets rebuilt on the
+    cutover foundation when a need exists.
+18. **The sweeps' successor channel**: reviewer residuals, implementer
+    deferred-actions, and planner EXEMPTION arms are painpoint
+    observation records (the stage-C trigger rule) — they force the
+    adjudicator's agent pass, which files the follow-ups. The journal
+    marker contracts retired with their consumer.
+
 ## Consequences
 
 - The fork.30 window carries no server payload (all server-side

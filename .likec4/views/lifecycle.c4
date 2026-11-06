@@ -10,9 +10,7 @@ views "Orchestration" {
       never closes its own work; the reconciler heals underneath at
       all times.
     '''
-    fabro.orchestration.scheduler -> fabro.orchestration.conductor "tick (item-driven)"
-    fabro.orchestration.conductor -> fabro.records.work-ledger "picks next item"
-    fabro.orchestration.conductor -> fabro.orchestration.develop "spawns ONE develop run"
+    fabro.orchestration.scheduler -> fabro.orchestration.develop "tick (item-driven, direct fire)"
     fabro.orchestration.develop -> fabro.records.work-ledger "claims item (fabro_work_next)"
     loop "agent stages" {
       fabro.orchestration.develop -> fabro.orchestration.develop "plan → implement → test → review"

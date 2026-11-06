@@ -11,9 +11,7 @@ views "Orchestration" {
       lands and closes. These are the authorities ADR-0039 takes away
       — the adjudicator becomes the only closer.
     '''
-    fabro.orchestration.scheduler -> fabro.orchestration.conductor "tick"
-    fabro.orchestration.conductor -> fabro.records.work-ledger "picks next item"
-    fabro.orchestration.conductor -> fabro.orchestration.develop "spawns ONE develop run"
+    fabro.orchestration.scheduler -> fabro.orchestration.develop "tick (direct fire)"
     fabro.orchestration.develop -> fabro.records.work-ledger "claims item (fabro_work_next)"
     fabro.orchestration.develop -> fabro.orchestration.develop "plan → implement → test → review"
     fabro.orchestration.develop -> fabro.records.observation-records "files observations"

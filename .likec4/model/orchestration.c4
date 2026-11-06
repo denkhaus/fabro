@@ -31,19 +31,6 @@ model {
         }
       }
 
-      conductor = workflow "Conductor" {
-        description '''
-          Item-driven. Surveys the project, picks the next work item and
-          spawns exactly ONE develop child run
-          (fabro_workflow_version_create → fabro_run_create →
-          fabro_run_wait), then waits terminal → merged.
-        '''
-        metadata {
-          status "live"
-          code ".fabro/workflows/conductor"
-        }
-      }
-
       develop = workflow "Develop run — the unit of work" {
         description '''
           planner → preflight → implementer → tester → evidence →
@@ -60,16 +47,15 @@ model {
         link ../../.fabro/workflows/develop/workflow.fabro
 
         reporter = workflow "Reporter stage" {
-          #evolving
           description '''
             The develop run's facts-only final stage, renamed from
             closeout: reports patch visibility and Dockerfile touches as
             observation records. The run reports facts; it never judges
-            (ADR-0039 decision 10). The FACTS are live in the closeout
-            since stage C (2026-11-01, before the park gate, trigger-
-            based categories); the close authority and the marker sweeps
-            still ride the same stage until the stage-G cutover strips
-            them and the rename lands.
+            (ADR-0039 decision 10). The stage-G cutover (2026-11-06)
+            stripped the close authority, the park gate, and the marker
+            sweeps — residuals, deferred actions, and EXEMPTION arms
+            ride painpoint observation records to the adjudicator's
+            agent pass now.
           '''
           link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
         }
@@ -219,14 +205,14 @@ model {
 // ADR-0039 and should read uniformly, regardless of file scope.
 
 model {
-  // --- ticks ---------------------------------------------------------------
-  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.conductor "tick — item-driven"
+  // --- ticks (ADR-0039 decision 9: three serial gears; the conductor
+  // dissolved at the stage-G cutover — the develop gear fires directly,
+  // its planner picks the claimable item in-run) ------------------------
+  fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.develop "tick — item-driven, direct fire (stage G)"
   fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.adjudicator "tick — run-driven"
   fabro.orchestration.scheduler -[trigger]-> fabro.orchestration.merger "tick — merge-marker-driven"
 
-  // --- conductor / develop -------------------------------------------------
-  fabro.orchestration.conductor -[read]-> fabro.records.work-ledger "picks the next item"
-  fabro.orchestration.conductor -[spawn]-> fabro.orchestration.develop "spawns ONE child run, waits terminal → merged"
+  // --- develop ------------------------------------------------------------
   fabro.orchestration.develop -[claim]-> fabro.run-substrate.work-item-surface "claims via fabro_work_next (atomic claim mutex)"
   fabro.orchestration.develop -[uses]-> llm-providers "agent stages: plan → implement → test → review"
   fabro.orchestration.develop -[create]-> github "opens the PR — artifact only, never a gate"
