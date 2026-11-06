@@ -174,9 +174,9 @@ RUN set -eux; \
 # to the seeds pin (2026-09-22) breaks cargo-insta's locked rustix. The
 # release pipeline builds the musl binaries with zero runtime deps, so
 # the download is version-pinned and checksum-verified instead.
-ARG SEEDS_VERSION=0.11.0
-ARG SEEDS_SHA256_X86_64=5b279c9810be30d15e1fa9e92a1db6a3637acf10701865ee044c0d32300c4550
-ARG SEEDS_SHA256_AARCH64=c847450344dc156f7e3ee520bb33eddb524bc7a07f326dba1d2d5408af4d620b
+ARG SEEDS_VERSION=0.11.1
+ARG SEEDS_SHA256_X86_64=fe8e192115ce32d8e54328dbab3514edbb0e597e229de0dbe2b0661c0ad37cae
+ARG SEEDS_SHA256_AARCH64=67b2c8cda378e3ecab5e4fa8d03ef3d86ebd9572f6da1e069f9c91787075d2d0
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
         amd64) triple=x86_64-unknown-linux-musl; sha="${SEEDS_SHA256_X86_64}";; \
