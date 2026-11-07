@@ -107,6 +107,25 @@ async fn connect_managed_unix_socket_api_client_bundle(
     {
         Ok(http_client) => (http_client, pre_spawn_credential),
         Err(connect_error) => {
+            // work#1174: a 403 from a LISTENING channel socket means
+            // the socket serves but refuses THIS environment's
+            // handshake token — the channel-orphaned shape (the token
+            // predates the server instance, e.g. a container recreate
+            // under an in-flight run). Auto-starting a server here is
+            // doomed and buries the real cause under the start
+            // failure's fallback chain (the 2026-11-07 incident's
+            // misleading "settings.toml: No such file" rendering), so
+            // the class is NAMED and surfaced as-is instead.
+            if format!("{connect_error:#}").contains("status 403") {
+                bail!(
+                    "channel-orphaned: the run channel socket at {} answers but refuses this \
+                     environment's handshake token — the token was issued by a server instance \
+                     that no longer serves the socket (container recreate under an in-flight \
+                     run?). The run's work channel cannot recover; release the run's claim and \
+                     re-run it. ({connect_error:#})",
+                    path.display()
+                );
+            }
             start::ensure_server_running_on_socket(path, active_config_path, storage_dir)
                 .await
                 .with_context(|| {
@@ -523,10 +542,11 @@ mod tests {
         );
     }
 
-    /// The 403 variant (work#1074's spec names it beside ENOENT): a
-    /// listener that ANSWERS but refuses (the handshake-refusal shape
-    /// the fork.26 CLI hit against the fork.27 serve) must surface the
-    /// status in the rendered error, not swallow it into the autostart.
+    /// The 403 variant (work#1074 surfaced it; work#1174 NAMES it): a
+    /// listener that ANSWERS but refuses is the channel-orphaned
+    /// shape — the rendered error must carry the NAMED class and the
+    /// status, and must NOT fall into the doomed autostart (the
+    /// incident's misleading fallback chain).
     #[cfg(unix)]
     #[tokio::test]
     async fn managed_socket_error_surfaces_a_handshake_refused_403() {
@@ -564,12 +584,16 @@ mod tests {
 
         let rendered = format!("{error:#}");
         assert!(
+            rendered.contains("channel-orphaned"),
+            "the 403 refusal is the NAMED channel-orphaned class, got: {rendered}"
+        );
+        assert!(
             rendered.contains("403"),
             "the refused status must surface, got: {rendered}"
         );
         assert!(
-            rendered.contains("no server answered first"),
-            "the connect half must be named, got: {rendered}"
+            !rendered.contains("Failed to start fabro server"),
+            "a refusing listener must not trigger the doomed autostart, got: {rendered}"
         );
     }
 

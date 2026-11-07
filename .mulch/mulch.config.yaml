@@ -42,6 +42,7 @@ domains:
   rootprint: {}
   rust-server: {}
   frontend: {}
+  security: {}
 governance:
   max_entries: 100
   warn_entries: 150

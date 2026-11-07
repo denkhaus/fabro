@@ -545,6 +545,67 @@ async fn a_stale_socket_file_from_a_crash_is_self_healed() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// work#1174: a container recreate replaces the server INSTANCE but
+/// keeps the persisted session secret and the retained sandbox — the
+/// auto-resume then respawns the run's channel. The respawned channel
+/// must accept the token the sandbox ALREADY holds in its environment
+/// (derived from the secret, not re-randomized per spawn), or every
+/// work-channel call 403s and the run soft-stops (incident 2026-11-07
+/// 21:31 UTC).
+#[tokio::test]
+async fn a_respawned_channel_accepts_the_sandboxes_original_token() {
+    let state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    seed_project(&state).await;
+    let run_id = fabro_server::test_support::create_test_run_with_target(
+        &state,
+        "denkhaus/fabro",
+        "denkhaus",
+    )
+    .await;
+
+    let dir =
+        std::env::temp_dir().join(format!("fabro-recreate-{}", uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let socket = dir.join("channel.sock");
+
+    let original = fabro_server::test_support::spawn_run_channel_on(
+        Arc::clone(&state),
+        &run_id,
+        socket.clone(),
+    );
+    // What the owning sandbox carries in its environment, baked in at
+    // the original launch — it cannot be refreshed on resume.
+    let sandbox_token = original.handshake_token().to_string();
+    original.stop().await;
+
+    // The recreate shape: a FRESH AppState over the same persisted
+    // test secret (a new container instance), auto-resuming the run —
+    // spawn re-binds the same socket path.
+    let respawned_state = TestAppStateBuilder::new()
+        .work_tracker(Arc::new(ChannelFakeTracker) as Arc<dyn TrackerProvider>)
+        .build();
+    let respawned =
+        fabro_server::test_support::spawn_run_channel_on(respawned_state, &run_id, socket.clone());
+
+    assert_eq!(
+        respawned.handshake_token(),
+        sandbox_token,
+        "the handshake token is derived from durable state, not re-randomized per spawn"
+    );
+    let (health, _) = uds_request(&socket, &sandbox_token, "GET /health", &[], None).await;
+    assert_eq!(
+        health, 200,
+        "the retained sandbox's original token passes the respawned channel"
+    );
+    let (refused, _) = uds_request(&socket, "sibling-run-token", "GET /health", &[], None).await;
+    assert_eq!(refused, 403, "a wrong token is still refused");
+
+    respawned.stop().await;
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// A LIVE listener on the path keeps the refusal — spawn never unlinks
 /// a serving socket (the retry probes with a connect first).
 #[tokio::test]
@@ -762,11 +823,14 @@ async fn the_production_spawn_layouts_serves_switches_and_respawns() {
         .await
         .expect("a respawn succeeds");
     assert_eq!(again, socket, "the layout is deterministic");
-    assert_ne!(
+    // work#1174: the respawn DERIVES the same token — a per-spawn
+    // random token orphaned a retained sandbox's credential across a
+    // container recreate; derivation from durable state keeps it valid.
+    assert_eq!(
         token_again, token,
-        "every spawn mints a fresh handshake token"
+        "a respawn of the same run requires the SAME handshake token"
     );
-    let (health_again, _) = uds_request(&socket, &token_again, "GET /health", &[], None).await;
+    let (health_again, _) = uds_request(&socket, &token, "GET /health", &[], None).await;
     assert_eq!(
         health_again, 200,
         "the respawned channel serves — the stale stop completed before the re-bind"

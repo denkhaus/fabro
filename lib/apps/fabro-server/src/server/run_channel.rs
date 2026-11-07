@@ -19,8 +19,10 @@
 //! TWO credentials, one per purpose (denkhaus/work#1043 finding 1): the
 //! WORKER BEARER is minted at spawn and never leaves the server process
 //! — it is stamped on every request server-side, so the sandbox side
-//! carries no bearer material. A separate per-spawn HANDSHAKE token
-//! rides only the OWNING run's environment (`FABRO_RUN_CHANNEL_TOKEN`:
+//! carries no bearer material. A separate per-run HANDSHAKE token
+//! (denkhaus/work#1174: DERIVED from the persisted session secret and
+//! the run id, never per-spawn random) rides only the OWNING run's
+//! environment (`FABRO_RUN_CHANNEL_TOKEN`:
 //! the worker's launch spec and the stage mount alike) and must be
 //! presented on `x-fabro-run-channel-token` before any request is
 //! served: on the host provider every run shares the uid and the
@@ -248,10 +250,17 @@ impl RunChannel {
             WorkerScopeSet::run_worker_with_agent_run_tools(),
         )
         .context("signing the run channel worker token")?;
-        // The handshake credential (work#1043): hex, so it is
-        // structurally JWT- and bearer-shaped impossible — the launch
-        // hands it to the owning run's env only.
-        let handshake = hex::encode(rand::random::<[u8; 32]>());
+        // The handshake credential (work#1043, made durable by
+        // work#1174): DERIVED — hex HMAC over the persisted session
+        // secret's channel branch and the run id — not per-spawn
+        // random. A container recreate replaces the server instance,
+        // but the new instance derives the SAME token the retained
+        // sandbox already holds in its environment, so an auto-resumed
+        // run's work-channel calls keep passing the handshake instead
+        // of 403ing on every call.
+        let handshake = state
+            .worker_token_keys()
+            .run_channel_handshake_token(&run_id);
         // The same surface the agent's run tools reach — routes the
         // extractors already gate per principal. The handshake guard is
         // OUTSIDE the stamping: a client that cannot present the

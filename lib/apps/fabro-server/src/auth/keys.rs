@@ -6,6 +6,7 @@ use sha2::Sha256;
 const COOKIE_KEY_INFO: &[u8] = b"fabro-cookie-v1";
 const JWT_KEY_INFO: &[u8] = b"fabro-jwt-hs256-v1";
 const WORKER_JWT_KEY_INFO: &[u8] = b"fabro-worker-jwt-v1";
+const RUN_CHANNEL_HANDSHAKE_KEY_INFO: &[u8] = b"fabro-run-channel-handshake-v1";
 const MIN_MASTER_BYTES: usize = 32;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +46,15 @@ pub(crate) fn derive_jwt_key(master: &[u8]) -> Result<JwtSigningKey, KeyDeriveEr
 
 pub(crate) fn derive_worker_jwt_key(master: &[u8]) -> Result<[u8; 32], KeyDeriveError> {
     derive_bytes::<32>(master, WORKER_JWT_KEY_INFO)
+}
+
+/// The per-run channel handshake MAC key (denkhaus/work#1174): a
+/// SEPARATE HKDF branch from the worker JWT key, so the two secrets
+/// never share bytes. Derived from the persisted `SESSION_SECRET`, the
+/// key survives a container recreate — the property the per-spawn
+/// random token lacked.
+pub(crate) fn derive_run_channel_handshake_key(master: &[u8]) -> Result<[u8; 32], KeyDeriveError> {
+    derive_bytes::<32>(master, RUN_CHANNEL_HANDSHAKE_KEY_INFO)
 }
 
 fn derive_bytes<const N: usize>(master: &[u8], info: &[u8]) -> Result<[u8; N], KeyDeriveError> {

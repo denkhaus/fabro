@@ -37,6 +37,7 @@ pub(crate) use fabro_store::auth_session_store::{
 pub use github_endpoints::GithubEndpoints;
 pub(crate) use jwt::{JwtError, JwtSubject, issue, verify};
 pub(crate) use keys::{
-    JwtSigningKey, KeyDeriveError, derive_cookie_key, derive_jwt_key, derive_worker_jwt_key,
+    JwtSigningKey, KeyDeriveError, derive_cookie_key, derive_jwt_key,
+    derive_run_channel_handshake_key, derive_worker_jwt_key,
 };
 pub(crate) use translate::{auth_translation_middleware, demo_routing_middleware};
