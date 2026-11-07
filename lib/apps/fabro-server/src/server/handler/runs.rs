@@ -1043,14 +1043,27 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
         // Return the curated compiler detail; retain its source chain in the log.
         // A validation failure names its diagnostics, since the message alone
         // ("Validation failed") tells the caller nothing to fix.
-        RunIntentAdmissionError::Compiler(error) => intent_error(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!(
-                "run intent could not be compiled: {}",
-                compiler_error_detail(&error)
-            ),
-            "run_compile_invalid",
-        ),
+        RunIntentAdmissionError::Compiler(error) => {
+            // A credential-less compile-time checkout is an integration gap,
+            // not a workflow defect (denkhaus/work#1145): answer with the
+            // missing-credential shape so the refusal names the credential
+            // and the mechanism instead of a bare `run_compile_invalid`.
+            if let run_compiler::RunCompilerError::GitCheckoutUnauthenticated { .. } = &error {
+                return intent_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    error.to_string(),
+                    "integration_unavailable",
+                );
+            }
+            intent_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "run intent could not be compiled: {}",
+                    compiler_error_detail(&error)
+                ),
+                "run_compile_invalid",
+            )
+        }
         RunIntentAdmissionError::VariableSnapshot { .. } => intent_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to load run variables",
@@ -1682,4 +1695,66 @@ fn build_command_log_response(
         live_streaming,
     })
     .into_response()
+}
+
+#[cfg(test)]
+mod admission_refusal_tests {
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use serde_json::Value;
+
+    use super::run_intent_admission_error;
+    use crate::run_compiler::RunCompilerError;
+    use crate::run_intent::RunIntentAdmissionError;
+
+    async fn refusal_body(error: RunIntentAdmissionError) -> (StatusCode, Value) {
+        let response = run_intent_admission_error(error);
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let body = serde_json::from_slice(&bytes).expect("error body is JSON");
+        (status, body)
+    }
+
+    /// A credential-less compile-time checkout is an integration gap, not a
+    /// workflow defect (denkhaus/work#1145): the create answer carries
+    /// `integration_unavailable` with a detail that names the missing
+    /// credential and the mechanism, instead of a bare `run_compile_invalid`.
+    #[tokio::test]
+    async fn credentialless_checkout_refusal_answers_integration_unavailable() {
+        let (status, body) = refusal_body(RunIntentAdmissionError::Compiler(
+            RunCompilerError::GitCheckoutUnauthenticated {
+                repo:   "denkhaus/fabro-test".to_string(),
+                detail: "failed to fetch branch \"main\"".to_string(),
+            },
+        ))
+        .await;
+
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+        assert_eq!(
+            body["errors"][0]["code"], "integration_unavailable",
+            "{body}"
+        );
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains("no GitHub credentials are configured")
+                && detail.contains("GITHUB_TOKEN")
+                && detail.contains("checked out server-side at compile"),
+            "the refusal names the credential and the mechanism: {detail}"
+        );
+    }
+
+    /// Ordinary compile failures keep the curated `run_compile_invalid`
+    /// answer; the new mapping does not widen it.
+    #[tokio::test]
+    async fn other_compiler_failures_keep_run_compile_invalid() {
+        let (status, body) = refusal_body(RunIntentAdmissionError::Compiler(
+            RunCompilerError::GitCheckout("worktree preparation failed".to_string()),
+        ))
+        .await;
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+        assert_eq!(body["errors"][0]["code"], "run_compile_invalid", "{body}");
+    }
 }
