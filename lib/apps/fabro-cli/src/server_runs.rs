@@ -95,6 +95,23 @@ impl ServerRunInfo {
     pub(crate) fn goal(&self) -> String {
         self.run.goal.clone()
     }
+
+    /// The run's current title as the server stores it (JSON rows carry
+    /// this verbatim). The server materializes the goal-derived fallback
+    /// at creation, so a blank title only means an older server.
+    pub(crate) fn title(&self) -> &str {
+        self.run.title.as_str()
+    }
+
+    /// The title the ps surfaces render: the stored title, falling back
+    /// to the goal when the title is blank.
+    pub(crate) fn display_title(&self) -> &str {
+        if self.run.title.trim().is_empty() {
+            &self.run.goal
+        } else {
+            &self.run.title
+        }
+    }
 }
 
 pub(crate) struct ServerRunLookup {
