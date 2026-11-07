@@ -64,31 +64,11 @@ digraph Develop {
 
     // ADR-0032 phase 3 deleted the develop tracker_guard node — its
     // shell drained-tracker check needed tracker reads a host script no
-    // longer had. The lane_check below is its channel-capable
-    // resurrection (denkhaus/work#1144, sprint 81): a command stage
-    // reads the lane through the run channel's work CLI — the
-    // capability the host script lacked. The residual open-but-claimed
-    // case stays the planner's fabro_work_next empty outcome routing
-    // "Tracker empty".
+    // longer had. The lane_check (work#1144) is its channel-capable
+    // resurrection, TEMPORARILY REVERTED for work#1156 (it soft-exited
+    // silently on a full lane); the residual open-but-claimed case stays
+    // the planner's fabro_work_next empty outcome routing "Tracker empty".
     //
-    // The lane check (denkhaus/work#1144): BEFORE the planner burns a
-    // model call, one deterministic read answers whether the lane holds
-    // ANY open work item. Empty: the routed lane-drained note records
-    // (work#1146's marker — the adjudicator fast path escalates it) and
-    // the run ends PR-less. Open: the planner owns the atomic claim
-    // exactly as before. Project and lane ride static args — the graph
-    // is ADR-0013's porting unit. A failed channel read exits softly
-    // (the fact-failure discipline retries first; the soft family never
-    // burns the model call).
-    lane_check [
-        label="Lane check: drained-lane marker, PR-less exit",
-        shape=parallelogram,
-        script="nu .fabro/workflows/develop/scripts/lane-check.nu --project fabro --lane develop",
-        output_schema="routing",
-        timeout="2m",
-        max_retries=1
-    ]
-
     // Claim preflight (ADR-0032 phase 3, fork 7 — was the pre-planner
     // candidate preflight): deterministic REPORT over the GRANTED item,
     // not a candidate list — the planner claims through fabro_work_next,
@@ -503,10 +483,13 @@ digraph Develop {
     // stage's fabro_work_next empty outcome owns the drained-queue exit
     // (the planner's "Tracker empty" edge below).
     start -> env_guard
-    env_guard -> lane_check
-    // The open lane hands to the planner (its condition is the default
-    // route — the drained edge above is the only conditional exit).
-    lane_check -> planner [label="Lane open"]
+    env_guard -> planner
+    // TEMPORARILY REVERTED (denkhaus/work#1156): the lane_check node
+    // soft-exits silently on production with a FULL lane — every develop
+    // tick ended PR-less without a claim (run 01M6V9GPQ9WM). The node
+    // returns with the fix: a failing lane check must record a painpoint
+    // (the chain surfaces it), and the door call's root cause must be
+    // named. The script and its smoke stay checked in.
 
     // Tracker empty = the goal is achieved (NOT an error): the planner
     // emits preferred_next_label "Tracker empty" when no open seed
@@ -515,17 +498,6 @@ digraph Develop {
     // implementation with no seed claimed (GRAPH-03, gate red since
     // the journal-contract prompt). Plain edge: natural completion.
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    // Lane drained (work#1144): the deterministic start stage read an
-    // EMPTY lane — the routed marker note records, the run ends PR-less
-    // with no model call. Plain edge, natural completion, same family
-    // as "Tracker empty" (which keeps the residual open-but-claimed
-    // case).
-    lane_check -> exit [label="Lane drained", condition="preferred_label=\"Lane drained\""]
-    // A failed channel read ends the run SOFTLY after its retry — the
-    // evidence/reporter failure family: a transient outage burns no
-    // model call, no FAILED alarm, and the next scheduled run re-enters
-    // cleanly (the lane read holds no partial state).
-    lane_check -> exit [x.kind="soft", label="Lane check failed (next run re-enters)", condition="outcome=failed"]
     // Already landed (fabro-d183; ADR-0039 stage G re-shape #1115): the
     // planner's claim-time check found a fix commit referencing the work
     // item already in base history with its acceptance criteria

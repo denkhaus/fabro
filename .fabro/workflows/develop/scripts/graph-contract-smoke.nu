@@ -83,11 +83,8 @@ def main [] {
     if not ($code | any {|l| ($l | str contains 'start -> env_guard')}) {
         fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
     }
-    if not ($code | any {|l| ($l | str contains 'env_guard -> lane_check')}) {
-        fail 'env_guard -> lane_check edge missing — the placement guard must precede every LLM/nu stage, the lane check included'
-    }
-    if not ($code | any {|l| ($l | str contains 'lane_check -> planner')}) {
-        fail 'lane_check -> planner edge missing — the open lane must hand to the planner (work#1144)'
+    if not ($code | any {|l| ($l | str contains 'env_guard -> planner')}) {
+        fail 'env_guard -> planner edge missing — the placement guard must precede every LLM/nu stage'
     }
     if not ($code | any {|l| ($l | str contains 'toolchain-guard.sh develop') and ($l | str starts-with '        script="sh ')}) {
         fail 'env_guard script line must run the shared guard via POSIX sh with the develop lane flag — nu cannot guard a sandbox without nu'
