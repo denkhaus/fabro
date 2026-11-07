@@ -1373,6 +1373,10 @@ pub(crate) enum RunVerb {
     /// Merge a merge-enabled run's pull request server-side (ADR-0039
     /// stage E — the merger's write door)
     Merge(RunMergeArgs),
+    /// Set a run's title — the CLI twin of the fabro_run_set_title
+    /// agent tool (fabro-9711/ADR-0030); defaults to THIS run through
+    /// the engine-bound FABRO_RUN_ID
+    SetTitle(RunSetTitleArgs),
 }
 
 impl RunCommands {
@@ -1382,6 +1386,7 @@ impl RunCommands {
                 Some(RunVerb::Mark(_)) => "run mark",
                 Some(RunVerb::Queue(_)) => "run queue",
                 Some(RunVerb::Merge(_)) => "run merge",
+                Some(RunVerb::SetTitle(_)) => "run set-title",
                 None => "run",
             },
             Self::Create(_) => "create",
@@ -1427,6 +1432,23 @@ pub(crate) struct RunMergeArgs {
     /// pull request the adjudicator marked merge:enabled — the merger
     /// integrates, it never judges content
     pub(crate) run_id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct RunSetTitleArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The TARGET run to retitle; omit it to title THIS run — the
+    /// engine binds FABRO_RUN_ID for every command script, exactly like
+    /// the agent tool's own-run default
+    #[arg(long)]
+    pub(crate) run: Option<String>,
+
+    /// The new title: what THIS run works on — for a claimed work item,
+    /// what that item demands (not a generic workflow label). The
+    /// server trims, rejects blank, and rejects over 100 characters
+    pub(crate) title: String,
 }
 
 #[derive(Args)]

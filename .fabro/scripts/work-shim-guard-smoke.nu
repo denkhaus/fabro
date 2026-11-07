@@ -24,7 +24,7 @@ def drive-shim [state: string, argv: list<string>]: nothing -> any {
 
 def main []: nothing -> nothing {
     let state = (mktemp -t shim-guard.XXXXXX.json)
-    {items: [], claims: [], nextKey: 9200, log: [], runs: [], marks: [], observations: [], radius: {}} | to json --raw | save -f $state
+    {items: [], claims: [], nextKey: 9200, log: [], runs: [{runId: "01GUARD0000000000000000000", workflowSlug: "develop", status: "succeeded"}], marks: [], observations: [], radius: {}} | to json --raw | save -f $state
 
     # --- Foreign flags refuse loudly, naming the facade pair.
     # ps owns server/workflow/json/all — the work facade's project is
@@ -63,6 +63,22 @@ def main []: nothing -> nothing {
         fail $"ps --all is owned and must parse: ($ps_owned.stderr | str substring 0..160)"
     }
 
+    # --- run set-title owns server/run/json (work#1159): the title door's
+    # fake lands the normalized title on the target run, and the work
+    # facade's --title stays foreign — two title surfaces, two doors.
+    let titled = (drive-shim $state [run set-title --server http://127.0.0.1:1 --run 01GUARD "seed #1: a meaningful title"])
+    if $titled.exit_code != 0 {
+        fail $"run set-title is owned and must parse: ($titled.stderr | str substring 0..160)"
+    }
+    let stored = (open --raw $state | from json | get runs | where {|r| $r.runId == "01GUARD0000000000000000000"} | get 0 | get title)
+    if $stored != "seed #1: a meaningful title" {
+        fail $"run set-title lands the title on the fixture run, got: ($stored)"
+    }
+    let title_foreign = (drive-shim $state [run set-title --server http://127.0.0.1:1 --run 01GUARD --title nope "x"])
+    if $title_foreign.exit_code != 2 {
+        fail "run set-title must refuse the work facade's --title"
+    }
+
     # --- The lockstep: every ARMS row answers (no fallback refusal for
     # a spec'd pair), and the log entry carries exactly the LOGGED
     # flags of the spec (work list logs 4 of its 6 owned — limit and
@@ -77,5 +93,5 @@ def main []: nothing -> nothing {
     }
 
     end-fail-gate
-    print 'work-shim-guard-smoke: ok — foreign flags refuse naming the pair, owned flags parse, the log carries the spec flags'
+    print 'work-shim-guard-smoke: ok — foreign flags refuse naming the pair, owned flags parse (run set-title lands a title), the log carries the spec flags'
 }

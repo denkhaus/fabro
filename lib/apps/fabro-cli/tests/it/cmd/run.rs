@@ -123,10 +123,11 @@ fn help() {
     Usage: fabro run [OPTIONS] [WORKFLOW] [COMMAND]
 
     Commands:
-      mark   Mark one orchestration field of another run (ADR-0039 stage D)
-      queue  List the orchestration queue: terminal runs without a verdict on the field (ADR-0039 stage D)
-      merge  Merge a merge-enabled run's pull request server-side (ADR-0039 stage E — the merger's write door)
-      help   Print this message or the help of the given subcommand(s)
+      mark       Mark one orchestration field of another run (ADR-0039 stage D)
+      queue      List the orchestration queue: terminal runs without a verdict on the field (ADR-0039 stage D)
+      merge      Merge a merge-enabled run's pull request server-side (ADR-0039 stage E — the merger's write door)
+      set-title  Set a run's title — the CLI twin of the fabro_run_set_title agent tool (fabro-9711/ADR-0030); defaults to THIS run through the engine-bound FABRO_RUN_ID
+      help       Print this message or the help of the given subcommand(s)
 
     Arguments:
       [WORKFLOW]  Workflow name, path, or OWNER/REPO[@REF]:WORKFLOW. Not required by clap: the orchestration verbs ride as subcommands (`fabro run mark`, ADR-0039), so the command path enforces the positional when no verb was given

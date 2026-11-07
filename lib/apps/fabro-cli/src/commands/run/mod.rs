@@ -34,6 +34,7 @@ pub(crate) mod rewind;
 pub(crate) mod run_progress;
 pub(crate) mod runner;
 mod selection;
+pub(crate) mod set_title;
 pub(crate) mod ssh;
 pub(crate) mod start;
 pub(crate) mod steer;
@@ -54,6 +55,9 @@ pub(crate) async fn dispatch(
             Some(RunVerb::Mark(mark_args)) => mark::mark_command(&mark_args, base_ctx).await,
             Some(RunVerb::Merge(merge_args)) => merge::merge_command(&merge_args, base_ctx).await,
             Some(RunVerb::Queue(queue_args)) => queue::queue_command(&queue_args, base_ctx).await,
+            Some(RunVerb::SetTitle(set_title_args)) => {
+                set_title::set_title_command(&set_title_args, base_ctx).await
+            }
             None => Box::pin(command::execute(*args.run, base_ctx)).await,
         },
         RunCommands::Create(args) => {

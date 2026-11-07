@@ -101,6 +101,7 @@ const ARMS = [
     ["run" "queue" [server field workflow verdict requires json] [server field workflow verdict requires json]]
     ["run" "merge" [server json] [server json]]
     ["run" "mark" [server json] [server json]]
+    ["run" "set-title" [server run json] [server run json]]
     ["observation" "record" [server run_id category text execution firing json] [server run_id category text]]
     ["observation" "list" [server run_id json] [server run_id json]]
     ["automations" "list" [server json] [server json]]
@@ -150,6 +151,7 @@ def main [
     --workflow: string,           # run queue
     --verdict: string,            # run queue (the settled filter, stage E)
     --requires: string,           # run queue (the other-field requirement, work#1126)
+    --run: string,                # run set-title (the target run; own run by default)
     --all,                        # ps (the dead-man watch's pass read, stage F)
     # observation
     --run-id: string,             # binds $run_id (observation list/record)
@@ -173,7 +175,7 @@ def main [
     # parse at the top level, so the second slot is ''.
     let sub = ($argv | get -o 1 | default '')
     let positional = ($argv | skip 2)
-    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json, all: $all}
+    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run: $run, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json, all: $all}
 
     match [$facade $sub] {
         ["work" "show"] => {
@@ -343,6 +345,37 @@ def main [
             let marks = ($logged | get -o marks | default [])
             save-state $p ($logged | upsert marks ($marks | append {runId: $run_id, field: $wanted_field, verdict: $verdict, byRun: $writer}))
             print $"run ($run_id) marked ($wanted_field): ($verdict) \(by run ($writer)\)"
+        }
+        ["run" "set-title"] => {
+            # The title door's fake (fabro-9711/ADR-0030, work#1159): the
+            # CLI twin of fabro_run_set_title. The target resolves like
+            # the tool's: an explicit --run, else the engine-bound own
+            # run; the server trims and caps, so the fake pins both.
+            let logged = (enter (arm-spec "run" "set-title") $p $s $argv $stdin_text $provided)
+            let selector = (if ($run | is-empty) { ($env.FABRO_RUN_ID? | default '') } else { $run })
+            if ($selector | is-empty) {
+                print -e "fabro-work-shim: run set-title needs --run <run-id|workflow> or FABRO_RUN_ID — the engine binds it for every command script"
+                exit 2
+            }
+            let runs = ($logged | get -o runs | default [])
+            let target = ($runs | where {|r| ($r.runId == $selector) or ($r.runId | str starts-with $selector) or ($r.workflowSlug == $selector)} | get -o 0 | default null)
+            if $target == null {
+                print -e $"fabro-work-shim: no fixture run '($selector)'"
+                exit 1
+            }
+            let wanted_title = ($positional | get -o 0 | default '')
+            if ($wanted_title | str trim | is-empty) {
+                print -e "fabro-work-shim: the title must not be blank"
+                exit 2
+            }
+            if (($wanted_title | str trim | str length) > 100) {
+                print -e $"fabro-work-shim: the title exceeds the 100-character limit \(($wanted_title | str trim | str length) characters\)"
+                exit 2
+            }
+            let titled = ($wanted_title | str trim)
+            let updated = ($runs | each {|r| if $r.runId == $target.runId { $r | upsert title $titled } else { $r } })
+            save-state $p ($logged | upsert runs $updated)
+            print $"run ($target.runId) titled: ($titled)"
         }
         ["observation" "record"] => {
             let logged = (enter (arm-spec "observation" "record") $p $s $argv $stdin_text $provided)
