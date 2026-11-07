@@ -131,6 +131,15 @@ each rule.
   artifacts live: a lane bug in PROJECT_FACTS and a zombie doc item).
   A vetting pass over the lane pools is standing backlog work, not
   ceremony.
+- LANE ADMISSION IS DECIDED PER ITEM, NEVER PER BUNDLE (user directive
+  2026-11-07): a tranche proposal presents EVERY candidate separately
+  with its vet result named — what the relevance check found, what the
+  item's body currently claims, whether the body is stable. The user
+  decides item by item; a combined "recommended set" option is not a
+  substitute for the per-item decisions. An item filed in the SAME
+  SESSION gets heightened scrutiny before entering a lane: its body
+  has had no review round, and a hypothesis corrected hours ago is
+  not yet a vetted demand.
 - LANE ADMISSION (user directive 2026-10-29, extending the test): an
   item enters a lane ONLY after that check passes for THAT item,
   individually — never bulk-assign the migration-era pool, whose
