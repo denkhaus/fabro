@@ -9,7 +9,7 @@
 # (word inference is only the fallback), and the curated-INFO gate sits
 # before the severity drop. The ingest token is deliberately NOT in this
 # file: it arrives as container env and is interpolated by Vector at
-# startup (${ROOTPRINT_TOKEN} — tofu escape).
+# startup (${ROOTPRINT_INGEST_TOKEN} — tofu escape).
 data_dir: /var/lib/vector
 
 sources:
@@ -159,7 +159,7 @@ sinks:
       compression: gzip
       request:
         headers:
-          Authorization: "Bearer ${ROOTPRINT_TOKEN}"
+          Authorization: "Bearer ${ROOTPRINT_INGEST_TOKEN}"
       batch:
         timeout_secs: 1
         max_bytes: 8388608

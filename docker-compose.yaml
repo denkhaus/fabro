@@ -9,7 +9,7 @@ services:
     image: timberio/vector:0.54.0-alpine
     restart: unless-stopped
     environment:
-      ROOTPRINT_TOKEN: ${ROOTPRINT_TOKEN:-}
+      ROOTPRINT_INGEST_TOKEN: ${ROOTPRINT_INGEST_TOKEN:-}
       ROOTPRINT_INGEST_URL: ${ROOTPRINT_INGEST_URL:?set ROOTPRINT_INGEST_URL in .env}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
