@@ -44,6 +44,11 @@ pub(super) async fn status_command(
         } else {
             render_table(ctx, &drift)?;
         }
+        // The wedge alarm rides stderr in BOTH modes so the JSON stream
+        // stays parseable while an exterior probe still sees the line.
+        if let Some(warning) = wedge_warning(&drift) {
+            fabro_util::printerr!(ctx.printer(), "{warning}");
+        }
 
         if !args.watch {
             return Ok(());
@@ -150,6 +155,32 @@ fn last_success(runs: &[Run]) -> Option<DateTime<Utc>> {
         .max()
 }
 
+/// The scheduler-wedge signature (denkhaus/work#1143): when EVERY
+/// enabled automation drifts at the same time, the cause is the
+/// scheduler itself, not the schedules. Two or more drifting together
+/// is not coincidence — per-row drift stays in the table, this line is
+/// the alarm an exterior probe reads.
+fn wedge_warning(rows: &[StatusRow]) -> Option<String> {
+    /// Below this count, simultaneous drift is not a scheduler signature.
+    const MIN_WEDGE_ROWS: usize = 2;
+
+    let enabled: Vec<&StatusRow> = rows.iter().filter(|row| row.enabled).collect();
+    if enabled.len() < MIN_WEDGE_ROWS {
+        return None;
+    }
+    let drifting = enabled
+        .iter()
+        .filter(|row| row.flags.iter().any(|flag| flag.starts_with("fire drift")))
+        .count();
+    if drifting == enabled.len() {
+        return Some(format!(
+            "ALL {drifting} enabled automations fire-drift together — the scheduler itself may \
+             be wedged (a restart re-arms it; denkhaus/work#1143)"
+        ));
+    }
+    None
+}
+
 fn render_table(ctx: &CommandContext, rows: &[StatusRow]) -> Result<()> {
     let printer = ctx.printer();
     if rows.is_empty() {
@@ -208,7 +239,17 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use fabro_api::types::Automation;
 
-    use super::{drift_flags, last_success};
+    use super::{StatusRow, drift_flags, last_success, wedge_warning};
+
+    fn row(id: &str, enabled: bool, flags: &[&str]) -> StatusRow {
+        StatusRow {
+            id: id.to_string(),
+            schedule: "*/15 * * * *".to_string(),
+            enabled,
+            last_success: None,
+            flags: flags.iter().map(|flag| (*flag).to_string()).collect(),
+        }
+    }
 
     fn automation_json_triggers(last_error: Option<&str>) -> Automation {
         serde_json::from_value(serde_json::json!({
@@ -319,6 +360,49 @@ mod tests {
         assert_eq!(
             last_success(&runs).unwrap().to_rfc3339(),
             "2026-09-20T03:00:00+00:00"
+        );
+    }
+
+    #[test]
+    fn wedge_warning_fires_only_when_every_enabled_row_drifts() {
+        // denkhaus/work#1143: the fork.30 wedge read as four independent
+        // gear drifts; four schedules missing their ticks at once is the
+        // scheduler's signature, and the view must say so.
+        let all_drift = vec![
+            row("adjudicator-fabro", true, &["fire drift: schedule */15"]),
+            row("develop-fabro", true, &["fire drift: schedule 20,50"]),
+            row("merger-fabro", true, &["fire drift: schedule 10,40"]),
+            row("watchdog-fabro", true, &["fire drift: schedule 0"]),
+        ];
+        let warning = wedge_warning(&all_drift).expect("all-drift is the wedge signature");
+        assert!(
+            warning.to_lowercase().contains("scheduler"),
+            "the warning names the scheduler: {warning}"
+        );
+
+        let one_healthy = vec![
+            row("adjudicator-fabro", true, &["fire drift: schedule */15"]),
+            row("develop-fabro", true, &[]),
+            row("merger-fabro", true, &["fire drift: schedule 10,40"]),
+        ];
+        assert!(
+            wedge_warning(&one_healthy).is_none(),
+            "a healthy row breaks the signature — per-row drift is not a wedge"
+        );
+
+        let lone_drift = vec![row("nightly", true, &["fire drift: schedule 0 3"])];
+        assert!(
+            wedge_warning(&lone_drift).is_none(),
+            "a single drifting schedule is its own problem, not the wedge"
+        );
+
+        let disabled_drift = vec![
+            row("a", false, &["fire drift: schedule */15"]),
+            row("b", true, &[]),
+        ];
+        assert!(
+            wedge_warning(&disabled_drift).is_none(),
+            "disabled schedules never count toward the signature"
         );
     }
 }

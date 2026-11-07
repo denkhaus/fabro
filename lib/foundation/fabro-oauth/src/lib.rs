@@ -1,4 +1,5 @@
 use std::fmt::Write as _;
+use std::time::Duration;
 
 use anyhow::{Context as _, anyhow, bail};
 use axum::extract::Query;
@@ -13,6 +14,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+use tokio::time::timeout;
 
 // ---------------------------------------------------------------------------
 // Browser shell for CLI callback responses
@@ -373,9 +375,28 @@ pub async fn exchange_code(
 // Token refresh
 // ---------------------------------------------------------------------------
 
+/// Total bound for one token refresh request. The refresh runs inside
+/// credential resolution on the automation scheduler's tick path: an
+/// unbounded POST parked the whole scheduler loop on a half-open
+/// connection while the HTTP API kept serving (denkhaus/work#1143, the
+/// fork.30 window wedge). A token refresh is a small form POST —
+/// anything slower than this is a dead endpoint, not a slow one.
+const TOKEN_REFRESH_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub async fn refresh_token(
     endpoint: OAuthEndpoint<'_>,
     refresh_token: &str,
+) -> anyhow::Result<TokenResponse> {
+    refresh_token_bounded(endpoint, refresh_token, TOKEN_REFRESH_TIMEOUT).await
+}
+
+/// The refresh with an explicit bound, so the regression pin can drive
+/// a silent endpoint with a short deadline instead of the production
+/// thirty seconds.
+async fn refresh_token_bounded(
+    endpoint: OAuthEndpoint<'_>,
+    refresh_token: &str,
+    bound: Duration,
 ) -> anyhow::Result<TokenResponse> {
     let token_url = redacted_url_for_log(endpoint.token_url);
     tracing::debug!(token_url = %token_url, "Refreshing access token");
@@ -387,25 +408,33 @@ pub async fn refresh_token(
     ]);
 
     let client = fabro_http::http_client().map_err(anyhow::Error::new)?;
-    let resp = client
-        .post(endpoint.token_url)
-        .header("content-type", "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
-        .await
-        .context("Token refresh request failed")?;
+    // The whole exchange — connect, send, status, body read — sits inside
+    // the bound: a half-open connection must fail the refresh and free
+    // the caller, never park it (denkhaus/work#1143).
+    let tokens: TokenResponse = timeout(bound, async {
+        let resp = client
+            .post(endpoint.token_url)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .context("Token refresh request failed")?;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let body_text = resp.text().await.unwrap_or_default();
-        tracing::warn!(%status, "Token refresh failed");
-        bail!("Token refresh failed ({status}): {body_text}");
-    }
+        let status = resp.status();
+        if !status.is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            tracing::warn!(%status, "Token refresh failed");
+            bail!("Token refresh failed ({status}): {body_text}");
+        }
 
-    let tokens: TokenResponse = resp
-        .json()
-        .await
-        .context("Failed to parse refresh token response")?;
+        let tokens: TokenResponse = resp
+            .json()
+            .await
+            .context("Failed to parse refresh token response")?;
+        Ok(tokens)
+    })
+    .await
+    .context("Token refresh timed out")??;
 
     tracing::info!(expires_in = ?tokens.expires_in, "Token refreshed");
     Ok(tokens)
@@ -1118,6 +1147,48 @@ mod tests {
         .to_string();
 
         assert!(err.contains("401"), "error should contain status: {err}");
+    }
+
+    #[tokio::test]
+    async fn refresh_token_times_out_against_a_silent_token_endpoint() {
+        // denkhaus/work#1143 (the fork.30 scheduler wedge): a token
+        // endpoint that accepts the connection but never answers parked
+        // the automation scheduler loop forever — the refresh POST went
+        // out through a client with no timeout, and credential
+        // resolution on the tick path has no deadline of its own. The
+        // bounded refresh must RETURN an error inside its bound instead
+        // of hanging; the outer timeout keeps this test fast when the
+        // bound is missing.
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method("POST").path("/oauth/token");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .delay(std::time::Duration::from_secs(30));
+            })
+            .await;
+
+        let outcome = timeout(
+            std::time::Duration::from_secs(2),
+            super::refresh_token_bounded(
+                OAuthEndpoint {
+                    token_url: &server.url("/oauth/token"),
+                    client_id: "test-client",
+                },
+                "old-refresh-tok",
+                std::time::Duration::from_millis(250),
+            ),
+        )
+        .await;
+
+        let result =
+            outcome.expect("the bounded refresh must return instead of hanging (work#1143)");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.to_lowercase().contains("timed out"),
+            "the refusal should name the timeout: {err}"
+        );
     }
 
     // -----------------------------------------------------------------------
