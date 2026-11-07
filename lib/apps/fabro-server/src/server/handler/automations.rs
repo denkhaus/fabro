@@ -18,7 +18,7 @@ use super::super::{
 };
 use super::{json_with_etag_response, lifecycle, parse_required_if_match, runs};
 use crate::automation_materializer::AutomationRunMaterializeInput;
-use crate::principal_middleware::RequiredRunToolActor;
+use crate::principal_middleware::{RequiredRunManagementActor, RequiredRunToolActor};
 use crate::run_manifest;
 
 #[derive(Serialize)]
@@ -50,8 +50,13 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         )
 }
 
+/// The listing is a run-management read (denkhaus/work#1165): the
+/// watchdog's stall check reads the gear rows from its run sandbox, whose
+/// principal is a run worker, not a user. The rows carry ids, workflow
+/// names, schedule state and last error — nothing sensitive. Every write
+/// door below stays user-only.
 async fn list_automations(
-    _auth: RequiredUser,
+    _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
 ) -> Result<Response, ApiError> {
     let data = state.automation_store().list().await?;
@@ -575,5 +580,101 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(error_code(&body), Some("automation_work_project_not_found"));
+    }
+
+    /// denkhaus/work#1165: the read/write split of the automations surface.
+    /// A run-worker principal — what every run sandbox presents, the
+    /// watchdog's stall check among them — CAN list automations, and CANNOT
+    /// write them: the pause/unpause path is a schedule replace (PUT), and
+    /// `RequiredUser` refuses a worker structurally (401, never a user).
+    /// A worker without the agent-run-tools scope is refused on the list
+    /// read too (403): the relaxation is scoped, not a blanket worker read.
+    fn run_worker_bearer(state: &AppState, agent_run_tools: bool) -> String {
+        let scopes = if agent_run_tools {
+            crate::worker_token::WorkerScopeSet::run_worker_with_agent_run_tools()
+        } else {
+            crate::worker_token::WorkerScopeSet::run_worker()
+        };
+        crate::worker_token::issue_worker_token_with_scopes(
+            state.worker_token_keys(),
+            &fabro_types::RunId::new(),
+            scopes,
+        )
+        .expect("worker token should issue")
+    }
+
+    #[tokio::test]
+    async fn a_run_worker_with_run_tools_can_list_automations() {
+        let (state, app) = app_with_projects(&["fabro"]).await;
+        let (status, _body) = send(&app, post(&create_body("watched", Some("fabro")))).await;
+        assert_eq!(status, StatusCode::CREATED);
+
+        let bearer = run_worker_bearer(&state, true);
+        let (status, body) = send(
+            &app,
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/automations")
+                .header("authorization", format!("Bearer {bearer}"))
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        assert_eq!(body["meta"]["total"], 1, "{body}");
+        assert_eq!(body["data"][0]["id"], "watched", "{body}");
+    }
+
+    #[tokio::test]
+    async fn a_run_worker_without_run_tools_is_refused_the_list_read() {
+        let (state, app) = app_with_projects(&[]).await;
+        let bearer = run_worker_bearer(&state, false);
+        let (status, _body) = send(
+            &app,
+            Request::builder()
+                .method("GET")
+                .uri("/api/v1/automations")
+                .header("authorization", format!("Bearer {bearer}"))
+                .body(Body::empty())
+                .expect("request builds"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn a_run_worker_cannot_pause_or_rewrite_schedules() {
+        let (state, app) = app_with_projects(&["fabro"]).await;
+        let (status, created) = send(&app, post(&create_body("nightly", Some("fabro")))).await;
+        assert_eq!(status, StatusCode::CREATED, "{created}");
+        let revision = created["revision"].as_str().expect("revision").to_owned();
+
+        let bearer = run_worker_bearer(&state, true);
+        let (status, body) = send(
+            &app,
+            Request::builder()
+                .method("PUT")
+                .uri("/api/v1/automations/nightly")
+                .header("authorization", format!("Bearer {bearer}"))
+                .header("if-match", format!("\"{revision}\""))
+                .header("content-type", "application/json")
+                .body(Body::from(replace_body(None).to_string()))
+                .expect("request builds"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+
+        let (status, body) = send(
+            &app,
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/automations")
+                .header("authorization", format!("Bearer {bearer}"))
+                .header("content-type", "application/json")
+                .body(Body::from(create_body("sneaky", Some("fabro")).to_string()))
+                .expect("request builds"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     }
 }
