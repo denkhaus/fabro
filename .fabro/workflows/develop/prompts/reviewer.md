@@ -63,6 +63,7 @@ entry — your per-pass record duty lives in the observation contract
 (the `fabro_observation_record` tool), not the journal:
 
 {"journal": {"observations": ["<what verification actually checked vs. assumed, or a risk you noticed but did not block on>"]}}
+
 The engine records it durably per stage (no restating, no last-writer-wins
 relay); nobody re-reads your prose, only the JSON survives.
 

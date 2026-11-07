@@ -1,3 +1,4 @@
+use std::error::Error as _;
 use std::fmt::Write as _;
 use std::time::Duration;
 
@@ -1184,10 +1185,26 @@ mod tests {
 
         let result =
             outcome.expect("the bounded refresh must return instead of hanging (work#1143)");
-        let err = result.unwrap_err().to_string();
+        let error = result.unwrap_err();
+        let err = error.to_string();
         assert!(
             err.to_lowercase().contains("timed out"),
             "the refusal should name the timeout: {err}"
+        );
+        // The chain walk (error-handling strategy): the context message
+        // names the operation, and the timeout's Elapsed stays reachable
+        // in the source chain — a flattened "request failed" would hide
+        // the class the pin exists for.
+        let mut chain = String::new();
+        let mut source: Option<&dyn std::error::Error> = error.source();
+        while let Some(error) = source {
+            chain.push_str(&error.to_string());
+            chain.push_str(" <- ");
+            source = error.source();
+        }
+        assert!(
+            chain.to_lowercase().contains("elapsed"),
+            "the timeout's Elapsed must stay reachable in the source chain: {chain}"
         );
     }
 

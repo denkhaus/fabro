@@ -67,6 +67,31 @@ def note-texts [observations: list<any>]: nothing -> list<string> {
     $observations | where {|o| $o.category == "note"} | get text
 }
 
+# The agent-pass packet: one shape, built at both arms (the parked
+# re-entry and the pending escalation differ only in verdict and
+# precomputed inputs).
+def packet [
+    run_id: string,
+    work_item: string,
+    verdict: string,
+    painpoints: list<string>,
+    routed: list<string>,
+    observations: list<any>,
+    radius_items: int,
+    has_pr: bool,
+]: nothing -> record {
+    {
+        run_id: $run_id,
+        work_item: (null-if-empty $work_item),
+        verdict: $verdict,
+        painpoints: $painpoints,
+        routed_notes: $routed,
+        notes: (note-texts $observations),
+        radius_items: $radius_items,
+        has_pull_request: $has_pr,
+    }
+}
+
 # Pure: the DISTINCT painpoints of a run's observations — dedupe on the
 # machine head (line one): an engine retry of the reporter re-records
 # the first fact, and the consumer collapses (the grilled keyed form).
@@ -146,7 +171,7 @@ def main [--smoke]: nothing -> nothing {
             # agent pass re-engages with the fork's context.
             let observations = (read-observations $run_id)
             $skipped_parked = ($skipped_parked | append $run_id)
-            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints $observations), routed_notes: (routed-notes $observations), notes: (note-texts $observations), radius_items: (read-radius $project $work_item | length), has_pull_request: $has_pr})
+            $packets = ($packets | append (packet $run_id $work_item "parked" (distinct-painpoints $observations) (routed-notes $observations) $observations (read-radius $project $work_item | length) $has_pr))
             continue
         }
 
@@ -177,7 +202,7 @@ def main [--smoke]: nothing -> nothing {
                 $marked_refused = ($marked_refused | append $run_id)
             }
         } else {
-            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "pending", painpoints: $painpoints, routed_notes: $routed, notes: (note-texts $observations), radius_items: $radius_count, has_pull_request: $has_pr})
+            $packets = ($packets | append (packet $run_id $work_item "pending" $painpoints $routed $observations $radius_count $has_pr))
         }
     }
 

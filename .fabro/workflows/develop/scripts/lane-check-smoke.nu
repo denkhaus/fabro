@@ -85,6 +85,15 @@ if (envelope-label $foreign) != 'Lane drained' {
     fail $"another lane's item must not hold the develop line open: ($foreign.stdout | str substring 0..240)"
 }
 
+# --- The marker pairing pin: the routed marker is a CONTRACT between
+# this stage (the writer) and the adjudicator fast path (the reader) —
+# the registry const and the recorded head must name the same class,
+# or the escalation silently never fires.
+let fast_path = (open --raw ($SCRIPTS_DIR | path join '..' | path join '..' | path join 'adjudicator' | path join 'scripts' | path join 'fast-path.nu'))
+if not ($fast_path | str contains "'lane-drained'") {
+    fail "the fast path's ROUTED_NOTE_HEADS registry must name lane-drained — the pairing is the contract"
+}
+
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
 refuses-missing-server ($SCRIPTS_DIR | path join "lane-check.nu") $drained_state
 

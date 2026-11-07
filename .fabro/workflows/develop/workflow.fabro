@@ -73,11 +73,12 @@ digraph Develop {
     //
     // The lane check (denkhaus/work#1144): BEFORE the planner burns a
     // model call, one deterministic read answers whether the lane holds
-    // ANY open item. Empty: the routed lane-drained note records
+    // ANY open work item. Empty: the routed lane-drained note records
     // (work#1146's marker — the adjudicator fast path escalates it) and
     // the run ends PR-less. Open: the planner owns the atomic claim
     // exactly as before. Project and lane ride static args — the graph
-    // is ADR-0013's porting unit.
+    // is ADR-0013's porting unit. A failed channel read fails the run
+    // (the fact-failure discipline — never a silent planner pass).
     lane_check [
         label="Lane check: drained-lane marker, PR-less exit",
         shape=parallelogram,
@@ -519,6 +520,9 @@ digraph Develop {
     // as "Tracker empty" (which keeps the residual open-but-claimed
     // case).
     lane_check -> exit [label="Lane drained", condition="preferred_label=\"Lane drained\""]
+    // A failed channel read fails the run after its retry — never a
+    // silent fall-through to the planner (the fact-failure discipline).
+    lane_check -> exit [label="Lane check failed", condition="outcome=failed"]
     // Already landed (fabro-d183; ADR-0039 stage G re-shape #1115): the
     // planner's claim-time check found a fix commit referencing the work
     // item already in base history with its acceptance criteria

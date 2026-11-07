@@ -68,6 +68,10 @@ struct StatusRow {
     enabled:      bool,
     last_success: Option<DateTime<Utc>>,
     flags:        Vec<String>,
+    /// Structured drift signal, derived ONCE beside the flag rendering —
+    /// consumers never re-grep the prose (a reword would silently disarm
+    /// them).
+    fire_drift:   bool,
 }
 
 async fn status_snapshot(ctx: &CommandContext) -> Result<Vec<StatusRow>> {
@@ -90,12 +94,17 @@ async fn status_snapshot(ctx: &CommandContext) -> Result<Vec<StatusRow>> {
             Vec::new()
         };
 
+        let flags = drift_flags(automation, &runs, now);
+        // The single derivation site: the structured signal is taken from
+        // the same flags the table renders.
+        let fire_drift = flags.iter().any(|flag| flag.starts_with("fire drift"));
         rows.push(StatusRow {
             id: automation.id.to_string(),
             schedule,
             enabled,
             last_success: last_success(&runs),
-            flags: drift_flags(automation, &runs, now),
+            flags,
+            fire_drift,
         });
     }
     Ok(rows)
@@ -155,30 +164,42 @@ fn last_success(runs: &[Run]) -> Option<DateTime<Utc>> {
         .max()
 }
 
-/// The scheduler-wedge signature (denkhaus/work#1143): when EVERY
-/// enabled automation drifts at the same time, the cause is the
-/// scheduler itself, not the schedules. Two or more drifting together
-/// is not coincidence — per-row drift stays in the table, this line is
+/// The scheduler-wedge signature (denkhaus/work#1143): two or more
+/// enabled automations drifting together is the scheduler itself, not
+/// the schedules. A row WITHOUT drift is evidence against the wedge
+/// only when it fired AFTER the newest drifting fire (the scheduler
+/// served it post-silence); a flagless row whose last success is older
+/// is simply not due yet (a fresh row, a long cadence) — it neither
+/// confirms nor denies. Per-row drift stays in the table; this line is
 /// the alarm an exterior probe reads.
 fn wedge_warning(rows: &[StatusRow]) -> Option<String> {
     /// Below this count, simultaneous drift is not a scheduler signature.
     const MIN_WEDGE_ROWS: usize = 2;
 
     let enabled: Vec<&StatusRow> = rows.iter().filter(|row| row.enabled).collect();
-    if enabled.len() < MIN_WEDGE_ROWS {
+    let drifting: Vec<&StatusRow> = enabled
+        .iter()
+        .copied()
+        .filter(|row| row.fire_drift)
+        .collect();
+    if drifting.len() < MIN_WEDGE_ROWS {
         return None;
     }
-    let drifting = enabled
-        .iter()
-        .filter(|row| row.flags.iter().any(|flag| flag.starts_with("fire drift")))
-        .count();
-    if drifting == enabled.len() {
-        return Some(format!(
-            "ALL {drifting} enabled automations fire-drift together — the scheduler itself may \
-             be wedged (a restart re-arms it; denkhaus/work#1143)"
-        ));
+    let newest_drift = drifting.iter().filter_map(|row| row.last_success).max();
+    let counterexample = enabled.iter().any(|row| {
+        !row.fire_drift
+            && row
+                .last_success
+                .is_some_and(|success| Some(success) > newest_drift)
+    });
+    if counterexample {
+        return None;
     }
-    None
+    Some(format!(
+        "ALL {} enabled automations fire-drift together — the scheduler itself may \
+         be wedged (a restart re-arms it; denkhaus/work#1143)",
+        drifting.len()
+    ))
 }
 
 fn render_table(ctx: &CommandContext, rows: &[StatusRow]) -> Result<()> {
@@ -248,7 +269,18 @@ mod tests {
             enabled,
             last_success: None,
             flags: flags.iter().map(|flag| (*flag).to_string()).collect(),
+            fire_drift: flags.iter().any(|flag| (*flag).starts_with("fire drift")),
         }
+    }
+
+    fn row_at(id: &str, enabled: bool, flags: &[&str], last_success: Option<&str>) -> StatusRow {
+        let mut base = row(id, enabled, flags);
+        base.last_success = last_success.map(|at| {
+            chrono::DateTime::parse_from_rfc3339(at)
+                .expect("test datetime should parse")
+                .with_timezone(&Utc)
+        });
+        base
     }
 
     fn automation_json_triggers(last_error: Option<&str>) -> Automation {
@@ -381,13 +413,23 @@ mod tests {
         );
 
         let one_healthy = vec![
-            row("adjudicator-fabro", true, &["fire drift: schedule */15"]),
-            row("develop-fabro", true, &[]),
-            row("merger-fabro", true, &["fire drift: schedule 10,40"]),
+            row_at(
+                "adjudicator-fabro",
+                true,
+                &["fire drift: schedule */15"],
+                Some("2026-11-06T23:15:00Z"),
+            ),
+            row_at("develop-fabro", true, &[], Some("2026-11-06T23:45:00Z")),
+            row_at(
+                "merger-fabro",
+                true,
+                &["fire drift: schedule 10,40"],
+                Some("2026-11-06T23:10:00Z"),
+            ),
         ];
         assert!(
             wedge_warning(&one_healthy).is_none(),
-            "a healthy row breaks the signature — per-row drift is not a wedge"
+            "a flagless row that fired after the newest drift is a counterexample — no wedge"
         );
 
         let lone_drift = vec![row("nightly", true, &["fire drift: schedule 0 3"])];
@@ -403,6 +445,51 @@ mod tests {
         assert!(
             wedge_warning(&disabled_drift).is_none(),
             "disabled schedules never count toward the signature"
+        );
+
+        // A flagless row that fired AFTER the newest drifting fire is a
+        // counterexample: the scheduler served it post-silence — no wedge.
+        let post_silence_fire = vec![
+            row_at(
+                "hourly",
+                true,
+                &["fire drift: schedule 0 * * * *"],
+                Some("2026-11-06T23:00:00Z"),
+            ),
+            row_at(
+                "quarterly",
+                true,
+                &["fire drift: schedule */15 * * * *"],
+                Some("2026-11-06T23:15:00Z"),
+            ),
+            row_at("fresh", true, &[], Some("2026-11-06T23:45:00Z")),
+        ];
+        assert!(
+            wedge_warning(&post_silence_fire).is_none(),
+            "a flagless row that fired after the drift began disproves the wedge"
+        );
+
+        // A flagless row with an OLDER last success is simply not due yet
+        // (a long cadence) — it neither confirms nor denies: the wedge
+        // alarm still fires.
+        let long_cadence_neutral = vec![
+            row_at(
+                "hourly",
+                true,
+                &["fire drift: schedule 0 * * * *"],
+                Some("2026-11-06T23:00:00Z"),
+            ),
+            row_at(
+                "quarterly",
+                true,
+                &["fire drift: schedule */15 * * * *"],
+                Some("2026-11-06T23:15:00Z"),
+            ),
+            row_at("daily", true, &[], Some("2026-11-06T03:00:00Z")),
+        ];
+        assert!(
+            wedge_warning(&long_cadence_neutral).is_some(),
+            "a not-yet-due row does not suppress the wedge signature"
         );
     }
 }

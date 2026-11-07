@@ -95,7 +95,8 @@ unremarkable pass writes NO journal entry — the mandatory "none"
 answer retired with the journal marker sweeps (every durable fact rides
 the observation records now):
 
-{"journal": {"observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}
+{"journal": {"observations": ["<what the next planner should know: a surprise in the tracker or spec, a stale item, a contradiction you resolved in the brief>"]}}
+
 The engine records it durably per stage (no restating, no rewriting);
 nobody re-reads your prose, only the JSON survives.
 

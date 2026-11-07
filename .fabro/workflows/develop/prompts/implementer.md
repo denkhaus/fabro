@@ -163,6 +163,7 @@ answer retired with the journal marker sweeps (every durable fact rides
 the observation records now):
 
 {"journal": {"observations": ["<a surprise, near-miss, or shortcut risk you hit while implementing: file, what, why it matters>"]}}
+
 - `deferred-action:` fact (the sweep's successor
   channel): every deferred human follow-up you disclose in
   `implementation_summary` (a regen-confirm step you could not run

@@ -1,12 +1,12 @@
 #!/usr/bin/env nu
 # The develop lane check (denkhaus/work#1144, the sprint-81 start
 # stage): BEFORE the planner burns a model call, one script reads
-# whether the lane holds ANY open item. An empty lane records the
+# whether the lane holds ANY open work item. An empty lane records the
 # lane-drained NOTE — the routed marker the adjudicator fast path
 # escalates (denkhaus/work#1146) — and ends the run PR-less; a
 # non-empty lane hands over to the planner, which owns the atomic
-# claim exactly as before (open-but-claimed items stay the planner's
-# work_next answer; this check never claims).
+# claim exactly as before (open-but-claimed work items stay the
+# planner's work_next answer; this check never claims).
 #
 # The project and lane arrive as STATIC GRAPH ARGS (ADR-0013: the
 # workflow graph is the porting unit that carries repo-specific

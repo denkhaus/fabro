@@ -11,8 +11,25 @@ The `output.adjudication` context key carries your worklist: a list of
 packets. Each packet names a run, the work item it claimed (when it
 claimed one), its pending-or-parked verdict state, its distinct
 painpoints (already deduplicated on the fact head — trust the list, do
-not recount), the number of open work items in its closure radius, and
+not recount), its routed notes (deterministic escalation classes,
+below), its remaining notes (context only — they never triggered
+anything), the number of open work items in its closure radius, and
 whether it carries a pull request.
+
+## The routed classes
+
+A packet's `routed_notes` are NOTE observations whose machine head
+names a routed fact (ADR-0039 decision 19): the fast path escalated
+the run to you on a DETERMINISTIC marker, no painpoint needed. The
+registry lives in the fast-path script (`ROUTED_NOTE_HEADS`); writer
+stages record the heads. One class exists today:
+
+- `fact=lane-drained` — the develop lane check found no open work
+  item: the lane idles between tranches. File ONE tranche-demand work
+  item (unassigned; the tranche selection stays a human decision):
+  query the work list first and file ONLY when no open
+  tranche-demand item exists — every drained tick re-escalates, the
+  dedupe is yours.
 
 ## What you decide
 
