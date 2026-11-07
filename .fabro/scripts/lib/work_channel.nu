@@ -77,6 +77,15 @@ export def observation-record-argv [srv: string, category: string, text: string]
     ]
 }
 
+# Pure: the argv for one run set-title call (the pass-title door,
+# ADR-0030, the #1159 follow-through for PASS workflows): `--server`
+# rides the VERB segment (the run facade seats it there, like run
+# queue), the title is the positional, and NO --run — a pass script
+# titles its OWN run through the engine-bound FABRO_RUN_ID.
+export def run-set-title-argv [srv: string, title: string]: nothing -> list<string> {
+    ['run' 'set-title' '--server' $srv $title]
+}
+
 # --- The adjudicator doors (ADR-0039 stage D part 2) ---------------------
 # The run facade's grammar is verb-first: `fabro run` carries an optional
 # WORKFLOW positional that eats a leading subcommand once a flag precedes
@@ -159,6 +168,21 @@ export def work-close-argv [srv: string, project: string, work_item: string, rea
 export def cli [caller: string, argv: list<string>]: nothing -> any {
     let exe = (bin)
     do { ^$exe ...$argv } | complete
+}
+
+# Title the CALLING run with its sweep outcome (the #1159 follow-through
+# for PASS workflows: the board tile names what the pass FOUND, not the
+# generic goal). ADVISORY by design — a failed title write prints and
+# never exits: the caller's own exit code is the contract, the title is
+# the glanceable surface (it also carries door failures onto the board:
+# #1165 — twenty green watchdog runs carried an auth failure only in
+# their failure string). Bounded to the CLI's 100-character limit.
+export def title-own-run [caller: string, title: string]: nothing -> nothing {
+    let argv = (run-set-title-argv (server $caller) ($title | str substring 0..99))
+    let res = (cli $caller $argv)
+    if $res.exit_code != 0 {
+        print -e $"($caller): run set-title failed \(advisory\): ($res.stderr | str trim | str substring 0..160)"
+    }
 }
 
 # The fabro binary (host-side batteries shim it through FABRO_BIN).

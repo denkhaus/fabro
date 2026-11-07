@@ -20,9 +20,19 @@
 # `fabro ps -a --workflow watchdog` make a dead watchdog visible on the
 # operator's manual glance.
 
-use ../../../scripts/lib/work_channel.nu [server, cli]
+use ../../../scripts/lib/work_channel.nu [server, cli, title-own-run]
 
 const CALLER = 'watchdog-stall-check'
+
+# Title THIS run with the sweep outcome through the shared advisory
+# wrapper (work_channel::title-own-run — the #1159 follow-through for
+# pass workflows): healthy, stall, or door failure all land on the
+# board tile; a broken door titles the run instead of dying nameless
+# (#1165 — twenty green runs carried the auth failure only in their
+# failure string).
+def set-title [title: string]: nothing -> nothing {
+    title-own-run $CALLER $title
+}
 
 # The gears and their stall windows (3x the tick interval, K=3).
 const GEARS = [
@@ -39,10 +49,12 @@ def automation-rows []: nothing -> list<any> {
     let srv = (server $CALLER)
     let res = (cli $CALLER [automations --server $srv list --json])
     if $res.exit_code != 0 {
+        set-title $"Watchdog: door failure — automations list: ($res.stderr | str trim | str substring 0..48)"
         print -e $"($CALLER): automations list failed: ($res.stderr | str trim | str substring 0..240)"
         exit 1
     }
     try { $res.stdout | from json } catch {
+        set-title "Watchdog: door failure — automations list printed no JSON"
         print -e $"($CALLER): automations list printed no JSON: ($res.stdout | str trim | str substring 0..240)"
         exit 1
     }
@@ -67,10 +79,12 @@ def last-pass-age-minutes [workflow: string]: nothing -> any {
     let srv = (server $CALLER)
     let res = (cli $CALLER [ps --server $srv --all --json --workflow $workflow])
     if $res.exit_code != 0 {
+        set-title $"Watchdog: door failure — ps for ($workflow): ($res.stderr | str trim | str substring 0..48)"
         print -e $"($CALLER): ps failed for ($workflow): ($res.stderr | str trim | str substring 0..240)"
         exit 1
     }
     let runs = (try { $res.stdout | from json } catch {
+        set-title $"Watchdog: door failure — ps for ($workflow) printed no JSON"
         print -e $"($CALLER): ps printed no JSON for ($workflow): ($res.stdout | str trim | str substring 0..240)"
         exit 1
     })
@@ -108,12 +122,18 @@ def main []: nothing -> nothing {
         }
     }
     if ($stalls | is-empty) {
+        if ($healthy | is-empty) {
+            set-title "Watchdog: no enabled gears — the pause is authoritative, silence is health"
+        } else {
+            set-title $"Watchdog: all enabled gears healthy — ($healthy | str join ', ')"
+        }
         print $"($CALLER): all enabled gears healthy: ($healthy | str join ', ')"
         print 'preferred_label: "All gears healthy"'
         return
     }
     # THE ALARM: exit non-zero, name every stalled gear. The run fails;
     # the Slack lifecycle notification pings the operator.
+    set-title $"Watchdog STALL: ($stalls | each {|s| $"($s.gear): ($s.detail)"} | str join '; ')"
     print -e $"($CALLER): GEAR STALL — the dead-man watch alarms:"
     for stall in $stalls {
         print -e $"($CALLER):   ($stall.gear): ($stall.detail)"

@@ -28,7 +28,7 @@
 # signal (the merge_conflict refusal): that is a packet, not a failure.
 
 use ../../../scripts/lib/work_channel.nu [
-    server, run-merge-argv, cli, read-queue-hard, mark-run-hard, emit-envelope
+    server, run-merge-argv, cli, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
 ]
 
 const CALLER = 'merger-fast-path'
@@ -140,6 +140,9 @@ def main [--smoke]: nothing -> nothing {
         }
     }
 
+    # The pass title (#1159 follow-through): the sweep shape lands on
+    # the board tile. Advisory (work_channel::title-own-run).
+    title-own-run $CALLER $"Merger: merged \(($merged_enabled | length)\) with green smoke; parked \(($smoke_parked | length)\) red-smoke + \(($malformed_parked | length)\) malformed; \(($packets | length)\) packet\(s\) for the agent pass"
     print $"($CALLER): merged \(($merged_enabled | length)\) with green smoke; parked \(($smoke_parked | length)\) on red smoke and \(($malformed_parked | length)\) malformed; \(($packets | length)\) packet\(s\) for the agent pass"
     let integration = {
         packets: $packets,

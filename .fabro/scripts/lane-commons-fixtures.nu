@@ -120,6 +120,22 @@ def test-observation-record-argv []: nothing -> nothing {
     assert-eq ($argv | any {|a| $a == '--text'}) true 'observation argv carries --text'
 }
 
+def test-run-set-title-argv []: nothing -> nothing {
+    let argv = (work_channel run-set-title-argv 'https://mirtuell.net' 'Watchdog: all enabled gears healthy')
+    assert-eq ($argv | first) 'run' 'set-title argv starts at the run facade'
+    let verb_at = (first-index-of $argv 'set-title')
+    let server_at = (first-index-of $argv '--server')
+    if $verb_at == -1 { print -e 'lane-commons: set-title argv lost the set-title verb'; exit 1 }
+    if $server_at <= $verb_at {
+        print -e $"lane-commons: --server at ($server_at) must come AFTER the set-title verb at ($verb_at) (the run facade seats it on the verb segment)"
+        exit 1
+    }
+    # No --run: a pass script titles its OWN run via the engine-bound
+    # FABRO_RUN_ID (the builder's contract, #1159 follow-through).
+    assert-eq ($argv | any {|a| $a == '--run'}) false 'set-title argv carries no --run (FABRO_RUN_ID owns the target)'
+    assert-eq ($argv | last) 'Watchdog: all enabled gears healthy' 'the title rides as the final positional'
+}
+
 # --- 2b. probe-literal equality: the lib argv IS the bench literal --------
 # The bench registry (the fabro test repo) pins the argv GRAMMAR against the toolchain's
 # fabro CLI with hand-spelled literals (probe-28: work-create; probe-37:
@@ -219,6 +235,7 @@ def main []: nothing -> nothing {
     test-subject-mark
     test-work-create-argv
     test-observation-record-argv
+    test-run-set-title-argv
     test-probe-literal-equality
     test-consumers-source-the-lib
     test-no-mirror-regrows

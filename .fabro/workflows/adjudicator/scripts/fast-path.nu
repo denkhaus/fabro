@@ -35,7 +35,7 @@
 
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
 use ../../../scripts/lib/work_channel.nu [
-    server, cli, observation-list-argv, work-radius-argv, read-queue-hard, mark-run-hard, emit-envelope
+    server, cli, observation-list-argv, work-radius-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
 ]
 
 const CALLER = 'adjudicator-fast-path'
@@ -206,6 +206,10 @@ def main [--smoke]: nothing -> nothing {
         }
     }
 
+    # The pass title (#1159 follow-through): the sweep shape lands on
+    # the board tile — the operator reads what THIS pass did without
+    # opening the run. Advisory (work_channel::title-own-run).
+    title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass"
     print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass"
     let adjudication = {
         packets: $packets,
