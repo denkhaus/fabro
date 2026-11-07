@@ -73,7 +73,9 @@ index (`incidents.md`) carries the full stories.
   #359/#360 closed not-planned).
 - Reflection invariant: if `sprints_reflected < sprints_completed`, the
   pending reflection runs FIRST (Phase 6 short form) — no new sprint
-  starts unreflected.
+  starts unreflected. The short form carries the same retro mandate as
+  the full close: the reflection runs through the `@retro` skill and
+  its candidates are jointly decided with the user (Phase 6 item 2).
 - Three review gates ride the same cadence shape, each with a marker in
   `iterate-state.json` beside the notes; `null` means never run:
   - CODE-REVIEW (`last_code_review_at_sprint`): due when

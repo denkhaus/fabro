@@ -243,8 +243,10 @@ committed.
 
 ## Phase 6 — Reflect (mandatory, every sprint close)
 
-Completion criterion: the Zusammenfassung + Ausblick is delivered, every
-cost finding is recorded in its proper store, the ledger carries the
+Completion criterion: the Zusammenfassung + Ausblick is delivered, the
+self-reflection ran through the `@retro` skill and its candidates were
+jointly decided with the user, every (chosen) cost finding is recorded
+in its proper store, the ledger carries the
 sprint record (counted per the rule), and the heartbeat matches
 reality.
 
@@ -256,11 +258,20 @@ reality.
    reviews). Simplified short sentences, the repo's ubiquitous
    language; chat stays German. The next sprint starts IMMEDIATELY
    unless a user gate blocks it.
-2. Cost review: what took longer than it should, what needed retries,
-   what was missing at decision time. EVERY finding lands in its proper
-   store — behavior change => edit THIS skill (the ABSTRACT rule only;
-   session state and incident detail go to the ledger note, the
-   tracker, or mulch via `mulch record <domain> '<content>' --type
+2. Cost review — MANDATORY through the `@retro` skill (user decision
+   2026-11-07): the sprint's self-reflection is NEVER freehanded; it
+   runs as a retrospective through the retro skill
+   (`~/.agents/skills/retro/SKILL.md`), whose category framework
+   (navigation, automated checks, coding standards, AGENTS.md, tool
+   economy, no-ops, information access) IS the reflection surface.
+   The retro presents its candidates in order of severity — and the
+   candidates then go through a JOINT decision with the user: which
+   points get implemented is decided TOGETHER, nothing from the retro
+   output is implemented unilaterally (the session proposes, the user
+   disposes). Only the CHOSEN findings proceed to recording: behavior
+   change => edit THIS skill (the ABSTRACT rule only; session state
+   and incident detail go to the ledger note, the tracker, or mulch
+   via `mulch record <domain> '<content>' --type
    <failure|convention|pattern|decision|reference|guide>` +
    `mulch sync`); durable preferences to memory. No finding stays
    unrecorded.
