@@ -58,6 +58,16 @@ For ONE run per response, in order:
    expectations: the radius read (`fabro_work_radius`) tells you which
    open work items already block the claim — link nothing manually; filing
    is enough.
+   **Every follow-up carries a lane label** — `fabro_work_create` has no
+   lane parameter, so the lane rides `labels` with its exact string:
+   `["lane:loop", ...]` when the fix lands in the loop-asset surface
+   (`.fabro/**`, root `scripts/**`, `justfile` — the operator session
+   owns that surface), `["lane:develop", ...]` when it lands in repo
+   product code (`lib/`, `apps/`, `docs/`). A fix spanning both
+   surfaces files TWO items, one per lane. An item without a lane
+   label is claimed by NO gear — lane assignment is routing, not
+   metadata. (The tranche-demand item is the one deliberate exception:
+   it stays unlaned because the tranche selection is a human decision.)
 3. **The observation duty.** Every response records at least one
    observation with `fabro_observation_record`: your verdict rationale
    as a note (`verdict: <run> <field>=<value> because ...`), or the
