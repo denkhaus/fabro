@@ -1,4 +1,3 @@
-use std::error::Error as _;
 use std::fmt::Write as _;
 use std::time::Duration;
 

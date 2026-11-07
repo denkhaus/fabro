@@ -73,7 +73,9 @@ use super::{
     AppState, RunAnswerTransport, RunExecutionMode, clear_live_run_state, run_records,
     stream_follower,
 };
-use crate::git_checkout::{self, GitCheckoutSelector, WorktreeDepth, WorktreePrepareInput};
+use crate::git_checkout::{
+    self, GitCheckoutError, GitCheckoutSelector, WorktreeDepth, WorktreePrepareInput,
+};
 use crate::petri_check;
 use crate::petri_runs::PetriRuns;
 use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
@@ -330,6 +332,7 @@ async fn prepare_git_checkout(
                 "GitHub credentials for {repo} could not be loaded: {source}"
             ))
         })?;
+    let credentials_absent = credentials.is_none();
     let auth = git_checkout::resolve_git_read_auth_config(
         credentials.as_ref(),
         &repo,
@@ -358,12 +361,31 @@ async fn prepare_git_checkout(
             &git_checkout::github_clone_url(&repo),
         )
         .await
-        .map_err(|source| {
-            RunCompilerError::GitCheckout(format!(
-                "the worktree of {repo} at the requested ref could not be prepared: {source}"
-            ))
-        })?;
+        .map_err(|source| git_checkout_refusal(&repo, credentials_absent, &source))?;
     Ok(worktree)
+}
+
+/// Wrap a failed compile-time worktree preparation (denkhaus/work#1145).
+/// With no configured GitHub credentials the failure is a named teaching
+/// refusal — it names the missing credential and the mechanism, the
+/// server-side checkout a git-target create performs at compile — while
+/// an authenticated attempt keeps the generic wrap: public repositories
+/// keep creating on a credential-less stack, so the refusal fires only
+/// when the unauthenticated checkout actually failed.
+fn git_checkout_refusal(
+    repo: &GitHubRepositorySlug,
+    credentials_absent: bool,
+    source: &GitCheckoutError,
+) -> RunCompilerError {
+    if credentials_absent {
+        return RunCompilerError::GitCheckoutUnauthenticated {
+            repo:   repo.to_string(),
+            detail: source.to_string(),
+        };
+    }
+    RunCompilerError::GitCheckout(format!(
+        "the worktree of {repo} at the requested ref could not be prepared: {source}"
+    ))
 }
 
 /// A local stand-in worktree for test builds (see
@@ -1309,5 +1331,64 @@ mod tests {
             );
         }
         assert!(table.contains_key("run"), "{text}");
+    }
+
+    /// A failed compile-time checkout on a credential-less server names the
+    /// missing credential and the mechanism (denkhaus/work#1145): the
+    /// refusal must teach, not echo git stderr under `run_compile_invalid`.
+    #[test]
+    fn credentialless_checkout_failure_names_credential_and_mechanism() {
+        let repo = GitHubRepositorySlug::try_new("denkhaus/fabro-test").expect("valid slug");
+        let failure = GitCheckoutError::FetchBranch {
+            branch: "main".to_string(),
+            source: crate::git_checkout::GitCommandError::Exit {
+                message: "git fetch: Authentication failed".to_string(),
+            },
+        };
+
+        let refusal = git_checkout_refusal(&repo, true, &failure);
+
+        let RunCompilerError::GitCheckoutUnauthenticated { repo, detail } = refusal else {
+            panic!("a credential-less checkout failure must use the named refusal");
+        };
+        assert_eq!(repo, "denkhaus/fabro-test");
+        assert!(detail.contains("failed to fetch branch"), "{detail}");
+        let message = RunCompilerError::GitCheckoutUnauthenticated { repo, detail }.to_string();
+        assert!(
+            message.contains("no GitHub credentials are configured"),
+            "names the missing credential: {message}"
+        );
+        assert!(
+            message.contains("GITHUB_TOKEN") && message.contains("GITHUB_APP_PRIVATE_KEY"),
+            "names the credential surfaces to set: {message}"
+        );
+        assert!(
+            message.contains("checked out server-side at compile"),
+            "names the mechanism: {message}"
+        );
+    }
+
+    /// An authenticated checkout failure keeps the generic wrap: the
+    /// credential-less refusal must not swallow configured-credential
+    /// failures (public repositories keep creating unauthenticated, so
+    /// the named refusal fires only when credentials are absent).
+    #[test]
+    fn authenticated_checkout_failure_keeps_generic_wrap() {
+        let repo = GitHubRepositorySlug::try_new("denkhaus/fabro-test").expect("valid slug");
+        let failure = GitCheckoutError::FetchBranch {
+            branch: "main".to_string(),
+            source: crate::git_checkout::GitCommandError::Exit {
+                message: "git fetch: Authentication failed".to_string(),
+            },
+        };
+
+        let wrapped = git_checkout_refusal(&repo, false, &failure);
+
+        assert!(matches!(wrapped, RunCompilerError::GitCheckout(_)));
+        let message = wrapped.to_string();
+        assert!(
+            message.contains("the worktree of denkhaus/fabro-test"),
+            "{message}"
+        );
     }
 }

@@ -249,6 +249,16 @@ pub(crate) enum RunCompilerError {
     /// credentials, no readable ref, or a failed worktree.
     #[error("the run's git target could not be checked out: {0}")]
     GitCheckout(String),
+
+    /// The run's git target could not be checked out because the server
+    /// has no GitHub credentials configured (denkhaus/work#1145): the
+    /// compile-time checkout runs unauthenticated, and its failure is
+    /// this named refusal — missing credential plus mechanism — instead
+    /// of bare git stderr surfacing as `run_compile_invalid`.
+    #[error(
+        "the run's git target {repo} could not be checked out server-side at compile: no GitHub credentials are configured on this server, so the checkout was attempted unauthenticated; private repositories need the GitHub integration credential (GITHUB_TOKEN, or the GitHub App private key GITHUB_APP_PRIVATE_KEY): {detail}"
+    )]
+    GitCheckoutUnauthenticated { repo: String, detail: String },
 }
 
 // Shared source errors also serve manifest preview operations.
