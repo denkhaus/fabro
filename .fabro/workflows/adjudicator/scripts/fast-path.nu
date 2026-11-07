@@ -8,11 +8,16 @@
 #
 # The trivial case (grilled 2026-11-02): no painpoints (after fact-head
 # dedupe — engine retries re-record the first fact; the consumer
-# collapses) and an empty closure radius. Notes never trigger anything.
-# The verdict splits by pull request: a trivial run WITH a pull request
-# is merge: enabled; a trivial run WITHOUT one (a failed or empty run)
-# is merge: refused — the verdict means content-mergeable, and nothing
-# to merge means refused.
+# collapses), no ROUTED note classes, and an empty closure radius.
+# ROUTED NOTES supersede stage-C decision 5 (denkhaus/work#1146, user
+# decision, sprint 81): a painpoint still forces the agent pass, AND a
+# note whose machine head names a routed class escalates too — the
+# marker registry below is the deterministic trigger surface.
+# Unclassified notes never trigger anything, but they RIDE the packet
+# context: the agent pass reads them whenever it runs. The trivial
+# verdict splits by pull request: WITH one is merge: enabled; WITHOUT
+# one (a failed or empty run) is merge: refused — the verdict means
+# content-mergeable, and nothing to merge means refused.
 #
 # Parked runs re-enter every pass (only enabled and refused free a run):
 # they route to the agent pass again — an open escalation is a judgment
@@ -36,6 +41,31 @@ use ../../../scripts/lib/work_channel.nu [
 const CALLER = 'adjudicator-fast-path'
 const FIELD = 'merge'
 const WORKFLOW = 'develop'
+
+# The routed note classes (work#1146): note FACT names (the machine
+# head's `fact=` token) that deterministically escalate a run to the
+# agent pass. The develop start stage owns the lane-drained marker
+# (work#1144); new classes join HERE and as a `fact=<name>` head in the
+# recording stage, never in prose.
+const ROUTED_NOTE_HEADS = ['lane-drained']
+
+# Pure: the note texts whose machine head names a routed fact — the
+# deterministic escalation surface beside the painpoints.
+def routed-notes [observations: list<any>]: nothing -> list<string> {
+    $observations
+    | where {|o| $o.category == "note"}
+    | where {|o|
+        let head = (parse-head $o.text)
+        $head != null and ($head | get -o fact | default '') in $ROUTED_NOTE_HEADS
+    }
+    | get text
+}
+
+# Pure: every note's text — the packet context the agent pass reads
+# when it runs (unclassified notes ride along, they never trigger).
+def note-texts [observations: list<any>]: nothing -> list<string> {
+    $observations | where {|o| $o.category == "note"} | get text
+}
 
 # Pure: the DISTINCT painpoints of a run's observations — dedupe on the
 # machine head (line one): an engine retry of the reporter re-records
@@ -114,8 +144,9 @@ def main [--smoke]: nothing -> nothing {
         if $entry.verdict == "parked" {
             # An open operator escalation re-enters every pass: the
             # agent pass re-engages with the fork's context.
+            let observations = (read-observations $run_id)
             $skipped_parked = ($skipped_parked | append $run_id)
-            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints (read-observations $run_id)), radius_items: (read-radius $project $work_item | length), has_pull_request: $has_pr})
+            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "parked", painpoints: (distinct-painpoints $observations), routed_notes: (routed-notes $observations), notes: (note-texts $observations), radius_items: (read-radius $project $work_item | length), has_pull_request: $has_pr})
             continue
         }
 
@@ -132,9 +163,11 @@ def main [--smoke]: nothing -> nothing {
             continue
         }
 
-        let painpoints = (distinct-painpoints (read-observations $run_id))
+        let observations = (read-observations $run_id)
+        let painpoints = (distinct-painpoints $observations)
+        let routed = (routed-notes $observations)
         let radius_count = (read-radius $project $work_item | length)
-        if ($painpoints | is-empty) and $radius_count == 0 {
+        if ($painpoints | is-empty) and ($routed | is-empty) and $radius_count == 0 {
             # The trivial mass: mark directly, no LLM call.
             if $has_pr {
                 mark-run $run_id "enabled"
@@ -144,7 +177,7 @@ def main [--smoke]: nothing -> nothing {
                 $marked_refused = ($marked_refused | append $run_id)
             }
         } else {
-            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "pending", painpoints: $painpoints, radius_items: $radius_count, has_pull_request: $has_pr})
+            $packets = ($packets | append {run_id: $run_id, work_item: (null-if-empty $work_item), verdict: "pending", painpoints: $painpoints, routed_notes: $routed, notes: (note-texts $observations), radius_items: $radius_count, has_pull_request: $has_pr})
         }
     }
 

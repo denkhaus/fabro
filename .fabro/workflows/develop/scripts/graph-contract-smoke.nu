@@ -16,9 +16,13 @@
 #   3. NO retired nodes: tracker_guard, claim_check, gatebounce must not
 #      reappear (ADR-0032 phase 3 — host scripts cannot read the server-
 #      side tracker; their arms folded into the planner tools and the
-#      post-claim preflight).
-#   4. start -> env_guard -> planner wiring: the placement guard is first
-#      and start has NO second outgoing edge (fabro-2357).
+#      post-claim preflight). The channel-capable lane_check is the
+#      sanctioned resurrection (work#1144): a command stage reading the
+#      lane through the run channel — the capability the host script
+#      lacked.
+#   4. start -> env_guard -> lane_check -> planner wiring: the placement
+#      guard is first and start has NO second outgoing edge (fabro-2357);
+#      the lane check sits between guard and planner (work#1144).
 #   5. The claim-contract chain: planner -> preflight ("Seed claimed"),
 #      preflight reading the granted-item packet on stdin
 #      (stdin_source="current_item_json", script line carries
@@ -79,8 +83,11 @@ def main [] {
     if not ($code | any {|l| ($l | str contains 'start -> env_guard')}) {
         fail 'start -> env_guard edge missing — a misplaced manual fire would die cryptically at the first nu stage'
     }
-    if not ($code | any {|l| ($l | str contains 'env_guard -> planner')}) {
-        fail 'env_guard -> planner edge missing — the placement guard must precede every LLM/nu stage'
+    if not ($code | any {|l| ($l | str contains 'env_guard -> lane_check')}) {
+        fail 'env_guard -> lane_check edge missing — the placement guard must precede every LLM/nu stage, the lane check included'
+    }
+    if not ($code | any {|l| ($l | str contains 'lane_check -> planner')}) {
+        fail 'lane_check -> planner edge missing — the open lane must hand to the planner (work#1144)'
     }
     if not ($code | any {|l| ($l | str contains 'toolchain-guard.sh develop') and ($l | str starts-with '        script="sh ')}) {
         fail 'env_guard script line must run the shared guard via POSIX sh with the develop lane flag — nu cannot guard a sandbox without nu'

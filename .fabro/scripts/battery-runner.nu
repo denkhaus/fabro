@@ -79,6 +79,11 @@ const SMOKES = [
     # filter, routing envelope — driven through the channel shim over
     # the shared smoke harness.
     '.fabro/workflows/adjudicator/scripts/fast-path-smoke.nu'
+    # develop lane check (denkhaus/work#1144, the sprint-81 start
+    # stage): an empty lane records the routed lane-drained marker and
+    # ends PR-less without a model call, an open lane hands to the
+    # planner, foreign lanes do not hold the line open.
+    '.fabro/workflows/develop/scripts/lane-check-smoke.nu'
     # watchdog stall check (ADR-0039 stage F, denkhaus/work#1107): the
     # dead-man watch's three arms — silent when disabled (the pause is
     # authoritative), healthy when fresh completed passes sit inside the

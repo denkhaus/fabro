@@ -35,6 +35,7 @@ write-shim-state $state {
         {runId: "01PAINPoinTRUN000000000000000", workflowSlug: "develop", status: "succeeded", title: "run with painpoints", pullRequest: {owner: "denkhaus", repo: "fabro", number: 502}, claimedItem: "denkhaus/work#2", project: "fabro-test"}
         {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro"}
         {runId: "01HUMANNEEDED00000000000000A", workflowSlug: "develop", status: "human_needed", title: "the deadlock ask", pullRequest: {owner: "denkhaus", repo: "fabro", number: 503}, claimedItem: "denkhaus/work#3", project: "fabro"}
+        {runId: "01DRAINEDRUN0000000000000000", workflowSlug: "develop", status: "succeeded", title: "the drained lane pass", pullRequest: null, claimedItem: null, project: null}
         {runId: "01SMOKERUN000000000000000000", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null, project: null}
         {runId: "01LIVERUN00000000000000000000", workflowSlug: "develop", status: "running", title: "still going", claimedItem: null, project: null}
     ],
@@ -52,6 +53,10 @@ write-shim-state $state {
         {runId: "01PAINPoinTRUN000000000000000", seq: 3, category: "painpoint", text: "fact=dockerfile-touch paths=.fabro/Dockerfile.toolchain"}
         # 01PARKED: the prior pass's fork context rides observations.
         {runId: "01PARKEDRUN00000000000000000", seq: 1, category: "note", text: "parked-fork: should the residual file as unfinished or exempt?"}
+        # 01DRAINED (#1144/#1146): the start stage's routed marker — a
+        # NOTE whose machine head's fact names the class; the fast path
+        # routes it to the agent pass without any painpoint existing.
+        {runId: "01DRAINEDRUN0000000000000000", seq: 1, category: "note", text: "fact=lane-drained lane=develop\nthe develop lane holds no open item; no claim attempted"}
     ],
     radius: {
         "denkhaus/work#2": [{itemKey: "denkhaus/work#3", title: "The radius blocker", state: "open"}]
@@ -99,12 +104,25 @@ if ($adjudication.parked_human_needed | default []) != ["01HUMANNEEDED0000000000
     fail $"the envelope names the human-needed parking: ($adjudication | to json -r)"
 }
 
-# The packets: painpoint run, parked run — never the trivial pair, never
-# the smoke workflow's run, never the live run.
+# The packets: painpoint run, parked run, routed-note run — never the
+# trivial pair, never the smoke workflow's run, never the live run.
 let packets = ($adjudication | get -o packets | default [])
 let packet_ids = ($packets | get run_id)
-if ($packets | length) != 2 {
-    fail $"exactly the painpoint and parked runs become packets: ($packet_ids | to json -r)"
+if ($packets | length) != 3 {
+    fail $"exactly the painpoint, parked, and routed-note runs become packets: ($packet_ids | to json -r)"
+}
+# #1146 (routed notes supersede stage-C decision 5): the lane-drained
+# NOTE escalates the run to the agent pass — no painpoint exists, the
+# radius is empty, and the run must NOT be trivially refused: the
+# deterministic marker is the whole trigger.
+let drained_marks = ($merge_marks | where {|m| $m.runId == "01DRAINEDRUN0000000000000000"})
+if ($drained_marks | length) != 0 {
+    fail $"a routed-note run must never be trivially marked: ($drained_marks | to json -r)"
+}
+let drained_packet = ($packets | where {|p| $p.run_id == "01DRAINEDRUN0000000000000000"} | get -o 0 | default null)
+if $drained_packet == null { fail "the routed-note run must route to the agent pass" }
+if not (($drained_packet.routed_notes | default []) | any {|n| $n | str starts-with "fact=lane-drained"}) {
+    fail $"the packet carries the routed marker as its trigger: ($drained_packet | to json -r)"
 }
 # work#1113: the radius read uses the ENTRY's project, never a hardcoded
 # one — the painpoint run's claim rides a different project (fabro-test)
@@ -132,6 +150,12 @@ let parked_packet = ($packets | where {|p| $p.run_id == "01PARKEDRUN000000000000
 if $parked_packet == null { fail "the parked run must re-enter as a packet" }
 if $parked_packet.verdict != "parked" {
     fail $"the parked packet names its escalation state: ($parked_packet | to json -r)"
+}
+# #1146: unclassified notes ride the packet context — the agent pass
+# reads them whenever it runs; they never trigger anything themselves
+# (the TRIVIALPR note above stays the standing negative arm).
+if not (($parked_packet.notes | default []) | any {|n| $n | str contains "parked-fork"}) {
+    fail $"unclassified notes join the packet context: ($parked_packet | to json -r)"
 }
 # The fast path never re-marks a parked run (the agent pass owns it).
 if (($merge_marks | where {|m| $m.runId == "01PARKEDRUN00000000000000000"}) | length) != 0 {

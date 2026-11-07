@@ -132,6 +132,16 @@ will not use.
     observation records (the stage-C trigger rule) — they force the
     adjudicator's agent pass, which files the follow-ups. The journal
     marker contracts retired with their consumer.
+19. **Routed notes supersede the stage-C trigger rule** (#1146,
+    grilled 2026-11-07, sprint 81): a painpoint still forces the
+    adjudicator's agent pass immediately, AND a note whose machine
+    head's `fact=` token names a routed class escalates too — the
+    marker registry lives in the fast path; `lane-drained` is the
+    first class, recorded by the develop start stage (#1144). An
+    unclassified note never triggers anything, but it rides the agent
+    pass's packet context whenever the pass runs. The classification
+    seam moves to the reader: stages record neutral facts with stable
+    heads; the adjudicator interprets.
 
 ## Consequences
 

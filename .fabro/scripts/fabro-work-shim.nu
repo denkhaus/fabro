@@ -195,6 +195,11 @@ def main [
             let hits = ($logged.items | where {|it|
                 ($it.state == "open") and (
                     ($query | is-empty) or ($it.title | str contains $query) or ($it.body | str contains $query)
+                ) and (
+                    # The lane filter (work#1144's lane check): the server
+                    # translates --lane through the project's lane labels;
+                    # the shim filters the same label.
+                    ($lane | is-empty) or ($it.labels | any {|l| $l == $"lane:($lane)"})
                 )
             })
             $hits | to json --raw | print
