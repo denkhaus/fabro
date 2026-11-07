@@ -77,8 +77,9 @@ digraph Develop {
     // (work#1146's marker — the adjudicator fast path escalates it) and
     // the run ends PR-less. Open: the planner owns the atomic claim
     // exactly as before. Project and lane ride static args — the graph
-    // is ADR-0013's porting unit. A failed channel read fails the run
-    // (the fact-failure discipline — never a silent planner pass).
+    // is ADR-0013's porting unit. A failed channel read exits softly
+    // (the fact-failure discipline retries first; the soft family never
+    // burns the model call).
     lane_check [
         label="Lane check: drained-lane marker, PR-less exit",
         shape=parallelogram,
@@ -520,9 +521,11 @@ digraph Develop {
     // as "Tracker empty" (which keeps the residual open-but-claimed
     // case).
     lane_check -> exit [label="Lane drained", condition="preferred_label=\"Lane drained\""]
-    // A failed channel read fails the run after its retry — never a
-    // silent fall-through to the planner (the fact-failure discipline).
-    lane_check -> exit [label="Lane check failed", condition="outcome=failed"]
+    // A failed channel read ends the run SOFTLY after its retry — the
+    // evidence/reporter failure family: a transient outage burns no
+    // model call, no FAILED alarm, and the next scheduled run re-enters
+    // cleanly (the lane read holds no partial state).
+    lane_check -> exit [x.kind="soft", label="Lane check failed (next run re-enters)", condition="outcome=failed"]
     // Already landed (fabro-d183; ADR-0039 stage G re-shape #1115): the
     // planner's claim-time check found a fix commit referencing the work
     // item already in base history with its acceptance criteria

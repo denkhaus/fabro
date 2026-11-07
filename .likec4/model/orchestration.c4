@@ -62,7 +62,6 @@ model {
       }
 
       adjudicator = workflow "Adjudicator" {
-        #evolving
         description '''
           Run-driven, serial, HITL. Pass 1: reviews the observations of
           ALL runs of an item one after another, reconciles painpoints,
@@ -74,7 +73,7 @@ model {
           LLM call.
         '''
         metadata {
-          substrate "graph + all four read doors + the mark door landed (stage D, 2026-11-02); manual fire until the stage-F scheduler tick; the sandbox CLI legs wait for the fork.30 toolchain pin (probe-39)"
+          substrate "live since the fork.30 window (gear ticks on mirtuell, 2026-11-07); all read doors + the mark door + the routed-notes channel landed; probe-39 green under the pin"
           epic "denkhaus/work#1107"
         }
         link ../../docs/adr/0039-internal-integration-adjudicator-merger.md
@@ -82,7 +81,6 @@ model {
         // --- internals (detail level, shown in the adjudicator view) ---
 
         fast-path = stage "Mechanical fast path" {
-          #evolving
           description '''
             The trivial case — no markers, no painpoints, empty radius —
             is decided and closed mechanically, without an LLM call
@@ -91,7 +89,6 @@ model {
         }
 
         review-pass = stage "Review pass (pass 1)" {
-          #evolving
           description '''
             Reviews the observations of ALL runs of the item one after
             another; reconciles painpoints, markers and notes; files
@@ -101,7 +98,6 @@ model {
         }
 
         radius-watch = stage "Closure-radius watch" {
-          #evolving
           description '''
             Watches the closure radius: the open work items linked to
             the observations of the item's runs (work item ←
@@ -111,7 +107,6 @@ model {
         }
 
         park-resume = stage "Operator ask & park/resume" {
-          #evolving
           description '''
             The HITL corridor: the pass runs autonomously for clear
             cases; a true policy fork triggers an operator ask; no
@@ -122,7 +117,6 @@ model {
         }
 
         closing-pass = stage "Closing pass (pass 2)" {
-          #evolving
           description '''
             Once the merger marked closable = enabled, closes the item —
             the ONLY closer in the system. Landed with stage E
@@ -139,7 +133,6 @@ model {
       }
 
       merger = workflow "Merger" {
-        #evolving
         description '''
           Merge-marker-driven. Integrates every merge-enabled run of a
           repo/project — serializes, merges, resolves conflicts — and
@@ -176,7 +169,6 @@ model {
       }
 
       watchdog = workflow "Watchdog" {
-        #evolving
         description '''
           The dead-man watch (ADR-0039 decision 9, stage F 2026-11-05):
           an LLM-free workflow on its own hourly tick that reads every
