@@ -130,7 +130,10 @@ closed with named evidence — or parked with a filed continuation.
 
 - File the design into the tracker BEFORE any code exists — design
   decisions live in the tracker, never only in chat or the diff.
-- Claim (`work update --status in_progress`), implement, verify, close
+- Work the item (the tracker has no session claim: claims are RUN-side
+  through the server's claim authority — a session declares its batch in
+  the chat and ledger, and just works the items), implement, verify,
+  close
   with evidence. Per-surface gates and the full discipline:
   `reference/build.md` — load it before the first edit cell. The
   non-negotiables:
