@@ -1,0 +1,28 @@
+# CodeRabbit configuration — the experimental second opinion for the
+# adjudicator (denkhaus/work#1160).
+#
+# Two facts shape this file:
+#
+# 1. The line's pull requests target `denkhaus`, not the repository
+#    default branch (`main`). CodeRabbit reviews the default branch
+#    unless `base_branches` names more targets, so the line branch is
+#    named here explicitly.
+# 2. CodeRabbit skips bot-authored pull requests unconditionally
+#    ("Bot user detected") and posts a skip status comment. No key can
+#    lift that: `ignore_usernames` only ADDS exclusions. A skipped pull
+#    request is reviewed after an `@coderabbitai review` comment; that
+#    comment is the experiment's trigger, not this file.
+language: en-US
+
+reviews:
+  profile: chill
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    base_branches:
+      - "^denkhaus$"
+  path_filters:
+    # Vendored fork snapshots and the generated API client are not
+    # review material — their sources live in their own repositories.
+    - "!vendor/**"
+    - "!lib/packages/fabro-api-client/src/**"
