@@ -86,13 +86,15 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 
 - Deploy only while no conductor pass runs.
 - PRE-DEPLOY BENCH GATE (2026-10-24 grill, user GO): before EVERY
-  deploy window, run the fabro-test workbench —
-  `cd ~/dev/fabro-test && just up && just workbench` (refreshes the
-  local image, then the facet table: probes + platform checks + mini,
-  ~15 min). A RED table means NO window: fix or file first (the repo's
-  own rule — new product bugs land as FACETS row + probe BEFORE any
-  deploy). The bench refuses a non-local FABRO_SERVER; carry the local
-  override explicitly.
+  deploy window, refresh the local stack and run the fabro-test
+  workbench — TWO repos: `just up` IN THE FABRO REPO (the full local
+  pipeline: clean, build image, install CLI, run-images, compose up,
+  wait-healthy, smoke; flock-locked; run-images requires the pushed
+  line tip), then `cd ~/dev/fabro-test && just workbench` (the facet
+  table: probes + platform checks + mini, ~15 min). A RED table means
+  NO window: fix or file first (the repo's own rule — new product bugs
+  land as FACETS row + probe BEFORE any deploy). The bench refuses a
+  non-local FABRO_SERVER; carry the local override explicitly.
 - GATE-TOUCHING DEPLOYS: before the window, run
   `just smoke-window-gate` (the twin-scenario smoke: scripted 429 ->
   tick holds + manual fire refused; reopen -> next recheck tick fires)
