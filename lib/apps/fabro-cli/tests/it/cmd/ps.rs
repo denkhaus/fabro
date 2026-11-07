@@ -489,6 +489,119 @@ fn ps_table_adds_parent_column_for_unfiltered_child_runs() {
 }
 
 #[test]
+fn ps_rows_carry_the_run_title_after_set_title() {
+    let context = test_context!();
+    let server = MockServer::start();
+    let titled_id = unique_run_id();
+    let fallback_id = unique_run_id();
+    let new_title = "seed denkhaus/work#1161: ps carries the run title";
+    let resolve_mock = super::support::mock_resolved_run(&server, &titled_id, &titled_id);
+    let mut titled = remote_run_summary_json(
+        &titled_id,
+        "Titled Workflow",
+        "titled-workflow",
+        "Original goal",
+        &serde_json::json!({
+            "kind": "succeeded",
+            "reason": "completed"
+        }),
+        "2026-04-20T12:00:00Z",
+    );
+    titled["title"] = serde_json::json!(new_title);
+    // A run that never set a title: the server materializes the
+    // goal-derived fallback, so the ps row still carries a title.
+    let fallback_goal = "Ship the fallback workflow";
+    let fallback = remote_run_summary_json(
+        &fallback_id,
+        "Fallback Workflow",
+        "fallback-workflow",
+        fallback_goal,
+        &serde_json::json!({
+            "kind": "succeeded",
+            "reason": "completed"
+        }),
+        "2026-04-20T11:00:00Z",
+    );
+    let patch_mock = server.mock(|when, then| {
+        when.method("PATCH")
+            .path(format!("/api/v1/runs/{titled_id}"));
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(titled.to_string());
+    });
+    let list_mock = server.mock(|when, then| {
+        when.method("GET").path("/api/v1/runs");
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .body(
+                serde_json::json!({
+                    "data": [titled, fallback],
+                    "meta": { "has_more": false }
+                })
+                .to_string(),
+            );
+    });
+    context.set_http_target(&server.base_url());
+
+    let set_title_output = context
+        .command()
+        .args(["run", "set-title", "--run", &titled_id, new_title])
+        .output()
+        .expect("run set-title should execute");
+    assert!(
+        set_title_output.status.success(),
+        "run set-title should succeed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&set_title_output.stdout),
+        String::from_utf8_lossy(&set_title_output.stderr)
+    );
+
+    let json_output = context
+        .ps()
+        .args(["-a", "--json"])
+        .output()
+        .expect("ps should execute");
+    assert!(json_output.status.success(), "ps should succeed");
+    resolve_mock.assert();
+    patch_mock.assert();
+    list_mock.assert();
+    let runs: Vec<Value> =
+        serde_json::from_slice(&json_output.stdout).expect("ps JSON should parse");
+    let titled_row = runs
+        .iter()
+        .find(|run| run["run_id"] == titled_id.as_str())
+        .expect("the retitled run should be listed");
+    assert_eq!(
+        titled_row["title"], new_title,
+        "the set-title round trip should reach the ps JSON row: {titled_row:#?}"
+    );
+    let fallback_row = runs
+        .iter()
+        .find(|run| run["run_id"] == fallback_id.as_str())
+        .expect("the never-titled run should be listed");
+    assert_eq!(
+        fallback_row["title"], fallback_goal,
+        "a run that never set a title should carry the server's goal-derived fallback: \
+         {fallback_row:#?}"
+    );
+
+    let table_output = context
+        .ps()
+        .args(["-a"])
+        .output()
+        .expect("ps table should execute");
+    assert!(table_output.status.success(), "ps table should succeed");
+    let table = String::from_utf8_lossy(&table_output.stdout);
+    assert!(
+        table.contains("TITLE"),
+        "the text table should show a title column:\n{table}"
+    );
+    assert!(
+        table.contains(new_title),
+        "the text table should show the retitled run's title:\n{table}"
+    );
+}
+
+#[test]
 fn ps_explicit_remote_target_ignores_broken_local_storage_settings() {
     let context = test_context!();
     let server = MockServer::start();

@@ -47,6 +47,7 @@ pub(crate) async fn list_command(
             .map(|run| {
                 serde_json::json!({
                     "run_id": run.run_id(),
+                    "title": run.title(),
                     "parent_id": run.parent_id(),
                     "workflow_name": run.workflow_name(),
                     "workflow_graph_name": run.workflow_graph_name(),
@@ -101,7 +102,7 @@ pub(crate) async fn list_command(
         "STATUS".cell().bold(use_color),
         "DIRECTORY".cell().bold(use_color),
         "DURATION".cell().bold(use_color),
-        "GOAL".cell().bold(use_color),
+        "TITLE".cell().bold(use_color),
     ]);
 
     let rows: Vec<Vec<CellStruct>> = display_runs
@@ -143,7 +144,7 @@ pub(crate) async fn list_command(
                 status_cell(run.status(), use_color),
                 dir_display.cell(),
                 duration_display.cell(),
-                truncate_goal(&run.goal(), 50)
+                truncate_goal(run.display_title(), 50)
                     .cell()
                     .foreground_color(color_if(use_color, Color::Ansi256(8))),
             ]);
