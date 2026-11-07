@@ -106,6 +106,23 @@ gears — no messaging conventions. `parked` is an operator escalation.
 - Not a **bool**: `false` cannot say "refused" apart from "not yet
   decided".
 
+## Automation
+
+The platform record that binds a workflow to a cron schedule with an
+overlap policy (`on_overlap: skip`): what `POST /api/v1/automations`
+creates and the `fabro automations` facade manages (list, pause,
+unpause, breaker, fire, status). An automation says WHEN a workflow
+runs — it is not the workflow and not the firing component. The
+line's automations are the gears; any scheduler-driven workflow can
+be one.
+
+## Scheduler
+
+The server component that evaluates every automation's cron schedule
+and fires the runs (the automation scheduler). It can wedge while the
+HTTP API keeps serving — the gap the `fabro automations status`
+fire-drift view and the watchdog exist to cover.
+
 ## Adjudicator
 
 The scheduler-driven serial workflow (ADR-0039) that reviews the
@@ -172,4 +189,16 @@ tick and `on_overlap: skip`, coupled to the other gears ONLY through
 the orchestration fields — no messaging conventions. The three serial
 line gears: develop (item-driven, direct fire), adjudicator
 (run-driven), merger (merge-marker-driven). The watchdog watches the
-gears but is not a gear itself.
+gears but is not a gear itself. A gear IS an automation — the word
+names the line's instance class, not a different mechanism; the
+scheduler fires it like any automation.
+
+## Wedge
+
+Incident vocabulary (denkhaus/work#1143): a component stuck alive —
+it stops doing its work while every health signal still reads ok, and
+a restart heals it. Named after the scheduler wedge of the fork.30
+window: scheduler ticks AND the log pipeline stopped together while
+the HTTP API kept answering. Not a crash (no error path fires), not a
+pause (nobody paused anything) — the discriminating signal is silence
+against an ENABLED schedule.
