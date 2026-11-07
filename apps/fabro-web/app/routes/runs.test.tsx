@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BoardColumn, Run } from "@qltysh/fabro-api-client";
+import { MemoryRouter } from "react-router";
+import TestRenderer, { act } from "react-test-renderer";
 
 import {
   buildBoardColumns,
@@ -7,12 +9,13 @@ import {
   loadStoredRunsWorkspaceSearchParams,
   placeArchivedColumnLast,
   persistRunsWorkspacePreferences,
+  PrCard,
   RUNS_PREFERENCES_STORAGE_KEY,
   runsQuickStartCommands,
   shouldRefreshBoardForEvent,
 } from "./runs";
 import { summarizeBatchLifecycleAction } from "../components/runs-list/batch-lifecycle";
-import { mapRunListItem } from "../data/runs";
+import { mapRunListItem, type RunItem } from "../data/runs";
 import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
 
 function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
@@ -390,5 +393,84 @@ describe("runs route workspace preferences", () => {
       size:      100,
       hide:      "repo,workflow",
     });
+  });
+});
+
+describe("board tile (denkhaus/work#1164)", () => {
+  const TILE_RUN_ID = "01M6VB7MHH4H8WGBBTRRSBQKK1"; // a full 26-char ULID
+
+  function tileItem(overrides: Partial<RunItem> = {}): RunItem {
+    return {
+      id: TILE_RUN_ID,
+      repo: "fabro",
+      title: "seed #1145: named refusal for Git-target creates",
+      workflow: "Develop",
+      createdBy: TEST_PRINCIPAL,
+      // Constructed from local parts, so the expected dot-date literal
+      // below holds in every timezone.
+      createdAt: new Date(2026, 11, 20, 18, 33).toISOString(),
+      claimedSeedId: "DENKHAUS/WORK#1145",
+      ...overrides,
+    };
+  }
+
+  function renderTile(item: RunItem): string {
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    act(() => {
+      renderer = TestRenderer.create(
+        <MemoryRouter>
+          <PrCard pr={item} />
+        </MemoryRouter>,
+      );
+    });
+    const json = JSON.stringify(renderer!.toJSON());
+    renderer!.unmount();
+    return json;
+  }
+
+  test("row 1 shows the workflow beside the repo; rows 3-4 carry full id, dot-date and work item", () => {
+    const json = renderTile(tileItem());
+    expect(json).toContain("Develop");
+    expect(json).toContain(TILE_RUN_ID);
+    expect(json).not.toContain("…");
+    expect(json).toContain("20.12.2026 18:33");
+    expect(json).toContain("DENKHAUS/WORK#1145");
+  });
+
+  test("the PR chip colours merged, open and closed distinctly; unknown stays muted", () => {
+    const base = {
+      number: 506,
+      pullRequestUrl: "https://github.com/denkhaus/fabro/pull/506",
+    };
+    const merged = renderTile(tileItem({ ...base, pullRequestState: "merged" }));
+    const open = renderTile(tileItem({ ...base, pullRequestState: "open" }));
+    const closed = renderTile(tileItem({ ...base, pullRequestState: "closed" }));
+    const unknown = renderTile(tileItem(base));
+
+    expect(merged).toContain("text-mint");
+    expect(merged).not.toContain("text-cyan-500");
+    expect(open).toContain("text-cyan-500");
+    expect(open).not.toContain("text-mint");
+    expect(closed).toContain("text-fg-muted");
+    expect(closed).not.toContain("text-mint");
+    expect(closed).not.toContain("text-cyan-500");
+    expect(unknown).toContain("text-fg-muted");
+    expect(unknown).not.toContain("text-mint");
+    expect(unknown).not.toContain("text-cyan-500");
+  });
+
+  test("mapRunListItem reads pull_request.state when the projection ships it, unknown otherwise", () => {
+    const run = boardRun("stateful-run", "running");
+    run.pull_request = {
+      number: 506,
+      html_url: "https://github.com/denkhaus/fabro/pull/506",
+    } as Run["pull_request"];
+    expect(mapRunListItem(run).pullRequestState).toBeUndefined();
+
+    (run.pull_request as { state?: unknown }).state = "merged";
+    expect(mapRunListItem(run).pullRequestState).toBe("merged");
+
+    (run.pull_request as { state?: unknown }).state = "garbage";
+    expect(mapRunListItem(run).pullRequestState).toBeUndefined();
   });
 });

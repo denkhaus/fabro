@@ -41,6 +41,7 @@ domains:
   pattern: {}
   rootprint: {}
   rust-server: {}
+  frontend: {}
 governance:
   max_entries: 100
   warn_entries: 150

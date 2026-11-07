@@ -40,7 +40,7 @@ import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events"
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
 import { approveRun, archiveRuns, canArchive, isQuotaPark, mapError, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
-import { formatAbsoluteTs } from "../lib/format";
+import { formatAbsoluteTs, formatTileTimestamp } from "../lib/format";
 import { useToast } from "../components/toast";
 import type {
   BoardColumn,
@@ -305,19 +305,13 @@ export const handle = {
   fullHeight: true,
 };
 
-/// The tile's run id short form: the first ten characters of the ULID
-/// with an ellipsis, with the full id on hover.
-function shortRunId(id: string): string {
-  return id.length <= 10 ? id : `${id.slice(0, 10)}…`;
-}
-
-function PrCard({
+// The board tile card (denkhaus/work#1164): row 1 repo · workflow · PR
+// chip, row 2 title, row 3 the full run id, row 4 dot-date + work item.
+export function PrCard({
   pr,
-  iconColor,
   actions,
 }: {
   pr: RunItem;
-  iconColor: string;
   actions?: string[];
 }) {
   const lifecycleLabel = boardLifecycleStatusLabel(pr);
@@ -334,18 +328,21 @@ function PrCard({
         <Link to={`/runs/${pr.id}`} className="font-mono text-xs font-medium text-teal-500">
           {pr.repo}
         </Link>
+        <span className="font-mono text-xs text-fg-muted">{pr.workflow}</span>
         {lifecycleLabel != null && (
           <span className="rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
             {lifecycleLabel}
           </span>
         )}
         {pr.pullRequestUrl && pr.number != null && (
-          <PullRequestChip
-            number={pr.number}
-            url={pr.pullRequestUrl}
-            className={`ml-auto inline-flex items-center gap-1 font-mono text-xs ${iconColor}`}
-            iconClassName="size-3.5 shrink-0"
-          />
+          <span className="ml-auto">
+            <PullRequestChip
+              number={pr.number}
+              url={pr.pullRequestUrl}
+              state={pr.pullRequestState}
+              iconClassName="size-3.5 shrink-0"
+            />
+          </span>
         )}
       </div>
 
@@ -353,15 +350,20 @@ function PrCard({
         <p className="text-sm leading-snug text-fg-2">{pr.title}</p>
       </Link>
 
+      {/* The full run id is the one identifier an operator copies into a
+          CLI: never truncated, no hover-only fallback (denkhaus/work#1164). */}
+      <div className="mt-1.5 font-mono text-[11px] text-fg-muted">
+        <span className="select-all">{pr.id}</span>
+      </div>
+
       <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-fg-muted">
+        {pr.createdAt != null && (
+          <span title={formatAbsoluteTs(pr.createdAt)}>{formatTileTimestamp(pr.createdAt)}</span>
+        )}
         {pr.claimedSeedId != null && (
           <span className="rounded-full border border-line px-1.5 py-0.5 uppercase tracking-wide">
             {pr.claimedSeedId}
           </span>
-        )}
-        <span title={pr.id}>{shortRunId(pr.id)}</span>
-        {pr.createdAt != null && (
-          <span title={formatAbsoluteTs(pr.createdAt)}>{formatAbsoluteTs(pr.createdAt).split(",")[0]}</span>
         )}
       </div>
 
@@ -391,8 +393,9 @@ function PrCard({
 // All inline footer metadata on PrCard belongs in this one row. Adding a new
 // piece as a sibling `<div>` below the card body recreates a recurring bug
 // where stats stack onto separate lines instead of sitting next to size/actions.
-// Exception: the tile identifiers row (seed chip, run id, date — fabro-3a5e)
-// sits above as its own line; it is identity, not a stat, and always renders.
+// Exception: the tile identity rows (full run id; dot-date + seed — fabro-3a5e,
+// denkhaus/work#1164) sit above as their own lines; they are identity, not a
+// stat, and always render.
 function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
   const navigate = useNavigate();
   const hasActions = actions != null && actions.length > 0;
@@ -545,11 +548,9 @@ function ResumeBoardButton({ runId }: { runId: string }) {
 
 function SortablePrCard({
   pr,
-  iconColor,
   actions,
 }: {
   pr: RunItem;
-  iconColor: string;
   actions?: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pr.id });
@@ -576,7 +577,7 @@ function SortablePrCard({
         }
       }}
     >
-      <PrCard pr={pr} iconColor={iconColor} actions={actions} />
+      <PrCard pr={pr} actions={actions} />
     </div>
   );
 }
@@ -671,7 +672,6 @@ function BoardColumnView({ column }: { column: Column }) {
             <SortablePrCard
               key={pr.id}
               pr={pr}
-              iconColor={column.text}
               actions={actions}
             />
           ))}
