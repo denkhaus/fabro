@@ -19,24 +19,48 @@ pub(crate) const WORKER_TOKEN_TTL_SECS: u64 = 72 * 60 * 60;
 
 #[derive(Clone)]
 pub(crate) struct WorkerTokenKeys {
-    encoding:   Arc<EncodingKey>,
-    decoding:   Arc<DecodingKey>,
-    validation: Arc<Validation>,
+    encoding:    Arc<EncodingKey>,
+    decoding:    Arc<DecodingKey>,
+    validation:  Arc<Validation>,
+    /// The run-channel handshake MAC key (denkhaus/work#1174): its own
+    /// HKDF branch off the same persisted `SESSION_SECRET`, so the
+    /// per-run handshake token derives IDENTICALLY on every server
+    /// instance that shares the secret — a container recreate leaves a
+    /// retained sandbox's channel credential valid.
+    channel_mac: Arc<[u8; 32]>,
 }
 
 impl WorkerTokenKeys {
     pub(crate) fn from_master_secret(secret: &[u8]) -> Result<Self, KeyDeriveError> {
         let key = auth::derive_worker_jwt_key(secret)?;
+        let channel_mac = auth::derive_run_channel_handshake_key(secret)?;
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_nbf = false;
         validation.set_required_spec_claims(&["iss", "iat", "exp"]);
         validation.set_issuer(&[WORKER_TOKEN_ISSUER]);
 
         Ok(Self {
-            encoding:   Arc::new(EncodingKey::from_secret(&key)),
-            decoding:   Arc::new(DecodingKey::from_secret(&key)),
-            validation: Arc::new(validation),
+            encoding:    Arc::new(EncodingKey::from_secret(&key)),
+            decoding:    Arc::new(DecodingKey::from_secret(&key)),
+            validation:  Arc::new(validation),
+            channel_mac: Arc::new(channel_mac),
         })
+    }
+
+    /// The run's channel handshake token (denkhaus/work#1174):
+    /// hex(HMAC-SHA256(channel_mac, run_id)) — deterministic in the
+    /// run id and the server's persisted secret, so a respawned
+    /// channel (resume after a container recreate) requires the SAME
+    /// token the owning sandbox already carries in its environment.
+    /// Hex keeps it structurally JWT- and bearer-shaped impossible.
+    #[must_use]
+    pub(crate) fn run_channel_handshake_token(&self, run_id: &RunId) -> String {
+        use hmac::Mac as _;
+        let mut mac =
+            <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(&self.channel_mac[..])
+                .expect("an HMAC-SHA256 key accepts any length");
+        mac.update(run_id.to_string().as_bytes());
+        hex::encode(mac.finalize().into_bytes())
     }
 
     #[cfg(test)]
@@ -200,6 +224,39 @@ mod tests {
 
     fn run_id() -> fabro_types::RunId {
         "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap()
+    }
+
+    /// work#1174: the channel handshake token is DETERMINISTIC in the
+    /// persisted secret and the run id — the property that lets a
+    /// respawned server instance (container recreate) accept a
+    /// retained sandbox's existing token — and DIFFERS across runs and
+    /// across secrets, so it stays a per-run credential.
+    #[test]
+    fn run_channel_handshake_token_is_durable_and_run_scoped() {
+        let run = run_id();
+        let other_run: fabro_types::RunId = "01ARZ3NDEKTSV4RRFFQ69G5FAW".parse().unwrap();
+
+        let first = keys(TEST_SECRET).run_channel_handshake_token(&run);
+        let respawned = keys(TEST_SECRET).run_channel_handshake_token(&run);
+        assert_eq!(
+            first, respawned,
+            "a new instance on the same secret derives the same token"
+        );
+        assert_eq!(
+            first.len(),
+            64,
+            "hex HMAC-SHA256 — structurally not JWT- or bearer-shaped"
+        );
+        assert_ne!(
+            first,
+            keys(TEST_SECRET).run_channel_handshake_token(&other_run),
+            "the token is scoped to the run"
+        );
+        assert_ne!(
+            first,
+            keys(OTHER_SECRET).run_channel_handshake_token(&run),
+            "a different secret yields a different token"
+        );
     }
 
     fn wrong_scope_token(keys: &WorkerTokenKeys, run_id: &fabro_types::RunId) -> String {
