@@ -38,7 +38,13 @@ each rule.
   mechanism is today, which incidents shaped it, what the fork changes,
   and who the callers are. A grill pitch the user cannot reconstruct the
   topic from is a process defect — the round is aborted and re-pitched
-  before any options reach the question tool.
+  before any options reach the question tool. THE PITCH IS THE GRILL'S
+  OPENING TURN: it stands as its own message BEFORE the question tool
+  fires, and names the sprint, the work item, the mechanism as it works
+  today, the incidents that shaped it, what each fork changes, and who
+  the callers are. Process narration (what the session just executed)
+  is not a pitch. The pre-screen request state doubles as the pitch's
+  source text: build it once, use it for both.
 - GLOSSARY NAMES SURVIVE TRANSLATION (user directive 2026-11-01): in
   German chat framing, the English proper names of the ubiquitous
   language stay EXACTLY as GLOSSARY.md spells them — a Run is a Run
