@@ -9,7 +9,7 @@ each rule.
 - Pick the highest-value open items respecting family order (ADR-0009:
   900e -> 47b5 -> e47c -> e804 -> ba96), blockers (`!`), and the user's
   focus.
-- Sprint composition (user directive 2026-10-29): a sprint carries TWO
+- Sprint composition: a sprint carries TWO
   to THREE work items, selected together in this phase — the count
   scales down with the items' scope (a large item shares the sprint
   with at most one small companion; never a one-item sprint, whose
@@ -29,7 +29,7 @@ each rule.
 
 ## The grilling format (binding)
 
-- FULL CONTEXT BEFORE THE GRILL (user directive 2026-11-01): every grill
+- FULL CONTEXT BEFORE THE GRILL: every grill
   round is PRECEDED by a full-context pitch of the topic, written in the
   wait-what style — ASD-STE100 Simplified Technical English (short
   sentences, one topic per sentence, active voice, no idioms) over the
@@ -45,7 +45,7 @@ each rule.
   the callers are. Process narration (what the session just executed)
   is not a pitch. The pre-screen request state doubles as the pitch's
   source text: build it once, use it for both.
-- GLOSSARY NAMES SURVIVE TRANSLATION (user directive 2026-11-01): in
+- GLOSSARY NAMES SURVIVE TRANSLATION: in
   German chat framing, the English proper names of the ubiquitous
   language stay EXACTLY as GLOSSARY.md spells them — a Run is a Run
   (never a "Lauf"), a Stage a Stage, a Claim a Claim, the Adjudicator
@@ -56,8 +56,7 @@ each rule.
   vocabulary. A concept without a glossary entry gets named in English,
   used consistently, and carried into the glossary — never silently
   translated.
-- EVERY decision point is grilled BEFORE implementation (user directive
-  2026-10-12, Grundsatz-review; procedure directive 2026-10-18): run
+- EVERY decision point is grilled BEFORE implementation: run
   the ACTUAL grill-with-docs skill (grilling + domain-modeling;
   evidence = CONTEXT.md, ADRs, work items, code, guide) for EVERY
   design/mechanism/standing-rule choice — not only pivotal ones.
@@ -69,9 +68,7 @@ each rule.
   the options carry one-line descriptions WITH the Jev pre-screen
   distribution; the recommended option is listed first and marked
   "(Recommended)"; free-form answers go through the auto-added
-  own-answer option (user directive 2026-10-26: structured selections
-  instead of free-text question lists in chat; the answered record is
-  what gets written into the design). The noul dimensions are their own
+  own-answer option. The noul dimensions are their own
   question in the same call.
 - Judgment pre-screen (ADR-0022, application point a): every
   grill-with-docs fires a pre-screen BEFORE the user grill — choice
@@ -101,9 +98,7 @@ each rule.
 
 ## Local-first working mode
 
-- Invoking /iterate means the session works LOCALLY (user directive
-  2026-10-02 evening; the conductor-role split of directive 2026-09-06
-  is retired) — the sprint loop (claim, implement, review, reflect) IS
+- Invoking /iterate means the session works LOCALLY — the sprint loop (claim, implement, review, reflect) IS
   this session's working mode. EVERYTHING is implemented by this
   session locally; ONLY loop-asset work (surfaces
   `.fabro/workflows/**`, `.fabro/scripts/**`, `scripts/**`, justfile,
@@ -111,7 +106,7 @@ each rule.
   it WITHOUT sprint framing). The session still orients, grills
   pivotal forks (writing the agreed design INTO the item before
   implementation), reviews, reflects, reports.
-- EXTENSION (user directive 2026-10-27, sprint 58): until the re-armed
+- EXTENSION: until the re-armed
   line is PROVEN reliable (items verifiably worked by runs, the
   supervised laps green), propose NO lane moves and NO line assignments
   at all — not even as recommendations; the session works every item
@@ -122,8 +117,7 @@ each rule.
 
 ## Vet before working; lane admission
 
-- VET BEFORE WORKING (user directive 2026-10-27 evening, born in the
-  supervised laps): every item considered for work — lap, lane, or
+- VET BEFORE WORKING: every item considered for work — lap, lane, or
   local sprint — gets a RELEVANCE TEST against the CURRENT codebase
   first: does the cited path/mechanism still exist, is the demand
   overtaken by landed work? Migration-era items are presumed stale
@@ -131,16 +125,16 @@ each rule.
   artifacts live: a lane bug in PROJECT_FACTS and a zombie doc item).
   A vetting pass over the lane pools is standing backlog work, not
   ceremony.
-- LANE ADMISSION IS DECIDED PER ITEM, NEVER PER BUNDLE (user directive
-  2026-11-07): a tranche proposal presents EVERY candidate separately
-  with its vet result named — what the relevance check found, what the
-  item's body currently claims, whether the body is stable. The user
-  decides item by item; a combined "recommended set" option is not a
-  substitute for the per-item decisions. An item filed in the SAME
-  SESSION gets heightened scrutiny before entering a lane: its body
-  has had no review round, and a hypothesis corrected hours ago is
-  not yet a vetted demand.
-- LANE ADMISSION (user directive 2026-10-29, extending the test): an
+- LANE ADMISSION IS DECIDED PER ITEM, NEVER PER BUNDLE: a tranche
+  proposal presents EVERY candidate separately with its vet result
+  named — what the relevance check found, what the item's body
+  currently claims, whether the body is stable. The user decides item
+  by item; a combined "recommended set" option is not a substitute for
+  the per-item decisions. An item filed in the SAME SESSION gets
+  heightened scrutiny before entering a lane: its body has had no
+  review round, and a recently corrected hypothesis is not yet a
+  vetted demand.
+- LANE ADMISSION: an
   item enters a lane ONLY after that check passes for THAT item,
   individually — never bulk-assign the migration-era pool, whose
   premises most restructures have overtaken. Unvetted pool entries are

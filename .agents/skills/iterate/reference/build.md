@@ -27,8 +27,7 @@ directives, and verification recipes. Edit mechanics also live in
 
 ## Pin power is PROVEN, not assumed — RED FIRST
 
-- RED FIRST is the standard loop (user directive 2026-11-01; the @tdd
-  skill is binding for the loop's order and shape): write the
+- RED FIRST is the standard loop: write the
   test/pin BEFORE the behavior exists and run it RED against the
   genuine absent-or-broken state — for a fix, the pre-fix tree IS the
   red state; for new functionality, stub only what must compile
@@ -46,7 +45,7 @@ directives, and verification recipes. Edit mechanics also live in
   symptom.
 - When unsure about the loop's order or shape, LOAD the @tdd skill and
   follow it — do not improvise a variant (implement-then-test-then-
-  mutate is the anti-pattern the 2026-11-01 directive named).
+  mutate is the anti-pattern).
 - A test added through an EXISTING harness must prove the input reaches
   the seam: one projection harness never wrote the run spec's
   `graph_source`, so the first engine-level pin was trivially green
@@ -96,7 +95,7 @@ directives, and verification recipes. Edit mechanics also live in
   only on `cargo update`; bump the lock in the SAME change. Patch BOTH
   crates of a multi-crate fork repo (a single entry splits shared
   traits into two copies and fails unification).
-- SINCE ADR-0034 (2026-10-24) petri and pebble are VENDORED in-tree:
+- SINCE ADR-0034 petri and pebble are VENDORED in-tree:
   the fix lives in `vendor/<name>`, the `[patch]` block resolves it by
   path, and the vendor tree IS the pin (`vendor/PINS.toml`,
   `just vendor-pins`) — no lock rev to bump. The tree is exported to
@@ -144,11 +143,11 @@ directives, and verification recipes. Edit mechanics also live in
   only the call + verdict routing). Never write and execute an edited
   script in one shell call.
 - Every `.fabro/workflows/**` change lands with a bench surface in the
-  fabro-test repo that exercises it (user directive 2026-10-28) — a
+  fabro-test repo that exercises it — a
   dedicated probe/scenario, or an existing row that provably drives the
   changed asset. The cycle report names the surface; a change without
   one files the fabro-test follow-up in the same session.
-- BENCH PHILOSOPHY (user directive 2026-10-28): targeted single-aspect
+- BENCH PHILOSOPHY: targeted single-aspect
   probes that compose — the real lane graphs are deliberately NOT bench
   material (they need items + LLM stages). Compose aspects rather than
   replaying whole lanes: a graph shape against its fold, an environment
@@ -157,7 +156,7 @@ directives, and verification recipes. Edit mechanics also live in
   red: the single-probe mode is the default; a red facet gets its
   targeted probe plus, for integration legs, a direct manual drive of
   the leg's script.
-- BENCH CROSS-CHECK VIA PLATFORM LOGS (user directive 2026-10-28):
+- BENCH CROSS-CHECK VIA PLATFORM LOGS:
   after every test round — bench, probe, or supervised lap — query the
   log platform for the window's WARN/ERROR and reconcile the patterns
   against the green table. Green tests are only one side of the coin;
@@ -166,8 +165,7 @@ directives, and verification recipes. Edit mechanics also live in
 
 ## Re-arm and laps
 
-- RE-ARM IS A RELIABILITY CHAIN, NEVER A DEFAULT (user directive
-  2026-10-29): a line re-arm (scheduler/automation re-enable) is the
+- RE-ARM IS A RELIABILITY CHAIN, NEVER A DEFAULT: a line re-arm (scheduler/automation re-enable) is the
   user's explicit call, following the same chain every time — the named
   blocker items are landed, ONE manual supervised lap per lane has run
   green (each log-cross-checked), and only then the user decides. The

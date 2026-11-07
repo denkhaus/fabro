@@ -37,19 +37,19 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   foreign ids before committing a shared file, land your own lines
   promptly, and re-read `iterate-state.json` before writing — the
   sibling session counts its closures into the same ledger.
-- CONFIG TRAP (2026-10-06, GB era): a hand-edited INVALID
+- CONFIG TRAP (the GitButler era): a hand-edited INVALID
   `vcs_manager` value made sync wipe a config file to EMPTY; the repo
   now carries NO `vcs_manager` key (plain default). Valid keys when one
   is ever needed: project/version/max_plan_depth/vcs_manager.
 - Shell-written tracker text NEVER carries backticks or `$(` through a
-  `bash()` command line (2026-10-08): bash executes them as command
+  `bash()` command line: bash executes them as command
   substitution — a close reason containing backticked phrases ran the
   command inside and created three empty files at the repo root. Write
   the payload to a file and pass `--reason "$(cat /tmp/reason.txt)"`;
   after any shell-based tracker write, sweep `git status` for stray
   untracked entries and delete them before committing.
 - NEVER a file-WRITE and its file-CONSUME in one PARALLEL tool block
-  (2026-10-26, three times: a cp backup raced its own edit and held the
+  (three times in one sprint: a cp backup raced its own edit and held the
   PRE-FIX; a close cat'd a file landing a second later and CLOSED THE
   ITEM WITH AN EMPTY reason — repaired by a comment, but the close
   comment is the evidence record). Sequence them: write, observe the
@@ -85,7 +85,7 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 ## Deploy windows
 
 - Deploy only while no conductor pass runs.
-- PRE-DEPLOY BENCH GATE (2026-10-24 grill, user GO): before EVERY
+- PRE-DEPLOY BENCH GATE: before EVERY
   deploy window, refresh the local stack and run the fabro-test
   workbench — TWO repos: `just up` IN THE FABRO REPO (the full local
   pipeline: clean, build image, install CLI, run-images, compose up,
@@ -104,7 +104,7 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   revision + explicit `on_overlap: skip`; re-GET and verify it
   survived. Deploy nonblocking; smoke on the live host; re-enable;
   monitor via heartbeat.
-- POST-DEPLOY PROOF CEREMONY (2026-10-12, fork.14 lesson): a deploy is
+- POST-DEPLOY PROOF CEREMONY (the fork.14 lesson): a deploy is
   only 'done & working' after ONE live proof of the shipped behavior —
   for gate/automation changes fire the automation once (between ticks,
   on_overlap-safe) and observe the run starting; never report success
@@ -116,7 +116,7 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 
 ## Toolchain and releases
 
-- Tooling-repin rule (user directive 2026-10-04): a fork release repin
+- Tooling-repin rule: a fork release repin
   is COMMITTED locally and NEVER pushed on its own — the session owns
   every line push (behind the gate); repins riding their own push
   bypass the gate and move the tip past the deployed sha (the fork.5
@@ -144,9 +144,7 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 
 - Secret-gated steps (tofu/gopass) are probed with a BLOCKING
   `gopass show` WITHOUT a timeout wrapper BEFORE the step that needs
-  them (user directive 2026-10-15: a `timeout`-wrapped probe KILLS the
-  user's unlock prompt mid-entry — the mask disappears as soon as they
-  start typing; the probe must wait for the unlock, not race it); the
+  them; the
   store relocks on its own TTL — ask the user to warm it EARLY, not at
   deploy time. gopass cold cache hangs non-interactively.
 
@@ -162,7 +160,7 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   — apply identically with `apply -auto-approve` after reviewing the
   plan's add/change/destroy shape.
 - After EVERY tofu deploy: commit the fabro-tofu `variables.tf` image
-  pin in the same session (2026-09-30 near-miss: a night deploy applied
+  pin in the same session (the night-deploy near-miss: a night deploy applied
   via `-var` override, the uncommitted default bump was lost, and the
   next plain `tofu apply` would have rolled production back). The
   committed default must name the LIVE image before the session ends.

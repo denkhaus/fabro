@@ -7,8 +7,7 @@ classes, and the architecture gate.
 ## Two-axis review
 
 - ONE review per sprint covers the batch's whole accumulated diff since
-  the previous sprint's tip — not each item separately (user directive
-  2026-10-29); per-item discipline (language gate, batteries,
+  the previous sprint's tip — not each item separately; per-item discipline (language gate, batteries,
   verification commands) still runs at every close.
 - Freeze the diff to a patch file FIRST; both axes review the frozen
   snapshot. Standards axis = rust-style-guide + the strategy docs; spec
@@ -65,7 +64,7 @@ classes, and the architecture gate.
   each with `nu`, read each exit code). Cargo rounds and the workflow
   smokes can be fully green while a registered parity battery stays
   red: one fork feature shipped with its pin file but no touchpoints
-  registry row, and nothing noticed for days (2026-10-08, found by
+  registry row, and nothing noticed for days (found by
   `touchpoints-parity-fixtures.nu`). Seconds of work; the only net for
   the missing-row / missing-registration class.
 
@@ -82,13 +81,13 @@ classes, and the architecture gate.
   expect-panics across whole blackbox suites (fix with petri's
   `mise run plugins:build`; fabro tests resolve the plugin from PATH).
   Repair the environment BEFORE reading any of it as regression
-  (2026-10-23: 160 "failed" petri tests were the wiped plugins; one
+  (160 "failed" petri tests were once the wiped plugins; one
   clean -p + one plugins:build made 1776/1776 green).
 - A dep-rev bump under suspicion gets a BASELINE RUN, not a revert:
   restore Cargo.lock to HEAD, move a new pin file aside when it cannot
   compile against the old revs, run the same suite — an identical
   failure SET means pre-existing (file it with the evidence, keep the
-  bump); a GROWN set means the bump owns it (2026-10-23: 21 fabro-petri
+  bump); a GROWN set means the bump owns it (a 21 fabro-petri
   reds proven environmental by exactly this isolation).
 
 ## Suite-specific traps
@@ -114,7 +113,7 @@ classes, and the architecture gate.
 
 - When an evaluated run FAILED or is a green-lie `succeeded` and its
   implementer/tester stages produced noteworthy work (non-trivial
-  diff), SALVAGE it (user directive 2026-09-30): `fabro dump --output
+  diff), SALVAGE it: `fabro dump --output
   <dir> <run>` (run state is durable on mirtuell), apply the stage
   diff, verify, land via PR citing the run, or file a salvage-pointer
   item citing run id + dump command + stranded checkpoints when direct
@@ -147,10 +146,10 @@ classes, and the architecture gate.
   is `architecture-due`; `grind` deepens only on smells; `normal` never
   deepens on score alone. Judge proposals against the guide and
   codebase-design vocabulary.
-- Standing path (user directive 2026-10-02, freeze era): the architect
+- Standing path: the architect
   WORKFLOW is DEACTIVATED on the line — the gate fires the LOCAL
   improve-codebase-architecture agent; ONLY its STRONG recommendations
-  become work items (user directive 2026-11-03), worked LOCALLY. The
+  become work items, worked LOCALLY. The
   autonomous architect workflow returns only on an explicit future
   user order (then: self-gated by friction, 48h cooldown, files its
   own items).
@@ -159,7 +158,7 @@ classes, and the architecture gate.
   deletion-test verdict, strength), curate with the fork-scope filter,
   then file every non-Speculative STRONG candidate IMMEDIATELY with
   owner-based assignment — nothing survives only in the report. Medium
-  and Weak candidates are NOT filed (user directive 2026-11-03): they
+  and Weak candidates are NOT filed: they
   land in the sprint note's gate paragraph, one line each — the
   tracker stays signal, the gate note stays the archive. Render
   the interactive skill's HTML report on LOCALHOST only — anything

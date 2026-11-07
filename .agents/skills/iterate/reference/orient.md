@@ -19,7 +19,7 @@ index (`incidents.md`) carries the full stories.
 
 ## Sibling sessions (the roster protocol)
 
-- Establish the sibling situation FIRST (2026-10-04 incident: a second
+- Establish the sibling situation FIRST (a second
   /iterate alive in the same checkout found late). Another top-level
   session in this repo's cwd means a second /iterate is alive: the
   uncommitted pool, the tracker file and the ledger are then SHARED,
@@ -29,7 +29,7 @@ index (`incidents.md`) carries the full stories.
   message then refuses; claim before messaging). Never commit the
   sibling's files: foreign uncommitted files in `git status` are the
   sibling's work, not an interrupted cycle of this session.
-- NEVER `git stash` in the shared checkout (2026-10-17 incident): the
+- NEVER `git stash` in the shared checkout: the
   stash stack is GLOBAL across concurrent sessions — a `-u` stash grabs
   every session's WIP and a pop restores someone else's, swapping the
   dirty-set in one second and misattributing ownership. Tree-state
@@ -38,16 +38,16 @@ index (`incidents.md`) carries the full stories.
 - A checkout still showing `gitbutler/workspace` under
   `git rev-parse --abbrev-ref HEAD` is a machine that has not torn down
   the GitButler experiment — run the teardown ceremony FIRST, then read
-  state (both machines tore down 2026-10-16/17; see `incidents.md`).
+  state (both machines tore the experiment down; see `incidents.md`).
 
 ## Open-PR sweep
 
 - `gh pr list --repo denkhaus/fabro --state open` plus
   `gh pr checks <n>` for each — EVERY gh call carries
   `--repo denkhaus/fabro` explicitly: gh's DEFAULT repo in this checkout
-  resolves to fabro-sh/fabro (verified 2026-10-17), a different repo
+  resolves to fabro-sh/fabro (verified), a different repo
   with colliding PR numbers; a bare `gh pr merge 427` there hit an
-  unrelated 2026-05 merge (no damage, but the checks/greens read first
+  unrelated old merge (no damage, but the checks/greens read first
   were the WRONG PR's).
 - A run PR (`fabro/run/*` branches) with a RED dogfood-gate blocks
   auto-merge, fakes in-flight state, and wedges the push gate — repair
@@ -67,16 +67,14 @@ index (`incidents.md`) carries the full stories.
 
 ## Sprint ledger and the review gates
 
-- The ledger is `iterate-state.json` at the repo ROOT (user directive
-  2026-10-02 evening: root, never `.fabro/`), session-LOCAL: the LINE
+- The ledger is `iterate-state.json` at the repo ROOT, session-LOCAL: the LINE
   implements none of the sprint mechanics (no ledger writes in lane
   assets, no reflection parks, no counters — fabro-cadd rejected, PRs
   #359/#360 closed not-planned).
 - Reflection invariant: if `sprints_reflected < sprints_completed`, the
   pending reflection runs FIRST (Phase 6 short form) — no new sprint
   starts unreflected.
-- Three review gates ride the same cadence shape (user directives
-  2026-10-02 / 2026-10-26 / 2026-10-29), each with a marker in
+- Three review gates ride the same cadence shape, each with a marker in
   `iterate-state.json` beside the notes; `null` means never run:
   - CODE-REVIEW (`last_code_review_at_sprint`): due when
     `sprints_completed % 2 == 0` and the marker differs — run the
@@ -86,10 +84,8 @@ index (`incidents.md`) carries the full stories.
     derive it with `git log`, never HEAD~N.
   - ARCHITECTURE (`last_arch_review_at_sprint`): due when
     `sprints_completed % 3 == 0` and the marker differs — fire the
-    LOCAL improve-codebase-architecture agent (user directive
-    2026-10-02: the architect WORKFLOW stays deactivated on the line;
-    never the api trigger). Only its STRONG recommendations become
-    work items automatically (user directive 2026-11-03), worked
+    LOCAL improve-codebase-architecture agent. Only its STRONG recommendations become
+    work items automatically, worked
     LOCALLY; Medium/Weak candidates land in the sprint note, not the
     tracker.
   - RUST-SECURITY (`last_rust_security_review_at_sprint`): due when
@@ -134,11 +130,11 @@ index (`incidents.md`) carries the full stories.
   count — the line is not inside a sprint. Historical note: the
   bootstrap-era count of 3 includes develop-lane closures under the
   superseded lane-blind rule; kept as history, not recounted.
-- Notes live in the `sprints` array (user directive 2026-10-26):
+- Notes live in the `sprints` array:
   records of `{"sprint": <n>, "notes": ["<text>", …]}` — ONE record per
   sprint, SEVERAL notes per sprint possible (corrections and gate
   passes ride alongside), further fields added per need.
-- Rotation (2026-10-17 retro, the brightctl port): after appending the
+- Rotation (the brightctl port retro): after appending the
   sprint note, run `just rotate-notes` when sprints > 10 — the state
   file keeps the newest 10 SPRINTS; older records move UNCHANGED, one
   record per line, into `iterate-state-archive.jsonl` (history stays

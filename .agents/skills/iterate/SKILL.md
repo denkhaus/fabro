@@ -140,7 +140,7 @@ closed with named evidence — or parked with a filed continuation.
   - Rust work: rust-style-guide SKILL.md AND the guideline pages
     covering the diff in the SAME turn, before the first edit; name the
     pages in the cycle report.
-  - SECURITY AUDIT IS SCHEDULED WORK (user directive 2026-11-03): every
+  - SECURITY AUDIT IS SCHEDULED WORK: every
     sprint with Rust work runs `cargo audit` in its verification round.
     A finding reachable in the attack surface is FIXED in the same
     sprint — a semver-compatible `cargo update --precise` bump IS the
@@ -210,8 +210,7 @@ friction verdict is `architecture-due`; `grind` deepens only on smells;
 `normal` never deepens on score alone. The architecture gate fires the
 LOCAL improve-codebase-architecture agent (the architect WORKFLOW stays
 deactivated on the line); only its STRONG recommendations become work
-items (user directive 2026-11-03; Medium/Weak land in the sprint
-note), worked LOCALLY. Architect scope is binding: findings
+items, worked LOCALLY. Architect scope is binding: findings
 restructure ONLY the fork's own surface; `lib/**`/`apps/**` is
 observable, never restructurable. The full gate procedure:
 `reference/review.md`.
@@ -289,7 +288,7 @@ reality.
    entirely, ask the user to set the visible /heartbeat with this
    ceremony — never run silently unwatched. The user's pause is
    authoritative and never overridden.
-7. C4 LANDSCAPE UPDATE (user directive 2026-11-01): every sprint close
+7. C4 LANDSCAPE UPDATE: every sprint close
    updates `.likec4/` to the sprint's landed state — flip status tags
    (#planned -> #evolving -> untagged when live; #retiring edges
    delete when their authority is gone), add newly landed elements,
@@ -318,7 +317,7 @@ reality.
   translate the whole file in the same change. Only test data that
   deliberately probes non-English output stays non-English, named as
   such.
-- NO LANGUAGE SPRAWL (user directive 2026-10-03): every script invoked
+- NO LANGUAGE SPRAWL: every script invoked
   by workflows, justfile, or gate/tooling entry points is a nu script.
   POSIX sh survives only where the failure mode guards a sandbox
   WITHOUT nu. Architecture scans and sprint plans check the language
@@ -327,21 +326,19 @@ reality.
   is canonical, `.agents/skills/rust-style-guide/` its synced mirror —
   after any edit run `just sync-style-guide`. Loop runs never write
   `.agents/**`.
-- VCS is PLAIN GIT (user decision 2026-10-09): named-file staging,
+- VCS is PLAIN GIT: named-file staging,
   commit -F, ff-only pulls, pushes only behind the gate; never merge
   origin/main (upstream intake frozen, ADR-0024).
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it
   waits for; a fallback bypassing a verification path re-checks the
   gated path one last time and cleans up its ghost.
-- Judgment pre-screens (ADR-0022, session-side integration, user
-  directive 2026-10-16: use it everywhere or never get evaluation
+- Judgment pre-screens (ADR-0022, session-side integration: use it everywhere or never get evaluation
   data): advisory, fail-open, via `.fabro/scripts/judgment.nu`
   (criteria is an option-id -> description RECORD, never a bare array);
   every call logs to `~/.local/state/fabro-judgments/<date>.jsonl` —
   the log IS the evaluation corpus, so a phase that CAN pre-screen and
-  does not is a finding. PRE-SCREEN INPUT QUALITY (user directive
-  2026-11-01): build the Jev context the same way the user's grill
+  does not is a finding. PRE-SCREEN INPUT QUALITY: build the Jev context the same way the user's grill
   pitches are built — full wait-what style (ASD-STE100 Simplified
   Technical English: short sentences, one topic per sentence, active
   voice, no idioms) over the repo's ubiquitous language, covering what
