@@ -9,6 +9,7 @@ import {
   type RunStatus as ApiRunStatus,
 } from "@qltysh/fabro-api-client";
 import { sandboxRuntime } from "../lib/run-sandbox-lifecycle";
+import type { PullRequestState } from "../components/pull-request-chip";
 
 export type CiStatus = "passing" | "failing" | "pending";
 
@@ -37,6 +38,10 @@ export interface RunItem {
   pendingControl?: RunControlAction | null;
   number?: number;
   pullRequestUrl?: string;
+  /** The PR state driving the chip colour; absent = unknown (muted
+   * chip). The list payload does not carry state yet — denkhaus/work#1164's
+   * server half records it at the merge/close doors. */
+  pullRequestState?: PullRequestState;
   additions?: number;
   deletions?: number;
   checks?: CheckRun[];
@@ -100,6 +105,14 @@ function runStatusKind(status: ApiRunStatus | null | undefined): RunStatus | nul
   return status?.kind ?? null;
 }
 
+/** Read the PR state defensively: the generated client type does not
+ * carry it yet, and the colour map activates the moment the projection
+ * ships the field (denkhaus/work#1164) — anything but the three known
+ * states maps to unknown. */
+function pullRequestStateOf(raw: unknown): PullRequestState | undefined {
+  return raw === "open" || raw === "merged" || raw === "closed" ? raw : undefined;
+}
+
 export function mapRunListItem(item: Run): RunItem {
   const lifecycleStatus = item.lifecycle.archived ? "archived" : runStatusKind(item.lifecycle.status);
   const runtime = sandboxRuntime(item.sandbox);
@@ -119,6 +132,9 @@ export function mapRunListItem(item: Run): RunItem {
     pendingControl: item.lifecycle.pending_control,
     number: item.pull_request?.number,
     pullRequestUrl: item.pull_request?.html_url,
+    pullRequestState: pullRequestStateOf(
+      (item.pull_request as { state?: unknown } | null | undefined)?.state,
+    ),
     elapsed: item.timing != null ? formatDurationMs(item.timing.wall_time_ms) : undefined,
     resources: undefined,
     question: item.current_question?.text,

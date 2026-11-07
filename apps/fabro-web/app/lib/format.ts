@@ -85,6 +85,26 @@ export function formatAbsoluteTs(iso: string): string {
 }
 
 /**
+ * Format an ISO 8601 timestamp as the board tile's dot-date
+ * (`dd.MM.yyyy HH:mm`, local time, zero-padded, no seconds). Assembled
+ * from explicit date parts — never `toLocaleString("de-DE")`, whose
+ * output depends on the ICU data the runtime ships. Falls back to the
+ * input if unparseable. The rest of the UI keeps en-US dates; only the
+ * tile changes (operator request, denkhaus/work#1164).
+ */
+export function formatTileTimestamp(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const date = new Date(ms);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${day}.${month}.${year} ${hours}:${minutes}`;
+}
+
+/**
  * Format seconds into a duration string for display (e.g., "1m 12s", "23s").
  */
 export function formatDurationSecs(secs: number): string {

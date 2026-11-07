@@ -140,7 +140,7 @@ export function RunTableRow({
         <td className="whitespace-nowrap px-3 py-2.5 text-right">
           {run.pullRequestUrl && run.number != null && (
             <span className="relative z-10 inline-flex items-center justify-end gap-1.5">
-              <PullRequestChip number={run.number} url={run.pullRequestUrl}>
+              <PullRequestChip number={run.number} url={run.pullRequestUrl} state={run.pullRequestState}>
                 {run.checks != null && <span className={`size-1.5 rounded-full ${ciConfig[deriveCiStatus(run.checks)].dot}`} />}
               </PullRequestChip>
             </span>
