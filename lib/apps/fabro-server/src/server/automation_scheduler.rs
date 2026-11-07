@@ -663,6 +663,33 @@ pub(crate) async fn fire_scheduled_automation_run(
 
     let status = response.status();
     if !status.is_success() {
+        // fabro-1162 (denkhaus/work#1162): a provider-window refusal from
+        // the create path's gate is a HELD fire, never a create failure.
+        // The scheduler-side gate fails open for a fire whose provider set
+        // is not stored yet (no terminal run with models, no recorded
+        // admission set); the create path's admission is then the only
+        // consumer that knows the providers, and its refusal records them
+        // on the automation (fabro-0611) — so both gates hold off the
+        // same stored set from the next tick. Surface the hold exactly
+        // like the tick's holds: log only, `last_error` stays empty, and
+        // 409 stays reserved for genuine create conflicts.
+        if status == StatusCode::CONFLICT
+            && super::fork_line_recovery::create_refusal_is_provider_window(response).await
+        {
+            state
+                .provider_gate
+                .lock()
+                .await
+                .note_held(automation_id.as_str());
+            info!(
+                automation_id = %automation_id,
+                trigger_id = %trigger_id,
+                run_id = %run_id,
+                due_at = %due_at,
+                "Scheduled fire held: provider window closed (fabro-986b gate)"
+            );
+            return;
+        }
         record_scheduler_error(
             state.as_ref(),
             &automation_id,
@@ -1339,6 +1366,87 @@ pub(crate) mod tests {
         assert!(
             !tick.fact_writes.is_empty(),
             "the hold is readable on the trigger (WINDOW column)"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_provider_window_refused_scheduled_fire_is_a_hold_not_a_create_failure() {
+        // fabro-1162 (denkhaus/work#1162): a first fire whose provider set
+        // the automation has not stored yet sails through the
+        // scheduler-side gate (fail-open) and is refused by the create
+        // path's admission gate. That refusal must surface as a HELD fire
+        // — the same observable state as every other held automation —
+        // never as a create failure leaking "409 Conflict" onto
+        // `last_error`. The admission records zai on the automation, and
+        // the NEXT tick holds off that stored set: scheduler gate and
+        // create-path gate agree on one provider resolution.
+        let exact_target = git_target();
+        let materializer = TestAutomationRunMaterializer::succeed_with_workflow(
+            exact_target,
+            "digraph Test { graph [goal=\"Test\"] start [shape=Mdiamond] work [shape=box, prompt=\"Do the work\", model=\"glm-4.7\", provider=\"zai\"] exit [shape=Msquare] start -> work -> exit }",
+        );
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::ZAI_API_KEY, "test-zai-key")])
+            .automation_materializer(materializer)
+            .build();
+        create_automation(state.as_ref(), "needs-zai", "Needs zai", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
+        .await;
+        // The gate knows zai's window is closed (probed just now, so the
+        // create path's on-demand check reads the remembered answer, no
+        // network).
+        {
+            let mut gate = state.provider_gate.lock().await;
+            gate.note_probe(
+                "zai",
+                fork_line_recovery::ProviderWindow::Closed,
+                "zai/glm-4.7",
+                chrono::Utc::now(),
+            );
+        }
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert!(
+            stored_runs(state.as_ref()).await.is_empty(),
+            "a refused fire must create no run"
+        );
+        let automation = state
+            .automation_store()
+            .get(&fabro_automation::AutomationId::new("needs-zai").unwrap())
+            .await
+            .unwrap()
+            .expect("the automation should still exist");
+        assert!(
+            automation.last_error.is_none(),
+            "a provider-window hold must leave the automation's last_error empty \
+             (fabro-1162): {:?}",
+            automation.last_error
+        );
+        // The hold is marked in the gate, so the reopen transition
+        // (rewind-or-fire) owns recovery exactly like a tick hold.
+        assert!(
+            state.provider_gate.lock().await.is_held("needs-zai"),
+            "the refused fire marks the automation held in the gate"
+        );
+
+        // Scheduler-gate/create-path agreement (fabro-1162): the create
+        // path's admission recorded zai on the automation, and the next
+        // tick holds off that stored admission set — no second 409.
+        let automations = state.automation_store().list().await.unwrap();
+        let tick = fork_line_recovery::provider_gate_tick(
+            Arc::clone(&state),
+            &automations,
+            second_due_time(),
+        )
+        .await;
+        assert!(
+            tick.held.contains("needs-zai"),
+            "the next tick holds the automation off the admission-recorded providers"
         );
     }
 

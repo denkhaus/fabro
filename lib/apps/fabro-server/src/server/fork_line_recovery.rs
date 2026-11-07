@@ -42,6 +42,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::to_bytes;
+use axum::response::Response;
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunFailure, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
@@ -203,11 +205,11 @@ impl GateState {
 
     /// Whether the last tick held this automation's fires.
     #[cfg(test)]
-    fn is_held(&self, automation_id: &str) -> bool {
+    pub(crate) fn is_held(&self, automation_id: &str) -> bool {
         self.held.contains(automation_id)
     }
 
-    fn note_held(&mut self, automation_id: &str) {
+    pub(crate) fn note_held(&mut self, automation_id: &str) {
         self.held.insert(automation_id.to_string());
     }
 
@@ -623,6 +625,24 @@ pub(crate) async fn manual_window_refusal(
         }
     }
     None
+}
+
+/// Whether a refused scheduled create is the provider-window gate's hold
+/// (fabro-1162, denkhaus/work#1162): the create path answers
+/// 409 CONFLICT with the `provider_window_closed` intent code (fabro-b869
+/// step 4) when its admission-side gate refuses a fire the
+/// scheduler-side gate failed OPEN for — a provider set the automation
+/// has not stored yet (no terminal run with models, no recorded
+/// admission set: the adjudicator's 18:00 fire class). That refusal is a
+/// HELD fire, never a create failure. Consumes the response body — only
+/// the scheduled fire's failure path calls here.
+pub(crate) async fn create_refusal_is_provider_window(response: Response) -> bool {
+    let Ok(bytes) = to_bytes(response.into_body(), 16 * 1024).await else {
+        return false;
+    };
+    serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .is_some_and(|body| body["errors"][0]["code"].as_str() == Some("provider_window_closed"))
 }
 
 /// The selector a requirement's probe runs with when nothing was
@@ -1116,6 +1136,25 @@ mod tests {
             scheduler.contains("fork_line_recovery::cron_fire_allowed("),
             "the scheduler must ask the gate before every fire (fabro-986b): \
              without it, fires proceed while the provider window is closed"
+        );
+    }
+
+    #[test]
+    fn the_scheduled_fire_failure_path_treats_a_provider_window_refusal_as_a_hold() {
+        // fabro-1162 (denkhaus/work#1162): the seam lives in the SHARED
+        // scheduler's failure arm; an upstream merge that rewrites it
+        // leaks the create path's 409 onto the automation's `last_error`
+        // again (reads like an overlap conflict, not a deliberate hold).
+        let scheduler = server_src("lib/apps/fabro-server/src/server/automation_scheduler.rs");
+        assert!(
+            scheduler.contains("fork_line_recovery::create_refusal_is_provider_window("),
+            "the scheduled fire's failure arm must distinguish the provider-window \
+             refusal from genuine create failures (fabro-1162): without it, a held \
+             fire surfaces as 'Failed to create scheduled automation run (409 Conflict)'"
+        );
+        assert!(
+            scheduler.contains("Scheduled fire held: provider window closed"),
+            "the refusal must log the same hold line as every other held fire (fabro-1162)"
         );
     }
 
