@@ -27,8 +27,9 @@
 #          containers build with mold through the baked cargo config, and
 #          the chef cook itself links with it). NOT wired: CI pipelines
 #          and any non-toolchain images stay pipeline-owned and out of
-#          scope. Java/openapi-generator deliberately NOT added
-#          (fabro-3b1b deferred by the same user decision).
+#          scope. Java/openapi-generator: added (work#1202 — the
+#          work#726 Option A conditions exercised 2026-11-08: pinned
+#          jar baked, java + jq beside it, never a floating download).
 FROM ubuntu:24.04 AS base
 
 ARG RUST_NIGHTLY=nightly-2026-04-14
@@ -213,6 +214,24 @@ RUN set -eux; \
     chmod 0755 /usr/local/bin/mulch; \
     rm /tmp/mulch.tgz; \
     mulch --version
+
+# openapi-generator (work#1202): java + jq + the PINNED generator jar
+# baked at the @openapitools/openapi-generator-cli wrapper's cache path
+# (~/.openapi-generator/<version>/openapi-generator-cli.jar) so the
+# wrapper finds it WITHOUT a per-sandbox download — the 2026-09-18
+# measurement: a floating download produced +/-183 lines of
+# version-signature churn; the pin (openapitools.json) is 7.20.0.
+ARG OPENAPI_GENERATOR_VERSION=7.20.0
+ARG OPENAPI_GENERATOR_SHA256=871e0155287a87b579ff31096b2d45b1f95a115edfe631411ec6cff4848d0f03
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends openjdk-21-jre-headless jq; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p "/root/.openapi-generator/${OPENAPI_GENERATOR_VERSION}"; \
+    curl -fsSL "https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar" -o "/root/.openapi-generator/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli.jar"; \
+    echo "${OPENAPI_GENERATOR_SHA256}  /root/.openapi-generator/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli.jar" | sha256sum -c -; \
+    java -jar "/root/.openapi-generator/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli.jar" --version | head -1; \
+    jq --version
 
 # NO gh in the toolchain image (ADR-0019 capability gate, user decision
 # 2026-09-08): gh was briefly baked in for the planner's in-flight-PR guard
