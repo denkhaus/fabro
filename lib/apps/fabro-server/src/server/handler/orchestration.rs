@@ -21,8 +21,10 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_extra::extract::Query as ExtraQuery;
 use chrono::Utc;
 use fabro_api::types::{
+    GlobalObservation, GlobalObservationList, GlobalObservationTriageState,
     ObservationWorkItemLink, ObservationWorkItemLinkItemState, PaginationMeta, RunMergeResponse,
     RunObservation, RunObservationList, RunOrchestrationMarkRequest, RunOrchestrationMarkResponse,
     RunQueueEntry, RunQueueEntryVerdict, RunQueueList,
@@ -60,6 +62,192 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/orchestration", post(mark_orchestration))
         .route("/runs/{id}/merge", post(merge_run))
         .route("/runs/{id}/observations", get(list_observations))
+        .route("/observations", get(list_global_observations))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct ObservationFeedQuery {
+    category: Option<String>,
+    triage:   Option<String>,
+    run:      Option<String>,
+    q:        Option<String>,
+    sort:     Option<String>,
+    limit:    Option<u32>,
+    page:     Option<u32>,
+}
+
+/// The global observations feed: every run's observation records in one
+/// server-paged listing, newest first by default. The triage state is
+/// DERIVED per row (links + live item states + the claim ledger), so a
+/// triage filter pages by over-fetching and filtering — SQL cannot see
+/// the derivation. The total counts the SQL filters; a triage-filtered
+/// page may therefore be shorter than the pager hopes.
+async fn list_global_observations(
+    _auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    ExtraQuery(params): ExtraQuery<ObservationFeedQuery>,
+) -> Result<Response, ApiError> {
+    let page = params.page.unwrap_or(1).max(1) as usize;
+    let page_size = params.limit.unwrap_or(25).clamp(1, 100) as usize;
+    let newest_first = !matches!(params.sort.as_deref(), Some("recorded"));
+    let run_id = match params.run.as_deref() {
+        Some(raw) => Some(
+            raw.parse::<RunId>()
+                .map_err(|err| ApiError::bad_request(format!("invalid run id '{raw}': {err}")))?,
+        ),
+        None => None,
+    };
+    let category = match params.category.as_deref() {
+        None => None,
+        Some("painpoint") => Some(fabro_types::ObservationCategory::Painpoint),
+        Some("note") => Some(fabro_types::ObservationCategory::Note),
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "unknown category '{other}' (painpoint | note)"
+            )));
+        }
+    };
+    let triage_filter = match params.triage.as_deref() {
+        None => None,
+        Some("untriaged") => Some(TriageState::Untriaged),
+        Some("filed") => Some(TriageState::Filed),
+        Some("in_progress") => Some(TriageState::InProgress),
+        Some("closed") => Some(TriageState::Closed),
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "unknown triage state '{other}' (untriaged | filed | in_progress | closed)"
+            )));
+        }
+    };
+
+    let store = state.stores.run_summaries.platform_records();
+    let over_fetch = if triage_filter.is_some() {
+        page_size * 3
+    } else {
+        page_size
+    };
+    let mut offset = (page - 1) * page_size;
+    let mut collected: Vec<GlobalObservation> = Vec::new();
+    for _round in 0..3 {
+        let (entries, seen_total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                newest_first,
+                over_fetch,
+                offset,
+                run_id.as_ref(),
+                params.q.as_deref(),
+            )
+            .await
+            .map_err(|err| {
+                tracing::error!(error = ?err, "global observations read failed");
+                ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Reading the observations feed failed.",
+                )
+            })?;
+        let _ = seen_total;
+        if entries.is_empty() {
+            break;
+        }
+        for (entry_run, stored) in &entries {
+            let PlatformRecord::ObservationRecorded(record) = &stored.record else {
+                continue;
+            };
+            if let Some(wanted) = category {
+                if record.category != wanted {
+                    continue;
+                }
+            }
+            let links = linked_items_of_run(&state, entry_run, stored.seq).await;
+            let triage = derive_triage(&links);
+            if let Some(wanted) = triage_filter {
+                if triage != wanted {
+                    continue;
+                }
+            }
+            collected.push(GlobalObservation {
+                run_id:            entry_run.to_string(),
+                workflow_name:     None,
+                seq:               stored.seq.cast_signed(),
+                category:          record.category,
+                text:              record.text.clone(),
+                recorded_at:       chrono::DateTime::from_timestamp_millis(
+                    stored.recorded_at.cast_signed(),
+                ),
+                triage_state:      triage.into_wire(),
+                linked_work_items: links,
+            });
+        }
+        if collected.len() >= page_size || entries.len() < over_fetch {
+            break;
+        }
+        offset += over_fetch;
+    }
+    let observations: Vec<_> = collected.into_iter().take(page_size).collect();
+    Ok(Json(GlobalObservationList { observations }).into_response())
+}
+
+/// The wire triage state and its derivation over a record's links.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TriageState {
+    Untriaged,
+    Filed,
+    InProgress,
+    Closed,
+}
+
+impl TriageState {
+    fn into_wire(self) -> GlobalObservationTriageState {
+        match self {
+            Self::Untriaged => GlobalObservationTriageState::Untriaged,
+            Self::Filed => GlobalObservationTriageState::Filed,
+            Self::InProgress => GlobalObservationTriageState::InProgress,
+            Self::Closed => GlobalObservationTriageState::Closed,
+        }
+    }
+}
+
+/// A record's links, resolved with their live item states.
+async fn linked_items_of_run(
+    state: &AppState,
+    run_id: &RunId,
+    seq: u64,
+) -> Vec<ObservationWorkItemLink> {
+    let Ok(links) = state.work_store().linked_items_for_run(run_id).await else {
+        return Vec::new();
+    };
+    let mut resolved = Vec::new();
+    for link in links.iter().filter(|link| link.seq == seq) {
+        let item_state = resolve_linked_item_state(state, &link.project_id, &link.item_key)
+            .await
+            .map(LinkedItemState::into_wire);
+        resolved.push(ObservationWorkItemLink {
+            item_key: link.item_key.clone(),
+            linked_at: Some(link.linked_at),
+            item_state,
+        });
+    }
+    resolved
+}
+
+fn derive_triage(links: &[ObservationWorkItemLink]) -> TriageState {
+    if links.is_empty() {
+        return TriageState::Untriaged;
+    }
+    if links
+        .iter()
+        .any(|link| link.item_state == Some(ObservationWorkItemLinkItemState::InProgress))
+    {
+        return TriageState::InProgress;
+    }
+    if links
+        .iter()
+        .any(|link| link.item_state != Some(ObservationWorkItemLinkItemState::Closed))
+    {
+        return TriageState::Filed;
+    }
+    TriageState::Closed
 }
 
 #[derive(Debug, serde::Deserialize)]

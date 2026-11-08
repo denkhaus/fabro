@@ -149,6 +149,8 @@ export * from './git-identity-source';
 export * from './git-run-target';
 export * from './github-integration-settings';
 export * from './github-integration-strategy';
+export * from './global-observation';
+export * from './global-observation-list';
 export * from './health-response';
 export * from './history-entry';
 export * from './hook-definition';

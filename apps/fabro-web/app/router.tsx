@@ -31,6 +31,7 @@ import * as RunTerminal from "./routes/run-terminal";
 import * as RunUsage from "./routes/run-usage";
 import * as Insights from "./routes/insights";
 import * as Work from "./routes/work";
+import * as ObservationsFeed from "./routes/observations";
 import { WorkItemDetail as WorkDetail } from "./routes/work";
 import * as InsightsEditor from "./routes/insights-editor";
 import * as InsightsNew from "./routes/insights-new";
@@ -143,6 +144,7 @@ export const routes: RouteObject[] = [
               route("usage", RunUsage),
             ],
           }),
+          route("observations", ObservationsFeed),
           route("work", Work, {
             children: [route(":key", { default: WorkDetail })],
           }),

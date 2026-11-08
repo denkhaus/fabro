@@ -35,7 +35,7 @@ use fabro_types::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnection, SqliteRow};
-use sqlx::{Row as _, SqlitePool};
+use sqlx::{Row as _, Sqlite, SqlitePool};
 use strum::{Display, EnumString, IntoStaticStr, VariantArray};
 
 use crate::{Error, Result};
@@ -850,6 +850,79 @@ impl PlatformRecordStore {
             .fetch_all(&self.pool)
             .await?;
         rows.iter().map(decode_row).collect()
+    }
+
+    /// One page of one record kind ACROSS runs (the global feed's read:
+    /// newest or oldest first), narrowed by an optional exact run id and
+    /// a case-insensitive text containment over the stored record body.
+    /// `offset` pages after the sort; the caller derives per-row state
+    /// and filters beyond SQL's reach with its own over-fetch strategy.
+    /// Returns the page (run id beside each record) and the total count
+    /// under the same SQL filters.
+    pub async fn read_kind_global(
+        &self,
+        kind: PlatformRecordKind,
+        newest_first: bool,
+        limit: usize,
+        offset: usize,
+        run_id: Option<&RunId>,
+        text_contains: Option<&str>,
+    ) -> Result<(Vec<(RunId, StoredPlatformRecord)>, u64)> {
+        use sqlx::QueryBuilder;
+        let kind_tag: &str = kind.into();
+        let order = if newest_first { "DESC" } else { "ASC" };
+
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT run_id, seq, recorded_at, record_json, execution, firing FROM platform_records WHERE kind = ",
+        );
+        query.push_bind(kind_tag);
+        if let Some(id) = run_id {
+            query.push(" AND run_id = ").push_bind(id.to_string());
+        }
+        if let Some(needle) = text_contains {
+            query
+                .push(" AND instr(lower(record_json), lower(")
+                .push_bind(needle.to_owned())
+                .push(")) > 0");
+        }
+        query
+            .push(" ORDER BY recorded_at ")
+            .push(order)
+            .push(", run_id ")
+            .push(order)
+            .push(", seq ")
+            .push(order)
+            .push(" LIMIT ")
+            .push_bind(i64::try_from(limit).unwrap_or(i64::MAX))
+            .push(" OFFSET ")
+            .push_bind(i64::try_from(offset).unwrap_or(i64::MAX));
+        let rows = query.build().fetch_all(&self.pool).await?;
+
+        let mut count =
+            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM platform_records WHERE kind = ");
+        count.push_bind(kind_tag);
+        if let Some(id) = run_id {
+            count.push(" AND run_id = ").push_bind(id.to_string());
+        }
+        if let Some(needle) = text_contains {
+            count
+                .push(" AND instr(lower(record_json), lower(")
+                .push_bind(needle.to_owned())
+                .push(")) > 0");
+        }
+        let total: i64 = count.build_query_scalar().fetch_one(&self.pool).await?;
+
+        let mut records = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let raw_run_id: String = row.try_get("run_id")?;
+            let stored = decode_row(row)?;
+            let run =
+                RunId::from_str(&raw_run_id).map_err(|_| crate::Error::InvalidStoredRunId {
+                    value: raw_run_id.clone(),
+                })?;
+            records.push((run, stored));
+        }
+        Ok((records, total.unsigned_abs()))
     }
 
     /// The run's records of one kind, in seq order.

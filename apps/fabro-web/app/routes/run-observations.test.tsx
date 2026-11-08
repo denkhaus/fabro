@@ -89,10 +89,11 @@ describe("RunObservations", () => {
     // The triage badge of a linked, in-progress painpoint (the badge
     // renders uppercase through CSS; the text content stays lowercase).
     expect(text).toContain("in progress");
-    // The untriaged badge of a link-less note hides (nothing filed
-    // from a note is normal); the open-painpoints filter defaults ON,
-    // so the note is filtered out of the visible set.
+    // The dropdown filters default to type=painpoint + status=open (the
+    // old open-painpoints default), so the note leaves the visible set.
     expect(text).toMatch(/1\s+of\s+2\s+observations/);
+    expect(text).toContain("type: painpoint");
+    expect(text).toContain("status: open");
     // The stage cell links into the run's stage view.
     const stageLink = JSON.stringify(json).includes("/stages/reviewer%403");
     expect(stageLink).toBe(true);
