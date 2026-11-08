@@ -159,7 +159,7 @@ RUN set -eux; \
     chmod +x /usr/local/bin/mise; \
     mise use -g \
         bun@1.4.0 \
-        aqua:nushell/nushell@0.115.0 \
+        aqua:nushell/nushell@0.116.1 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
     && bun --version \
