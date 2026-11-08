@@ -681,6 +681,64 @@ mod next_item {
     }
 
     #[tokio::test]
+    async fn next_skips_an_item_the_same_run_released_as_a_misroute() {
+        // denkhaus/work#1179: a run that misroute-releases the lane head
+        // must not be re-granted the same item on its next `/next` tick —
+        // the head advances to the next landable candidate instead of
+        // cycling, while another run stays free to claim the skipped item.
+        let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 1)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let granted = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_A, "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted");
+        assert_eq!(granted["item"]["itemKey"], "denkhaus/work#1");
+        let claim_id = granted["claim"]["claimId"]
+            .as_str()
+            .expect("the granted claim id")
+            .to_string();
+
+        // The planner releases the misrouted claim and asks again.
+        let released = json_request(
+            app.clone(),
+            Method::POST,
+            &format!("/claims/{claim_id}/release"),
+            &json!({"reason": "misroute"}),
+        )
+        .await;
+        assert_eq!(released["state"], "released");
+
+        let second = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_A, "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(second["outcome"], "granted");
+        assert_eq!(
+            second["item"]["itemKey"], "denkhaus/work#2",
+            "the lane head advances past the run's own misroute release"
+        );
+
+        // The skip is per run: another run still gets the released item.
+        let other = json_request(
+            app.clone(),
+            Method::POST,
+            "/projects/fabro/next",
+            &json!({"runId": RUN_B, "lane": "loop"}),
+        )
+        .await;
+        assert_eq!(other["outcome"], "granted");
+        assert_eq!(other["item"]["itemKey"], "denkhaus/work#1");
+    }
+
+    #[tokio::test]
     async fn next_reports_empty_when_everything_is_claimed() {
         let tracker = FakeTracker::with_items(vec![item(1, 1)]);
         let app = app_with_tracker(Arc::clone(&tracker)).await;
