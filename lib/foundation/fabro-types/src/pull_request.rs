@@ -90,12 +90,34 @@ pub enum PullRequestAutoMergeStatus {
     Failed,
 }
 
+/// The pull request's outcome as the platform recorded it
+/// (denkhaus/work#1173): `Merged` is written by the merge door (and the
+/// merged-wait's observation of an external merge), `Closed` by the close
+/// door (and a closed-unmerged wait observation). Absent means the
+/// platform has not observed a terminal outcome — the link is young or
+/// its outcome is simply unknown to Fabro.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum PullRequestState {
+    Open,
+    Merged,
+    Closed,
+}
+
 /// Minimal GitHub pull request reference stored on a workflow run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PullRequestLink {
     pub owner:  String,
     pub repo:   String,
     pub number: u64,
+    /// The PR's recorded outcome (denkhaus/work#1173): absent until a
+    /// writer observed it. Serialized only when present (the manual
+    /// Serialize impl), so stored links predate the field without a
+    /// migration.
+    pub state:  Option<PullRequestState>,
 }
 
 impl PullRequestLink {
@@ -117,12 +139,15 @@ impl Serialize for PullRequestLink {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("PullRequestLink", 4)?;
-        state.serialize_field("owner", &self.owner)?;
-        state.serialize_field("repo", &self.repo)?;
-        state.serialize_field("number", &self.number)?;
-        state.serialize_field("html_url", &self.html_url())?;
-        state.end()
+        let mut serializer_state = serializer.serialize_struct("PullRequestLink", 5)?;
+        serializer_state.serialize_field("owner", &self.owner)?;
+        serializer_state.serialize_field("repo", &self.repo)?;
+        serializer_state.serialize_field("number", &self.number)?;
+        serializer_state.serialize_field("html_url", &self.html_url())?;
+        if let Some(pr_state) = self.state {
+            serializer_state.serialize_field("state", &pr_state)?;
+        }
+        serializer_state.end()
     }
 }
 
@@ -142,6 +167,8 @@ impl<'de> Deserialize<'de> for PullRequestLink {
             repo:     Option<String>,
             #[serde(default)]
             number:   Option<u64>,
+            #[serde(default)]
+            state:    Option<PullRequestState>,
         }
 
         let wire = Wire::deserialize(deserializer)?;
@@ -152,12 +179,17 @@ impl<'de> Deserialize<'de> for PullRequestLink {
             owner,
             repo,
             number,
+            state: wire.state,
         };
 
         if let Some(html_url) = wire.html_url {
             let url_link =
                 github_pull_request_link_from_url(&html_url).map_err(D::Error::custom)?;
-            if url_link != link {
+            // Compare coordinates only: a recorded outcome (`state`,
+            // denkhaus/work#1173) never contradicts the URL.
+            if (&url_link.owner, &url_link.repo, url_link.number)
+                != (&link.owner, &link.repo, link.number)
+            {
                 return Err(D::Error::custom(
                     "pull request html_url does not match owner/repo/number",
                 ));
@@ -201,6 +233,7 @@ fn github_pull_request_link_from_url(raw_url: &str) -> Result<PullRequestLink, S
         owner: (*owner).to_string(),
         repo: (*repo).to_string(),
         number,
+        state: None,
     })
 }
 
@@ -369,6 +402,7 @@ mod tests {
             owner:  "fabro-sh".to_string(),
             repo:   "fabro".to_string(),
             number: 270,
+            state:  None,
         };
 
         assert_eq!(
@@ -380,6 +414,45 @@ mod tests {
                 "html_url": "https://github.com/fabro-sh/fabro/pull/270"
             })
         );
+    }
+
+    #[test]
+    fn pull_request_link_state_round_trips_when_present_and_absent() {
+        let merged = PullRequestLink {
+            owner:  "fabro-sh".to_string(),
+            repo:   "fabro".to_string(),
+            number: 270,
+            state:  Some(PullRequestState::Merged),
+        };
+        let value = serde_json::to_value(&merged).unwrap();
+        assert_eq!(value["state"], json!("merged"));
+        let round_trip: PullRequestLink = serde_json::from_value(value).unwrap();
+        assert_eq!(round_trip, merged);
+
+        // Pre-#1173 links carry no state and still deserialize to None.
+        let stateless = json!({
+            "owner": "fabro-sh",
+            "repo": "fabro",
+            "number": 270,
+            "html_url": "https://github.com/fabro-sh/fabro/pull/270"
+        });
+        assert_eq!(
+            serde_json::from_value::<PullRequestLink>(stateless)
+                .unwrap()
+                .state,
+            None
+        );
+    }
+
+    #[test]
+    fn pull_request_link_rejects_an_unknown_state() {
+        let value = json!({
+            "owner": "fabro-sh",
+            "repo": "fabro",
+            "number": 270,
+            "state": "reopened"
+        });
+        assert!(serde_json::from_value::<PullRequestLink>(value).is_err());
     }
 
     #[test]

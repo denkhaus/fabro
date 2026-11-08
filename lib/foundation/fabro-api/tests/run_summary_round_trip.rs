@@ -149,6 +149,9 @@ fn run_summary_json_matches_openapi_shape() {
             owner:  "fabro-sh".to_string(),
             repo:   "fabro".to_string(),
             number: 123,
+            // The PR outcome the projection recorded (denkhaus/work#1173):
+            // the run list payload carries it for the board's PR chip.
+            state:  Some(fabro_types::PullRequestState::Merged),
         }),
         current_question:    None,
         superseded_by:       None,
@@ -255,7 +258,8 @@ fn run_summary_json_matches_openapi_shape() {
                 "owner": "fabro-sh",
                 "repo": "fabro",
                 "number": 123,
-                "html_url": "https://github.com/fabro-sh/fabro/pull/123"
+                "html_url": "https://github.com/fabro-sh/fabro/pull/123",
+                "state": "merged"
             },
             "current_question": null,
             "superseded_by": null,

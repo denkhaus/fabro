@@ -4,7 +4,7 @@ use fabro_api::types::MergeRunPullRequestRequest;
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
     PullRequest, PullRequestCreation, PullRequestCreationId, PullRequestCreationStatus,
-    PullRequestLink, PullRequestResponse,
+    PullRequestLink, PullRequestResponse, PullRequestState,
 };
 use serde_json::json;
 
@@ -101,6 +101,31 @@ fn pull_request_link_json_matches_openapi_shape() {
         serde_json::from_value(fixture.clone()).expect("domain link should deserialize");
 
     assert_eq!(serde_json::to_value(domain_record).unwrap(), fixture);
+}
+
+#[test]
+fn pull_request_link_state_json_matches_openapi_shape() {
+    // denkhaus/work#1173: the optional `state` (enum open|merged|closed)
+    // the run list's PR chip reads. Present when the platform observed
+    // the outcome, absent otherwise — both shapes round-trip.
+    let merged = json!({
+        "owner": "fabro-sh",
+        "repo": "fabro",
+        "number": 123,
+        "html_url": "https://github.com/fabro-sh/fabro/pull/123",
+        "state": "merged"
+    });
+    let link: PullRequestLink =
+        serde_json::from_value(merged.clone()).expect("a merged link should deserialize");
+    assert_eq!(serde_json::to_value(link).unwrap(), merged);
+    assert_eq!(
+        serde_json::to_value(PullRequestState::Closed).unwrap(),
+        "closed"
+    );
+    assert_eq!(
+        serde_json::to_value(PullRequestState::Open).unwrap(),
+        "open"
+    );
 }
 
 #[test]

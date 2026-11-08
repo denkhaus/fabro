@@ -11,6 +11,8 @@ import { useRunState, useRunStream } from "../lib/queries";
 const KIND_LABEL: Record<string, string> = {
   "checkpoint": "Checkpoint",
   "pull_request.created": "Pull request",
+  "pull_request.merged": "Pull request merged",
+  "pull_request.closed": "Pull request closed",
   "run.notice": "Notice",
   "run.title": "Title",
   "run.branch": "Run branch",

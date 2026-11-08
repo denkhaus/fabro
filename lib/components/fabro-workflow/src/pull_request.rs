@@ -531,6 +531,7 @@ async fn reconcile_existing_pull_request(
             owner:  owner.to_string(),
             repo:   repo.to_string(),
             number: existing.number,
+            state:  None,
         },
         title:       existing.title,
         base_branch: req.base_branch.to_string(),
@@ -838,6 +839,7 @@ pub async fn open_pull_request(
         owner,
         repo,
         number: created.number,
+        state: None,
     };
 
     Ok(CreatedPullRequest {

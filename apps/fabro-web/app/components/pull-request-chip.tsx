@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import { GitPullRequestIcon } from "./icons";
 
 /** The state of a run's pull request as the board carries it. Absent
- * means unknown — the list projection does not record PR state yet
- * (denkhaus/work#1164); the colour map below activates the moment it
- * does, without another UI change. */
+ * means unknown — the platform has not observed a terminal outcome
+ * (denkhaus/work#1173 records merged/closed at the doors and the
+ * merged-wait). */
 export type PullRequestState = "open" | "merged" | "closed";
 
 /** The chip owns the PR state colour map (denkhaus/work#1164): merged is

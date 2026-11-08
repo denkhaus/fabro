@@ -144,6 +144,12 @@ pub enum PlatformRecordKind {
     #[serde(rename = "pull_request.unlinked")]
     #[strum(serialize = "pull_request.unlinked")]
     PullRequestUnlinked,
+    #[serde(rename = "pull_request.merged")]
+    #[strum(serialize = "pull_request.merged")]
+    PullRequestMerged,
+    #[serde(rename = "pull_request.closed")]
+    #[strum(serialize = "pull_request.closed")]
+    PullRequestClosed,
     #[serde(rename = "notification.sent")]
     #[strum(serialize = "notification.sent")]
     NotificationSent,
@@ -248,6 +254,17 @@ pub enum PlatformRecord {
     PullRequestLinked(PullRequestLinkedRecord),
     #[serde(rename = "pull_request.unlinked")]
     PullRequestUnlinked(PullRequestLinkedRecord),
+    /// The run's pull request merged — the merge door's squash merge, or
+    /// the merged-wait's observation of an external merge. Folds the
+    /// recorded `state` onto the run's pull request link
+    /// (denkhaus/work#1173).
+    #[serde(rename = "pull_request.merged")]
+    PullRequestMerged,
+    /// The run's pull request closed without merging — the close door, or
+    /// a closed-unmerged wait observation. Folds the recorded `state`
+    /// onto the run's pull request link (denkhaus/work#1173).
+    #[serde(rename = "pull_request.closed")]
+    PullRequestClosed,
     #[serde(rename = "notification.sent")]
     NotificationSent(NotificationSentRecord),
     #[serde(rename = "run.paired")]
@@ -292,6 +309,8 @@ impl PlatformRecord {
             Self::PullRequestFailed(_) => PlatformRecordKind::PullRequestFailed,
             Self::PullRequestLinked(_) => PlatformRecordKind::PullRequestLinked,
             Self::PullRequestUnlinked(_) => PlatformRecordKind::PullRequestUnlinked,
+            Self::PullRequestMerged => PlatformRecordKind::PullRequestMerged,
+            Self::PullRequestClosed => PlatformRecordKind::PullRequestClosed,
             Self::NotificationSent(_) => PlatformRecordKind::NotificationSent,
             Self::RunPaired(_) => PlatformRecordKind::RunPaired,
             Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
@@ -328,6 +347,8 @@ impl PlatformRecord {
             | Self::PullRequestFailed(_)
             | Self::PullRequestLinked(_)
             | Self::PullRequestUnlinked(_)
+            | Self::PullRequestMerged
+            | Self::PullRequestClosed
             | Self::RunPaired(_)
             | Self::RunBranchPublished(_)
             | Self::WorkClaimed(_)
@@ -692,6 +713,7 @@ impl PullRequestLinkedRecord {
             owner:  self.owner.clone(),
             repo:   self.repo.clone(),
             number: self.number,
+            state:  None,
         }
     }
 
@@ -1143,6 +1165,8 @@ mod tests {
                     number: 7,
                 })
             }
+            PlatformRecordKind::PullRequestMerged => PlatformRecord::PullRequestMerged,
+            PlatformRecordKind::PullRequestClosed => PlatformRecord::PullRequestClosed,
             PlatformRecordKind::NotificationSent => {
                 PlatformRecord::NotificationSent(NotificationSentRecord {
                     route:      "slack".to_string(),

@@ -664,12 +664,28 @@ async fn close_run_pull_request(
     };
 
     match fabro_github::close_pull_request(&github, &ctx.owner, &ctx.repo, ctx.number).await {
-        Ok(()) => Json(CloseRunPullRequestResponse {
-            number:   i64::try_from(ctx.number)
-                .expect("stored pull request number should fit in i64"),
-            html_url: ctx.record.html_url(),
-        })
-        .into_response(),
+        Ok(()) => {
+            // Record the closed outcome on the stored link
+            // (denkhaus/work#1173): the projection folds it onto
+            // `pull_request.state` for the run list and the board's PR
+            // chip. Idempotent — an already-settled link is not
+            // re-recorded — and a store failure still answers the close
+            // (the close is a fact on GitHub either way).
+            if ctx.record.state != Some(fabro_types::PullRequestState::Closed) {
+                if let Err(err) =
+                    run_records::append(&state, id, PlatformRecord::PullRequestClosed).await
+                {
+                    warn!(error = %err, run_id = %id, pr_number = ctx.number,
+                        "recording the closed pull request state failed");
+                }
+            }
+            Json(CloseRunPullRequestResponse {
+                number:   i64::try_from(ctx.number)
+                    .expect("stored pull request number should fit in i64"),
+                html_url: ctx.record.html_url(),
+            })
+            .into_response()
+        }
         Err(fabro_github::PullRequestApiError::NotFound { .. }) => {
             github_pull_request_not_found_error(ctx.number).into_response()
         }

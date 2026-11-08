@@ -42,6 +42,10 @@ describe("shouldRefreshBoardForEvent", () => {
     expect(shouldRefreshBoardForEvent("run.title")).toBe(true);
     expect(shouldRefreshBoardForEvent("run.archived")).toBe(true);
     expect(shouldRefreshBoardForEvent("pull_request.created")).toBe(true);
+    // The PR outcome records (#1173): the chip recolours when the merge
+    // door / close door / merged-wait settles the stored link's state.
+    expect(shouldRefreshBoardForEvent("pull_request.merged")).toBe(true);
+    expect(shouldRefreshBoardForEvent("pull_request.closed")).toBe(true);
     // Petri's run events while it does, and the question that blocks it.
     expect(shouldRefreshBoardForEvent("run.started")).toBe(true);
     expect(shouldRefreshBoardForEvent("run.finished")).toBe(true);
