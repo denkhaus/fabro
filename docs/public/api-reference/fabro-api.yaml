@@ -6896,6 +6896,17 @@ paths:
             search modes.
           schema:
             type: string
+        - name: sort
+          in: query
+          required: false
+          description: >-
+            Server-side sort key: `priority` or `updated`; a `-` prefix
+            inverts (e.g. `-updated` = newest first). Without it the
+            listing keeps the tracker's own order (priority, then
+            recency). Sorting applies before paging.
+          schema:
+            type: string
+            enum: [priority, -priority, updated, -updated]
         - name: page
           in: query
           required: false

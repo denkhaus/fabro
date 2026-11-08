@@ -5,6 +5,7 @@ import { useRun, useRunGraph, useRunGraphSource, useRunStages } from "../lib/que
 import { FloatingTooltip } from "../components/floating-tooltip";
 import { PlatformRecordsPanel } from "../components/platform-records-panel";
 import { RunSummaryPanel } from "../components/run-summary-panel";
+import { RunVerdict } from "../components/run-verdict";
 import { StagePopover } from "../components/stage-popover";
 import { StageSidebar } from "../components/stage-sidebar";
 import { clampZoom, wheelZoomFactor, zoomAtPoint } from "../lib/graph-viewport";
@@ -153,6 +154,7 @@ export default function RunOverview() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 pb-[var(--fabro-interview-dock-clearance,0px)]">
         <div className="shrink-0 space-y-4">
           <RunSummaryPanel runId={id!} />
+          <RunVerdict runId={id!} />
           <PlatformRecordsPanel runId={id!} />
         </div>
         {graphSvg === undefined && graphQuery.isLoading ? (

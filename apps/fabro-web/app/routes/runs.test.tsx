@@ -428,13 +428,27 @@ describe("board tile (denkhaus/work#1164)", () => {
     return json;
   }
 
-  test("row 1 shows the workflow beside the repo; rows 3-4 carry full id, dot-date and work item", () => {
+  test("row 1 shows the workflow beside the repo; rows 3-4 carry full id and dot-date with relative age", () => {
     const json = renderTile(tileItem());
     expect(json).toContain("Develop");
     expect(json).toContain(TILE_RUN_ID);
     expect(json).not.toContain("…");
+    // The time label pairs the absolute dot-date with the relative age
+    // on the creation clock (denkhaus/work#1203); the fixture date is
+    // in the future, so the clamped relative arm reads "just now".
     expect(json).toContain("20.12.2026 18:33");
+    expect(json).toContain(String.raw`" - "`);
+    expect(json).toContain("just now");
     expect(json).toContain("DENKHAUS/WORK#1145");
+  });
+
+  test("a fresh tile brightens the time element; an old tile reads relative days", () => {
+    const fresh = renderTile(tileItem({ createdAt: new Date(Date.now() - 5 * 60_000).toISOString() }));
+    expect(fresh).toContain("5 minutes ago");
+    // The fresh time element carries the brighter step.
+    expect(fresh).toContain("text-fg-3");
+    const old = renderTile(tileItem({ createdAt: new Date(Date.now() - 3 * 86_400_000).toISOString() }));
+    expect(old).toContain("3 days ago");
   });
 
   test("the PR chip colours merged, open and closed distinctly; unknown stays muted", () => {
