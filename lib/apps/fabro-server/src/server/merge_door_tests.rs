@@ -11,7 +11,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode, header};
 use fabro_store::platform_records::{
-    PlatformRecord, PullRequestCreatedRecord, RunOrchestrationRecord,
+    PlatformRecord, PlatformRecordKind, PullRequestCreatedRecord, RunOrchestrationRecord,
 };
 use fabro_types::{OrchestrationField, OrchestrationVerdict, RunId};
 use httpmock::MockServer;
@@ -25,7 +25,7 @@ use crate::server::AppState;
 /// Seed a run row with a workflow slug, a terminal status, and an
 /// optional pull request already folded onto the projection (the
 /// post-fold production state — the external IT precedent).
-async fn seed_run(
+pub(super) async fn seed_run(
     state: &Arc<AppState>,
     run_id: &RunId,
     workflow_slug: &str,
@@ -160,6 +160,7 @@ async fn the_merger_door_merges_a_merge_enabled_pull_request() {
             owner:  "denkhaus".to_string(),
             repo:   "fabro".to_string(),
             number: 501,
+            state:  None,
         }),
     )
     .await;
@@ -186,6 +187,24 @@ async fn the_merger_door_merges_a_merge_enabled_pull_request() {
         "the response names the merged PR: {body}"
     );
     assert_eq!(merge_mock.calls(), 1, "exactly one GitHub merge call");
+    // The merged outcome lands on the stored link (denkhaus/work#1173):
+    // one `pull_request.merged` platform record, folded onto the
+    // projection's `pull_request.state` — the field the run list and the
+    // board's PR chip read.
+    assert_eq!(
+        merged_records_of(&state, &target).await,
+        1,
+        "the merge door records the merged outcome exactly once"
+    );
+    let projection = super::run_records::projection(&state, target)
+        .await
+        .expect("the projection reads")
+        .expect("the target run's projection exists");
+    assert_eq!(
+        projection.pull_request.as_ref().and_then(|link| link.state),
+        Some(fabro_types::PullRequestState::Merged),
+        "the folded link carries the merged state for the run list"
+    );
 }
 
 /// The conflict signal: a declined merge answers 409 with the
@@ -211,6 +230,7 @@ async fn a_conflicted_merge_answers_409_with_the_conflict_code() {
                 owner:  "denkhaus".to_string(),
                 repo:   "fabro".to_string(),
                 number: 501,
+                state:  None,
             }),
         )
         .await;
@@ -260,6 +280,7 @@ async fn a_re_drive_of_an_already_merged_pull_request_answers_200() {
             owner:  "denkhaus".to_string(),
             repo:   "fabro".to_string(),
             number: 501,
+            state:  None,
         }),
     )
     .await;
@@ -306,4 +327,34 @@ async fn a_re_drive_of_an_already_merged_pull_request_answers_200() {
         1,
         "exactly one state read short-circuits the merge call"
     );
+    // The idempotent path still records the merged outcome exactly once
+    // (denkhaus/work#1173): a second re-drive of the settled link adds
+    // no further record.
+    assert_eq!(
+        merged_records_of(&state, &target).await,
+        1,
+        "the idempotent re-drive records the merged state once"
+    );
+    let response = merge_call(&state, &merger, &target).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the second re-drive still answers 200"
+    );
+    assert_eq!(
+        merged_records_of(&state, &target).await,
+        1,
+        "a re-drive of a settled merged link records nothing new"
+    );
+}
+
+async fn merged_records_of(state: &Arc<AppState>, target: &RunId) -> usize {
+    state
+        .stores
+        .run_summaries
+        .platform_records()
+        .read_kind(target, PlatformRecordKind::PullRequestMerged)
+        .await
+        .expect("the merged records read")
+        .len()
 }

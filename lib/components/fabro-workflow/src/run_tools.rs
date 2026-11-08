@@ -1332,7 +1332,13 @@ mod tests {
                     "observations": [{
                         "seq": 1,
                         "category": "painpoint",
-                        "text": "gate.refused_push\nevery push failed while a run PR stayed open"
+                        "text": "gate.refused_push\nevery push failed while a run PR stayed open",
+                        // Adjacent repair (pre-existing drift, verified on
+                        // the untouched tree): the spec requires the
+                        // stage/linked_work_items fields
+                        // (denkhaus/work#1098) the generated type carries.
+                        "stage": null,
+                        "linked_work_items": []
                     }]
                 }));
             })

@@ -11,8 +11,9 @@ use fabro_store::platform_records::{
 use fabro_types::{
     CheckpointRecord as ViewCheckpoint, Conclusion, FailureCategory, FailureDetail, FailureReason,
     OrchestrationField, PullRequestCreation, PullRequestCreationStatus, PullRequestLink,
-    RunApproval, RunApprovalState, RunArtifact, RunControlAction, RunDiff, RunFailure,
-    RunProjection, RunSandbox, RunStatus, StageObservation, StageOutcome, format_blob_ref,
+    PullRequestState, RunApproval, RunApprovalState, RunArtifact, RunControlAction, RunDiff,
+    RunFailure, RunProjection, RunSandbox, RunStatus, StageObservation, StageOutcome,
+    format_blob_ref,
 };
 use tracing::debug;
 
@@ -199,6 +200,10 @@ impl RunView {
                     owner:  record.owner.clone(),
                     repo:   record.repo.clone(),
                     number: record.number,
+                    // A fresh PR's outcome is unknown to the platform;
+                    // the merged/closed records name it when it settles
+                    // (denkhaus/work#1173).
+                    state:  None,
                 };
                 projection.pull_request = Some(link.clone());
                 if let Some(creation) = projection
@@ -242,6 +247,20 @@ impl RunView {
             PlatformRecord::PullRequestUnlinked(_) => {
                 projection.pull_request = None;
                 projection.pull_request_creation = None;
+            }
+            // The PR outcome settles on the stored link
+            // (denkhaus/work#1173): the run list projection carries it
+            // for the board's PR state chip. A state record ahead of any
+            // link stays unfolded — there is nothing to colour.
+            PlatformRecord::PullRequestMerged => {
+                if let Some(link) = projection.pull_request.as_mut() {
+                    link.state = Some(PullRequestState::Merged);
+                }
+            }
+            PlatformRecord::PullRequestClosed => {
+                if let Some(link) = projection.pull_request.as_mut() {
+                    link.state = Some(PullRequestState::Closed);
+                }
             }
         }
     }
@@ -367,5 +386,137 @@ fn fold_lifecycle(projection: &mut RunProjection, record: &RunLifecycleRecord, a
         Kind::CancelRequested => projection.pending_control = Some(RunControlAction::Cancel),
         Kind::PauseRequested => projection.pending_control = Some(RunControlAction::Pause),
         Kind::UnpauseRequested => projection.pending_control = Some(RunControlAction::Unpause),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_store::platform_records::{
+        PullRequestCreatedRecord, PullRequestLinkedRecord, RunCreatedRecord,
+    };
+    use fabro_types::test_support as types_support;
+
+    use super::*;
+
+    fn stored(seq: u64, record: PlatformRecord) -> StoredPlatformRecord {
+        StoredPlatformRecord {
+            seq,
+            recorded_at: seq * 1_000,
+            record,
+            position: None,
+        }
+    }
+
+    /// A view whose run was created and now carries PR #7.
+    fn view_with_pull_request() -> RunView {
+        let mut view = RunView::new();
+        view.fold_platform(
+            &stored(
+                1,
+                PlatformRecord::RunCreated(RunCreatedRecord {
+                    spec:         types_support::test_run_spec(),
+                    title:        None,
+                    parent_id:    None,
+                    retried_from: None,
+                    web_url:      None,
+                }),
+            ),
+            1,
+        );
+        view.fold_platform(
+            &stored(
+                2,
+                PlatformRecord::PullRequestCreated(PullRequestCreatedRecord {
+                    number:    7,
+                    owner:     "acme".to_string(),
+                    repo:      "widgets".to_string(),
+                    html_url:  "https://github.com/acme/widgets/pull/7".to_string(),
+                    head_sha:  None,
+                    draft:     false,
+                    operation: None,
+                }),
+            ),
+            2,
+        );
+        view
+    }
+
+    #[test]
+    fn merged_and_closed_records_settle_the_link_state() {
+        let mut view = view_with_pull_request();
+        view.fold_platform(&stored(3, PlatformRecord::PullRequestMerged), 3);
+        assert_eq!(
+            view.projection()
+                .unwrap()
+                .pull_request
+                .as_ref()
+                .unwrap()
+                .state,
+            Some(PullRequestState::Merged)
+        );
+        view.fold_platform(&stored(4, PlatformRecord::PullRequestClosed), 4);
+        assert_eq!(
+            view.projection()
+                .unwrap()
+                .pull_request
+                .as_ref()
+                .unwrap()
+                .state,
+            Some(PullRequestState::Closed)
+        );
+    }
+
+    #[test]
+    fn a_created_link_starts_without_a_state() {
+        let view = view_with_pull_request();
+        assert_eq!(
+            view.projection()
+                .unwrap()
+                .pull_request
+                .as_ref()
+                .unwrap()
+                .state,
+            None
+        );
+    }
+
+    #[test]
+    fn a_state_record_ahead_of_any_link_is_not_folded() {
+        let mut view = RunView::new();
+        view.fold_platform(
+            &stored(
+                1,
+                PlatformRecord::RunCreated(RunCreatedRecord {
+                    spec:         types_support::test_run_spec(),
+                    title:        None,
+                    parent_id:    None,
+                    retried_from: None,
+                    web_url:      None,
+                }),
+            ),
+            1,
+        );
+        view.fold_platform(&stored(2, PlatformRecord::PullRequestMerged), 2);
+        assert!(view.projection().unwrap().pull_request.is_none());
+    }
+
+    #[test]
+    fn a_relink_resets_the_state_to_unknown() {
+        let mut view = view_with_pull_request();
+        view.fold_platform(&stored(3, PlatformRecord::PullRequestMerged), 3);
+        view.fold_platform(
+            &stored(
+                4,
+                PlatformRecord::PullRequestLinked(PullRequestLinkedRecord {
+                    owner:  "acme".to_string(),
+                    repo:   "widgets".to_string(),
+                    number: 8,
+                }),
+            ),
+            4,
+        );
+        let link = view.projection().unwrap().pull_request.as_ref().unwrap();
+        assert_eq!(link.number, 8);
+        assert_eq!(link.state, None);
     }
 }

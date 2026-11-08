@@ -193,6 +193,8 @@ mod fork_work_registry_tests;
 mod fork_worker_exit_park_tests;
 #[cfg(test)]
 mod merge_door_tests;
+#[cfg(test)]
+mod pr_state_door_tests;
 // pub(crate): test-support's run fixture reaches the intent handler;
 // extern stays hidden (denkhaus/work#991).
 pub(crate) mod handler;

@@ -15543,6 +15543,19 @@ components:
           format: uri
           description: Computed GitHub web URL for the pull request.
           example: https://github.com/fabro-sh/fabro/pull/123
+        state:
+          type: string
+          enum:
+            - open
+            - merged
+            - closed
+          description: >-
+            The pull request's outcome as the platform recorded it
+            (denkhaus/work#1173): merged by the merge door or observed by
+            the merged-wait, closed by the close door or observed
+            closed-unmerged. Absent when the platform has not observed a
+            terminal outcome.
+          example: merged
 
     PullRequest:
       description: Stored pull request link plus optional live GitHub details.

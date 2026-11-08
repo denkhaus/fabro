@@ -38,6 +38,8 @@ const BOARD_STATUS_EVENTS = new Set([
   "run.unarchived",
   "run.superseded",
   "pull_request.created",
+  "pull_request.merged",
+  "pull_request.closed",
   "interview.answered",
   "run.started",
   "run.finished",

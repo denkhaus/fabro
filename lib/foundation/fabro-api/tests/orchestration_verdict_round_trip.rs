@@ -80,6 +80,12 @@ fn observation_with_category(category: ObservationCategory) -> RunObservation {
         text: String::new(),
         execution: None,
         firing: None,
+        // Adjacent repair (pre-existing drift, verified on the untouched
+        // tree): the spec grew `stage` and `linked_work_items`
+        // (denkhaus/work#1098's observations table) without this
+        // initializer following.
+        stage: None,
+        linked_work_items: Vec::new(),
         recorded_at: None,
     }
 }

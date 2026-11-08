@@ -16,6 +16,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
 use fabro_api::types::{RunWaitResult, RunWaitResultReached};
+use fabro_store::platform_records::PlatformRecord;
 use fabro_types::RunId;
 use fabro_types::status::RunStatus;
 use serde::Deserialize;
@@ -23,8 +24,8 @@ use tokio::time::{sleep, timeout};
 
 use crate::error::ApiError;
 use crate::principal_middleware::RequireRunManagementTarget;
-use crate::server::AppState;
 use crate::server::handler::pull_requests::{self, PullRequestGithubContext};
+use crate::server::{AppState, run_records};
 
 /// Longest single wait a caller may request. Longer waits re-issue the
 /// call; this keeps held connections and in-flight work bounded when a
@@ -184,6 +185,37 @@ fn gate_verdict(
     }
 }
 
+/// Record a PR outcome the wait OBSERVED (denkhaus/work#1173): the
+/// merged-wait is the second writer beside the doors — it catches outcomes
+/// GitHub or a human landed outside Fabro (an external merge, a manual
+/// close). Idempotent: a link already settled to this state is not
+/// re-recorded. A store failure only logs — the wait result itself is the
+/// observed fact and must still reach the caller.
+async fn record_observed_pull_request_state(
+    state: &AppState,
+    id: &RunId,
+    record: &fabro_types::PullRequestLink,
+    observed: fabro_types::PullRequestState,
+) {
+    if record.state == Some(observed) {
+        return;
+    }
+    let record_kind = match observed {
+        fabro_types::PullRequestState::Merged => PlatformRecord::PullRequestMerged,
+        fabro_types::PullRequestState::Closed | fabro_types::PullRequestState::Open => {
+            PlatformRecord::PullRequestClosed
+        }
+    };
+    if let Err(err) = run_records::append(state, *id, record_kind).await {
+        tracing::warn!(
+            error = ?err,
+            run_id = %id,
+            pr_number = record.number,
+            "recording the observed pull request state failed"
+        );
+    }
+}
+
 /// Poll the store and the GitHub pull request until the PR merges, the run
 /// fails hard, the PR closes without merging, the PR's merge gate stays
 /// blocked, or the deadline expires.
@@ -233,6 +265,13 @@ async fn wait_until_merged(
             match fetch {
                 Ok(Ok(detail)) => {
                     if detail.merged {
+                        record_observed_pull_request_state(
+                            state,
+                            id,
+                            &ctx.record,
+                            fabro_types::PullRequestState::Merged,
+                        )
+                        .await;
                         return wait_result(
                             id,
                             RunWaitResultReached::Merged,
@@ -241,6 +280,13 @@ async fn wait_until_merged(
                         );
                     }
                     if detail.state.eq_ignore_ascii_case("closed") {
+                        record_observed_pull_request_state(
+                            state,
+                            id,
+                            &ctx.record,
+                            fabro_types::PullRequestState::Closed,
+                        )
+                        .await;
                         return wait_result(
                             id,
                             RunWaitResultReached::ClosedUnmerged,
@@ -311,6 +357,13 @@ async fn wait_until_merged(
                 Ok(Err(fabro_github::PullRequestApiError::NotFound { .. })) => {
                     // A deleted PR will never merge; report it as
                     // closed-unmerged so callers route to repair.
+                    record_observed_pull_request_state(
+                        state,
+                        id,
+                        &ctx.record,
+                        fabro_types::PullRequestState::Closed,
+                    )
+                    .await;
                     return wait_result(
                         id,
                         RunWaitResultReached::ClosedUnmerged,

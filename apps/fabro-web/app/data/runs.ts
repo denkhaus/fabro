@@ -39,8 +39,9 @@ export interface RunItem {
   number?: number;
   pullRequestUrl?: string;
   /** The PR state driving the chip colour; absent = unknown (muted
-   * chip). The list payload does not carry state yet — denkhaus/work#1164's
-   * server half records it at the merge/close doors. */
+   * chip) — the platform has not observed a terminal outcome yet
+   * (denkhaus/work#1173 records merged/closed at the doors and the
+   * merged-wait). */
   pullRequestState?: PullRequestState;
   additions?: number;
   deletions?: number;
@@ -106,9 +107,9 @@ function runStatusKind(status: ApiRunStatus | null | undefined): RunStatus | nul
 }
 
 /** Read the PR state defensively: the generated client type does not
- * carry it yet, and the colour map activates the moment the projection
- * ships the field (denkhaus/work#1164) — anything but the three known
- * states maps to unknown. */
+ * carry it yet (its regen is a local step), while the projection ships
+ * the field (denkhaus/work#1173) — anything but the three known states
+ * maps to unknown. */
 function pullRequestStateOf(raw: unknown): PullRequestState | undefined {
   return raw === "open" || raw === "merged" || raw === "closed" ? raw : undefined;
 }

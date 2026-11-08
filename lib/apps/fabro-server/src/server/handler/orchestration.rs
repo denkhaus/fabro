@@ -31,7 +31,9 @@ use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
 };
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{OrchestrationField, OrchestrationVerdict, Principal, RunId};
+use fabro_types::{
+    OrchestrationField, OrchestrationVerdict, Principal, PullRequestLink, PullRequestState, RunId,
+};
 use tracing::info;
 
 use super::super::{AppState, run_records};
@@ -535,6 +537,7 @@ async fn merge_run(
             pr_number = record.number,
             "run pull request already merged (merger door, idempotent re-drive)"
         );
+        record_pull_request_merged(&state, target, &record).await;
         return Ok(Json(RunMergeResponse {
             run_id:       target.to_string(),
             merged:       true,
@@ -559,6 +562,7 @@ async fn merge_run(
                 pr_number = record.number,
                 "run pull request merged (merger door, squash)"
             );
+            record_pull_request_merged(&state, target, &record).await;
             Ok(Json(RunMergeResponse {
                 run_id:       target.to_string(),
                 merged:       true,
@@ -588,6 +592,28 @@ async fn merge_run(
                 "merge_failed",
             ))
         }
+    }
+}
+
+/// Record the merge outcome on the run's stored pull request link
+/// (denkhaus/work#1173): a `pull_request.merged` platform record the
+/// projection folds onto `pull_request.state`, so the run list — and the
+/// board's PR chip — carries the outcome. Idempotent: a link already
+/// settled `merged` is not re-recorded. A record failure is logged, never
+/// a failed response: the merge is a fact on GitHub either way, and the
+/// merged-wait's observation is the second writer that recovers the
+/// state.
+async fn record_pull_request_merged(state: &AppState, target: RunId, record: &PullRequestLink) {
+    if record.state == Some(PullRequestState::Merged) {
+        return;
+    }
+    if let Err(err) = run_records::append(state, target, PlatformRecord::PullRequestMerged).await {
+        tracing::error!(
+            error = ?err,
+            target_run_id = %target,
+            pr_number = record.number,
+            "recording the merged pull request state failed"
+        );
     }
 }
 
