@@ -55,9 +55,7 @@ impl RunCache {
     /// Whether the cache still describes the stored view: its positions and
     /// delivery sequence are the ones the view tables hold.
     pub(super) fn matches(&self, positions: &Positions, stream_seq: u64) -> bool {
-        self.view.stream_seq == stream_seq
-            && self.view.positions.platform_seq == positions.platform_seq
-            && self.view.positions.held() == positions.held()
+        self.view.stream_seq == stream_seq && self.view.positions == *positions
     }
 
     /// The pass committed: the view moved on, and nothing is pending.

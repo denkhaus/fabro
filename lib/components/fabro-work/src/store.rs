@@ -596,6 +596,32 @@ ORDER BY granted_at_ms
         rows.iter().map(claim_from_row).collect()
     }
 
+    /// The run's released claims inside a recency window — the misroute
+    /// skip set for lane-head selection (denkhaus/work#1179): a run that
+    /// released an item (misroute, stale basis, planner skip) is not
+    /// re-granted it on its next grant tick, so the lane head advances
+    /// past items that run already declined. Other runs are unaffected.
+    pub async fn released_claims_of_run_since(
+        &self,
+        run_id: &RunId,
+        since: DateTime<Utc>,
+    ) -> Result<Vec<WorkClaim>> {
+        let rows = sqlx::query(
+            r"
+SELECT claim_id, project_id, item_key, run_id, lane, state,
+       granted_at_ms, updated_at_ms, released_at_ms, release_reason, pr_url
+FROM work_claims
+WHERE run_id = ? AND state = 'released' AND released_at_ms >= ?
+ORDER BY released_at_ms
+",
+        )
+        .bind(run_id.to_string())
+        .bind(since.timestamp_millis())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(claim_from_row).collect()
+    }
+
     /// The transition history of one claim, oldest first.
     pub async fn events(&self, claim_id: &str) -> Result<Vec<WorkClaimEvent>> {
         let rows = sqlx::query(
@@ -1396,6 +1422,56 @@ mod tests {
                 .unwrap(),
             GrantOutcome::Granted(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn released_claims_of_run_since_scope_the_misroute_skip_set() {
+        let (_directory, store) = store().await;
+        let run_id = fabro_types::RunId::new();
+        let other_run = fabro_types::RunId::new();
+        let GrantOutcome::Granted(claim) = store
+            .grant(&request("denkhaus/work#1", run_id))
+            .await
+            .unwrap()
+        else {
+            panic!("first grant must win");
+        };
+        let GrantOutcome::Granted(other_claim) = store
+            .grant(&request("denkhaus/work#2", other_run))
+            .await
+            .unwrap()
+        else {
+            panic!("second grant must win");
+        };
+        store.release(&claim.claim_id, "misroute").await.unwrap();
+        store
+            .release(&other_claim.claim_id, "misroute")
+            .await
+            .unwrap();
+
+        // The window covers the run's own released item, not another
+        // run's release, and excludes nothing the run released inside
+        // the window.
+        let now = chrono::Utc::now();
+        let keys = store
+            .released_claims_of_run_since(&run_id, now - Duration::hours(1))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|released| released.item_key)
+            .collect::<Vec<_>>();
+        assert_eq!(keys, vec!["denkhaus/work#1".to_string()]);
+
+        // A window that starts after the release sees nothing: the skip
+        // is recency-scoped, not permanent.
+        let later = now + Duration::hours(2);
+        assert!(
+            store
+                .released_claims_of_run_since(&run_id, later)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
