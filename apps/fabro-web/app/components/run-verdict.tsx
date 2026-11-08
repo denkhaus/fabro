@@ -26,7 +26,7 @@ export function RunVerdict({ runId }: { runId: string }) {
 
   const conclusion = (run.lifecycle as { conclusionFailure?: { reason?: string; detail?: { message?: string } } }).conclusionFailure;
   const why = conclusion?.detail?.message ?? conclusion?.reason ?? null;
-  const question = (run as { currentQuestion?: unknown }).currentQuestion ?? null;
+  const question = (run as { current_question?: { text?: string } | null }).current_question ?? null;
   const context = humanNeeded
     ? "The workflow stopped here and waits for a human decision. Read the recorded reason, then retry on the current line tip, continue from the checkpoint as a fork, or cancel."
     : "The run ended with a failure. The recorded reason is below; retry re-runs the failed stage on the files before it, fork continues from the last checkpoint.";
@@ -66,8 +66,8 @@ export function RunVerdict({ runId }: { runId: string }) {
       <p className="font-mono text-[11px] uppercase tracking-wide text-fg-muted">
         verdict — {humanNeeded ? "needs a human decision" : "failed"}
       </p>
-      {question ? (
-        <p className="mt-1.5 text-sm text-fg">{String(question)}</p>
+      {question?.text != null ? (
+        <p className="mt-1.5 text-sm text-fg">{question.text ?? "(the question carries no text)"}</p>
       ) : why ? (
         <p className="mt-1.5 break-words font-mono text-xs text-fg-2">{why}</p>
       ) : (
