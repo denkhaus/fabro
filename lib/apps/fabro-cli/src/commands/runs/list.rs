@@ -124,7 +124,8 @@ pub(crate) async fn list_command(
             let run_id = run.run_id().to_string();
 
             let mut row = vec![
-                short_run_id(&run_id)
+                run_id
+                    .clone()
                     .cell()
                     .foreground_color(color_if(use_color, Color::Ansi256(8))),
             ];
