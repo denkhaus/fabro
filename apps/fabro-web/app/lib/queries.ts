@@ -26,6 +26,7 @@ import type {
   RunArtifactListResponse,
   RunProjection,
   Run,
+  RunObservationList,
   RunStreamItem,
   RunUsage,
   SandboxDetails,
@@ -291,6 +292,13 @@ export function useRunUsage(id: string | undefined) {
   return useSWR<RunUsage>(
     id ? queryKeys.runs.usage(id) : null,
     () => apiData(() => runOutputsApi.retrieveRunUsage(id!)),
+  );
+}
+
+export function useRunObservations(id: string | undefined) {
+  return useSWR<RunObservationList>(
+    id ? queryKeys.runs.observations(id) : null,
+    () => apiData(() => runsApi.listRunObservations(id!)),
   );
 }
 

@@ -15,6 +15,7 @@ const allTabs: RunDetailTabDefinition[] = [
   { name: "Stages", path: "/stages", count: null },
   { name: "Files Changed", path: "/files", count: null },
   { name: "Children", path: "/children", count: null },
+  { name: "Observations", path: "/observations", count: null },
   { name: "Sandbox", path: "/sandbox", count: null, requiresSandbox: true },
   { name: "Usage", path: "/usage", count: null },
 ];

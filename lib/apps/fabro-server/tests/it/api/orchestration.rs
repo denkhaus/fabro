@@ -647,7 +647,9 @@ async fn the_merge_door_refuses_every_non_merger_shape() {
 }
 
 /// The observations read door: a run's observation records in seq order
-/// with the category that routes adjudication.
+/// with the category that routes adjudication, the stage attribution
+/// from the positioned fold, and the linked work-item column (the run
+/// detail observations table, denkhaus/work#1098).
 #[tokio::test]
 async fn the_observations_read_lists_a_runs_records() {
     let (app, state, store) = orchestration_app();
@@ -680,6 +682,60 @@ async fn the_observations_read_lists_a_runs_records() {
             .await
             .expect("observation seed");
     }
+    // Position the FIRST record (seq 1) on a stage: patch the seeded
+    // projection's stage fold the way the projector would — the stage's
+    // observations list is the attribution the handler joins on.
+    let pool = store.run_summary_store().pool();
+    let projection_json: String =
+        sqlx::query_scalar("SELECT projection_json FROM petri_projection WHERE run_id = ?")
+            .bind(run.to_string())
+            .fetch_one(&pool)
+            .await
+            .expect("seeded projection row");
+    let mut projection: fabro_types::RunProjection =
+        serde_json::from_str(&projection_json).expect("projection json");
+    let stage = projection.stage_entry(
+        "reviewer",
+        3,
+        std::num::NonZeroU32::new(1).expect("nonzero"),
+    );
+    stage.observations.push(fabro_types::StageObservation {
+        seq:      1,
+        category: fabro_types::ObservationCategory::Painpoint,
+        text:     "positioned".to_string(),
+    });
+    let patched_json = serde_json::to_string(&projection).expect("patched projection json");
+    serde_json::from_str::<fabro_types::RunProjection>(&patched_json)
+        .expect("patched projection round-trips");
+    sqlx::query("UPDATE petri_projection SET projection_json = ? WHERE run_id = ?")
+        .bind(patched_json)
+        .bind(run.to_string())
+        .execute(&pool)
+        .await
+        .expect("projection patch");
+    // Link one work item to the first record through the user-only link
+    // surface — the column's data source.
+    seed_work_project(&state).await;
+    let link_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
+    let link_request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/projects/fabro/work-items/link"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "itemKey": "denkhaus/work#9",
+                "runId": run.to_string(),
+                "seq": 1,
+            }))
+            .expect("link body serializes"),
+        ))
+        .expect("link request builds");
+    let link_response = link_app.oneshot(link_request).await.expect("link runs");
+    assert_eq!(
+        link_response.status(),
+        StatusCode::OK,
+        "the observation link seeds through the user surface"
+    );
 
     let token = state.test_issue_worker_token_with_run_tools(&run);
     let request = Request::builder()
@@ -702,7 +758,32 @@ async fn the_observations_read_lists_a_runs_records() {
             .starts_with("fact=patch-visibility"),
         "the fact head rides the text: {body}"
     );
+    assert_eq!(
+        observations[0]["stage"].as_str(),
+        Some("reviewer@3"),
+        "the positioned record carries its stage: {body}"
+    );
+    let linked = observations[0]["linked_work_items"]
+        .as_array()
+        .unwrap_or_else(|| panic!("linked items array: {body}"));
+    assert_eq!(
+        linked[0]["item_key"].as_str(),
+        Some("denkhaus/work#9"),
+        "the linked work item rides the record: {body}"
+    );
     assert_eq!(observations[1]["category"].as_str(), Some("note"));
+    assert_eq!(
+        observations[1]["stage"].as_str(),
+        None,
+        "a positionless record renders un-attributed: {body}"
+    );
+    assert!(
+        observations[1]["linked_work_items"]
+            .as_array()
+            .expect("linked items always present")
+            .is_empty(),
+        "an unlinked record carries an empty column: {body}"
+    );
 }
 
 /// Seed the work project through the user surface (the run_channel
