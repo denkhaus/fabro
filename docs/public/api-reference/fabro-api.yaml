@@ -14772,10 +14772,18 @@ components:
           type: ["string", "null"]
           format: date-time
           description: When the link was written.
+        item_state:
+          type: ["string", "null"]
+          enum: [open, in_progress, closed]
+          description: >-
+            The linked item's live state at read time, resolved
+            server-side beside the link: open with no live claim, open
+            with a live claim (a run is working it), or closed. Null when
+            the tracker cannot resolve the item.
       description: |-
-        One work-item link on an observation record (ADR-0038): the
-        chain's last edge, observation -> work item, as the run detail
-        view's observations table renders it.
+        One work-item link on an observation record: the chain's last
+        edge, observation -> work item, as the run detail view's
+        observations table renders it.
 
     RunObservationList:
       type: object

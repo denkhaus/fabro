@@ -267,6 +267,7 @@ models/notification-route-settings.ts
 models/object-store-local-settings.ts
 models/object-store-s3-settings.ts
 models/object-store-settings.ts
+models/observation-work-item-link.ts
 models/orchestration-field.ts
 models/orchestration-verdict.ts
 models/paginated-api-question-list.ts
