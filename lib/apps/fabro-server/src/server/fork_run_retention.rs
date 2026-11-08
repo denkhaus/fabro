@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use fabro_api::types::PruneRunsRequest;
+use fabro_types::RunId;
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{Instrument as _, info, info_span, warn};
@@ -40,6 +41,89 @@ const RUN_RETENTION_SCAN_INTERVAL: Duration = Duration::from_hours(24);
 /// silence means no live delete is working the row any more.
 const REMOVAL_REAPER_INTERVAL: Duration = Duration::from_mins(5);
 const REMOVAL_REAPER_STUCK_AFTER: Duration = Duration::from_mins(15);
+
+/// Host-disk usage percent for the filesystem backing `storage_dir`
+/// (on prod the same `/dev/vda3` the docker root lives on). `None` when
+/// statvfs fails — the brake then stays inert (fail-open).
+#[expect(
+    dead_code,
+    reason = "wired by the sandbox-reap supervisor arm in the #168 follow-up slice"
+)]
+pub(super) fn disk_used_percent(storage_dir: &std::path::Path) -> Option<u64> {
+    let stats = fs2::statvfs(storage_dir).ok()?;
+    percent_used(stats.total_space(), stats.available_space())
+}
+
+/// Pure usage math for pins: used = total - available (saturating),
+/// percent rounded down, `None` for a zero total.
+pub(super) fn percent_used(total: u64, available: u64) -> Option<u64> {
+    if total == 0 {
+        return None;
+    }
+    let used = total.saturating_sub(available);
+    Some(used * 100 / total)
+}
+
+/// Candidate selection for the sandbox-reap arm (fabro-3377). Pure over
+/// the run summaries: a run is a candidate when its sandbox may be
+/// reaped — terminal `Succeeded`/`Failed`/`Dead`, terminal transition
+/// older than the floor (or any age under an active disk brake), sandbox
+/// instance present and not already removed (`retained != Some(false)`).
+/// `HumanNeeded` (a human answers into the live sandbox) and resumable
+/// quota-park runs are NEVER candidates; the brake widens the age
+/// window, never the protection set. `floor_hours == 0` disables the
+/// arm: no candidates at all. Oldest terminal transition first.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "wired by the sandbox-reap supervisor arm in the #168 follow-up slice"
+    )
+)]
+pub(super) fn reap_candidates(
+    runs: &[fabro_types::Run],
+    now: DateTime<Utc>,
+    floor_hours: u64,
+    brake_active: bool,
+) -> Vec<RunId> {
+    if floor_hours == 0 {
+        return Vec::new();
+    }
+    let floor = chrono::Duration::hours(floor_hours.cast_signed());
+    let mut candidates: Vec<(DateTime<Utc>, RunId)> = runs
+        .iter()
+        .filter_map(|run| {
+            // Only unambiguous finishes: HumanNeeded waits for a human
+            // answer into the live sandbox, a resumable park waits for a
+            // resume, and everything active is out of reach. The
+            // lifecycle.preserve flag is enforced by the executor (it
+            // reads the projection, which summaries do not carry).
+            if !matches!(
+                run.lifecycle.status,
+                fabro_types::RunStatus::Succeeded { .. }
+                    | fabro_types::RunStatus::Failed { .. }
+                    | fabro_types::RunStatus::Dead
+            ) {
+                return None;
+            }
+            let completed_at = run.timestamps.completed_at?;
+            let age = now - completed_at;
+            if age < floor && !brake_active {
+                return None;
+            }
+            let instance = run
+                .sandbox
+                .as_ref()
+                .and_then(fabro_types::RunSandbox::instance)?;
+            if instance.retained == Some(false) {
+                return None; // already removed
+            }
+            Some((completed_at, run.id))
+        })
+        .collect();
+    candidates.sort();
+    candidates.into_iter().map(|(_, id)| id).collect()
+}
 
 /// What one executed retention pass reclaimed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -45,6 +45,16 @@ max_concurrent_runs = 5
 # 0 disables the pass.
 [server.retention]
 max_run_age_days = 14
+# sandbox-reap arm (fabro-3377): hours after a run's terminal transition
+# at which the run's sandbox is removed while every run record stays
+# (lease-ledger delete, records/events/artifacts untouched). Runs in
+# HumanNeeded, resumable quota-park, or with lifecycle.preserve are never
+# reaped. 0 disables the reap arm and with it the disk brake below.
+terminal_sandbox_age_hours = 48
+# disk brake: host-disk usage percent at which the reap arm additionally
+# reaps oldest-terminal-first below the age floor (protections hold).
+# 0 disables the brake; the reap arm itself stays active.
+disk_brake_percent = 85
 
 # Per-run capability channel (ADR-0035): spawn one channel per run at
 # launch; `dir` is the daemon-visible root whose per-run subdirs run

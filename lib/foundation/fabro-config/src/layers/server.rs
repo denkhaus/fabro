@@ -199,13 +199,17 @@ pub struct ServerSchedulerLayer {
     pub max_concurrent_runs: Option<usize>,
 }
 
-/// `[server.retention]` — periodic pruning of terminal run history
-/// (fabro-b1a4, fork).
+/// `[server.retention]` — periodic pruning of terminal run history and
+/// sandbox reaping (fabro-b1a4, fabro-3377; fork).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
 #[serde(deny_unknown_fields)]
 pub struct ServerRetentionLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_run_age_days: Option<u64>,
+    pub max_run_age_days:           Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_sandbox_age_hours: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_brake_percent:         Option<u64>,
 }
 
 /// `[server.run_channel]` — the per-run capability channel (ADR-0035,

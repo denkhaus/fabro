@@ -250,16 +250,30 @@ pub struct ServerSchedulerSettings {
     pub max_concurrent_runs: usize,
 }
 
-/// `[server.retention]` — periodic pruning of terminal run history
-/// (fabro-b1a4, fork).
+/// `[server.retention]` — periodic pruning of terminal run history and
+/// sandbox reaping (fabro-b1a4, fabro-3377; fork).
 ///
 /// `max_run_age_days` is the age after which a terminal run is pruned by
-/// the run-retention supervisor; `0` disables the pass entirely. The
-/// resolver fills the value from `defaults.toml` (14), user settings
-/// override it.
+/// the run-retention supervisor; `0` disables the pass entirely.
+///
+/// `terminal_sandbox_age_hours` is the age after a run's terminal
+/// transition at which the sandbox-reap arm may remove the run's sandbox
+/// (containers and volumes, through Petri's lease ledger) while every run
+/// record stays; `0` disables the reap arm (and with it the disk brake —
+/// the brake widens the reap age window, so it needs the arm enabled).
+///
+/// `disk_brake_percent` is the host-disk usage percent at which the reap
+/// arm additionally reaps oldest-terminal-first BELOW the age floor; `0`
+/// disables the brake. Protections (HumanNeeded, resumable park,
+/// `preserve`) hold under the brake.
+///
+/// The resolver fills all values from `defaults.toml` (14, 48, 85); user
+/// settings override them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerRetentionSettings {
-    pub max_run_age_days: u64,
+    pub max_run_age_days:           u64,
+    pub terminal_sandbox_age_hours: u64,
+    pub disk_brake_percent:         u64,
 }
 
 /// `[server.run_channel]` — the per-run capability channel (ADR-0035):

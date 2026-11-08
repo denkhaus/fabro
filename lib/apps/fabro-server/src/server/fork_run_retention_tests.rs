@@ -347,3 +347,259 @@ async fn deleted_runs_cannot_be_resurrected_by_a_late_projection_pass() {
         "the tombstone refused the resurrection: a deleted run stays deleted"
     );
 }
+// ── Sandbox-reap arm (fabro-3377): candidate selection pins ────────────
+
+/// A minimal `Run` summary for the pure reap filter: the given status,
+/// terminal `completed_hours_ago`, sandbox instance with the given
+/// retention.
+fn reap_test_run(
+    status: fabro_types::RunStatus,
+    completed_hours_ago: i64,
+    retained: Option<bool>,
+) -> fabro_types::Run {
+    use fabro_types::{
+        AskFabro, RunId, RunLifecycle, RunLinks, RunOrigin, RunSandbox, RunSandboxInstance,
+        RunSandboxPlan, RunSandboxRuntime, RunTimestamps, WorkflowRef,
+    };
+
+    let now = Utc::now();
+    let id = RunId::new();
+    let instance = RunSandboxInstance {
+        provider: fabro_types::SandboxProviderKind::DOCKER,
+        image: None,
+        snapshot: None,
+        runtime: RunSandboxRuntime {
+            id:                "petri-test-l0".to_owned(),
+            working_directory: "/workspace".to_owned(),
+            repo_cloned:       None,
+            clone_origin_url:  None,
+            clone_branch:      None,
+            workspace_root:    None,
+            repos_root:        None,
+            primary_repo_path: None,
+            primary_repo_link: None,
+        },
+        ready_duration_ms: None,
+        retained,
+    };
+    fabro_types::Run {
+        id,
+        parent_id: None,
+        children_count: 0,
+        claimed_seed_id: None,
+        title: "reap pin".to_owned(),
+        goal: "reap pin".to_owned(),
+        workflow: WorkflowRef {
+            slug:       None,
+            name:       Some("Pin".to_owned()),
+            graph_name: None,
+            node_count: 0,
+            edge_count: 0,
+        },
+        automation: None,
+        repository: None,
+        created_by: fabro_types::Principal::Worker { run_id: id },
+        origin: RunOrigin::default(),
+        labels: HashMap::default(),
+        lifecycle: RunLifecycle {
+            status,
+            conclusion_failure: None,
+            approval: None,
+            pending_control: None,
+            queue_position: None,
+            error: None,
+            archived: false,
+            archived_at: None,
+        },
+        sandbox: Some(RunSandbox::ready(
+            RunSandboxPlan {
+                provider: fabro_types::SandboxProviderKind::DOCKER,
+                image:    None,
+                snapshot: None,
+            },
+            instance,
+        )),
+        workflow_version_id: None,
+        models: Vec::new(),
+        source_directory: None,
+        timestamps: RunTimestamps {
+            created_at:    now - ChronoDuration::hours(completed_hours_ago + 1),
+            started_at:    Some(now - ChronoDuration::hours(completed_hours_ago + 1)),
+            last_event_at: Some(now - ChronoDuration::hours(completed_hours_ago)),
+            completed_at:  Some(now - ChronoDuration::hours(completed_hours_ago)),
+        },
+        timing: None,
+        usage: lithos_llm::types::Usage::default(),
+        size: fabro_types::RunSize::default(),
+        ask_fabro: AskFabro::default(),
+        diff: None,
+        pull_request: None,
+        current_question: None,
+        superseded_by: None,
+        retried_from: None,
+        links: RunLinks { web: None },
+    }
+}
+
+use fabro_types::{BlockedReason, FailureReason, RunStatus, SuccessReason};
+
+#[test]
+fn reap_candidates_take_terminal_runs_past_the_floor() {
+    let now = Utc::now();
+    let runs = vec![reap_test_run(
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        72,
+        Some(true),
+    )];
+
+    let candidates = fork_run_retention::reap_candidates(&runs, now, 48, false);
+
+    assert_eq!(
+        candidates.len(),
+        1,
+        "succeeded 72h ago with a kept sandbox reaps"
+    );
+}
+
+#[test]
+fn reap_candidates_exclude_human_needed_and_park_at_any_age() {
+    let now = Utc::now();
+    let hitl = reap_test_run(RunStatus::HumanNeeded, 200, Some(true));
+    let park = reap_test_run(
+        RunStatus::Blocked {
+            blocked_reason: BlockedReason::QuotaRateLimit,
+        },
+        200,
+        Some(true),
+    );
+    let runs = vec![hitl, park];
+
+    let candidates = fork_run_retention::reap_candidates(&runs, now, 48, false);
+
+    assert!(
+        candidates.is_empty(),
+        "HITL and resumable park are protected at any age"
+    );
+}
+
+#[test]
+fn reap_candidates_skip_young_terminal_without_brake_but_take_them_with_it() {
+    let now = Utc::now();
+    let runs = vec![reap_test_run(
+        RunStatus::Failed {
+            reason: FailureReason::WorkflowError,
+        },
+        5,
+        Some(true),
+    )];
+
+    assert!(
+        fork_run_retention::reap_candidates(&runs, now, 48, false).is_empty(),
+        "5h terminal stays under a 48h floor without the brake"
+    );
+    assert_eq!(
+        fork_run_retention::reap_candidates(&runs, now, 48, true).len(),
+        1,
+        "the brake widens the age window"
+    );
+}
+
+#[test]
+fn reap_candidates_brake_never_widens_protections() {
+    let now = Utc::now();
+    let runs = vec![reap_test_run(RunStatus::HumanNeeded, 3, Some(true))];
+
+    assert!(
+        fork_run_retention::reap_candidates(&runs, now, 48, true).is_empty(),
+        "HumanNeeded stays protected under the brake"
+    );
+}
+
+#[test]
+fn reap_candidates_skip_already_removed_or_absent_sandboxes() {
+    let now = Utc::now();
+    let removed = reap_test_run(
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        72,
+        Some(false),
+    );
+    let mut absent = reap_test_run(
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        72,
+        Some(true),
+    );
+    absent.sandbox = None;
+    let runs = vec![removed, absent];
+
+    assert!(
+        fork_run_retention::reap_candidates(&runs, now, 48, false).is_empty(),
+        "no point reaping an already-removed or absent sandbox"
+    );
+}
+
+#[test]
+fn reap_candidates_order_oldest_terminal_first() {
+    let now = Utc::now();
+    let young = reap_test_run(
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        50,
+        Some(true),
+    );
+    let old = reap_test_run(RunStatus::Dead, 300, Some(true));
+    let young_id = young.id;
+    let old_id = old.id;
+    let runs = vec![young, old];
+
+    let candidates = fork_run_retention::reap_candidates(&runs, now, 48, false);
+
+    assert_eq!(candidates.len(), 2);
+    assert_eq!(
+        candidates[0], old_id,
+        "oldest terminal transition first (young.id {young_id} vs old.id {old_id})"
+    );
+}
+
+#[test]
+fn reap_candidates_floor_zero_disables_the_arm() {
+    let now = Utc::now();
+    let runs = vec![reap_test_run(
+        RunStatus::Succeeded {
+            reason: SuccessReason::Completed,
+        },
+        500,
+        Some(true),
+    )];
+
+    assert!(
+        fork_run_retention::reap_candidates(&runs, now, 0, true).is_empty(),
+        "floor 0 disables the reap arm including the brake"
+    );
+}
+
+#[test]
+fn percent_used_rounds_down_and_saturates() {
+    use fork_run_retention::percent_used;
+
+    assert_eq!(percent_used(0, 0), None, "zero total has no percent");
+    assert_eq!(percent_used(100, 0), Some(100), "full disk is 100");
+    assert_eq!(percent_used(100, 100), Some(0), "empty disk is 0");
+    assert_eq!(percent_used(1000, 250), Some(75), "75% exact");
+    assert_eq!(
+        percent_used(1000, 333),
+        Some(66),
+        "66.7% rounds down — the brake threshold must not fire early"
+    );
+    assert_eq!(
+        percent_used(100, 150),
+        Some(0),
+        "available above total (reserved blocks) saturates to 0% used"
+    );
+}

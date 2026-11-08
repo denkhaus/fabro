@@ -2678,6 +2678,7 @@ dependencies = [
  "fabro-work",
  "fabro-workflow",
  "fabro-workflow-version",
+ "fs2",
  "futures-util",
  "git2",
  "globset",

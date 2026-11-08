@@ -51,11 +51,21 @@ pub fn resolve_server(layer: &ServerLayer, errors: &mut Vec<ResolveError>) -> Se
                 .expect("defaults.toml should provide server.scheduler.max_concurrent_runs"),
         },
         retention: ServerRetentionSettings {
-            max_run_age_days: layer
+            max_run_age_days:           layer
                 .retention
                 .as_ref()
                 .and_then(|retention| retention.max_run_age_days)
                 .expect("defaults.toml should provide server.retention.max_run_age_days"),
+            terminal_sandbox_age_hours: layer
+                .retention
+                .as_ref()
+                .and_then(|retention| retention.terminal_sandbox_age_hours)
+                .expect("defaults.toml should provide server.retention.terminal_sandbox_age_hours"),
+            disk_brake_percent:         layer
+                .retention
+                .as_ref()
+                .and_then(|retention| retention.disk_brake_percent)
+                .expect("defaults.toml should provide server.retention.disk_brake_percent"),
         },
         run_channel: ServerRunChannelSettings {
             enabled: layer
