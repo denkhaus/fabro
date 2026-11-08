@@ -34,6 +34,11 @@ use super::super::{
 };
 use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
 
+/// How long a released item stays skipped for its releasing run's
+/// `/next` ticks (denkhaus/work#1179). One hour covers a run's whole
+/// claim-release-reclaim loop; other runs are never affected.
+const RUN_RELEASE_SKIP_WINDOW: chrono::Duration = chrono::Duration::hours(1);
+
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/projects", get(list_projects))
@@ -940,6 +945,19 @@ async fn claim_next(
         .into_iter()
         .map(|claim| claim.item_key)
         .collect();
+
+    // Misroute skip (denkhaus/work#1179): a run that released an item —
+    // misroute, stale basis, planner skip — is not re-granted the same
+    // item on its next grant tick; without the skip the lane head cycles
+    // over items no run of the lane can land and never surfaces the
+    // lower-priority landable candidates. The skip is per run and
+    // windowed; another run stays free to claim the skipped item.
+    let released_by_run = state
+        .work_store()
+        .released_claims_of_run_since(&run_id, chrono::Utc::now() - RUN_RELEASE_SKIP_WINDOW)
+        .await
+        .map_err(store_error)?;
+    claimed.extend(released_by_run.into_iter().map(|claim| claim.item_key));
 
     // Lane backpressure (fabro-4580, ADR-0032): a lane grants only when its
     // open run PRs are drained. Cap 0 = refuse while ANY claim of the lane
