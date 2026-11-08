@@ -7,7 +7,7 @@ use fabro_types::SandboxProviderKind;
 use tower::ServiceExt;
 
 use crate::helpers::{
-    MINIMAL_DOT, api, body_json, minimal_intent_json, response_json, response_status,
+    MINIMAL_DOT, api, body_json, minimal_intent_json, response_json, response_status, run_json,
     settings_from_toml, test_app_state_with_options,
 };
 
@@ -87,6 +87,72 @@ fn daytona_disabled_app() -> (axum::Router, tempfile::TempDir) {
 
 fn authless_app(state: std::sync::Arc<AppState>) -> axum::Router {
     build_router_with_options(state, &test_auth_mode(), RouterOptions::default())
+}
+
+/// An accepted title PATCH both persists the new title and echoes it in
+/// its own response (denkhaus/work#1195): the live incident showed the
+/// `fabro_run_set_title` reply rendering the pre-write title, so the
+/// regression pins all three reads — the PATCH response body, a fresh
+/// GET, and the store's own run row — to the new title.
+#[tokio::test]
+async fn an_accepted_title_patch_persists_and_echoes_the_new_title() {
+    let (store, artifacts) = fabro_server::test_support::test_store_bundle();
+    let state = fabro_server::test_support::TestAppStateBuilder::new()
+        .store_bundle(store.clone(), artifacts)
+        .build();
+    let app = fabro_server::test_support::build_test_router(state.clone());
+    let workspace = tempfile::tempdir().expect("run target workspace should be created");
+    let mut intent = minimal_intent_json(&app, MINIMAL_DOT, workspace.path()).await;
+    intent["title"] = serde_json::json!("Old title: the generic workflow goal");
+    let created = create_run(&app, intent).await;
+    let run_id: fabro_types::RunId = created["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(
+        created["title"].as_str(),
+        Some("Old title: the generic workflow goal"),
+        "the run starts with the explicit old title"
+    );
+
+    let worker = state.test_issue_worker_token(&run_id);
+    let new_title = "New title: what the claimed seed actually demands";
+    let patched = response_json(
+        app.clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(api(&format!("/runs/{run_id}")))
+                    .header("authorization", format!("Bearer {worker}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({ "title": new_title }).to_string(),
+                    ))
+                    .expect("title patch request should build"),
+            )
+            .await
+            .expect("title patch response"),
+        StatusCode::OK,
+        format!("PATCH /api/v1/runs/{run_id}"),
+    )
+    .await;
+    assert_eq!(
+        patched["title"].as_str(),
+        Some(new_title),
+        "the accepted PATCH echoes the NEW title, never the pre-write one"
+    );
+
+    let fetched = run_json(&app, &run_id.to_string()).await;
+    assert_eq!(
+        fetched["title"].as_str(),
+        Some(new_title),
+        "a fresh GET after the accepted PATCH reads the new title"
+    );
+
+    let stored = store
+        .run_summary_store()
+        .get(&run_id, chrono::Utc::now())
+        .await
+        .expect("the store row should read back")
+        .expect("the run's row exists");
+    assert_eq!(stored.title, new_title);
 }
 
 /// The run-title update's actor matrix (fabro-9711/ADR-0030): the run's
