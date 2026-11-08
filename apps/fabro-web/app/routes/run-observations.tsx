@@ -5,6 +5,9 @@ import type {
 } from "@qltysh/fabro-api-client";
 import { useMemo, useState } from "react";
 
+type TypeFilter = "all" | "painpoint" | "note";
+type StatusFilter = "all" | "open" | "untriaged" | "filed" | "in_progress" | "closed";
+
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { useRunObservations } from "../lib/queries";
 
@@ -53,21 +56,24 @@ export const handle = { wide: true };
 export default function RunObservations() {
   const { id } = useParams();
   const query = useRunObservations(id);
-  const [openPainpointsOnly, setOpenPainpointsOnly] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("painpoint");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
 
   const observations = useMemo<RunObservation[]>(
     () => query.data?.observations ?? [],
     [query.data],
   );
   const visible = useMemo(() => {
-    if (!openPainpointsOnly) return observations;
     return observations.filter((observation) => {
-      if (observation.category !== "painpoint") return false;
-      const links = observation.linked_work_items ?? [];
-      const states = links.map((link) => link.item_state ?? null);
-      return !states.length || states.some((state) => state !== "closed");
+      if (typeFilter !== "all" && observation.category !== typeFilter) return false;
+      if (statusFilter !== "all") {
+        const triage = leadingLinkState(observation.linked_work_items ?? []);
+        if (statusFilter === "open" && triage === "closed") return false;
+        if (statusFilter !== "open" && triage !== statusFilter) return false;
+      }
+      return true;
     });
-  }, [observations, openPainpointsOnly]);
+  }, [observations, typeFilter, statusFilter]);
 
   if (query.isLoading) {
     return <LoadingState label="Loading observations…" />;
@@ -96,15 +102,31 @@ export default function RunObservations() {
         <p className="text-xs text-fg-muted">
           {visible.length} of {observations.length} observations
         </p>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-fg-3">
-          <input
-            type="checkbox"
-            checked={openPainpointsOnly}
-            onChange={(event) => setOpenPainpointsOnly(event.target.checked)}
-            className="accent-teal-500"
-          />
-          open painpoints only
-        </label>
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Type filter"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as TypeFilter)}
+            className="rounded-md border border-line bg-panel px-2 py-1 text-xs text-fg"
+          >
+            <option value="all">type: all</option>
+            <option value="painpoint">type: painpoint</option>
+            <option value="note">type: note</option>
+          </select>
+          <select
+            aria-label="Status filter"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            className="rounded-md border border-line bg-panel px-2 py-1 text-xs text-fg"
+          >
+            <option value="all">status: all</option>
+            <option value="open">status: open</option>
+            <option value="untriaged">status: untriaged</option>
+            <option value="filed">status: filed</option>
+            <option value="in_progress">status: in progress</option>
+            <option value="closed">status: closed</option>
+          </select>
+        </div>
       </div>
       <div className="overflow-hidden rounded-md border border-line">
         <table className="w-full text-sm">

@@ -10,6 +10,7 @@ api/install-api.ts
 api/integrations-api.ts
 api/mcpservers-api.ts
 api/models-api.ts
+api/observations-api.ts
 api/repos-api.ts
 api/run-internals-api.ts
 api/run-outputs-api.ts
@@ -180,6 +181,8 @@ models/git-identity.ts
 models/git-run-target.ts
 models/github-integration-settings.ts
 models/github-integration-strategy.ts
+models/global-observation-list.ts
+models/global-observation.ts
 models/health-response.ts
 models/history-entry.ts
 models/hook-definition.ts

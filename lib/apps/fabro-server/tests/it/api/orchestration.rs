@@ -969,6 +969,81 @@ async fn the_observations_read_resolves_the_claim_ledgers_in_progress() {
     );
 }
 
+/// The global observations feed: records across runs, newest first,
+/// with the DERIVED triage state — the triage filter pages through the
+/// derivation (over-fetch), and a live claim reads in_progress.
+#[tokio::test]
+async fn the_global_observations_feed_derives_and_filters_triage() {
+    let (app, state, store) = orchestration_app();
+    let older = RunId::new();
+    let newer = RunId::new();
+    seed_run(&store, older, "develop", true).await;
+    seed_run(&store, newer, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for (run, text) in [(older, "unlinked painpoint"), (newer, "claimed painpoint")] {
+        records
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    let link_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
+    let link_request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/projects/fabro/work-items/link"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "itemKey": "denkhaus/work#9",
+                "runId": newer.to_string(),
+                "seq": 1,
+            }))
+            .expect("link body serializes"),
+        ))
+        .expect("link request builds");
+    let link_response = link_app.oneshot(link_request).await.expect("link runs");
+    assert_eq!(link_response.status(), StatusCode::OK, "link seeds");
+    seed_claim(&state, &newer, "denkhaus/work#9").await;
+
+    let token = state.test_issue_worker_token_with_run_tools(&newer);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=in_progress"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "observations feed").await;
+    let feed = body["observations"].as_array().expect("feed array");
+    assert!(
+        feed.iter()
+            .all(|item| item["triage_state"].as_str() == Some("in_progress")),
+        "the triage filter holds: {body}"
+    );
+    assert!(
+        feed.iter()
+            .any(|item| item["text"].as_str() == Some("claimed painpoint")),
+        "the claimed record is in the filtered feed: {body}"
+    );
+    assert!(
+        !feed
+            .iter()
+            .any(|item| item["text"].as_str() == Some("unlinked painpoint")),
+        "the unlinked record is filtered out: {body}"
+    );
+}
+
 /// Seed the work project through the user surface (the run_channel
 /// precedent): the claims the decoration test grants need it.
 async fn seed_work_project(state: &Arc<fabro_server::server::AppState>) {

@@ -6749,6 +6749,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/observations:
+    get:
+      operationId: listObservations
+      tags: [Observations]
+      summary: List Observations across Runs (the global feed)
+      description: >-
+        The global observations feed: every run's observation records in
+        one server-paged listing, newest first. Each item carries the
+        run id, the workflow name, the record's category and text, and
+        the derived triage state (untriaged, filed, in_progress, closed)
+        with the linked work items and their live item states. Filters
+        compose; the triage filter applies after derivation.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: The record category; absent lists both.
+          schema:
+            type: string
+            enum: [painpoint, note]
+        - name: triage
+          in: query
+          required: false
+          description: >-
+            The derived triage state: untriaged (no linked item), filed
+            (linked, open), in_progress (linked, open with a live
+            claim), closed (every linked item closed).
+          schema:
+            type: string
+            enum: [untriaged, filed, in_progress, closed]
+        - name: run
+          in: query
+          required: false
+          description: Exact run id; narrows the feed to one run.
+          schema:
+            type: string
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive text containment over the record body.
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          description: >-
+            Server-side sort key: `recorded` (oldest first) or
+            `-recorded` (newest first, the default). Sorting applies
+            before paging.
+          schema:
+            type: string
+            enum: [recorded, -recorded]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum items to return (1-100); also the page size.
+          schema:
+            type: integer
+            format: int32
+        - name: page
+          in: query
+          required: false
+          description: 1-based results page of the listing (default 1).
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "200":
+          description: The observations feed page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalObservationList"
+        "403":
+          description: Not a run-management actor
+
   /api/v1/projects/{projectId}/work-items/update:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -14805,6 +14881,51 @@ components:
           items:
             $ref: "#/components/schemas/RunObservation"
       description: A run's observation records in seq order.
+
+    GlobalObservation:
+      type: object
+      required: [run_id, seq, category, text, triage_state, linked_work_items]
+      properties:
+        run_id:
+          type: string
+          description: The run that recorded the observation.
+        workflow_name:
+          type: ["string", "null"]
+          description: The recording run's workflow display name.
+        seq:
+          type: integer
+          description: The record's per-run seq — its identity beside the run id.
+        category:
+          $ref: "#/components/schemas/RunObservationCategory"
+        text:
+          type: string
+          description: The observation entry.
+        recorded_at:
+          type: ["string", "null"]
+          format: date-time
+          description: When the record was appended.
+        triage_state:
+          type: string
+          enum: [untriaged, filed, in_progress, closed]
+          description: >-
+            The derived triage state: untriaged (no linked item), filed
+            (linked, open), in_progress (linked, open with a live
+            claim), closed (every linked item closed).
+        linked_work_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservationWorkItemLink"
+          description: The work items linked to this record and their live states.
+
+    GlobalObservationList:
+      type: object
+      required: [observations]
+      properties:
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalObservation"
+      description: One page of the global observations feed.
 
     RunObservationCategory:
       type: string

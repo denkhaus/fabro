@@ -1,4 +1,5 @@
 import {
+  BellAlertIcon,
   ClockIcon,
   Cog6ToothIcon,
   PlayIcon,
@@ -9,5 +10,6 @@ export const navigation = [
   { name: "Automations", href: "/automations", icon: ClockIcon },
   { name: "Runs", href: "/runs", icon: PlayIcon },
   { name: "Work", href: "/work", icon: Squares2X2Icon },
+  { name: "Observations", href: "/observations", icon: BellAlertIcon },
   { name: "Settings", href: "/settings", icon: Cog6ToothIcon },
 ];

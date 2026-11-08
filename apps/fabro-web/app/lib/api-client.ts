@@ -13,6 +13,7 @@ import {
   InsightsApi,
   InstallApi,
   MCPServersApi,
+  ObservationsApi,
   ModelsApi,
   RunInternalsApi,
   RunOutputsApi,
@@ -155,6 +156,11 @@ export const variablesApi = new VariablesApi(
   generatedAxios,
 );
 export const workItemsApi = new WorkItemsApi(
+  generatedApiConfiguration,
+  "",
+  generatedAxios,
+);
+export const observationsApi = new ObservationsApi(
   generatedApiConfiguration,
   "",
   generatedAxios,
