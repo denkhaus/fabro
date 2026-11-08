@@ -18,7 +18,7 @@ bun = "1.4.0"
 # Shell for scripts/ helpers: justfile recipes are thin launchers, the
 # logic (clean-target, install-cli, wait-healthy) lives in nushell.
 # Keep aligned with the lab branch pin.
-"aqua:nushell/nushell" = "0.115.0"
+"aqua:nushell/nushell" = "0.116.1"
 # Expertise CLI (git-native, see AGENTS.md); bin: mulch. The native
 # Rust CLI (crates.io, repo denkhaus/mulch) replaced the npm
 # @os-eco/mulch-cli reference tool 2026-10-31 (work#1070, the
