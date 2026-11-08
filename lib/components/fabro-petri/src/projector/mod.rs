@@ -65,7 +65,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use fabro_db::DbPool;
-use fabro_store::platform_records::{PlatformRecordStore, now_ms};
+use fabro_store::platform_records::{PlatformRecordStore, StoredPlatformRecord, now_ms};
 use fabro_store::{RunProjection, RunSummaryStore};
 use fabro_types::{RunId, RunStreamItem};
 use fabro_util::error::collect_chain;
@@ -84,13 +84,60 @@ use crate::SqliteRunStore;
 use crate::projection::{self, FoldState, RecordHealth, RunView};
 
 /// The positions a view committed: the last event consumed per Petri log,
-/// and the last platform record consumed.
+/// and how far the platform records are consumed.
+///
+/// The platform cursor is three fields because records can be consumed out
+/// of seq order: a positioned record whose firing has not finished is held
+/// back (see [`crate::projector::order`]), while an unpositioned record
+/// after it — a run title, a lifecycle transition — folds at once (a title
+/// the agent set must show on the next read, denkhaus/work#1181).
+/// `platform_seq` is the contiguous consumed head (a rebuild resumes its
+/// reads there), `platform_seen` the highest seq a pass has read (consumed
+/// or held; rows written before these fields existed carry `0`), and
+/// `platform_held` the ascending seqs read but not yet folded.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Positions {
     #[serde(default)]
-    pub petri:        Vec<EventId>,
+    pub petri:         Vec<EventId>,
     #[serde(default)]
-    pub platform_seq: u64,
+    pub platform_seq:  u64,
+    #[serde(default)]
+    pub platform_seen: u64,
+    #[serde(default)]
+    pub platform_held: Vec<u64>,
+}
+
+impl Positions {
+    /// The highest platform seq the view has taken in: held or consumed, a
+    /// fresh pass has read this far. Rows stored before the seen/held split
+    /// carry only the head, which was then the same number.
+    #[must_use]
+    pub fn platform_consumed_through(&self) -> u64 {
+        self.platform_seen.max(self.platform_seq)
+    }
+
+    /// Advance the platform cursor over one pass's read: `read` is every
+    /// record the pass read past the head (consumed ones included) and
+    /// `held` the seqs the ordering rule holds back for a later pass.
+    /// Everything else in the read is consumed, so the contiguous head
+    /// advances up to the first held seq, and the pass's `seen` is the
+    /// read's last seq.
+    pub fn consume_platform(&mut self, read: &[StoredPlatformRecord], held: &[u64]) {
+        if let Some(last) = read.last() {
+            self.platform_seen = self.platform_seen.max(last.seq);
+        }
+        while let Some(next) = self.platform_seq.checked_add(1) {
+            if next > self.platform_consumed_through() || held.contains(&next) {
+                break;
+            }
+            self.platform_seq = next;
+        }
+        self.platform_held = held
+            .iter()
+            .copied()
+            .filter(|seq| *seq > self.platform_seq)
+            .collect();
+    }
 }
 
 impl Positions {
@@ -486,7 +533,10 @@ impl Projector {
             }
             None => RunCache::over(self.load_view(&run_id).await?),
         };
-        let report = self.pass(run_id, &mut run).await;
+        // Boxed: the pass's frames (a full platform read set) stack with
+        // the callers' own frames, and the tests that drive it inline the
+        // whole chain into futures over the `large_futures` budget.
+        let report = Box::pin(self.pass(run_id, &mut run)).await;
         // A finished run's records are complete: its cache is dropped, and
         // the passes its late platform records take rebuild the view whole.
         if !run.view.view.state.finished_run() {
@@ -503,11 +553,23 @@ impl Projector {
             return Ok(PassReport::skipped(run_id, &run.view));
         }
 
-        let platform_records = self
+        // What this pass folds: the records past the head that a previous
+        // pass has not consumed yet — new ones past `seen`, and the held
+        // ones it left for a firing's finish. Records in between were
+        // consumed out of order and must not fold twice.
+        let read = self
             .platform
             .read_after(&run_id, run.view.positions.platform_seq)
             .await
             .map_err(ProjectError::Store)?;
+        let platform_records: Vec<StoredPlatformRecord> = read
+            .iter()
+            .filter(|record| {
+                record.seq > run.view.positions.platform_seen
+                    || run.view.positions.platform_held.contains(&record.seq)
+            })
+            .cloned()
+            .collect();
         let NewEvents {
             events,
             replay_failure,
@@ -524,23 +586,23 @@ impl Projector {
                     Some(CoordinatorEvent::RunFinished { .. })
                 )
             });
-        let platform_head_seen = platform_records
-            .last()
-            .map_or(positions.platform_seq, |record| record.seq);
         let (items, held) = order::order_items(
             &events,
             &platform_records,
             &view.state.finished_firings,
             run_finished,
         );
-        if held > 0 {
+        if !held.is_empty() {
             debug!(
                 run_id = %run_id,
-                held,
+                held = held.len(),
                 "platform records held back until their firing's finish is in the stream"
             );
         }
         let rows = stream::stream_rows(&items, &mut view, &mut positions, &mut stream_seq)?;
+        // The platform cursor moves with what this pass consumed, not with
+        // the last item it streamed: held records keep the head behind.
+        positions.consume_platform(&read, &held);
         drop(items);
         view.state.health = self.health(&key, &view.state, replay_failure).await?;
 
@@ -548,6 +610,13 @@ impl Projector {
             run.pending = events;
             return Err(ProjectError::Injected);
         }
+        // The contention check anchors on everything the pass read —
+        // records it skipped as already consumed included: a record that
+        // lands between the read and the write must contend the pass even
+        // when the pass folded nothing new past it.
+        let platform_head_seen = read
+            .last()
+            .map_or(positions.platform_consumed_through(), |record| record.seq);
         let written = self
             .write_view(
                 run_id,
@@ -609,15 +678,17 @@ impl Projector {
             .map_err(ProjectError::Store)?
             .unwrap_or(0);
         let petri_heads = self.petri_heads(&run_id).await?;
-        Ok(platform_head == stored.positions.platform_seq
-            && petri_heads.iter().all(|(log, head)| {
-                stored
-                    .positions
-                    .petri
-                    .iter()
-                    .any(|held| stream::log_text(&held.source) == *log && held.seq == *head)
-            })
-            && stored.view.projection.is_some())
+        Ok(
+            platform_head == stored.positions.platform_consumed_through()
+                && petri_heads.iter().all(|(log, head)| {
+                    stored
+                        .positions
+                        .petri
+                        .iter()
+                        .any(|held| stream::log_text(&held.source) == *log && held.seq == *head)
+                })
+                && stored.view.projection.is_some(),
+        )
     }
 
     /// The events past the view's positions: the cache's replay advanced

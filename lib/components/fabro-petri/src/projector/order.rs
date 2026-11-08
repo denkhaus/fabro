@@ -8,8 +8,8 @@ use petri_runtime::engine::Event;
 
 use crate::projection::{FiringKey, Item};
 
-/// The order one pass streams its new items in, and how many platform
-/// records it holds back for a later pass.
+/// The order one pass streams its new items in, and which platform records
+/// it holds back for a later pass.
 ///
 /// Every item is first ordered by `recorded_at` (stable: the coordinator
 /// log before an execution log before a platform record on a tie, and each
@@ -26,13 +26,18 @@ use crate::projection::{FiringKey, Item};
 /// - else, when the firing finished in an earlier pass, before the first event
 ///   of a later firing (a larger firing id) in the same execution, or where its
 ///   `recorded_at` put it;
-/// - else the record is held back, with every platform record after it, and the
-///   pass consumes platform records only up to it. The hook that writes a
-///   checkpoint record runs after the driver appended the attempt's finish, but
-///   the driver's store writer flushes that record on its own schedule, so the
-///   platform record can be committed before its firing's `step.finished`;
-///   holding it keeps the stream's order the same live and on a rebuild.
-///   Nothing is held once the run has recorded its finish.
+/// - else the record is held back for the pass that sees the firing's finish.
+///   The hook that writes a checkpoint record runs after the driver appended
+///   the attempt's finish, but the driver's store writer flushes that record on
+///   its own schedule, so the platform record can be committed before its
+///   firing's `step.finished`; holding it keeps the stream's order the same
+///   live and on a rebuild. The hold is the record's own, never a cascade: a
+///   record WITHOUT a position — a run title, a lifecycle transition, a work
+///   claim — has no firing to wait for and streams at once, even when a
+///   positioned record before it is held (denkhaus/work#1181: an accepted
+///   `fabro_run_set_title` call stayed invisible on every read while its stage
+///   ran, hostage to an observation record of that unfinished firing). Nothing
+///   is held once the run has recorded its finish.
 ///
 /// The rule reads only the pass's own items and the firings already
 /// finished, so a record is never streamed before its firing's finish and
@@ -42,7 +47,7 @@ pub(crate) fn order_items<'a>(
     platform_records: &'a [StoredPlatformRecord],
     finished_before: &BTreeSet<FiringKey>,
     run_finished: bool,
-) -> (Vec<Item<'a>>, usize) {
+) -> (Vec<Item<'a>>, Vec<u64>) {
     let finished_in_pass = |at: FiringKey| {
         events.iter().any(|event| {
             FiringKey::of_event(event) == Some(at)
@@ -50,22 +55,27 @@ pub(crate) fn order_items<'a>(
         })
     };
     let finished = |at: FiringKey| finished_in_pass(at) || finished_before.contains(&at);
-    // Platform records are consumed in seq order: the first one whose firing
-    // has not finished holds itself and everything after it.
-    let consumed = if run_finished {
-        platform_records.len()
+    // Only a positioned record whose firing has not finished is held back,
+    // itself and nothing else: the pass streams every unpositioned record
+    // and every positioned record of a finished firing, whatever sits
+    // between them in seq order.
+    let held: Vec<u64> = if run_finished {
+        Vec::new()
     } else {
         platform_records
             .iter()
-            .position(|record| {
+            .filter(|record| {
                 record
                     .position
                     .is_some_and(|position| !finished(FiringKey::from(position)))
             })
-            .unwrap_or(platform_records.len())
+            .map(|record| record.seq)
+            .collect()
     };
-    let held = platform_records.len() - consumed;
-    let platform_records = &platform_records[..consumed];
+    let platform_records: Vec<&StoredPlatformRecord> = platform_records
+        .iter()
+        .filter(|record| !held.contains(&record.seq))
+        .collect();
 
     let mut items: Vec<(u64, u8, Item<'a>)> =
         Vec::with_capacity(events.len() + platform_records.len());
@@ -136,7 +146,7 @@ pub(crate) fn order_items<'a>(
 #[cfg(test)]
 mod tests {
     use fabro_store::PlatformRecord;
-    use fabro_store::platform_records::{CheckpointRecord, StagePosition};
+    use fabro_store::platform_records::{CheckpointRecord, RunTitleRecord, StagePosition};
     use petri_execution::events::{Context, EventId, NodeRef, Record, RecordOrigin, Subject};
     use petri_execution::{ExecutionId, StoredEngineRecord};
     use petri_runtime::driver::BranchRole;
@@ -239,6 +249,19 @@ mod tests {
         }
     }
 
+    /// A run-title record, as `fabro_run_set_title` appends it: no Petri
+    /// position, nothing to wait for.
+    fn title(seq: u64, at: u64) -> StoredPlatformRecord {
+        StoredPlatformRecord {
+            seq,
+            recorded_at: at,
+            record: PlatformRecord::RunTitle(RunTitleRecord {
+                title: "the planner's title".to_string(),
+            }),
+            position: None,
+        }
+    }
+
     fn names(items: &[Item<'_>]) -> Vec<String> {
         items
             .iter()
@@ -264,7 +287,7 @@ mod tests {
         ];
         let records = vec![checkpoint(1, 1, 250)];
         let (items, held) = order_items(&events, &records, &BTreeSet::new(), false);
-        assert_eq!(held, 0);
+        assert_eq!(held, Vec::<u64>::new());
         assert_eq!(names(&items), vec![
             "execution 0/10/0",
             "platform 1",
@@ -284,7 +307,7 @@ mod tests {
         let records = vec![checkpoint(1, 1, 250)];
         let finished_before: BTreeSet<FiringKey> = [FiringKey::new(0, 1)].into_iter().collect();
         let (items, held) = order_items(&events, &records, &finished_before, false);
-        assert_eq!(held, 0);
+        assert_eq!(held, Vec::<u64>::new());
         assert_eq!(names(&items), vec![
             "platform 1",
             "execution 0/13/0",
@@ -297,7 +320,7 @@ mod tests {
         };
         let unpositioned = [unpositioned];
         let (items, held) = order_items(&events, &unpositioned, &BTreeSet::new(), false);
-        assert_eq!(held, 0);
+        assert_eq!(held, Vec::<u64>::new());
         assert_eq!(names(&items), vec![
             "execution 0/13/0",
             "execution 0/14/0",
@@ -306,8 +329,8 @@ mod tests {
     }
 
     /// A record whose firing has no finish yet, in the stream or in the pass,
-    /// is held back with everything after it until the finish arrives, or
-    /// until the run has finished.
+    /// is held back until the finish arrives, or until the run has finished —
+    /// itself and nothing else: a later record of a finished firing streams.
     #[test]
     fn a_positioned_record_is_held_until_its_firings_finish_is_in_the_stream() {
         let events = vec![started(13, 2, 103), finished(14, 2, 104)];
@@ -317,21 +340,23 @@ mod tests {
             checkpoint(3, 2, 70),
         ];
         let (items, held) = order_items(&events, &records, &BTreeSet::new(), false);
-        assert_eq!(
-            held, 2,
-            "the record for firing 3 holds itself and the one after it"
-        );
+        assert_eq!(held, vec![2], "only the record for firing 3 is held");
         assert_eq!(names(&items), vec![
             "execution 0/13/0",
             "execution 0/14/0",
             "platform 1",
+            "platform 3",
         ]);
 
         // Once the run finished, a record for a firing that never finished
         // keeps its clock order; the firing's own records still follow its
         // finish, in their seq order.
         let (items, held) = order_items(&events, &records, &BTreeSet::new(), true);
-        assert_eq!(held, 0, "nothing is held once the run finished");
+        assert_eq!(
+            held,
+            Vec::<u64>::new(),
+            "nothing is held once the run finished"
+        );
         assert_eq!(names(&items), vec![
             "platform 2",
             "execution 0/13/0",
@@ -339,5 +364,27 @@ mod tests {
             "platform 1",
             "platform 3",
         ]);
+    }
+
+    /// An UNPOSITIONED record after an unfinished positioned one streams at
+    /// once (denkhaus/work#1181): the hold is the positioned record's own,
+    /// never a cascade — the run title an agent set through
+    /// `fabro_run_set_title` must not wait behind an observation record of
+    /// the still-running stage.
+    #[test]
+    fn an_unpositioned_record_streams_while_an_unfinished_positioned_one_is_held() {
+        let events = vec![started(13, 2, 103)];
+        let records = vec![checkpoint(1, 2, 50), title(2, 60), checkpoint(3, 3, 70)];
+        let (items, held) = order_items(&events, &records, &BTreeSet::new(), false);
+        assert_eq!(
+            held,
+            vec![1, 3],
+            "each unfinished positioned record holds itself"
+        );
+        assert_eq!(
+            names(&items),
+            vec!["platform 2", "execution 0/13/0"],
+            "the title streams although the records around it are held"
+        );
     }
 }
