@@ -40,7 +40,7 @@ import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events"
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
 import { approveRun, archiveRuns, canArchive, isQuotaPark, mapError, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
-import { formatAbsoluteTs, formatTileTimestamp } from "../lib/format";
+import { formatAbsoluteTs, formatRelativeAge, formatTileTimestamp } from "../lib/format";
 import { useToast } from "../components/toast";
 import type {
   BoardColumn,
@@ -352,25 +352,35 @@ export function PrCard({
 
       {/* The full run id is the one identifier an operator copies into a
           CLI: never truncated, no hover-only fallback (denkhaus/work#1164). */}
-      <div className="mt-1.5 font-mono text-[11px] text-fg-muted">
+      <div className="mt-1.5 font-mono text-[11px] text-fg-3">
         <span className="select-all">{pr.id}</span>
       </div>
 
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-fg-muted">
-        {pr.createdAt != null && (
-          <span title={formatAbsoluteTs(pr.createdAt)}>{formatTileTimestamp(pr.createdAt)}</span>
-        )}
-        {pr.claimedSeedId != null && (
-          <span className="rounded-full border border-line px-1.5 py-0.5 uppercase tracking-wide">
-            {pr.claimedSeedId}
+      {pr.createdAt != null && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px]">
+          <span
+            title={formatAbsoluteTs(pr.createdAt)}
+            className={Date.now() - Date.parse(pr.createdAt) < 3_600_000 ? "text-fg-3" : "text-fg-muted"}
+          >
+            {formatTileTimestamp(pr.createdAt)} - {formatRelativeAge(pr.createdAt)}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {pr.checks != null && <ChecksStatus checks={pr.checks} />}
 
-      {pr.question != null && (
-        <p className="mt-3 truncate text-xs italic text-amber/70">{pr.question}</p>
+      {(pr.question != null || pr.lifecycleStatus === "human_needed") && !quotaPark && (
+        <div className="mt-3 flex items-center gap-2">
+          {pr.question != null && (
+            <p className="min-w-0 flex-1 truncate text-xs italic text-amber/70">{pr.question}</p>
+          )}
+          <Link
+            to={`/runs/${pr.id}`}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber/40 px-2.5 py-1 text-[11px] font-medium text-amber transition-colors hover:border-amber hover:text-fg"
+          >
+            {pr.question != null ? "Answer" : "Needs decision"}
+          </Link>
+        </div>
       )}
 
       <PrCardFooter pr={pr} actions={cardActions} />
@@ -405,10 +415,10 @@ function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
     (pr.additions != null && pr.additions !== 0) ||
     (pr.deletions != null && pr.deletions !== 0);
 
-  if (!hasStats && !hasActions && pr.size == null) return null;
+  if (!hasStats && !hasActions && pr.size == null && pr.claimedSeedId == null) return null;
 
   return (
-    <div className="mt-3 flex items-center gap-3 font-mono text-xs">
+    <div className="mt-3 flex flex-wrap items-center gap-3 font-mono text-xs">
       {pr.resources != null && (
         <span className="text-fg-3">{pr.resources}</span>
       )}
@@ -468,8 +478,13 @@ function PrCardFooter({ pr, actions }: { pr: RunItem; actions?: string[] }) {
           ))}
         </div>
       )}
+      {pr.claimedSeedId != null && (
+        <span className="rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
+          {pr.claimedSeedId}
+        </span>
+      )}
       {pr.size != null && (
-        <span className={hasActions ? "inline-flex" : "ml-auto inline-flex"}>
+        <span className={`${hasActions ? "inline-flex" : "ml-auto inline-flex"} items-center`}>
           <SizeChip size={pr.size} totalUsdMicros={pr.totalUsdMicros} />
         </span>
       )}

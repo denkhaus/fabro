@@ -428,16 +428,77 @@ async fn list_work_items(
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
-    let items = tracker
-        .list(project, WorkItemFilter {
-            lane:  params.lane,
-            limit: params.limit.unwrap_or(50).clamp(1, 100) as usize,
-            query: params.query,
-            label: params.label,
-            page:  params.page.unwrap_or(1).max(1) as usize,
-        })
-        .await
-        .map_err(tracker_failed)?;
+    let page = params.page.unwrap_or(1).max(1) as usize;
+    let page_size = params.limit.unwrap_or(50).clamp(1, 100) as usize;
+    let sort = match params.sort.as_deref() {
+        None => None,
+        Some("priority") => Some(("priority", false)),
+        Some("-priority") => Some(("priority", true)),
+        Some("updated") => Some(("updated", false)),
+        Some("-updated") => Some(("updated", true)),
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "unknown sort key '{other}' (priority | -priority | updated | -updated)"
+            )));
+        }
+    };
+    let items = match sort {
+        None => tracker
+            .list(project, WorkItemFilter {
+                lane: params.lane,
+                limit: page_size,
+                query: params.query,
+                label: params.label,
+                page,
+            })
+            .await
+            .map_err(tracker_failed)?,
+        Some((key, inverted)) => {
+            // Sorting applies before paging: accumulate enough tracker
+            // pages to cover the requested one (bounded to three tracker
+            // pages of 100 — the project's scale), sort, slice.
+            const TRACKER_PAGE: usize = 100;
+            let pages_needed = (page * page_size).div_ceil(TRACKER_PAGE);
+            let mut accumulated: Vec<fabro_work::WorkItem> = Vec::new();
+            for tracker_page in 1..=pages_needed.min(3) {
+                let batch = tracker
+                    .list(project, WorkItemFilter {
+                        lane:  params.lane.clone(),
+                        limit: TRACKER_PAGE,
+                        query: params.query.clone(),
+                        label: params.label.clone(),
+                        page:  tracker_page,
+                    })
+                    .await
+                    .map_err(tracker_failed)?;
+                let exhausted = batch.len() < TRACKER_PAGE;
+                accumulated.extend(batch);
+                if exhausted {
+                    break;
+                }
+            }
+            accumulated.sort_by(|a, b| {
+                let ordering = match key {
+                    "updated" => a.updated_at.cmp(&b.updated_at),
+                    _ => a
+                        .priority
+                        .cmp(&b.priority)
+                        .then(a.updated_at.cmp(&b.updated_at)),
+                };
+                if inverted {
+                    ordering.reverse()
+                } else {
+                    ordering
+                }
+            });
+            let start = (page - 1) * page_size;
+            accumulated
+                .into_iter()
+                .skip(start)
+                .take(page_size)
+                .collect::<Vec<_>>()
+        }
+    };
     let response = WorkItemListResponse {
         data: items.into_iter().map(api_item).collect(),
     };
@@ -454,6 +515,10 @@ struct WorkItemQuery {
     label: Option<String>,
     /// 1-based results page; `limit` is the page size (denkhaus/work#1001).
     page:  Option<u32>,
+    /// Server-side sort key: `priority` or `updated`, `-` inverts.
+    /// Applies before paging: the handler accumulates tracker pages
+    /// (bounded), sorts, and slices the requested page.
+    sort:  Option<String>,
 }
 
 async fn create_work_item(

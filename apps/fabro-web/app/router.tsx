@@ -30,6 +30,8 @@ import * as RunSandbox from "./routes/run-sandbox";
 import * as RunTerminal from "./routes/run-terminal";
 import * as RunUsage from "./routes/run-usage";
 import * as Insights from "./routes/insights";
+import * as Work from "./routes/work";
+import { WorkItemDetail as WorkDetail } from "./routes/work";
 import * as InsightsEditor from "./routes/insights-editor";
 import * as InsightsNew from "./routes/insights-new";
 import * as Settings from "./routes/settings";
@@ -140,6 +142,9 @@ export const routes: RouteObject[] = [
               route("sandbox", RunSandbox),
               route("usage", RunUsage),
             ],
+          }),
+          route("work", Work, {
+            children: [route(":key", { default: WorkDetail })],
           }),
           route("insights", Insights, {
             children: [

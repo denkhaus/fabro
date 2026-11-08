@@ -105,6 +105,30 @@ export function formatTileTimestamp(iso: string): string {
 }
 
 /**
+ * Format an ISO 8601 timestamp as the board tile's relative age in
+ * long-form English (`just now`, `X minutes ago`, `X hours ago`,
+ * `X days ago` — days unbounded; the absolute dot-date always sits
+ * beside it, so no fallback is needed). Pure `Date.now()` arithmetic —
+ * no locale, no ICU. Falls back to the input if unparseable.
+ */
+export function formatRelativeAge(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const seconds = Math.max(0, (Date.now() - ms) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+/**
  * Format seconds into a duration string for display (e.g., "1m 12s", "23s").
  */
 export function formatDurationSecs(secs: number): string {
