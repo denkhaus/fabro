@@ -698,6 +698,26 @@ pub fn test_app_state_with_store(
         .build()
 }
 
+/// [`test_app_state_with_store`] with a scripted work tracker: the
+/// IT surfaces that resolve linked item states through the tracker
+/// (the observations read's item_state column) get deterministic
+/// provider answers instead of reaching for production credentials.
+pub fn test_app_state_with_store_and_tracker(
+    server_settings: ServerSettings,
+    manifest_run_defaults: RunLayer,
+    max_concurrent_runs: usize,
+    store: Arc<Database>,
+    artifact_store: ArtifactStore,
+    tracker: Arc<dyn fabro_work::TrackerProvider>,
+) -> Arc<AppState> {
+    ready_test_app_state_builder()
+        .runtime_settings(server_settings, manifest_run_defaults)
+        .max_concurrent_runs(max_concurrent_runs)
+        .store_bundle(store, artifact_store)
+        .work_tracker(tracker)
+        .build()
+}
+
 pub fn test_store_bundle() -> (Arc<Database>, ArtifactStore) {
     let object_store: Arc<dyn object_store::ObjectStore> = Arc::new(MemoryObjectStore::new());
     let store = Arc::new(store_test_support::test_database());

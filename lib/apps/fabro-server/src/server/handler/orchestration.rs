@@ -23,9 +23,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fabro_api::types::{
-    ObservationWorkItemLink, PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
-    RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict,
-    RunQueueList,
+    ObservationWorkItemLink, ObservationWorkItemLinkItemState, PaginationMeta, RunMergeResponse,
+    RunObservation, RunObservationList, RunOrchestrationMarkRequest, RunOrchestrationMarkResponse,
+    RunQueueEntry, RunQueueEntryVerdict, RunQueueList,
 };
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
@@ -659,26 +659,57 @@ async fn list_observations(
     // onto each record. A store failure degrades to an empty column —
     // the observations themselves still list (the radius precedent).
     let mut links_of_seq: HashMap<u64, Vec<ObservationWorkItemLink>> = HashMap::new();
+    let mut linked_pairs: Vec<(String, String)> = Vec::new();
     match state.work_store().linked_items_for_run(&run_id).await {
         Ok(links) => {
             for link in links {
+                let pair = (link.project_id.clone(), link.item_key.clone());
+                if !linked_pairs.contains(&pair) {
+                    linked_pairs.push(pair);
+                }
                 links_of_seq
                     .entry(link.seq)
                     .or_default()
                     .push(ObservationWorkItemLink {
-                        item_key:  link.item_key,
-                        linked_at: Some(link.linked_at),
+                        item_key:   link.item_key,
+                        linked_at:  Some(link.linked_at),
+                        item_state: None,
                     });
             }
         }
         Err(err) => {
             tracing::warn!(
                 run_id = %run_id,
-                error = %err,
+                error = ?err,
                 "observation link read failed; the linked-item column degrades to empty"
             );
         }
     }
+    // The linked items' live states, resolved once per distinct
+    // (project, item): closed, open with a live claim (a run is working
+    // it), or open. An unresolvable item keeps null — the column stays
+    // honest rather than guessing.
+    let mut item_state_of: HashMap<(String, String), Option<LinkedItemState>> = HashMap::new();
+    for (project_id, item_key) in &linked_pairs {
+        let resolved = resolve_linked_item_state(&state, project_id, item_key).await;
+        item_state_of.insert((project_id.clone(), item_key.clone()), resolved);
+    }
+    for links in links_of_seq.values_mut() {
+        for link in links {
+            let state_key = linked_pairs
+                .iter()
+                .find(|(_, key)| key == &link.item_key)
+                .cloned();
+            if let Some((project_id, item_key)) = state_key {
+                link.item_state = item_state_of
+                    .get(&(project_id, item_key))
+                    .copied()
+                    .flatten()
+                    .map(LinkedItemState::into_wire);
+            }
+        }
+    }
+
     let observations = records
         .iter()
         .filter_map(|stored| match &stored.record {
@@ -693,6 +724,58 @@ async fn list_observations(
         })
         .collect::<Vec<_>>();
     Ok(Json(RunObservationList { observations }).into_response())
+}
+
+/// A linked work item's live state as the observations column shows it:
+/// open, open with a live claim (a run is working it), or closed.
+#[derive(Clone, Copy)]
+enum LinkedItemState {
+    Open,
+    InProgress,
+    Closed,
+}
+
+impl LinkedItemState {
+    fn into_wire(self) -> ObservationWorkItemLinkItemState {
+        match self {
+            Self::Open => ObservationWorkItemLinkItemState::Open,
+            Self::InProgress => ObservationWorkItemLinkItemState::InProgress,
+            Self::Closed => ObservationWorkItemLinkItemState::Closed,
+        }
+    }
+}
+
+/// Resolve one linked item's state. The claim ledger outranks the
+/// tracker read: a live claim means the item is open and being worked,
+/// whatever the provider's indexing lag says. An unresolvable item
+/// (project gone, tracker failure) returns None — the column stays
+/// honest rather than guessing.
+async fn resolve_linked_item_state(
+    state: &AppState,
+    project_id: &str,
+    item_key: &str,
+) -> Option<LinkedItemState> {
+    if matches!(
+        state
+            .work_store()
+            .active_claim_for_item(project_id, item_key)
+            .await,
+        Ok(Some(_))
+    ) {
+        return Some(LinkedItemState::InProgress);
+    }
+    let project = state
+        .work_store()
+        .project(project_id)
+        .await
+        .ok()
+        .flatten()?;
+    let tracker = state.work_tracker_for_project(&project).await.ok()?;
+    let item = tracker.get(&project, item_key).await.ok().flatten()?;
+    match item.state.as_str() {
+        "closed" => Some(LinkedItemState::Closed),
+        _ => Some(LinkedItemState::Open),
+    }
 }
 
 /// One stored observation record as the API serves it. The category is

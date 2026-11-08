@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { ObservationWorkItemLink } from './observation-work-item-link';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunObservationCategory } from './run-observation-category';
 
 export interface RunObservation {
@@ -35,6 +38,14 @@ export interface RunObservation {
      * The firing of that execution the record belongs to.
      */
     'firing'?: number | null;
+    /**
+     * The StageId (`node@visit`, e.g. `reviewer@3`) of the stage the record folded onto — the projection\'s positioned attribution (StageProjection.observations). Null for positionless server-origin records (unknown firing), which render un-attributed to a stage.
+     */
+    'stage': string | null;
+    /**
+     * The work items linked to this record through the work_observation_links join (ADR-0038) — empty when no item was filed from or backfilled onto the observation.
+     */
+    'linked_work_items': Array<ObservationWorkItemLink>;
     /**
      * When the record was appended.
      */

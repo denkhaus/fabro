@@ -25,4 +25,16 @@ export interface PullRequestLink {
      * Computed GitHub web URL for the pull request.
      */
     'html_url': string;
+    /**
+     * The pull request\'s outcome as the platform recorded it (denkhaus/work#1173): merged by the merge door or observed by the merged-wait, closed by the close door or observed closed-unmerged. Absent when the platform has not observed a terminal outcome.
+     */
+    'state'?: PullRequestLinkStateEnum;
 }
+
+export const PullRequestLinkStateEnum = {
+    OPEN: 'open',
+    MERGED: 'merged',
+    CLOSED: 'closed'
+} as const;
+
+export type PullRequestLinkStateEnum = typeof PullRequestLinkStateEnum[keyof typeof PullRequestLinkStateEnum];

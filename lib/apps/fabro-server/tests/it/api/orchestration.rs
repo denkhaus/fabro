@@ -16,6 +16,107 @@ use tower::ServiceExt;
 
 use crate::helpers::{api, response_json};
 
+/// The scripted tracker for this file's work-item surfaces: the
+/// observations read resolves linked item states through it (#9 open,
+/// #10 closed); every other key resolves to nothing.
+struct ObservationsFakeTracker;
+
+#[async_trait::async_trait]
+impl fabro_work::TrackerProvider for ObservationsFakeTracker {
+    async fn list(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _filter: fabro_work::WorkItemFilter,
+    ) -> anyhow::Result<Vec<fabro_work::WorkItem>> {
+        Ok(Vec::new())
+    }
+
+    async fn get(
+        &self,
+        _project: &fabro_work::WorkProject,
+        item_key: &str,
+    ) -> anyhow::Result<Option<fabro_work::WorkItem>> {
+        let state = match item_key {
+            "denkhaus/work#9" => "open",
+            "denkhaus/work#10" => "closed",
+            _ => return Ok(None),
+        };
+        Ok(Some(fabro_work::WorkItem {
+            item_key:   item_key.to_owned(),
+            title:      "observations fixture item".to_owned(),
+            body:       String::new(),
+            state:      state.to_owned(),
+            labels:     vec!["project:fabro".to_owned()],
+            priority:   2,
+            url:        String::new(),
+            updated_at: None,
+        }))
+    }
+
+    async fn create(
+        &self,
+        _project: &fabro_work::WorkProject,
+        draft: fabro_work::WorkItemDraft,
+    ) -> anyhow::Result<fabro_work::WorkItem> {
+        Ok(fabro_work::WorkItem {
+            item_key:   draft.title.clone(),
+            title:      draft.title,
+            body:       draft.body,
+            state:      "open".to_owned(),
+            labels:     draft.labels,
+            priority:   2,
+            url:        String::new(),
+            updated_at: None,
+        })
+    }
+
+    async fn update(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _title: Option<&str>,
+        _body: Option<&str>,
+    ) -> anyhow::Result<fabro_work::WorkItem> {
+        anyhow::bail!("update is outside the observations IT's scope")
+    }
+
+    async fn close(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _reason: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn comment(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _body: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn project_claim(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _run_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn clear_claim(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _run_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
 fn orchestration_app() -> (
     axum::Router,
     Arc<fabro_server::server::AppState>,
@@ -23,12 +124,13 @@ fn orchestration_app() -> (
 ) {
     let settings = crate::helpers::test_settings();
     let (store, artifact_store) = fabro_server::test_support::test_store_bundle();
-    let state = fabro_server::test_support::test_app_state_with_store(
+    let state = fabro_server::test_support::test_app_state_with_store_and_tracker(
         settings.server_settings,
         settings.manifest_run_defaults,
         5,
         Arc::clone(&store),
         artifact_store,
+        Arc::new(ObservationsFakeTracker),
     );
     let app = build_router_with_options(state.clone(), &test_auth_mode(), RouterOptions::default());
     (app, state, store)
@@ -771,6 +873,11 @@ async fn the_observations_read_lists_a_runs_records() {
         Some("denkhaus/work#9"),
         "the linked work item rides the record: {body}"
     );
+    assert_eq!(
+        linked[0]["item_state"].as_str(),
+        Some("open"),
+        "the linked item's live state rides the link: {body}"
+    );
     assert_eq!(observations[1]["category"].as_str(), Some("note"));
     assert_eq!(
         observations[1]["stage"].as_str(),
@@ -783,6 +890,82 @@ async fn the_observations_read_lists_a_runs_records() {
             .expect("linked items always present")
             .is_empty(),
         "an unlinked record carries an empty column: {body}"
+    );
+}
+
+/// A live claim outranks the tracker read: an open item with a live
+/// claim resolves in_progress (a run is working it); a closed item
+/// stays closed beside any claim state.
+#[tokio::test]
+async fn the_observations_read_resolves_the_claim_ledgers_in_progress() {
+    let (app, state, store) = orchestration_app();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &run,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "claimed painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+    let link_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
+    for key in ["denkhaus/work#9", "denkhaus/work#10"] {
+        let link_request = Request::builder()
+            .method(Method::POST)
+            .uri(api("/projects/fabro/work-items/link"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&json!({
+                    "itemKey": key,
+                    "runId": run.to_string(),
+                    "seq": 1,
+                }))
+                .expect("link body serializes"),
+            ))
+            .expect("link request builds");
+        let link_response = link_app
+            .clone()
+            .oneshot(link_request)
+            .await
+            .expect("link runs");
+        assert_eq!(link_response.status(), StatusCode::OK, "link {key} seeds");
+    }
+    // A live claim on the OPEN item: the ledger says a run works it.
+    seed_claim(&state, &run, "denkhaus/work#9").await;
+
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(&format!("/runs/{run}/observations")))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("observations request builds");
+    let response = app.oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "observations read").await;
+    let states: Vec<&str> = body["observations"][0]["linked_work_items"]
+        .as_array()
+        .expect("linked items")
+        .iter()
+        .filter_map(|link| link["item_state"].as_str())
+        .collect();
+    assert!(
+        states.contains(&"in_progress"),
+        "the claimed open item reads in_progress: {body}"
+    );
+    assert!(
+        states.contains(&"closed"),
+        "the closed item stays closed: {body}"
     );
 }
 
