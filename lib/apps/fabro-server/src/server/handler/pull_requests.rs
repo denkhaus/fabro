@@ -675,7 +675,7 @@ async fn close_run_pull_request(
                 if let Err(err) =
                     run_records::append(&state, id, PlatformRecord::PullRequestClosed).await
                 {
-                    warn!(error = %err, run_id = %id, pr_number = ctx.number,
+                    warn!(error = ?err, run_id = %id, pr_number = ctx.number,
                         "recording the closed pull request state failed");
                 }
             }

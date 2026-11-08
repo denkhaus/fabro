@@ -20,9 +20,10 @@
 #      sanctioned resurrection (work#1144): a command stage reading the
 #      lane through the run channel — the capability the host script
 #      lacked.
-#   4. start -> env_guard -> lane_check -> planner wiring: the placement
-#      guard is first and start has NO second outgoing edge (fabro-2357);
-#      the lane check sits between guard and planner (work#1144).
+#   4. start -> env_guard -> planner wiring: the placement guard is
+#      first and start has NO second outgoing edge (fabro-2357). The
+#      lane_check node is TEMPORARILY REVERTED (work#1156); the graph
+#      pins the reverted shape and the node returns with the fix.
 #   5. The claim-contract chain: planner -> preflight ("Seed claimed"),
 #      preflight reading the granted-item packet on stdin
 #      (stdin_source="current_item_json", script line carries
