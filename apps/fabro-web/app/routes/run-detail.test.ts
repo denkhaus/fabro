@@ -748,8 +748,20 @@ describe("RunDetail full-height child routes", () => {
     expect(badges.map((badge) => badge.children.join(""))).toContain("7");
   });
 
-  test("hides the Sandbox tab for a planned sandbox without an instance", async () => {
-    currentRunState = {
+  test("shows the Observations tab beside the other run detail tabs", async () => {
+    const renderer = await renderRunDetail({
+      initialEntry: "/runs/run_1",
+    });
+
+    const observationLinks = renderer.root.findAll(
+      (node) =>
+        node.type === "a" &&
+        node.props.href === "/runs/run_1/observations",
+    );
+    expect(observationLinks.length).toBeGreaterThan(0);
+  });
+
+  test("hides the Sandbox tab for a planned sandbox without an instance", async () => {    currentRunState = {
       sandbox: {
         kind: "planned",
         plan: { provider: "docker", image: null, snapshot: null },

@@ -691,6 +691,25 @@ ON CONFLICT (project_id, item_key, run_id, seq) DO NOTHING
         Ok(result.rows_affected() > 0)
     }
 
+    /// The links of one run's observations — the run detail view's
+    /// observations table column (denkhaus/work#1098). The reverse join
+    /// over the `run_id` index; `run_id` is globally unique, so no
+    /// project scoping is needed. Ordered deterministically (item, seq).
+    pub async fn linked_items_for_run(&self, run_id: &RunId) -> Result<Vec<ObservationLink>> {
+        let rows = sqlx::query(
+            r"
+SELECT project_id, item_key, run_id, seq, linked_at_ms
+FROM work_observation_links
+WHERE run_id = ?
+ORDER BY item_key, seq
+",
+        )
+        .bind(run_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(link_from_row).collect()
+    }
+
     /// Every run that ever claimed `item_key` in the project, live or
     /// terminal, ordered by first grant. The claim store is the radius's
     /// authority for item → runs: `WorkClaimed` records are audit, and a
@@ -1604,6 +1623,28 @@ mod tests {
                 .unwrap()
                 .is_empty(),
             "an empty observation set is a no-op, not an error"
+        );
+
+        // The per-run reverse join (the run detail observations table's
+        // linked-item column, denkhaus/work#1098): exactly this run's
+        // links, never another run's, ordered by (item, seq).
+        let run_links = store.linked_items_for_run(&run_id).await.unwrap();
+        let run_keys: Vec<(&str, u64)> = run_links
+            .iter()
+            .map(|link| (link.item_key.as_str(), link.seq))
+            .collect();
+        assert_eq!(
+            run_keys,
+            vec![("denkhaus/work#7", 3), ("denkhaus/work#8", 5)],
+            "the per-run join returns only this run's links, ordered deterministically"
+        );
+        assert!(
+            store
+                .linked_items_for_run(&fabro_types::RunId::new())
+                .await
+                .unwrap()
+                .is_empty(),
+            "a run without links resolves to no items"
         );
 
         assert!(

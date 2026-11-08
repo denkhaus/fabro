@@ -23,7 +23,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fabro_api::types::{
-    PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
+    ObservationWorkItemLink, PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
     RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict,
     RunQueueList,
 };
@@ -593,13 +593,16 @@ async fn merge_run(
 
 /// A run's observation records in `seq` order: the facts its stages
 /// recorded, with the category that routes adjudication (a painpoint
-/// forces the agent pass).
+/// forces the agent pass). Each record carries its stage attribution
+/// (the projection's positioned fold — `StageProjection.observations`)
+/// and its linked work items (the ADR-0038 link join), the two columns
+/// the run detail view's observations table renders (denkhaus/work#1098).
 async fn list_observations(
     _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
     Path(run_id): Path<RunId>,
 ) -> Result<Response, ApiError> {
-    run_records::require_projection(&state, run_id).await?;
+    let projection = run_records::require_projection(&state, run_id).await?;
     let records = state
         .stores
         .run_summaries
@@ -613,12 +616,53 @@ async fn list_observations(
                 "Reading the run's observations failed.",
             )
         })?;
+    // The positioned attribution: which stage each record folded onto.
+    // A record the fold did not place (a positionless server-origin
+    // record, e.g. the run-end hook's own friction notes) keeps no
+    // stage and renders un-attributed.
+    let stage_of_seq: HashMap<u64, String> = projection
+        .iter_stages()
+        .flat_map(|(stage_id, stage)| {
+            stage
+                .observations
+                .iter()
+                .map(|observation| (observation.seq, stage_id.to_string()))
+        })
+        .collect();
+    // The link join (ADR-0038): the work items filed from or backfilled
+    // onto each record. A store failure degrades to an empty column —
+    // the observations themselves still list (the radius precedent).
+    let mut links_of_seq: HashMap<u64, Vec<ObservationWorkItemLink>> = HashMap::new();
+    match state.work_store().linked_items_for_run(&run_id).await {
+        Ok(links) => {
+            for link in links {
+                links_of_seq
+                    .entry(link.seq)
+                    .or_default()
+                    .push(ObservationWorkItemLink {
+                        item_key:  link.item_key,
+                        linked_at: Some(link.linked_at),
+                    });
+            }
+        }
+        Err(err) => {
+            tracing::warn!(
+                run_id = %run_id,
+                error = %err,
+                "observation link read failed; the linked-item column degrades to empty"
+            );
+        }
+    }
     let observations = records
         .iter()
         .filter_map(|stored| match &stored.record {
-            PlatformRecord::ObservationRecorded(record) => {
-                Some(wire_observation(stored.seq, stored.recorded_at, record))
-            }
+            PlatformRecord::ObservationRecorded(record) => Some(wire_observation(
+                stored.seq,
+                stored.recorded_at,
+                record,
+                stage_of_seq.get(&stored.seq).cloned(),
+                links_of_seq.get(&stored.seq).cloned().unwrap_or_default(),
+            )),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -632,13 +676,17 @@ fn wire_observation(
     seq: u64,
     recorded_at_ms: u64,
     record: &ObservationRecordedRecord,
+    stage: Option<String>,
+    linked_work_items: Vec<ObservationWorkItemLink>,
 ) -> RunObservation {
     RunObservation {
-        seq:         seq.cast_signed(),
-        category:    record.category,
-        text:        record.text.clone(),
-        execution:   i64::try_from(record.execution).ok(),
-        firing:      i64::try_from(record.firing).ok(),
+        seq: seq.cast_signed(),
+        category: record.category,
+        text: record.text.clone(),
+        execution: i64::try_from(record.execution).ok(),
+        firing: i64::try_from(record.firing).ok(),
+        stage,
+        linked_work_items,
         recorded_at: chrono::DateTime::from_timestamp_millis(recorded_at_ms.cast_signed()),
     }
 }

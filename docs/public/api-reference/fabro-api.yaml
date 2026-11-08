@@ -14724,7 +14724,7 @@ components:
 
     RunObservation:
       type: object
-      required: [seq, category, text]
+      required: [seq, category, text, stage, linked_work_items]
       properties:
         seq:
           type: integer
@@ -14740,10 +14740,42 @@ components:
         firing:
           type: ["integer", "null"]
           description: The firing of that execution the record belongs to.
+        stage:
+          type: ["string", "null"]
+          description: |-
+            The StageId (`node@visit`, e.g. `reviewer@3`) of the stage the
+            record folded onto — the projection's positioned attribution
+            (StageProjection.observations). Null for positionless
+            server-origin records (unknown firing), which render
+            un-attributed to a stage.
+        linked_work_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservationWorkItemLink"
+          description: |-
+            The work items linked to this record through the
+            work_observation_links join (ADR-0038) — empty when no item
+            was filed from or backfilled onto the observation.
         recorded_at:
           type: ["string", "null"]
           format: date-time
           description: When the record was appended.
+
+    ObservationWorkItemLink:
+      type: object
+      required: [item_key]
+      properties:
+        item_key:
+          type: string
+          description: The linked work item's provider-stable key (e.g. `denkhaus/work#12`).
+        linked_at:
+          type: ["string", "null"]
+          format: date-time
+          description: When the link was written.
+      description: |-
+        One work-item link on an observation record (ADR-0038): the
+        chain's last edge, observation -> work item, as the run detail
+        view's observations table renders it.
 
     RunObservationList:
       type: object
