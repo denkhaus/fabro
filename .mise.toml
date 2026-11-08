@@ -28,12 +28,13 @@ bun = "1.4.0"
 # (crates.io 0.9.0; the denkhaus Rust app replaced the npm
 # @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi
 # backend is deprecated). Needs cargo — the toolchain image and dev
-# hosts have it. The repo must not rely on a global install. 0.11.1 is
-# the label id-word refusal release (seeds-95a3: an issue-id-shaped
-# label word closes the GitHub search qualifier). Keep aligned with
+# hosts have it. The repo must not rely on a global install. 0.13.0 is
+# the self-referential command strings release (seeds-9667) plus the
+# native mulch coupling (seeds-26c3; 0.11.1 was seeds-95a3, the label
+# id-word refusal). Keep aligned with
 # ARG SEEDS_VERSION in .fabro/Dockerfile.toolchain
 # (run sandboxes install the same release binary).
-"cargo:seeds" = "0.11.1"
+"cargo:seeds" = "0.13.0"
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt
