@@ -39,7 +39,10 @@ pub(crate) fn stream_rows(
                 }
             }
             Item::Platform(record) => {
-                positions.platform_seq = record.seq;
+                // The platform cursor is advanced once per pass over what it
+                // consumed (held records keep the head behind), in
+                // `Positions::consume_platform` — a held record must not
+                // move the head just because a later item streamed.
                 StreamRow {
                     stream_seq: *stream_seq,
                     item_kind:  "platform",

@@ -167,12 +167,13 @@ pub async fn rebuild(
             Some(CoordinatorEvent::RunFinished { .. })
         )
     });
-    let (items, _held) =
+    let (items, held) =
         order::order_items(&events, &platform_records, &BTreeSet::new(), run_finished);
     let mut view = RunView::new();
     let mut positions = Positions::default();
     let mut stream_seq = 0;
     stream::stream_rows(&items, &mut view, &mut positions, &mut stream_seq)?;
+    positions.consume_platform(&platform_records, &held);
     Ok((view.projection, positions, stream_seq))
 }
 

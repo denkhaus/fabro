@@ -2,9 +2,11 @@
 //! its records, equals the view rebuilt from the records alone; a view that
 //! missed its wake-ups catches up on the next signal; a crash between the
 //! record commit and the view transaction is recovered by applying only the
-//! missing suffix; two projectors over one store agree over nested child
-//! executions; a torn tail holds the view where it stands; and a pass over
-//! a live run costs its new records, with the cache that makes it so
+//! missing suffix; a run title folds while its stage's firing still runs
+//! (an unpositioned record never waits behind a held positioned one,
+//! denkhaus/work#1181); two projectors over one store agree over nested
+//! child executions; a torn tail holds the view where it stands; and a pass
+//! over a live run costs its new records, with the cache that makes it so
 //! dropped at a restart, after the idle period and at the run's finish.
 //!
 //! Built-in Host scopes run in process without a plugin executable.
@@ -28,7 +30,7 @@ use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::{SqliteRunStore, providers, test_support as petri_support};
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordStore, RunCreatedRecord,
-    RunLifecycleKind, RunLifecycleRecord, RunOrchestrationRecord, StagePosition,
+    RunLifecycleKind, RunLifecycleRecord, RunOrchestrationRecord, RunTitleRecord, StagePosition,
 };
 use fabro_store::{BlobStore, test_support};
 use fabro_types::{
@@ -658,6 +660,159 @@ async fn an_observation_record_folds_onto_its_stage() {
         }],
         "the entry folds with its record seq; the orphan does not"
     );
+}
+
+/// A run title appended while its stage's firing is still running folds
+/// into the view at once (denkhaus/work#1181): the hold-back rule waits
+/// only on POSITIONED records whose firing has not finished — an
+/// observation of the running stage — and never cascades onto the
+/// unpositioned `run.title` record `fabro_run_set_title` appends. A
+/// successful set-title call must show on the very next read, not after
+/// the stage's finish.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_run_title_folds_while_its_stages_firing_runs() {
+    // The body's frames (a full row set per cut) exceed the future budget;
+    // box it like the projector's own startup pass does.
+    Box::pin(the_run_title_folds_while_its_stages_firing_runs()).await;
+}
+
+async fn the_run_title_folds_while_its_stages_firing_runs() {
+    let scenario = command_scenario().await;
+    run_unobserved(&scenario).await;
+    let rows = petri_rows(&scenario.pool, scenario.run_id).await;
+    let replayed = copy_run_without_records(&scenario.pool, scenario.run_id).await;
+    let (execution, say) = say_position(&scenario.pool, scenario.run_id).await;
+    let execution_log = format!("execution {execution}");
+
+    // The Petri logs cut mid-run: the execution log through the say
+    // firing's start (its finish is the suffix), and the coordinator log
+    // short of the run's finish.
+    let event = |row: &(String, i64, i64, String)| {
+        serde_json::from_str::<serde_json::Value>(row.3.as_str())
+            .expect("the row decodes")
+            .clone()
+    };
+    let say_started = rows
+        .iter()
+        .filter(|row| row.0 == execution_log)
+        .find(|row| {
+            let value = event(row);
+            value["body"]["event"] == "step.started" && value["body"]["firing"] == say
+        })
+        .expect("the say firing starts")
+        .1;
+    let run_finished_at = rows
+        .iter()
+        .filter(|row| row.0 == "coordinator")
+        .find(|row| event(row)["body"]["event"] == "run.finished")
+        .expect("the coordinator finishes the run")
+        .1;
+    for row in &rows {
+        let keep = match row.0.as_str() {
+            "coordinator" => row.1 < run_finished_at,
+            log if log == execution_log => row.1 <= say_started,
+            _ => false,
+        };
+        if keep {
+            insert_petri_row(&replayed, scenario.run_id, row).await;
+        }
+    }
+    let projector = Projector::new(replayed.clone(), replayed.clone());
+    let pass = projector
+        .project_run(scenario.run_id)
+        .await
+        .expect("the mid-run pass commits");
+    assert!(!pass.skipped);
+
+    // The stage records an observation of its own unfinished firing, then
+    // the planner sets the run's title: exactly the order the develop
+    // workflow's planner produces.
+    let store = PlatformRecordStore::new(replayed.clone());
+    let observation = store
+        .append(
+            &scenario.run_id,
+            &PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+                category: fabro_types::ObservationCategory::Note,
+                text: "claimed the next seed".to_string(),
+                execution,
+                firing: say,
+            }),
+            Some(StagePosition {
+                execution,
+                firing: say,
+            }),
+        )
+        .await
+        .expect("the observation record stores");
+    store
+        .append(
+            &scenario.run_id,
+            &PlatformRecord::RunTitle(RunTitleRecord {
+                title: "the planner's title".to_string(),
+            }),
+            None,
+        )
+        .await
+        .expect("the title record stores");
+    projector.signal(scenario.run_id);
+    projector.settle(scenario.run_id).await;
+
+    // The read the set-title response builds on: the title is already
+    // folded, although the observation of the unfinished firing is held.
+    let stored = petri_support::stored_projection(&replayed, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    assert_eq!(
+        stored.title, "the planner's title",
+        "an accepted set-title call shows on the next read, mid-firing"
+    );
+    let (positions, _) = petri_support::stored_positions(&replayed, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("positions");
+    assert_eq!(
+        positions.platform_held,
+        vec![observation.seq],
+        "only the unfinished firing's positioned record waits"
+    );
+
+    // The firing finishes and the run completes: the held observation
+    // folds onto its stage, and the whole view still equals a rebuild.
+    for row in &rows {
+        let insert = match row.0.as_str() {
+            "coordinator" => row.1 >= run_finished_at,
+            log if log == execution_log => row.1 > say_started,
+            _ => false,
+        };
+        if insert {
+            insert_petri_row(&replayed, scenario.run_id, row).await;
+        }
+    }
+    projector.signal(scenario.run_id);
+    projector.settle(scenario.run_id).await;
+    let (positions, _) = petri_support::stored_positions(&replayed, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("positions");
+    assert!(positions.platform_held.is_empty(), "nothing stays held");
+    assert_eq!(
+        positions.platform_seq, positions.platform_seen,
+        "every platform record is consumed"
+    );
+    let stored = petri_support::stored_projection(&replayed, scenario.run_id)
+        .await
+        .expect("reads")
+        .expect("stored");
+    let say_stage = stored
+        .stage(&StageId::new("say", 1))
+        .expect("the command stage is shown");
+    assert_eq!(
+        say_stage.observations.len(),
+        1,
+        "the held observation folded"
+    );
+    assert_view_equals_rebuild(&replayed, scenario.run_id).await;
 }
 
 /// An `run.orchestration` platform record folds onto the run's
