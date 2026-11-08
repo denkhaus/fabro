@@ -127,7 +127,7 @@ def test-run-set-title-argv []: nothing -> nothing {
     let server_at = (first-index-of $argv '--server')
     if $verb_at == -1 { print -e 'lane-commons: set-title argv lost the set-title verb'; exit 1 }
     if $server_at <= $verb_at {
-        print -e $"lane-commons: --server at ($server_at) must come AFTER the set-title verb at ($verb_at) (the run facade seats it on the verb segment)"
+        print -e $"lane-commons: --server at ($server_at) must come AFTER the set-title verb at ($verb_at) \(the run facade seats it on the verb segment\)"
         exit 1
     }
     # No --run: a pass script titles its OWN run via the engine-bound
