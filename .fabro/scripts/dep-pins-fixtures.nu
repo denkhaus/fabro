@@ -124,7 +124,7 @@ def main [] {
         let name = $entry.name
         let rev = $entry.rev
         if not ($name in $PINS) {
-            print $"RED: ($name) is an engine dependency but not pinned in this battery — add it with a reason (ADR-0027)"
+            print $"RED: ($name) is an engine dependency but not pinned in this battery — add it with a reason \(ADR-0027)"
             $red = true
         } else if not ($rev in ($PINS | get $name)) {
             print $"RED: ($name) moved to ($rev) — PINS records ($PINS | get $name | str join ', '); a dep bump is a deliberate decision per ADR-0027: reason + edit this list"

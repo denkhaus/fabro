@@ -109,7 +109,7 @@ if ($vf_note.text | lines | length) < 2 {
 }
 let vf_painpoint = (visibility-fact "not-visible" "denkhaus/work#1" "abc1234")
 if $vf_painpoint.category != "painpoint" {
-    fail $"NOT-visible demand must be a painpoint (fabro-02c4): ($vf_painpoint | to json -r)"
+    fail $"NOT-visible demand must be a painpoint \(fabro-02c4): ($vf_painpoint | to json -r)"
 }
 if not ($vf_painpoint.text | str contains "NOT visible") {
     fail $"the visibility painpoint must say what the diff shows: ($vf_painpoint.text)"
@@ -237,7 +237,7 @@ try {
         fail $"the not-visible arm records exactly the visibility painpoint: ($nv_facts | to json -r)"
     }
     if $nv_facts.0.flags.category != "painpoint" {
-        fail $"a not-visible demand records as a painpoint (fabro-02c4): ($nv_facts.0.flags | to json -r)"
+        fail $"a not-visible demand records as a painpoint \(fabro-02c4): ($nv_facts.0.flags | to json -r)"
     }
     if not ($nv_facts.0.flags.text | str contains "NOT visible") {
         fail $"the not-visible fact says what the diff shows: ($nv_facts.0.flags.text)"

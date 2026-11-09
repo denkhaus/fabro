@@ -124,7 +124,7 @@ def resolve-sha [explicit: string]: nothing -> string {
 
 def ensure-clone [] {
     if ($SRC_DIR | path type) == 'dir' { return }
-    print $"host-release: cloning \($REPO_URL) → \($SRC_DIR) (one-time)"
+    print $"host-release: cloning \($REPO_URL) → \($SRC_DIR) \(one-time)"
     let res = (do { ^git clone $REPO_URL $SRC_DIR } | complete)
     if $res.exit_code != 0 {
         print -e $res.stderr

@@ -92,7 +92,20 @@ def paren-comma-bare [line: string] {
 # Two bare tokens stay legal (that is `(date now)`, `(path self)`, real
 # no-arg calls); a sigil anywhere marks a real expression (`(total $n)`,
 # `(if $x {...})`). Escaped \( groups are the literal idiom and pass.
-def paren-prose-bare [line: string] {
+# HYPHEN ARM (2026-11-09, the deploy-window rehearsal: host-release.nu
+# `(one-time)` executed `one-time`): `-` in the sigil class masked EVERY
+# hyphenated prose group — `(one-time)`, `(the fast-path fix)` — because a
+# hyphen inside a word read as the minus operator. A hyphen BETWEEN word
+# characters is never an operator: embedded hyphens are neutralized before
+# the sigil check, and a no-sigil group carrying a hyphenated word is
+# prose at ANY token count. DEF AWARENESS: a hyphenated word the file
+# DEFINES as a command is a legitimate call, not prose (`(auth-token)` in
+# retrofit-pilots, `(transcript-dir)` in check-transcript — both false
+# positives of the naive rule); the def scan reads def/alias/extern names
+# from the file itself. Commands arriving through `source`/`use` imports
+# are not visible to it — assign an imported call to a variable before
+# interpolating it.
+def paren-prose-bare [line: string, defined: list<string>] {
     let spans = ($line | parse --regex `(?P<s>\$["'][^"']*["'])`)
     if ($spans | is-empty) { false } else {
         ($spans | get s | any {|s|
@@ -109,12 +122,25 @@ def paren-prose-bare [line: string] {
             let groups = ($flat_groups | append $outer_groups)
             ($groups | any {|g|
                 let inner = $g.capture0
+                # embedded hyphens (word-hyphen-word) are not the minus
+                # operator — neutralize them for the sigil check so only a
+                # STANDALONE minus counts as an arithmetic sigil. Dot is the
+                # neutral filler: it is not in the sigil class.
+                let no_embedded = ($inner | str replace -ar `([a-zA-Z0-9])\-([a-zA-Z0-9])` '${1}.${2}')
+                # hyphenated words NOT defined as commands in this file are
+                # prose at any token count; a standalone minus (spaces
+                # around it) never matches the word-hyphen-word shape
+                let hyphens = ($inner | parse --regex `([a-zA-Z0-9]+-[a-zA-Z0-9]+)` | get capture0 | uniq)
+                let prose_hyphen = ($hyphens | any {|w| $w not-in $defined })
                 # an expression carries a sigil or an operator anywhere;
                 # prose shells carry none. The X marker from stripping is
                 # NOT in the class — it must not exempt the shell.
-                (($inner | parse --regex "[$\"'|^=+*/%<>!-]" | is-not-empty) == false) and (
-                    # three or more whitespace-separated bare tokens
-                    ($inner | split row ' ' | where {|t| ($t | str trim) != ''} | length) >= 3
+                let no_sigil = (($no_embedded | parse --regex "[$\"'|^=+*/%<>!-]" | is-not-empty) == false)
+                ($no_sigil and $prose_hyphen) or (
+                    $no_sigil and (
+                        # three or more whitespace-separated bare tokens
+                        ($inner | split row ' ' | where {|t| ($t | str trim) != ''} | length) >= 3
+                    )
                 )
             })
         })
@@ -123,8 +149,16 @@ def paren-prose-bare [line: string] {
 
 def bare-paren-check [file: string] {
     let text = (open --raw $file)
+    # command names the file itself defines (def/alias/extern, flags and
+    # quoted forms tolerated) — the def-awareness list of paren-prose-bare
+    let defined = (
+        $text | lines
+        | where {|l| ($l | str trim) =~ `^(def|alias|extern)\b` }
+        | each {|l| $l | parse --regex `^\s*(?:def|alias|extern)(?:\s+--\w+)*\s+"?([a-zA-Z0-9][a-zA-Z0-9-]*)"?` | get -o capture0 | default [] }
+        | flatten
+    )
     let hits = ($text | lines | enumerate | where {|it|
-        (($it.item | str trim | str starts-with '#') == false) and (($it.item | str contains '$"') and ((paren-comma-bare $it.item) or (paren-prose-bare $it.item)))
+        (($it.item | str trim | str starts-with '#') == false) and (($it.item | str contains '$"') and ((paren-comma-bare $it.item) or (paren-prose-bare $it.item $defined)))
     })
     if ($hits | is-not-empty) {
         for h in $hits {

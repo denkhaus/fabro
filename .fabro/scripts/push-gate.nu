@@ -30,7 +30,7 @@ def main [
     --server: string = 'https://mirtuell.net'
 ] {
     if $branch != 'denkhaus' {
-        print $"GATE OPEN: ($branch) is not the line branch — the run gate is denkhaus-scoped (2026-09-21)"
+        print $"GATE OPEN: ($branch) is not the line branch — the run gate is denkhaus-scoped \(2026-09-21)"
         exit 0
     }
     # (c) RETIRED 2026-10-26 (cutover stage 5, denkhaus/work#988): the

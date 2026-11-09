@@ -118,7 +118,7 @@ def main [] {
         # deleted the real call).
         let helped = (do { ^nu $script --help } | complete)
         if not ($helped.stdout | str contains '--sha') {
-            print $"RED: ($script) does not declare --sha — the release would resolve the line tip twice (fabro-ed65)"
+            print $"RED: ($script) does not declare --sha — the release would resolve the line tip twice \(fabro-ed65)"
             exit 1
         }
         # ...and its own resolution must demand the PUBLISHED tip. The error

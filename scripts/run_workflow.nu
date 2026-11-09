@@ -235,9 +235,9 @@ def emergency-squash [workflow: string, run_id: string, run_branch: string, bran
     let lprs = (run-prs $run_id 'open')
     if ($lprs | length) > 0 {
         let lnum = ($lprs | first | get number)
-        print $"run_workflow: closing leftover run PR #($lnum) as already-integrated (fabro-767b sweep)"
+        print $"run_workflow: closing leftover run PR #($lnum) as already-integrated \(fabro-767b sweep)"
         let _ = (do {
-            ^gh pr close ($lnum) --repo $GITHUB_REPO --comment $"Already integrated via emergency squash into ($branch) — the PR appeared late or its gate never concluded (fabro-767b)."
+            ^gh pr close ($lnum) --repo $GITHUB_REPO --comment $"Already integrated via emergency squash into ($branch) — the PR appeared late or its gate never concluded \(fabro-767b)."
         } | complete)
     }
     let _ = (do { git push origin --delete $"fabro/run/($run_id)" } | complete)
