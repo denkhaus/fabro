@@ -202,3 +202,41 @@ window: scheduler ticks AND the log pipeline stopped together while
 the HTTP API kept answering. Not a crash (no error path fires), not a
 pause (nobody paused anything) — the discriminating signal is silence
 against an ENABLED schedule.
+
+## Environment image
+
+The image an environment names for its sandboxes — either a finished
+reference it pulls, or a Dockerfile it builds from at scope
+acquisition (ADR-0042). One concept, two sources; the environment
+declaration says which.
+
+- Not a **runner image** (petri's term): the upstream base images the
+  engine's own execution starts from, pinned in petri (`RUNNER_PIN`).
+  An environment image is what a project's environment asks for.
+
+## Toolchain image
+
+The environment image a project declares for running its own
+workflows: the tools and warm build layers its stages rely on, built
+from the repository's own checkout at run initialization
+(ADR-0042). For the fabro line: the repo-declared environment image
+carrying the gate toolset, cooked dependency layers, and the fabro CLI
+compiled from the checkout.
+
+- Not **parity-pinned** (retired, ADR-0042): the old server-managed
+  toolchain environment frozen to the deployed server's sha. The
+  version now follows the checkout; the client-server seam is checked
+  at the run channel instead.
+
+## Run channel
+
+The per-run capability path between a sandbox and the serving
+platform: the platform serves its router on a socket that belongs to
+one run, the sandbox reaches it through that run's mount, and every
+request rides the run's principal through a per-spawn handshake token
+(ADR-0035). The client-server compatibility seam lives here — checked
+against a compile-time floor at connect, not frozen by version pins
+(ADR-0042).
+
+- Not the **work facade**: the work channel is how stage scripts CALL
+  `fabro work` verbs; the run channel is the transport underneath.

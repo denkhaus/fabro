@@ -1,0 +1,5 @@
+- [ ] Verify the watchdog's pass-title surface — still BLOCKED on the A+B window (ADR-0041/ADR-0042, handoff in `.todo/HANDOFF-DEPLOY-WINDOW.md`; the titling chain d52bff59f/#513 rides fork.32; verify on a post-restart tick).
+- [ ] Dissolution arc — queued AFTER the UI arc (user re-prioritized 2026-11-08: Sprint A UI items first): #1170 (+#1169 riding), #1171 (fs wall — kills the misroute class), #1172.
+- [ ] Undeployed line work — grown to a full window batch: #510/#511/#513/#515 (+#512/#514/#516/#517 merged), title chain, lint fix, #168 groundwork, observations triage columns. All now ride the A+B restart (production dark by decision since 2026-11-08 22:50; restore only through the new path).
+- [ ] Parked decision (user, 2026-11-09): move fabro-tofu INTO the fabro repo — requires making the fabro repo private first (deployment details stay private). Mittelfristig; revisit after the A+B window.
+- [x] Retro at session end — RAN (candidates became #1196/#1197/#1198; .todo convention recorded to mulch).
