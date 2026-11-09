@@ -10,8 +10,14 @@ id = "fabro-dev"
 [environments.fabro-dev]
 provider = "daytona"
 
-[environments.fabro-dev.image]
-dockerfile = { path = "Dockerfile" }
+# [environments.fabro-dev.image] REMOVED 2026-11-09: the old
+# `dockerfile = { path = "Dockerfile" }` block (the VNC dev sandbox,
+# ba2c1cc16, for the retired smoke workflow) is inert on a daytona
+# provider since ADR-0042 (dockerfile builds are docker-provider-only)
+# — and fork.32's petri refuses the { path } form in every layer it
+# parses raw, which killed every run create on the line (the 2026-11-09
+# restart: all four gears 422ed on exactly this declaration). The
+# toolchain environment the line runs on is repo-declared per workflow.
 
 [environments.fabro-dev.resources]
 cpu = 8
