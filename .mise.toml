@@ -35,6 +35,15 @@ bun = "1.4.0"
 # ARG SEEDS_VERSION in .fabro/Dockerfile.toolchain
 # (run sandboxes install the same release binary).
 "cargo:seeds" = "0.13.0"
+# Git hooks (lefthook.yml: pre-commit leak + guard + nu lint gates,
+# pre-push full scan). After cloning: mise install && lefthook install.
+# Mirrors fabro-tofu's setup (same pins).
+lefthook = "2.1.10"
+# Secret scanner riding those hooks (staged diff pre-commit, full repo
+# pre-push). NOTE: this catches CREDENTIALS, not internal
+# configuration — the host-identity guard in scripts/guards/ covers
+# the address/port class (2026-11-09 leak, mulch mx-9c1e77).
+betterleaks = "1.7.4"
 
 [settings.npm]
 # Default aube backend aborts on its interactive `mise add` approval prompt

@@ -1,0 +1,47 @@
+# lefthook — fast git hooks manager (https://github.com/evilmartians/lefthook)
+# Binaries come from mise (lefthook + betterleaks in .mise.toml).
+# After cloning this repo:  mise install && lefthook install
+# Run a group manually:     lefthook run pre-commit | pre-push
+#
+# Mirrors fabro-tofu's setup. The Rust gates stay in `just verify`
+# (tester runs them); commits stay fast — these hooks guard what only
+# a commit-time check can: what is ABOUT to land in a public repo.
+
+pre-commit:
+  parallel: true
+  commands:
+    betterleaks:
+      tags: [security]
+      # Secret scan of exactly what is being committed (staged diff).
+      # CREDENTIAL patterns only — the host-identity guard below covers
+      # the address/port class betterleaks cannot see.
+      run: mise exec -- betterleaks git --staged --redact
+    host-identity:
+      tags: [security]
+      # The 2026-11-09 leak class (production IP/port/root@ as recipe
+      # defaults, mulch mx-9c1e77): deployment host identity must never
+      # ride this public repo.
+      run: mise exec -- nu scripts/guards/host-identity.nu {staged_files}
+    lint-nu:
+      tags: [quality]
+      # Full nu lint (fast, ~2s over all scripts) whenever a .nu file
+      # is staged — the registration battery rides it.
+      glob: "*.nu"
+      run: mise exec -- nu scripts/lint-nu.nu
+    justfile:
+      tags: [quality]
+      # Parse-only recipe check (recipes are never executed).
+      glob: "justfile"
+      run: mise exec -- just --dry-run --list --list-heading '' --list-prefix '' >/dev/null
+
+pre-push:
+  commands:
+    betterleaks:
+      tags: [security]
+      # Full-history scan before anything leaves the machine.
+      run: mise exec -- betterleaks git . --redact
+    host-identity:
+      tags: [security]
+      # The guard over the tracked tree — a missed pattern in older
+      # commits surfaces here, before the push.
+      run: mise exec -- nu scripts/guards/host-identity.nu {push_files}
