@@ -24,6 +24,16 @@ FROM rust:1-bookworm
 
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
+# buildx is a CLI-SIDE plugin: the pipeline's final `docker build` runs
+# with THIS container's docker CLI against the host daemon, and the
+# image Dockerfile's COPY --chmod needs BuildKit — the legacy builder
+# refuses it (live 2026-11-09: installing the plugin on the HOST alone
+# changed nothing; the builder's own CLI must carry it). The official
+# plugin image drops the binary at the CLI's plugin path; DOCKER_BUILDKIT
+# pins the delegation explicitly.
+COPY --from=docker/buildx-bin:0.38 /buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+ENV DOCKER_BUILDKIT=1
+
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends git ca-certificates xz-utils unzip; \
