@@ -72,7 +72,12 @@ def main [
         -v "fabro-release-target:/target"
         $builder
         sh
-        -lc
+        -c
+        # NOT -lc: a login shell sources /etc/profile, which RESETS PATH
+        # to the Debian default and erases the rust image's ENV
+        # /usr/local/cargo/bin — the pipeline died at "cargo: not found"
+        # (live 2026-11-09, rehearsal 5). Every tool the pipeline needs
+        # is either on the image ENV PATH or /usr/local/bin.
         $"bun install --frozen-lockfile --cwd apps/fabro-web && cargo --locked dev docker-build --arch ($arch) --tag ($tag) --git-sha ($sha12)"
     ]
     let res = (do { ^docker ...$run_args } | complete)
