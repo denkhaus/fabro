@@ -441,6 +441,7 @@ impl Client {
         >,
         E: serde::Serialize + std::fmt::Debug + Send + Sync + 'static,
     {
+        self.run_channel_compatibility_probe().await?;
         let state = self.current_state();
         match self
             .with_request_timeout(Box::pin(request.clone()(state.client.clone())))
@@ -473,6 +474,45 @@ impl Client {
                 failure.status == fabro_http::StatusCode::UNAUTHORIZED
                     && failure.code.as_deref() == Some("access_token_expired")
             })
+    }
+
+    /// The run-channel compatibility floor (ADR-0042 part 4): on the
+    /// FIRST channel request of this process, probe the serving
+    /// server's version and refuse loudly when it is older than the
+    /// client supports. A FLOOR, never equality — a candidate CLI must
+    /// talk to the deployed server; only a server below the floor
+    /// fails, with a clear version error instead of a 404 trail. The
+    /// probe fails OPEN on transport (the request itself will surface
+    /// the connection's real state) and fails CLOSED on identity: a
+    /// channel server that reports no version at all is refused.
+    async fn run_channel_compatibility_probe(&self) -> Result<()> {
+        if RUN_CHANNEL_FLOOR_CHECKED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            return Ok(());
+        }
+        // The channel's own handshake condition (the same token env
+        // fabro-http's attach site reads): only an in-sandbox channel
+        // client checks the floor.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one channel-presence read beside fabro-http's own: the floor probe \
+                      must see exactly the env the handshake attaches to"
+        )]
+        let in_channel = std::env::var_os(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN).is_some();
+        if !in_channel {
+            return Ok(());
+        }
+        // The probe rides get_system_info, which itself goes through
+        // send_api and thus re-enters this probe; the flag swap above
+        // makes that re-entry a no-op (depth is bounded at two), and
+        // the box satisfies the compiler's recursion check.
+        let info = match Box::pin(self.get_system_info()).await {
+            Ok(info) => info,
+            // Transport trouble is the request's story to tell, not the
+            // probe's; a version verdict needs a reachable, answering
+            // server.
+            Err(_) => return Ok(()),
+        };
+        enforce_run_channel_floor(&info.version, RUN_CHANNEL_MIN_SERVER)
     }
 
     async fn refresh_access_token(&self, failed_access_token: &str) -> Result<()> {
@@ -3104,6 +3144,64 @@ fn connect_target_transport(
     Ok((http_client, "http://fabro".to_string()))
 }
 
+/// The oldest server API this client speaks over the run channel
+/// (ADR-0042 part 4). A FLOOR, not an equality: bump it as part of
+/// DELIBERATELY breaking a channel-API change. "0.0" is the
+/// mechanism's landing value — nothing is below it; the first bump is
+/// the discipline's first exercise.
+pub const RUN_CHANNEL_MIN_SERVER: &str = "0.0";
+
+/// One probe per process: the CLI is one process per command, so this
+/// is once per client too.
+static RUN_CHANNEL_FLOOR_CHECKED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Refuses a channel server below the floor, naming both versions.
+fn enforce_run_channel_floor(server_version: &Option<String>, floor: &str) -> Result<()> {
+    let Some(version) = server_version else {
+        bail!(
+            "run channel compatibility: the serving server reported no version; this client \
+             requires {floor} or newer (ADR-0042) — deploy a server that identifies itself"
+        );
+    };
+    match server_meets_floor(version, floor) {
+        Ok(true) => Ok(()),
+        Ok(false) => bail!(
+            "run channel compatibility: this client requires a server of {floor} or newer; the \
+             channel server reports {version} (ADR-0042) — deploy the matching server before \
+             running against it"
+        ),
+        Err(unparsed) => bail!(
+            "run channel compatibility: cannot read the serving server's version {unparsed:?} \
+             against floor {floor} (ADR-0042)"
+        ),
+    }
+}
+
+/// `server >= floor` on the leading `major.minor`; anything else is an
+/// error the caller reports (a floor check never guesses).
+fn server_meets_floor(server: &str, floor: &str) -> std::result::Result<bool, String> {
+    let parse = |text: &str| -> std::result::Result<(u64, u64), String> {
+        let mut parts = text.split('.');
+        let major = parts
+            .next()
+            .and_then(|part| part.parse().ok())
+            .ok_or_else(|| text.to_string())?;
+        let minor = parts
+            .next()
+            .map(|part| {
+                let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+                digits.parse::<u64>().ok()
+            })
+            .unwrap_or(None)
+            .ok_or_else(|| text.to_string())?;
+        Ok((major, minor))
+    };
+    let server_pair = parse(server)?;
+    let floor_pair = parse(floor)?;
+    Ok(server_pair >= floor_pair)
+}
+
 pub fn apply_bearer_token_auth(
     builder: fabro_http::HttpClientBuilder,
     token: &str,
@@ -3151,6 +3249,45 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
+
+    use super::{RUN_CHANNEL_MIN_SERVER, enforce_run_channel_floor, server_meets_floor};
+
+    /// The floor parser: the line's real version shape ("0.362.0-fork.32"
+    /// — a pre-release suffix on the minor), a bare major.minor, and the
+    /// refusals for garbage and for a server below the floor.
+    #[test]
+    fn run_channel_floor_compares_major_minor_and_refuses_below() {
+        assert!(server_meets_floor("0.362.0-fork.32", "0.0").unwrap());
+        assert!(server_meets_floor("0.362.0-fork.32", "0.362").unwrap());
+        assert!(server_meets_floor("1.4.0", "0.362").unwrap());
+        assert!(!server_meets_floor("0.361.9-fork.31", "0.362").unwrap());
+        assert!(!server_meets_floor("0.0", "0.362").unwrap());
+        // Floors are major.minor by design: a patch-level floor string
+        // truncates to its minor — the discipline bumps majors/minors,
+        // never patches.
+        assert!(server_meets_floor("0.362.0-fork.32", "0.362.5").unwrap());
+        assert!(server_meets_floor("garbage", "0.0").is_err());
+        assert!(server_meets_floor("0", "0.0").is_err());
+    }
+
+    /// The gate: a floor never demands equality (a NEWER server passes),
+    /// a missing version is refused (a channel server must identify),
+    /// and the refusal names both versions.
+    #[test]
+    fn run_channel_floor_gate_names_both_versions() {
+        assert!(enforce_run_channel_floor(&Some("99.0.0".to_owned()), "0.362").is_ok());
+        assert!(enforce_run_channel_floor(&Some("0.362.0-fork.32".to_owned()), "0.362").is_ok());
+        let below = enforce_run_channel_floor(&Some("0.361.0".to_owned()), "0.362").unwrap_err();
+        let text = below.to_string();
+        assert!(text.contains("0.361.0"), "{text}");
+        assert!(text.contains("0.362"), "{text}");
+        assert!(enforce_run_channel_floor(&None, "0.0").is_err());
+        // The landing floor refuses nothing today — the mechanism's
+        // first exercise is the first deliberate bump.
+        assert!(
+            enforce_run_channel_floor(&Some("0.0.1".to_owned()), RUN_CHANNEL_MIN_SERVER).is_ok()
+        );
+    }
 
     use chrono::Duration as ChronoDuration;
     use fabro_types::{SandboxProviderKind, WorkflowPath};
