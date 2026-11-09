@@ -21,6 +21,20 @@ The instructions below will help you build and test Fabro locally.
 - [Bun](https://bun.sh/) (for the web frontend)
 - Git
 
+### Development setup
+
+`just bootstrap` installs [mise](https://mise.jdx.dev/) when absent,
+every tool the repo pins (`.mise.toml`: just, bun, nushell, lefthook,
+betterleaks), and the lefthook git hooks (commit-time secret and
+host-identity gates — see `lefthook.yml`).
+
+On a machine with neither mise nor just:
+
+```bash
+curl -fsSL https://mise.run | sh   # then follow its PATH/activation hint
+just bootstrap
+```
+
 ### Build and test
 
 ```bash

@@ -36,8 +36,9 @@ bun = "1.4.0"
 # (run sandboxes install the same release binary).
 "cargo:seeds" = "0.13.0"
 # Git hooks (lefthook.yml: pre-commit leak + guard + nu lint gates,
-# pre-push full scan). After cloning: mise install && lefthook install.
-# Mirrors fabro-tofu's setup (same pins).
+# pre-push full scan). After cloning: just bootstrap (installs mise
+# when absent, every pin above, and the hooks). Mirrors fabro-tofu's
+# setup (same pins).
 lefthook = "2.1.10"
 # Secret scanner riding those hooks (staged diff pre-commit, full repo
 # pre-push). NOTE: this catches CREDENTIALS, not internal

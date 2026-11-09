@@ -48,6 +48,13 @@ skip_cli := env("JUST_SKIP_CLI_INSTALL", "false")
 default:
     @just --list
 
+# One-shot clone bootstrap: mise itself (installed when absent), every
+# tool .mise.toml pins, and the lefthook git hooks. Idempotent.
+# Rust/rustup stays out (AGENTS.md owns the toolchain); the true cold
+# start (no mise, no just) is in CONTRIBUTING.md.
+bootstrap:
+    nu scripts/bootstrap.nu
+
 # Full pipeline: build binary + image, install CLI, start compose, wait for
 # health, smoke-test the routes a user hits (health, SPA index + every
 # referenced asset, SPA deep route, CLI API roundtrip). Smoke failure aborts

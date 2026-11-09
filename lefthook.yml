@@ -1,6 +1,6 @@
 # lefthook — fast git hooks manager (https://github.com/evilmartians/lefthook)
 # Binaries come from mise (lefthook + betterleaks in .mise.toml).
-# After cloning this repo:  mise install && lefthook install
+# After cloning this repo:  just bootstrap
 # Run a group manually:     lefthook run pre-commit | pre-push
 #
 # Mirrors fabro-tofu's setup. The Rust gates stay in `just verify`
