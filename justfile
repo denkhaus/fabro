@@ -113,10 +113,14 @@ image-release: web-deps
 # decision in ADR-0041's consequences) and never ride this public
 # repo — not even as recipe defaults (2026-11-09 leak, caught in
 # review). No credentials needed for the build itself (public repo).
+# /opt/fabro-release (the scp target) is provisioned by fabro-tofu's
+# docker-host release_install — never created by ad-hoc SSH here. The
+# remote command travels as ONE ssh argument: ssh arg-joining drops the
+# empty '' of a defaulted --sha, and nu then fails at the flag (live
+# 2026-11-09, the window's first rehearsal).
 host-release host port arch='amd64' sha='':
-    @ssh -p {{port}} {{host}} 'mkdir -p /opt/fabro-release'
-    @scp -P {{port}} scripts/host-release.nu {{host}}:/opt/fabro-release/host-release.nu
-    @ssh -p {{port}} {{host}} 'nu /opt/fabro-release/host-release.nu' --arch {{arch}} --sha '{{sha}}'
+    @scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
+    @ssh -p {{ port }} {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'"
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
@@ -207,7 +211,7 @@ verify stage='':
 # Thin wrapper — logic lives in scripts/run_workflow.nu.
 # Examples:
 #   just run develop --goal "Implement product seed fabro-6a5a ..."
-#   just run develop --adopt 01M0WW
+# just run develop --adopt 01M0WW
 run *args:
     nu scripts/run_workflow.nu {{ args }}
 
@@ -240,7 +244,7 @@ cycle *args:
 #
 # Examples:
 #   just validate-workflows
-#   just validate-workflows develop
+# just validate-workflows develop
 validate-workflows target="":
     nu scripts/validate-workflows.nu {{ if target == "" { "" } else { target } }}
 
