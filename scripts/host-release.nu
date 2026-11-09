@@ -56,17 +56,24 @@ def main [
     let builder = (ensure-builder)
     print $"host-release: pipeline start — ($tag)"
 
-    # The builder runs the pipeline unchanged. Named volumes put the
-    # cargo registry and the fabro-dev target dir on the host, so the
-    # first run pays the fabro-dev compile once; tmp/docker-context is
-    # staged inside the mounted clone (gitignored, pruned by the host
-    # image sweep).
+    # The builder runs the pipeline unchanged. The clone mounts AT ITS
+    # REAL HOST PATH (not a cosmetic /src): fabro-dev derives every
+    # nested `docker run -v <workspace>:…` bind from its workspace root,
+    # and a nested docker CLI resolves bind sources on the HOST daemon —
+    # a /src mount inside the builder asked the daemon for the host's
+    # /src, got an empty dir, and the inner compile died at "could not
+    # find Cargo.toml" (live 2026-11-09, rehearsal 6). At the real path
+    # every nested bind — compile, extract, build context — resolves to
+    # the actual clone. Named volumes put the cargo registry and the
+    # fabro-dev target dir on the host, so the first run pays the
+    # fabro-dev compile once; tmp/docker-context is staged inside the
+    # mounted clone (gitignored, pruned by the host image sweep).
     let run_args = [
         run
         --rm
         -v "/var/run/docker.sock:/var/run/docker.sock"
-        -v $"($SRC_DIR):/src"
-        -w /src
+        -v $"($SRC_DIR):($SRC_DIR)"
+        -w $"($SRC_DIR)"
         -e "CARGO_TARGET_DIR=/target"
         -v "fabro-release-cargo-registry:/usr/local/cargo/registry"
         -v "fabro-release-target:/target"

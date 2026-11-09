@@ -268,9 +268,13 @@ const SANDBOX_PIN_SED: &str = r#"REV=$(awk '/^name = "sandbox-driver"$/{getline;
 /// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged
 /// through the docker context beside the release binary so `[[run.hooks]]`
 /// script kinds can run nu inside the server container.
-const NU_VERSION: &str = "0.115.0";
-const NU_SHA256_AMD64: &str = "d510565b039b5384986652e579fe443877fcc4df86f16072ed5edca641ad92f1";
-const NU_SHA256_ARM64: &str = "7e60824f66b8c814fdbb52741047d38c8379e4bc5e8271135667ef04e3c55324";
+/// Lockstep: 0.116.1, the line's sweep version (78-script sweep green,
+/// 2026-11-08) and the toolchain's nu — a hook nu older than the scripts
+/// the line authors against re-introduces the 0.115 parse break class
+/// (mx-e606d5) inside the shipped artifact.
+const NU_VERSION: &str = "0.116.1";
+const NU_SHA256_AMD64: &str = "13ef75df08df30f8d7b031df538e82a52c6e74ce839b1a9091c3a3f1969c3742";
+const NU_SHA256_ARM64: &str = "b103770c00bf322c409caa007aad44882d1cc5d24d82f719f877812ac33d6ad1";
 
 fn nu_sha256(arch: DockerArch) -> &'static str {
     match arch {
