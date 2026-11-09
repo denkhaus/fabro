@@ -90,7 +90,7 @@ def main [
     if $push_mirror {
         # Manual escape hatch only — the default-on mirror is tofu's
         # post-deploy step. Needs a ghcr write login on the host.
-        print $"host-release: pushing mirror \($tag) ..."
+        print $"host-release: pushing mirror \(($tag)) ..."
         let push = (do { ^docker push $tag } | complete)
         if $push.exit_code != 0 {
             print -e $push.stderr
@@ -124,7 +124,7 @@ def resolve-sha [explicit: string]: nothing -> string {
 
 def ensure-clone [] {
     if ($SRC_DIR | path type) == 'dir' { return }
-    print $"host-release: cloning \($REPO_URL) → \($SRC_DIR) \(one-time)"
+    print $"host-release: cloning \(($REPO_URL)) → \(($SRC_DIR)) \(one-time)"
     let res = (do { ^git clone $REPO_URL $SRC_DIR } | complete)
     if $res.exit_code != 0 {
         print -e $res.stderr
@@ -140,10 +140,10 @@ def checkout [full_sha: string] {
     }
     # A 12-char --sha resolves to its full form here; anything else
     # must already be full (ls-remote gives 40).
-    let rev = (do { ^git -C $SRC_DIR rev-parse $"^($full_sha)^{commit}" } | complete)
+    let rev = (do { ^git -C $SRC_DIR rev-parse $"($full_sha)^{commit}" } | complete)
     if $rev.exit_code != 0 {
         print -e $rev.stderr
-        error make {msg: $"host-release: sha \($full_sha) not found after fetch"}
+        error make {msg: $"host-release: sha \(($full_sha)) not found after fetch"}
     }
     let resolved = ($rev.stdout | str trim)
     let co = (do { ^git -C $SRC_DIR checkout --detach $resolved } | complete)
@@ -152,7 +152,7 @@ def checkout [full_sha: string] {
         error make {msg: 'host-release: checkout failed'}
     }
     if $resolved != $full_sha {
-        print $"host-release: note — short sha resolved to \($resolved)"
+        print $"host-release: note — short sha resolved to \(($resolved))"
     }
 }
 
@@ -164,7 +164,7 @@ def ensure-builder []: nothing -> string {
     let tag = $"fabro-release-builder:($hash)"
     let have = (do { ^docker image inspect $tag } | complete)
     if $have.exit_code == 0 { return $tag }
-    print $"host-release: building \($tag)"
+    print $"host-release: building \(($tag))"
     let res = (do {
         ^docker build -f $"($SRC_DIR)/docker/release-builder.Dockerfile" -t $tag $"($SRC_DIR)/docker"
     } | complete)
