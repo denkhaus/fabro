@@ -1153,10 +1153,12 @@ async fn validate_intent_environment(
 ) -> Result<(), EnvironmentSelectionError> {
     let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
     let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
-    let image = &settings.run.environment.image;
-    let image_incompatible = effective_provider == SandboxProviderKind::DOCKER
-        && image.docker.is_none()
-        && image.dockerfile.is_some();
+    let _ = &settings.run.environment.image;
+    // No `image.dockerfile` incompatibility since ADR-0042: a
+    // dockerfile-only environment on the docker provider is the BUILD
+    // case — the engine builds the image at scope acquisition — and an
+    // environment with no image at all runs on the backend's default
+    // runner image. Both are valid on every target the provider allows.
     let (target_incompatible, detail) = match target {
         RunTarget::Git(_) => (
             configured_provider == SandboxProviderKind::LOCAL || !settings.run.clone.enabled,
@@ -1171,7 +1173,7 @@ async fn validate_intent_environment(
             "folder targets require a Local environment",
         ),
     };
-    if image_incompatible || target_incompatible {
+    if target_incompatible {
         return Err(EnvironmentSelectionError::TargetUnsupported { detail });
     }
     // Settings resolution drops `run.pull_request` unless it is enabled, so

@@ -38,7 +38,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use fabro_config::{
-    EnvironmentImageLayer, EnvironmentLayer, Home, MergeMap, SettingsLayer, Storage,
+    EnvironmentDockerfileLayer, EnvironmentImageLayer, EnvironmentLayer, Home, MergeMap,
+    SettingsLayer, Storage,
 };
 use fabro_interview::ControlInterviewer;
 use fabro_petri::check::Admitted;
@@ -162,10 +163,13 @@ fn settings_layer_toml(state: &AppState) -> Option<String> {
 
 /// The catalog with only the keys Petri reads on each environment: the
 /// provider, `image.docker` under `docker` and `daytona`, `resources`
-/// under `daytona`, and `env`. The rest is the platform's (`cwd`,
-/// `network`, `lifecycle`, `labels`, `image.dockerfile`, resources the host
-/// and Docker providers run without, an image the host runs without) and
-/// stays with the server's own resolution; handing it to Petri would only
+/// under `daytona`, `env`, and — LIVE since ADR-0042 —
+/// `image.dockerfile` in its inline form on the `docker` provider (the
+/// engine builds that image at scope acquisition; petri refuses the
+/// form beside a finished image). The rest is the platform's (`cwd`,
+/// `network`, `lifecycle`, `labels`, resources the host and Docker
+/// providers run without, an image the host runs without) and stays
+/// with the server's own resolution; handing it to Petri would only
 /// warn `ignored.workflow_toml.environments.<id>.<key>` on every admit.
 fn petri_environments(catalog: &MergeMap<EnvironmentLayer>) -> MergeMap<EnvironmentLayer> {
     MergeMap(
@@ -183,10 +187,25 @@ fn petri_environment(environment: &EnvironmentLayer) -> EnvironmentLayer {
         .image
         .as_ref()
         .filter(|_| provider != Some("local"))
-        .and_then(|image| image.docker.clone())
-        .map(|docker| EnvironmentImageLayer {
-            docker:     Some(docker),
-            dockerfile: None,
+        .map(|image| {
+            // The build declaration rides through in its INLINE form, on
+            // the docker provider, and only when no finished image is
+            // named beside it (ADR-0042): the engine builds the image at
+            // scope acquisition over the run's repository as context. A
+            // `{path}` dockerfile stays behind — the run compiler resolves
+            // those from workflow files, and petri refuses the form.
+            let dockerfile = match (&image.docker, &image.dockerfile) {
+                (None, Some(EnvironmentDockerfileLayer::Inline(text)))
+                    if provider == Some("docker") =>
+                {
+                    Some(EnvironmentDockerfileLayer::Inline(text.clone()))
+                }
+                _ => None,
+            };
+            EnvironmentImageLayer {
+                docker: image.docker.clone(),
+                dockerfile,
+            }
         });
     let resources = environment
         .resources

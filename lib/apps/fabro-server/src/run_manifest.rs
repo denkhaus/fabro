@@ -678,9 +678,9 @@ fn environment_capability_warnings(resolved_run: &RunNamespace) -> Vec<String> {
             if environment.lifecycle.auto_stop.is_some() {
                 warnings.push("docker provider ignores lifecycle.auto_stop".to_string());
             }
-            if environment.image.dockerfile.is_some() {
-                warnings.push("docker provider ignores image.dockerfile".to_string());
-            }
+            // No `image.dockerfile` warning here: the build is LIVE on the
+            // docker provider (ADR-0042) — the engine builds the image at
+            // scope acquisition over the run's repository as context.
         }
         Some(BundledProvider::Daytona) => {
             if environment.cwd.is_some() {

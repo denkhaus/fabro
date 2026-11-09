@@ -175,8 +175,6 @@ graph = "workflow.fabro"
 provider = "local"
 [run.goal]
 file = "goal.md"
-[run.environment.image]
-dockerfile = { path = "Dockerfile" }
 "#,
         );
         write(
