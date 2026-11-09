@@ -271,11 +271,27 @@ RUN mulch --version \
 # validate-workflows fast path on this binary. The COPY sits LAST: the
 # tools above change rarely, the source changes with every commit, and
 # the warm cook keeps this leg to the workspace's own crates.
+#
+# WORKDIR /src like the chef stages: the workspace must sit at a
+# dedicated root — cargo passes rustc source paths RELATIVE to the
+# workspace root, and the repo's include_str!/include_dir! paths (six
+# and three `..` from their sources) resolve against exactly this
+# shape. At the filesystem root `/` the include resolution breaks
+# (probed live 2026-11-09: relative rustc paths from `/` fail while
+# the same tree under /src compiles).
+WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY .cargo/ .cargo/
 COPY lib/ lib/
 COPY test/ test/
 COPY vendor/ vendor/
+# The embedded documentation trees (fork_ask_docs include_dir!s) and the
+# OpenAPI spec (system.rs include_str!): the server carries them in its
+# binary. docs/public (the website) rides no image — nothing embeds it.
+COPY docs/agents/ docs/agents/
+COPY docs/internal/ docs/internal/
+COPY docs/adr/ docs/adr/
+COPY docs/lab/ docs/lab/
 COPY docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
 RUN cargo build --locked --release -p fabro-cli \
     && cp /opt/target/release/fabro /usr/local/bin/fabro \
