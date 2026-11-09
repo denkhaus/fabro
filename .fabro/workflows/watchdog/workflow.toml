@@ -14,7 +14,7 @@ graph = "workflow.fabro"
 provider = "docker"
 
 [environments.toolchain.image]
-dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+dockerfile = { path = "../../Dockerfile.toolchain" }
 
 # watchdog (ADR-0039 stage F, denkhaus/work#1107; grilled 2026-11-05):
 # the dead-man watch over the scheduler gears. One pass = one LLM-free

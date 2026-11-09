@@ -14,7 +14,7 @@ graph = "workflow.fabro"
 provider = "docker"
 
 [environments.toolchain.image]
-dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+dockerfile = { path = "../../Dockerfile.toolchain" }
 
 # merger (ADR-0039 stage E, denkhaus/work#1107): the technical-
 # integration gear. One pass = one run: the fast path reads the closable

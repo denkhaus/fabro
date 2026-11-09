@@ -14,7 +14,7 @@ graph = "workflow.fabro"
 provider = "docker"
 
 [environments.toolchain.image]
-dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+dockerfile = { path = "../../Dockerfile.toolchain" }
 
 # Run-level run-tools switch (ADR-0030, user grill approval 2026-10-18):
 # node-level x.fabro_tools grants are INERT without this — the engine

@@ -14,7 +14,7 @@ graph = "workflow.fabro"
 provider = "docker"
 
 [environments.toolchain.image]
-dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+dockerfile = { path = "../../Dockerfile.toolchain" }
 
 # adjudicator (ADR-0039 stage D part 2, denkhaus/work#1107): the
 # content-verdict gear. One pass = one run: the fast path sweeps the
