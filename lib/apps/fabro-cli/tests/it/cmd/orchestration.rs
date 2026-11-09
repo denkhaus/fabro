@@ -354,6 +354,9 @@ fn work_comments_reaches_transport() {
 /// bare array — the shape bug this test was born red against: the fast
 /// path's `read-observations` reads `.observations`, and a bare array
 /// silently yields zero facts (every run would look painpoint-free).
+/// The row carries the fork.32 observation batch's required keys
+/// (`stage`, `linked_work_items`) — the mock predating the batch failed
+/// deserialization and turned every tester-gate run red.
 #[test]
 fn observation_list_json_is_the_record_the_fast_path_parses() {
     let server = httpmock::MockServer::start();
@@ -362,7 +365,9 @@ fn observation_list_json_is_the_record_the_fast_path_parses() {
             .path("/api/v1/runs/01M5844J1FDD00000000000000/observations");
         then.status(200)
             .header("content-type", "application/json")
-            .body(r#"{"observations":[{"seq":1,"category":"note","text":"a fact"}]}"#);
+            .body(
+                r#"{"observations":[{"seq":1,"category":"note","text":"a fact","stage":null,"linked_work_items":[]}]}"#,
+            );
     });
     let url = server.base_url();
     let stdout = json_on(&[
