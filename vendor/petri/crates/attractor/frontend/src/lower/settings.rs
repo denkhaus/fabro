@@ -122,6 +122,12 @@ pub struct Environment {
     pub provider:  String,
     /// `image.docker`, when set.
     pub image:     Option<String>,
+    /// `image.dockerfile`, inline text: the engine builds this image at
+    /// scope acquisition (before the sandbox is created) and the scope
+    /// runs on the built tag. The build context is the run's bound
+    /// repository. Docker provider only (ADR-0042, fabro plan
+    /// 2026-11-09-run-environment-image-build).
+    pub dockerfile: Option<String>,
     pub env:       BTreeMap<String, EnvValue>,
     /// `resources`, as Daytona runner sizing.
     pub cpu_cores: Option<u32>,

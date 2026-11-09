@@ -939,33 +939,55 @@ impl Reader<'_> {
                 .or_else(|| base.get(key).map(|value| (value, base_table.as_str())))
         };
         let mut environment = Environment {
-            id:        id.clone(),
-            provider:  provider.clone(),
-            image:     None,
-            env:       BTreeMap::new(),
-            cpu_cores: None,
-            memory_mb: None,
-            disk_mb:   None,
+            id:         id.clone(),
+            provider:   provider.clone(),
+            image:      None,
+            dockerfile: None,
+            env:        BTreeMap::new(),
+            cpu_cores:  None,
+            memory_mb:  None,
+            disk_mb:    None,
         };
-        // `image.docker` only: `image.dockerfile` is the platform's, which
-        // builds the image there; the scope here runs on `image.docker` or
-        // the backend's default runner image.
+        // `image.docker` and `image.dockerfile`: the dockerfile is the
+        // platform's build declaration — inline text the engine builds
+        // at scope acquisition (ADR-0042); the scope runs on the built
+        // tag, `image.docker` names a finished image instead.
         if let Some((image, table)) = field("image")
             && let Some(image) = image.as_table()
-            && let Some(docker) = image.get("docker").and_then(toml::Value::as_str)
         {
-            if provider == "local" {
-                // Fabro ignores the image on the host, and a server's
-                // catalog may carry one on a `local` environment (its
-                // seeded default keeps the image whatever the provider).
-                self.ignored_in(
-                    &at(&format!("{table}.image.docker")),
-                    &format!("environments.{id}.image"),
-                    "the `local` provider runs on the host; an image applies to `docker` and \
-                     `daytona`",
-                );
-            } else {
-                environment.image = Some(docker.to_string());
+            if let Some(docker) = image.get("docker").and_then(toml::Value::as_str) {
+                if provider == "local" {
+                    // Fabro ignores the image on the host, and a server's
+                    // catalog may carry one on a `local` environment (its
+                    // seeded default keeps the image whatever the provider).
+                    self.ignored_in(
+                        &at(&format!("{table}.image.docker")),
+                        &format!("environments.{id}.image"),
+                        "the `local` provider runs on the host; an image applies to `docker` and \
+                         `daytona`",
+                    );
+                } else {
+                    environment.image = Some(docker.to_string());
+                }
+            }
+            if let Some(dockerfile) = image.get("dockerfile").and_then(toml::Value::as_str) {
+                match provider.as_str() {
+                    "docker" => environment.dockerfile = Some(dockerfile.to_string()),
+                    // v1 builds on the docker provider only; the other
+                    // providers would silently never act on the key.
+                    "local" => self.ignored_in(
+                        &at(&format!("{table}.image.dockerfile")),
+                        &format!("environments.{id}.image"),
+                        "the `local` provider runs on the host; a dockerfile builds for the \
+                         `docker` provider",
+                    ),
+                    _ => self.ignored_in(
+                        &at(&format!("{table}.image.dockerfile")),
+                        &format!("environments.{id}.image"),
+                        "the `daytona` provider builds no image; name `image.docker` or move \
+                         the environment to the `docker` provider",
+                    ),
+                }
             }
         }
         if let Some((resources, table)) = field("resources")
