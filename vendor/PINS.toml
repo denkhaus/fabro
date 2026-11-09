@@ -25,11 +25,11 @@
 vendor = "vendor/petri"
 fork = "denkhaus/petri"
 branch = "fabro"
-fork_sha = "b78f29fe709bf4620cbde492e1beed58aaf13793"
+fork_sha = "58481cde79f1dcd94e57079ac154a7f5366ef810"
 upstream = "lithoscomputer/petri"
 upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
-tree_sha = "677f7bf3e9945f1a588e8b72691582f46291bd61"
-content_sha256 = "74b7ddeab8e3bc4b473ea50d5d1ad51972b96ebba55077d37471bd6c0b7f8082"
+tree_sha = "f3e62e2d9a8f5018c7bec4b2166ed631bd8cf873"
+content_sha256 = "36eb6f34dc2e34611450d0e2861a2b9ce592dd3ca8cec4dd20b14341ee77ff1b"
 files = 931
 crates = [
     "petri-attractor-steps",

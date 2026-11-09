@@ -1727,7 +1727,6 @@ impl Commands {
                 EnvCommand::List(_) => "env list",
                 EnvCommand::Show(_) => "env show",
                 EnvCommand::Update(_) => "env update",
-                EnvCommand::PinToolchain(_) => "env pin-toolchain",
             },
             Self::Projects(ns) => match &ns.command {
                 ProjectsCommand::Upsert(_) => "projects upsert",
@@ -2134,8 +2133,6 @@ pub(crate) enum EnvCommand {
     Show(EnvShowArgs),
     /// Update a server environment
     Update(EnvUpdateArgs),
-    /// Pin the toolchain environment to the just-pushed image
-    PinToolchain(EnvPinToolchainArgs),
 }
 
 #[derive(Args)]
@@ -2191,19 +2188,6 @@ pub(crate) struct EnvUpdateArgs {
     /// Clear the auto-stop idle duration
     #[arg(long = "no-auto-stop")]
     pub(crate) no_auto_stop: bool,
-}
-
-#[derive(Args)]
-#[group(required = true, multiple = false)]
-pub(crate) struct EnvPinToolchainArgs {
-    /// Pin this 12-hex git sha tag (e.g. from scripts/run-images.nu --push)
-    #[arg(long = "tag")]
-    pub(crate) tag: Option<String>,
-
-    /// Derive the tag from the current git HEAD sha12 (same logic as
-    /// scripts/run-images.nu --push)
-    #[arg(long = "from-run-images")]
-    pub(crate) from_run_images: bool,
 }
 
 #[derive(Args)]

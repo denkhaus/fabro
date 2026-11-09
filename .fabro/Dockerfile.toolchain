@@ -85,13 +85,22 @@ RUN set -eux; \
     python3 -m pip install --break-system-packages --no-cache-dir pytest; \
     python3 -m pytest --version
 
-# ─── ARM 1: cargo-chef staged dependency layers ─────────────────────────
-# Planner: cook context is staged by scripts/run-images.nu into
-# .fabro/cook/ (git-tracked workspace manifests + sources + lockfile +
-# the OpenAPI spec). prepare reduces it to a recipe.json.
+# ─── ARM 1: cargo-chef over the RAW REPOSITORY (ADR-0042) ───────────────
+# The run's checkout IS the build context — no staging step exists
+# anymore (run-images.nu's cook staging retired with the parity world).
+# The engine packs a fresh clone of the repository as the context, so
+# COPY addresses the repository tree directly and only `.git` is
+# absent. Layer caching: the COPY set changes with the source, the
+# recipe changes only when the dependency graph does, and the cook
+# layer rides the daemon's cache between them.
 FROM base AS chef-plan
-COPY cook /src
 WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ .cargo/
+COPY lib/ lib/
+COPY test/ test/
+COPY vendor/ vendor/
+COPY docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
 RUN cargo chef prepare --recipe-path /recipe.json
 
 # Cooker: rebuilds the skeleton from the recipe (manifests + dummy
@@ -253,15 +262,23 @@ RUN mulch --version \
     && ! command -v sd \
     && ! command -v ml
 
-# Full fabro CLI (fabro-fe15, user decision 2026-09-16; petri rework
-# fabro-96c6): staged by scripts/run-images.nu in RELEASE profile
-# (debug is ~342 MB; the demand is PATH availability at container
-# start). It carries the create check the fork's validation rules live
-# in (fabro-validate is gone), plus an HTTP client — run sandboxes hold
-# no server token/auth.json, and the user explicitly accepted this
-# scope. ADR-0019: the bake is a recorded user decision.
-# FABRO_VALIDATE_PREBUILT=1 keeps the validate-workflows fast path:
-# scripts/validate-workflows.nu uses this binary instead of building.
-COPY bin/fabro /usr/local/bin/fabro
-RUN chmod +x /usr/local/bin/fabro
+# Full fabro CLI (ADR-0042): built INSIDE the image from the checkout —
+# no version pin, no staged binary. The image and the code under test
+# are the same sha by construction (the old parity world pinned a
+# release-built CLI to the deployed server; the run channel's
+# compatibility floor now guards the seam instead). PATH availability
+# at container start is the demand; FABRO_VALIDATE_PREBUILT=1 keeps the
+# validate-workflows fast path on this binary. The COPY sits LAST: the
+# tools above change rarely, the source changes with every commit, and
+# the warm cook keeps this leg to the workspace's own crates.
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo/ .cargo/
+COPY lib/ lib/
+COPY test/ test/
+COPY vendor/ vendor/
+COPY docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
+RUN cargo build --locked --release -p fabro-cli \
+    && cp /opt/target/release/fabro /usr/local/bin/fabro \
+    && chmod +x /usr/local/bin/fabro \
+    && rm -rf /src
 ENV FABRO_VALIDATE_PREBUILT=1

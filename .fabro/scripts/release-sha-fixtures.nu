@@ -79,16 +79,17 @@ def main [] {
     }
     print "ok: the scanner finds a planted derivation"
 
-    # 3) The release scripts call the ONE policy site (the fix pin): an edit
+    # 3) The release script calls the ONE policy site (the fix pin): an edit
     #    that drops the call fails here instead of shipping a workspace-commit
-    #    tag that no push publishes.
-    for script in ['scripts/run-images.nu' 'scripts/image-release.nu'] {
+    #    tag that no push publishes. (The toolchain half retired with the
+    #    parity world, ADR-0042 — image-release is the one release script.)
+    for script in ['scripts/image-release.nu'] {
         if not ((open --raw $script) | str contains '.fabro/scripts/line-tip-sha.nu') {
             print $"RED: ($script) does not call the line-tip policy site"
             exit 1
         }
     }
-    print "ok: both release scripts call the line-tip policy site"
+    print "ok: the release script calls the line-tip policy site"
 
     # 4) The release tip must be the PUBLISHED tip — equality, not
     #    reachability (fabro-ed65): GitButler rewrites shas on push, so a
@@ -108,9 +109,9 @@ def main [] {
     }
     print "ok: tip-verdict demands the published tip and fails closed on an unreadable one"
 
-    # 5) Both release scripts take the sha (ONE resolution per release) and
-    #    demand the published tip when they resolve it themselves.
-    for script in ['scripts/run-images.nu' 'scripts/image-release.nu'] {
+    # 5) The release script takes the sha (ONE resolution per release) and
+    #    demands the published tip when it resolves it itself.
+    for script in ['scripts/image-release.nu'] {
         # BEHAVIORAL, not textual: `--help` prints the flags the script really
         # declares, so a rationale comment naming them cannot satisfy the pin
         # (the first, textual version of this check survived a mutation that
@@ -129,30 +130,24 @@ def main [] {
             exit 1
         }
     }
-    print "ok: both release scripts declare --sha and guard their own resolution"
+    print "ok: the release script declares --sha and guards its own resolution"
 
-    # 4b) The ONE resolution lives in the justfile recipe: it must resolve the
-    #     tip once and pass the SAME value to both release scripts.
+    # 4b) The ONE resolution lives in the justfile recipe: it must resolve
+    #     the tip once and pass the SAME value to the release script. (The
+    #     toolchain second consumer retired with the parity world, ADR-0042;
+    #     the count stays a guard so a future second release script joins
+    #     the shared resolution instead of deriving its own.)
     let recipe = (open --raw justfile | lines | each {|l| $l | split row '#' | first } | str join (char nl))
     if not ($recipe | str contains 'line-tip-sha.nu --require-published') {
         print "RED: the image-release recipe no longer resolves the published tip"
         exit 1
     }
     let shared = (($recipe | split row '--sha "$TIP"' | length) - 1)
-    if $shared < 2 {
-        print $"RED: the image-release recipe passes --sha to ($shared) release scripts, expected 2 — the two images could tag different shas"
+    if $shared < 1 {
+        print $"RED: the image-release recipe passes --sha to ($shared) release scripts, expected at least 1"
         exit 1
     }
-    print "ok: the image-release recipe resolves the tip once and shares it with both release scripts"
-
-    # 6) The pin wrapper refuses a tag whose image manifest is missing
-    #    (fork.8: the parity gate passed while GHCR had no such tag).
-    let pinned = (do { ^nu .fabro/scripts/pin-toolchain.nu 'deadbeefcafe' --dry-run } | complete)
-    if $pinned.exit_code == 0 {
-        print "RED: pin-toolchain accepted a tag with no GHCR manifest — the environment would point at an unpullable image"
-        exit 1
-    }
-    print "ok: pin-toolchain refuses a tag with no image manifest"
+    print "ok: the image-release recipe resolves the tip once and shares it with the release script"
 
     # 7) Behavioral: the published-tip guard refuses a tip no push published
     #    and passes once the branch is pushed (throwaway repos, offline).

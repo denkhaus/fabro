@@ -189,23 +189,28 @@ fn petri_environment(environment: &EnvironmentLayer) -> EnvironmentLayer {
         .filter(|_| provider != Some("local"))
         .map(|image| {
             // The build declaration rides through in its INLINE form, on
-            // the docker provider, and only when no finished image is
-            // named beside it (ADR-0042): the engine builds the image at
-            // scope acquisition over the run's repository as context. A
-            // `{path}` dockerfile stays behind — the run compiler resolves
-            // those from workflow files, and petri refuses the form.
-            let dockerfile = match (&image.docker, &image.dockerfile) {
-                (None, Some(EnvironmentDockerfileLayer::Inline(text)))
-                    if provider == Some("docker") =>
-                {
+            // the docker provider (ADR-0042): the engine builds the image
+            // at scope acquisition over the run's repository as context.
+            // When a finished `image.docker` sits beside it after the
+            // layer merge (a server-catalog entry under a repo-declared
+            // build), the BUILD WINS and the image is dropped — the
+            // layer-override semantics of settings, matching the
+            // lowering's own precedence; petri refuses the pair inside
+            // ONE table, which the server never hands it. A `{path}`
+            // dockerfile stays behind — the run compiler resolves those
+            // from workflow files, and petri refuses the form.
+            let dockerfile = match &image.dockerfile {
+                Some(EnvironmentDockerfileLayer::Inline(text)) if provider == Some("docker") => {
                     Some(EnvironmentDockerfileLayer::Inline(text.clone()))
                 }
                 _ => None,
             };
-            EnvironmentImageLayer {
-                docker: image.docker.clone(),
-                dockerfile,
-            }
+            let docker = if dockerfile.is_some() {
+                None
+            } else {
+                image.docker.clone()
+            };
+            EnvironmentImageLayer { docker, dockerfile }
         });
     let resources = environment
         .resources
@@ -1320,7 +1325,13 @@ mod tests {
             keys.sort();
             keys
         };
-        assert_eq!(keys("docker"), ["env.LANG", "image.docker", "provider"]);
+        // A docker environment with a finished image AND a build
+        // declaration: the BUILD WINS (ADR-0042 — the engine builds at
+        // scope acquisition), the finished image is dropped, and only
+        // the dockerfile rides. A `{path}` dockerfile would stay behind
+        // too; the fixture's inline form is what the persisting
+        // materialization delivers.
+        assert_eq!(keys("docker"), ["env.LANG", "image.dockerfile", "provider"]);
         assert_eq!(keys("big"), ["provider", "resources.cpu"]);
         assert_eq!(keys("local"), ["provider"]);
     }

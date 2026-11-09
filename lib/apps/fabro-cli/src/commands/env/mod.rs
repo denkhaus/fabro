@@ -1,5 +1,4 @@
 mod list;
-mod pin_toolchain;
 mod show;
 mod update;
 
@@ -17,7 +16,6 @@ pub(crate) async fn dispatch(ns: EnvNamespace, base_ctx: &CommandContext) -> Res
         EnvCommand::List(args) => list::list_command(&args, &ctx).await,
         EnvCommand::Show(args) => show::show_command(&args, &ctx).await,
         EnvCommand::Update(args) => update::update_command(&args, &ctx).await,
-        EnvCommand::PinToolchain(args) => pin_toolchain::pin_toolchain_command(&args, &ctx).await,
     }
 }
 

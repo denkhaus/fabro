@@ -210,9 +210,10 @@ repository carries no fork history.
 - A vendored change is exported in the same change that needs it (the
   ADR-0027 dependency-finish rule). A vendor bump is one commit: tree +
   PINS section + `Cargo.lock` when the graph moved.
-- `run-images.nu` stages `vendor/` into the toolchain cook context and
-  folds a vendor hash into the gate hash, so a vendored edit rebuilds the
-  image and the cook needs no GitHub auth for the forks.
+- The toolchain image cooks `vendor/` from the repository itself
+  (ADR-0042: the engine builds it at run initialization, the checkout is
+  the context), so a vendored edit reaches the cook with no GitHub auth
+  and no staging step.
 
 ## Shell quoting in sandbox code
 

@@ -81,10 +81,10 @@ build-image: web-deps
 # Build the release image and push it to the fork's GHCR namespace
 # (ghcr.io/denkhaus/fabro): <version>-<shortsha> plus `latest`.
 # Needs a ghcr.io docker login with write:packages (see script header).
-# Release pipeline (user decision 2026-09-16): the server image AND the
-# toolchain image refresh together — the toolchain bakes the fabro CLI
-# (af97/fe15; carries the create check since fabro-96c6) that must stay
-# in sync with each release; `just up` is no longer the intensive path.
+# The toolchain image NO LONGER rides the release (ADR-0042, retired
+# 2026-11-09): the line's toolchain environment is repo-declared and
+# built by the engine at run initialization from the checkout itself —
+# no registry tag, no pin step, no parity gate.
 # Also installs the freshly staged binary as the local CLI (fabro-9114):
 # the local workflow targets https://mirtuell.net, `just up` (and its
 # install-cli step) is no longer used, so THIS recipe keeps local CLI and
@@ -93,8 +93,7 @@ build-image: web-deps
 image-release: web-deps
     @TIP=$(nu .fabro/scripts/line-tip-sha.nu --require-published) && \
         echo "image-release: line tip $TIP" && \
-        nu scripts/image-release.nu "{{ arch }}" --sha "$TIP" && \
-        nu scripts/run-images.nu --push --sha "$TIP"
+        nu scripts/image-release.nu "{{ arch }}" --sha "$TIP"
     @if [ "{{ skip_cli }}" = "true" ]; then \
         echo "image-release: skipping CLI install (JUST_SKIP_CLI_INSTALL=true)"; \
     else \
@@ -118,29 +117,6 @@ host-release host port arch='amd64' sha='':
     @ssh -p {{port}} {{host}} 'mkdir -p /opt/fabro-release'
     @scp -P {{port}} scripts/host-release.nu {{host}}:/opt/fabro-release/host-release.nu
     @ssh -p {{port}} {{host}} 'nu /opt/fabro-release/host-release.nu' --arch {{arch}} --sha '{{sha}}'
-
-# Build the run images the lab environments reference (toolchain/mise),
-# on demand: rebuilt only when the Dockerfile content hash changed
-# (label sh.fabro.toolchain.sha256 carries the built hash).
-run-images:
-    nu scripts/run-images.nu
-
-# Pin the server-managed toolchain environment to the just-pushed
-# ghcr.io/denkhaus/fabro-toolchain:<sha12> tag (thin wrapper over
-# `fabro env pin-toolchain --from-run-images`; fabro-4f44). Ordering rule:
-# run ONLY after the matching server deploy — the command verifies
-# deployed-server/tag parity fail-closed and aborts on mismatch.
-# The tag comes from .fabro/scripts/line-tip-sha.nu (fabro-a1ed): it
-# resolves the line tip and its published-tip guard refuses any sha origin
-# has not published (GB era ended 2026-10-09) — and the generic CLI takes
-# the resolved sha via --tag, keeping repo specifics out of the product.
-# Usage: `just pin-toolchain [TAG]` — default tag is the LINE TIP (correct
-# inside a deploy window: deploy, then pin). The toolchain image exists only
-# for a sha that was actually built+deployed, and the parity gate demands the
-# DEPLOYED server sha — so pass the deployed sha explicitly whenever the line
-# moved on since the deploy (tooling repins do exactly that).
-pin-toolchain tag="":
-    nu .fabro/scripts/pin-toolchain.nu "{{ tag }}"
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps

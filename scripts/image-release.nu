@@ -7,12 +7,11 @@
 #   gh auth token | docker login ghcr.io -u denkhaus --password-stdin
 
 # `--sha` is how the RELEASE resolves the line tip exactly ONCE (fabro-ed65):
-# `just image-release` reads it from .fabro/scripts/line-tip-sha.nu and passes
-# the same value to scripts/run-images.nu. Two independent resolutions inside
-# one release let a commit landing during the long build tag the fabro image
-# and the toolchain image differently, and `just pin-toolchain` then pins an
-# image tag nobody ever pushed. Standalone callers omit --sha and get the
-# guarded resolution (it refuses a sha that is not the published tip).
+# the justfile recipe reads it from .fabro/scripts/line-tip-sha.nu and passes
+# the same value here. Two independent resolutions inside one release would
+# let a commit landing during the long build tag the image for a sha nobody
+# built. Standalone callers omit --sha and get the guarded resolution (it
+# refuses a sha that is not the published tip).
 def main [arch: string = "amd64", --sha: string = ''] {
     let version = (open --raw Cargo.toml | lines
         | where $it =~ '^version = '
@@ -39,8 +38,10 @@ def main [arch: string = "amd64", --sha: string = ''] {
 
     # The SAME line-tip sha goes into the builder as `FABRO_GIT_SHA`
     # (fabro-49af): without it the binary embeds the workspace commit at
-    # build time and `just pin-toolchain`'s parity gate refuses a
-    # content-identical pair.
+    # build time and the embedded sha drifts from the tag (the parity
+    # gate's old refusal class, retired with ADR-0042 — the embedded sha
+    # still names the source the binary was built from, which the tag
+    # must equal).
     print $"image-release: building ($tag) \(arch ($arch)) ..."
     cargo --locked dev docker-build --arch $arch --tag $tag --git-sha $sha
     print $"image-release: tagging ($repo):latest"

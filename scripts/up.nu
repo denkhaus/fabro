@@ -55,7 +55,6 @@ def main [--locked] {
     just clean
     just build-image
     just install-cli
-    just run-images
     just compose-up
     just wait-healthy
     just smoke

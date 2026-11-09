@@ -563,14 +563,10 @@ fn session_paths_for_run_id(run_id: Option<&str>) -> (SessionMode, String, Sessi
 }
 
 fn short_session_base_dir() -> PathBuf {
-    #[cfg(unix)]
-    {
-        PathBuf::from("/tmp/fx")
-    }
-    #[cfg(not(unix))]
-    {
-        std::env::temp_dir().join("fabro-test")
-    }
+    // The system temp dir (TMPDIR-honoring), not a hardcoded /tmp: a
+    // root-owned leftover at the fixed path wedged every short-session
+    // test (live 2026-11-09), and sandboxed runners own their TMPDIR.
+    std::env::temp_dir().join("fx")
 }
 
 fn shorten_session_id(id: &str) -> String {

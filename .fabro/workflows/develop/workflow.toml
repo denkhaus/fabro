@@ -3,6 +3,19 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
+# The line's toolchain environment, repo-declared (ADR-0042): the engine
+# builds this image at run initialization FROM THE REPOSITORY (the
+# checkout is the build context; the fabro CLI is cooked inside from the
+# same sha) — no version pin, no registry, no parity to the deployed
+# server (the run channel's compatibility floor guards the seam). A
+# server-catalog entry of the same id is overridden layer by layer: the
+# build declaration wins over a finished image.
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+
 # Run-level run-tools switch (ADR-0030, user grill approval 2026-10-18):
 # node-level x.fabro_tools grants are INERT without this — the engine
 # resolves agent.fabro_tools with unwrap_or(false) and only then mints

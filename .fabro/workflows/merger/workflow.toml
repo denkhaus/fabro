@@ -3,6 +3,19 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
+# The line's toolchain environment, repo-declared (ADR-0042): the engine
+# builds this image at run initialization FROM THE REPOSITORY (the
+# checkout is the build context; the fabro CLI is cooked inside from the
+# same sha) — no version pin, no registry, no parity to the deployed
+# server (the run channel's compatibility floor guards the seam). A
+# server-catalog entry of the same id is overridden layer by layer: the
+# build declaration wins over a finished image.
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "../../.fabro/Dockerfile.toolchain" }
+
 # merger (ADR-0039 stage E, denkhaus/work#1107): the technical-
 # integration gear. One pass = one run: the fast path reads the closable
 # queue (runs the adjudicator marked merge:enabled), merges the clean

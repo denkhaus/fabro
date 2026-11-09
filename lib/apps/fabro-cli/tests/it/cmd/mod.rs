@@ -22,7 +22,6 @@ mod docs;
 mod doctor;
 mod dump;
 mod env_list;
-mod env_pin_toolchain;
 mod env_show;
 mod env_update;
 mod events;
