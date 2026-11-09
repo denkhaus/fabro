@@ -31,7 +31,7 @@ COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 # changed nothing; the builder's own CLI must carry it). The official
 # plugin image drops the binary at the CLI's plugin path; DOCKER_BUILDKIT
 # pins the delegation explicitly.
-COPY --from=docker/buildx-bin:0.38 /buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+COPY --from=docker/buildx-bin:0.38.2 /buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 ENV DOCKER_BUILDKIT=1
 
 RUN set -eux; \
