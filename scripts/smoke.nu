@@ -91,8 +91,11 @@ def main [port: string = "32276", cli: string = "~/.fabro/bin/fabro"]: nothing -
     # 4. SPA deep route falls back to the index (browser navigation)
     $results = ($results | append (probe "SPA deep route /runs" $"($base)/runs" --html))
 
-    # 5. CLI API roundtrip
-    let ps = (do { ^$cli ps } | complete)
+    # 5. CLI API roundtrip. The server is EXPLICIT: since the line moved
+    # to the production target (2026-11-07), the CLI's default server is
+    # https://mirtuell.net — a bare `ps` probes PRODUCTION, which answered
+    # the dark-outage 404 and reddened the local smoke (live 2026-11-09).
+    let ps = (do { ^$cli ps --server $"http://127.0.0.1:($port)" } | complete)
     $results = ($results | append {
         name: "CLI API roundtrip (ps)"
         ok: ($ps.exit_code == 0)
