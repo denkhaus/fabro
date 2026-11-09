@@ -25,12 +25,12 @@
 vendor = "vendor/petri"
 fork = "denkhaus/petri"
 branch = "fabro"
-fork_sha = "2807db6d760b68b3aba2964ad2e2c4f401308d99"
+fork_sha = "ab7c6a5ffbd508b9c4d348a8d91a2eb881d31319"
 upstream = "lithoscomputer/petri"
 upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
-tree_sha = "e352022c105e490030dac28102096ca7d18c9719"
-content_sha256 = "611ff6139c61a355b1101ba7750f2d1722a50781992b477ff4e5e097f3f0209c"
-files = 930
+tree_sha = "5cad53224dacd880dc7c51dbcd199f9d52b079df"
+content_sha256 = "ac60a01e130d87a03e7ce30949805e108695c324b253516087dd71000a386efd"
+files = 931
 crates = [
     "petri-attractor-steps",
     "petri-driver",
@@ -48,7 +48,7 @@ crates = [
     "petri-store",
     "petri-testkit",
 ]
-imported = "2026-11-01"
+imported = "2026-11-09"
 [pebble]
 vendor = "vendor/pebble"
 fork = "denkhaus/pebble"

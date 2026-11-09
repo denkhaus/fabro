@@ -970,23 +970,60 @@ impl Reader<'_> {
                     environment.image = Some(docker.to_string());
                 }
             }
-            if let Some(dockerfile) = image.get("dockerfile").and_then(toml::Value::as_str) {
-                match provider.as_str() {
-                    "docker" => environment.dockerfile = Some(dockerfile.to_string()),
-                    // v1 builds on the docker provider only; the other
-                    // providers would silently never act on the key.
-                    "local" => self.ignored_in(
+            if let Some(dockerfile) = image.get("dockerfile") {
+                // A live key since ADR-0042: the engine builds this
+                // image at scope acquisition. Inline text only — the
+                // `{ path }` form is Fabro's persist-time inlining; a
+                // runner that reads no files here refuses it loudly
+                // rather than ignoring the build. The same refusal
+                // covers a finished image AND a build declared together.
+                if dockerfile.is_str() && image.get("docker").is_some() {
+                    self.unsupported_in(
+                        &at(&format!("{table}.image")),
+                        "workflow_toml.environments.image",
+                        format!(
+                            "`[environments.{id}.image]` names a finished image (`docker`) and \
+                             declares a build (`dockerfile`) — set one",
+                        ),
+                        "set `image.docker` for a finished image, or `image.dockerfile` to \
+                         build at scope acquisition",
+                    );
+                } else if let Some(text) = dockerfile.as_str() {
+                    match provider.as_str() {
+                        "docker" => environment.dockerfile = Some(text.to_string()),
+                        // v1 builds on the docker provider only; the other
+                        // providers would silently never act on the key.
+                        "local" => self.ignored_in(
+                            &at(&format!("{table}.image.dockerfile")),
+                            &format!("environments.{id}.image"),
+                            "the `local` provider runs on the host; a dockerfile builds for the \
+                             `docker` provider",
+                        ),
+                        _ => self.ignored_in(
+                            &at(&format!("{table}.image.dockerfile")),
+                            &format!("environments.{id}.image"),
+                            "the `daytona` provider builds no image; name `image.docker` or \
+                             move the environment to the `docker` provider",
+                        ),
+                    }
+                } else if dockerfile.is_table() {
+                    self.unsupported_in(
                         &at(&format!("{table}.image.dockerfile")),
-                        &format!("environments.{id}.image"),
-                        "the `local` provider runs on the host; a dockerfile builds for the \
-                         `docker` provider",
-                    ),
-                    _ => self.ignored_in(
+                        "workflow_toml.environments.image.dockerfile",
+                        format!(
+                            "`[environments.{id}.image] dockerfile` uses the `{{ path }}` form, \
+                             which is Fabro's persist-time inlining; this runner reads no files \
+                             here",
+                        ),
+                        "write the Dockerfile inline (a string), or go through Fabro's \
+                         persisting materialization",
+                    );
+                } else {
+                    self.ignored_in(
                         &at(&format!("{table}.image.dockerfile")),
-                        &format!("environments.{id}.image"),
-                        "the `daytona` provider builds no image; name `image.docker` or move \
-                         the environment to the `docker` provider",
-                    ),
+                        &format!("environments.{id}.image.dockerfile"),
+                        "image.dockerfile is inline Dockerfile text",
+                    );
                 }
             }
         }
