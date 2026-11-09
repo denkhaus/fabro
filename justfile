@@ -95,6 +95,19 @@ image-release: web-deps
     fi
     just dev-prune
 
+# Build the release image ON THE HOST daemon (ADR-0041): scp the
+# current scripts/host-release.nu to the host and run it there — the
+# anonymous public clone, the builder container, the compile and the
+# docker build all happen on the host; the dev machine only triggers.
+# Output: local image denkhaus/fabro:<version>-<sha12>, consumed by
+# fabro-tofu's local-tag pin; the optional ghcr mirror is tofu's
+# post-deploy step (default on). Host target defaults to the production
+# host; override per invocation. No credentials needed (public repo).
+host-release arch='amd64' sha='' host='root@152.53.93.90' port='7776':
+    @ssh -p {{port}} {{host}} 'mkdir -p /opt/fabro-release'
+    @scp -P {{port}} scripts/host-release.nu {{host}}:/opt/fabro-release/host-release.nu
+    @ssh -p {{port}} {{host}} 'nu /opt/fabro-release/host-release.nu' --arch {{arch}} --sha '{{sha}}'
+
 # Build the run images the lab environments reference (toolchain/mise),
 # on demand: rebuilt only when the Dockerfile content hash changed
 # (label sh.fabro.toolchain.sha256 carries the built hash).
