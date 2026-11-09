@@ -117,10 +117,14 @@ image-release: web-deps
 # docker-host release_install — never created by ad-hoc SSH here. The
 # remote command travels as ONE ssh argument: ssh arg-joining drops the
 # empty '' of a defaulted --sha, and nu then fails at the flag (live
-# 2026-11-09, the window's first rehearsal).
+# 2026-11-09, the window's first rehearsal). Keepalive options make a
+# silent network drop a detectable failure instead of a zombie session
+# whose remote side (and the compile it drove) died unnoticed (live
+# 2026-11-09: a 90-minute pipeline vanished this way, exit 255 only on
+# the manual kill).
 host-release host port arch='amd64' sha='':
     @scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
-    @ssh -p {{ port }} {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'"
+    @ssh -p {{ port }} -o ServerAliveInterval=30 -o ServerAliveCountMax=6 {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'"
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
