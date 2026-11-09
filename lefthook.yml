@@ -14,8 +14,12 @@ pre-commit:
       tags: [security]
       # Secret scan of exactly what is being committed (staged diff).
       # CREDENTIAL patterns only — the host-identity guard below covers
-      # the address/port class betterleaks cannot see.
-      run: mise exec -- betterleaks git --staged --redact
+      # the address/port class betterleaks cannot see. The baseline
+      # carries the audited false positives of the history (test
+      # fixture keys, redactor sources, checksum-as-key misdetections,
+      # 2026-11-09 audit — no real credentials among the 48); a NEW
+      # finding has a new fingerprint and still fails the push.
+      run: mise exec -- betterleaks git --staged --redact -b .betterleaks-baseline.json .
     host-identity:
       tags: [security]
       # The 2026-11-09 leak class (production IP/port/root@ as recipe
@@ -38,8 +42,9 @@ pre-push:
   commands:
     betterleaks:
       tags: [security]
-      # Full-history scan before anything leaves the machine.
-      run: mise exec -- betterleaks git . --redact
+      # Full-history scan before anything leaves the machine, over the
+      # audited baseline (see pre-commit betterleaks for what it holds).
+      run: mise exec -- betterleaks git . --redact -b .betterleaks-baseline.json
     host-identity:
       tags: [security]
       # The guard over the tracked tree — a missed pattern in older
