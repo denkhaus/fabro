@@ -9,10 +9,13 @@
 # directories no cook reads. History: this file was once `*`-exclusive
 # with staged allows (the release-pipeline shape); that starved every
 # root-context build — the first live cooks all died at COPY "not
-# found" (2026-11-10, denkhaus/work#1252).
+# found" (2026-11-10, denkhaus/work#1252). The local image build's
+# staged context stays allowed (`!tmp/docker-context/**`) — the first
+# relaxation dropped it and broke `just up` the same day.
 .git
 target
-tmp
+tmp/*
+!tmp/docker-context/**
 node_modules
 dist
 .fabro/cook
