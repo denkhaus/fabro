@@ -85,21 +85,9 @@ build-image: web-deps
 # 2026-11-09): the line's toolchain environment is repo-declared and
 # built by the engine at run initialization from the checkout itself —
 # no registry tag, no pin step, no parity gate.
-# Also installs the freshly staged binary as the local CLI (fabro-9114):
-# the local workflow targets https://mirtuell.net, `just up` (and its
-# install-cli step) is no longer used, so THIS recipe keeps local CLI and
-# released server at the same version. Escape hatch for pure-CI runs:
-# JUST_SKIP_CLI_INSTALL=true just image-release
-image-release: web-deps
-    @TIP=$(nu .fabro/scripts/line-tip-sha.nu --require-published) && \
-        echo "image-release: line tip $TIP" && \
-        nu scripts/image-release.nu "{{ arch }}" --sha "$TIP"
-    @if [ "{{ skip_cli }}" = "true" ]; then \
-        echo "image-release: skipping CLI install (JUST_SKIP_CLI_INSTALL=true)"; \
-    else \
-        just install-cli; \
-    fi
-    just dev-prune
+# (The retired `image-release` recipe — local build + GHCR push —
+# was removed 2026-11-10: the line releases host-built per ADR-0041 and
+# the GHCR mirror pushes from the host; nothing consumed `latest`.)
 
 # Build the release image ON THE HOST daemon (ADR-0041): scp the
 # current scripts/host-release.nu to the host and run it there — the

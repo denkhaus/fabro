@@ -64,9 +64,11 @@ rebuild wants `x.`-prefixed unknown attributes).
       string-compare). Automations paused if any schedule could fire
       mid-deploy (PUT automation replace, full body, If-Match,
       on_overlap: skip verified after).
-- [ ] `just image-release` (ghcr push), then `cd ~/dev/fabro-tofu &&
+- [ ] `just host-release root@<host> <port> amd64 <sha>` (the ADR-0041
+      host-built path; the retired local `image-release` recipe was
+      removed 2026-11-10), then `cd ~/dev/fabro-tofu &&
       TF_DATA_DIR=.terraform-prod tofu apply -var-file=envs/prod.tfvars`
-      with the fresh `fabro_image_ref` digest.
+      with the fresh `fabro_image_ref` tag.
 - [ ] Server-managed toolchain environment: PUT the new image digest
       (env update), and on the host `docker pull` the fresh toolchain
       image so sandbox creates do not pay first-use pulls (the

@@ -127,9 +127,12 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 - Fork releases follow ADR-0025 naming `<frozen-base>-fork.N` — the
   upstream `cargo dev release` path (origin main push) is WRONG for the
   line branch. Manual bump = workspace `Cargo.toml` version +
-  `cargo update --workspace` + `just image-release` (tag
-  `<version>-<sha>`); N increments once per built release; the base
-  moves only with a deliberate intake decision.
+  `cargo update --workspace` + `just host-release <user@host> <port>
+  <arch> <full-sha>` (tag `<version>-<sha>`); N increments once per
+  built release; the base moves only with a deliberate intake
+  decision. The local `image-release` recipe (build here + GHCR push)
+  is RETIRED (removed 2026-11-10): the line builds host-side and the
+  GHCR mirror pushes from the host.
 - Toolchain pairing: `fabro env pin-toolchain --from-run-images` (from
   the repo at the deployed tip) — the parity gate refuses a tag whose
   sha is not the deployed server's (working as designed; the wrapper
@@ -144,9 +147,11 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 
 - Secret-gated steps (tofu/gopass) are probed with a BLOCKING
   `gopass show` WITHOUT a timeout wrapper BEFORE the step that needs
-  them; the
-  store relocks on its own TTL — ask the user to warm it EARLY, not at
-  deploy time. gopass cold cache hangs non-interactively.
+  them; the store relocks on its own TTL (~30 minutes — warming EARLY
+  is not warming ENOUGH: probe again IMMEDIATELY BEFORE the apply, or
+  the window stalls mid-ceremony asking the user twice, 2026-11-10).
+  Ask the user to warm the store EARLY, not at deploy time. gopass
+  cold cache hangs non-interactively.
 
 ## Production deploy
 
@@ -160,12 +165,12 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   (`fabro_image_ref=":<version>-<sha12>"` — nothing is pulled; a
   missing tag fails the docker_image read), so the recipe runs FIRST,
   the apply second.
-- `just image-release` (build on THIS machine + GHCR push) is NOT the
-  line's path: it burns the local uplink and needs a local GHCR login.
-  The GHCR repository is the FROM-SCRATCH FALLBACK — fed by the
-  post-deploy host-side mirror push (`ghcr_mirror_enabled`, disabled
-  while #1231 blocks the org-package write), never by a local release
-  build. The tofu `release_install`/`buildx_install` resources
+- `just image-release` (build on THIS machine + GHCR push) is RETIRED
+  (recipe removed 2026-11-10, user decision): it burned the local
+  uplink and served no consumer — the GHCR repository is the
+  FROM-SCRATCH FALLBACK, fed by the post-deploy host-side mirror push
+  (`ghcr_mirror_enabled`, disabled while #1231 blocks the org-package
+  write). The tofu `release_install`/`buildx_install` resources
   PROVISION the host for the recipe (git, the scp target, the buildx
   plugin); they do not build anything themselves — the build is the
   recipe's.
