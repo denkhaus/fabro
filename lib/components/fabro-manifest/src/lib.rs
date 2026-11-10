@@ -42,7 +42,7 @@ pub use crate::local_workflow_package::{
     LocalWorkflowPackageError, ResolvedLocalWorkflowPackage, resolve_local_workflow_package,
 };
 pub use crate::supplied_workflow::collect_supplied_workflow_versions;
-use crate::workflow_bundler::WorkflowBundler;
+use crate::workflow_bundler::{WorkflowBundler, inline_config_dockerfiles};
 pub use crate::workflow_version_collector::{
     MAX_WORKFLOW_VERSION_DEPTH, WorkflowVersionCollectError, collect_workflow_versions,
     collect_workflow_versions_at_location,
@@ -196,7 +196,19 @@ pub fn build_run_manifest(input: ManifestBuildInput) -> Result<BuiltManifest> {
         .ok_or_else(|| anyhow!("root workflow missing from manifest bundle"))?;
 
     let mut configs = Vec::new();
-    if let Some((path, _, source)) = project_config_source {
+    if let Some((path, manifest_path, source)) = project_config_source {
+        // ADR-0042 persist-time inlining for the project layer: the
+        // stored project config source is re-parsed by Petri beside the
+        // workflow's, so its `{ path }` dockerfiles become inline text
+        // before the source travels (denkhaus/work#1233). The dockerfile
+        // files were collected into the root workflow's bundle above.
+        let source = workflows
+            .get(&target_key)
+            .map(|workflow| {
+                inline_config_dockerfiles(&input.cwd, &manifest_path, &source, &workflow.files)
+            })
+            .transpose()?
+            .unwrap_or(source);
         configs.push(types::ManifestConfig {
             path:   Some(path.display().to_string()),
             source: Some(source),
@@ -941,6 +953,74 @@ mod tests {
             .get(".fabro/workflows/demo/schemas/output.schema.json")
             .expect("output_schema file should be bundled");
         assert_eq!(schema.content, schema_source);
+    }
+
+    #[test]
+    fn build_manifest_inlines_project_config_dockerfile_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("project");
+        let workflow_dir = project.join(".fabro/workflows/root");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::write(
+            project.join(".fabro/project.toml"),
+            r#"_version = 1
+
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "Toolchain.Dockerfile" }
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project.join(".fabro/Toolchain.Dockerfile"),
+            "FROM project\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Root {
+                start [shape=Mdiamond]
+                exit [shape=Msquare]
+                start -> exit
+            }",
+        )
+        .unwrap();
+
+        let built = build_run_manifest(ManifestBuildInput {
+            workflow: workflow_dir.join("workflow.fabro"),
+            cwd: project.clone(),
+            environment_defaults: test_environment_defaults(),
+            ..ManifestBuildInput::default()
+        })
+        .unwrap();
+
+        // ADR-0042 (denkhaus/work#1233): the project config source Petri
+        // re-parses carries the inlined dockerfile text, never the
+        // authoring-time `{ path }` form.
+        let project_config = built
+            .manifest
+            .configs
+            .iter()
+            .find(|config| config.type_ == types::ManifestConfigType::Project)
+            .expect("project config should ride the manifest");
+        let source = project_config
+            .source
+            .as_deref()
+            .expect("project config source should be stored");
+        let value: toml::Value = source.parse().expect("stored config stays valid TOML");
+        assert_eq!(
+            value["environments"]["toolchain"]["image"]["dockerfile"]
+                .as_str()
+                .expect("dockerfile stays a string"),
+            "FROM project\n",
+            "project config carries the dockerfile text inline: {source}"
+        );
+        assert!(
+            !source.contains("{ path"),
+            "no dockerfile {{ path }} form survives persist: {source}"
+        );
     }
 
     #[test]

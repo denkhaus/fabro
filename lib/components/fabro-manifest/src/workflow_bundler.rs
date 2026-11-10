@@ -104,7 +104,7 @@ impl<'a> WorkflowBundler<'a> {
         }
 
         let source = self.read_package_file(&location.graph)?;
-        let config = if let Some(workflow_toml_path) = location.toml.as_ref() {
+        let mut config = if let Some(workflow_toml_path) = location.toml.as_ref() {
             let config_path = manifest_path_from_absolute(workflow_toml_path, self.package_root)?;
             if self.workflow_version_projection {
                 // A version's config is read at run time from the fixed
@@ -148,6 +148,17 @@ impl<'a> WorkflowBundler<'a> {
             GraphPosition::Entrypoint,
             depth,
         )?;
+        // ADR-0042 persist-time inlining: the stored config source is what
+        // Petri re-parses from the bundle, so its `{ path }` dockerfiles
+        // must become inline text before the source travels
+        // (denkhaus/work#1233). Runs after collection so the dockerfile
+        // content is already in `files`.
+        if let Some(config) = config.as_mut() {
+            let config_path = ManifestPath::from_wire(&config.path)
+                .ok_or_else(|| anyhow!("invalid manifest workflow config path: {}", config.path))?;
+            config.source =
+                inline_config_dockerfiles(self.package_root, &config_path, &config.source, &files)?;
+        }
 
         self.workflows
             .insert(dot_key.clone(), CollectedWorkflowSource {
@@ -629,6 +640,164 @@ fn manifest_path_is_within_root(path: &ManifestPath, root: &ManifestPath) -> boo
     path.starts_with(root)
 }
 
+/// Rewrites every `dockerfile = { path = ... }` entry in a stored config
+/// source to the inline text form, resolving the referenced file through
+/// the bundle's collected files (ADR-0042: Petri accepts inline text only
+/// — the authoring-time `{ path }` form is Fabro's persist-time inlining,
+/// denkhaus/work#1233).
+///
+/// The edit is surgical: a `toml_edit` document replaces only the
+/// dockerfile values, so comments, formatting, and unknown keys outside
+/// the replaced values stay byte-identical. A source without a `{ path }`
+/// dockerfile returns unchanged, without a serialization roundtrip. Both
+/// environment image tables are covered — `[environments.<id>.image]`
+/// and `[run.environment.image]` — in their real-table and inline-table
+/// spellings.
+pub(super) fn inline_config_dockerfiles(
+    package_root: &Path,
+    config_path: &ManifestPath,
+    source: &str,
+    files: &HashMap<String, types::ManifestFileEntry>,
+) -> Result<String> {
+    let mut document = source
+        .parse::<toml_edit::DocumentMut>()
+        .with_context(|| format!("failed to parse stored config `{config_path}`"))?;
+    let base_dir = package_root
+        .join(config_path.as_path())
+        .parent()
+        .map_or_else(|| Path::new(".").to_path_buf(), Path::to_path_buf);
+    let mut resolve = |reference: &str| -> Result<String> {
+        let absolute = normalize_absolute_path(&base_dir, reference)
+            .ok_or_else(|| anyhow!("unsupported dockerfile reference `{reference}`"))?;
+        let key = manifest_path_from_absolute(&absolute, package_root)?.to_string();
+        files
+            .get(&key)
+            .map(|entry| entry.content.clone())
+            .ok_or_else(|| anyhow!("dockerfile `{reference}` is missing from the bundle"))
+    };
+
+    let mut rewritten = 0;
+    if let Some(environments) = document.get_mut("environments") {
+        match environments {
+            toml_edit::Item::Table(table) => {
+                for (_, environment) in table.iter_mut() {
+                    rewritten += rewrite_environment_item(environment, &mut resolve)?;
+                }
+            }
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)) => {
+                for (_, environment) in inline.iter_mut() {
+                    rewritten += rewrite_environment_value(environment, &mut resolve)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(run) = document.get_mut("run") {
+        match run {
+            toml_edit::Item::Table(table) => {
+                if let Some(environment) = table.get_mut("environment") {
+                    rewritten += rewrite_environment_item(environment, &mut resolve)?;
+                }
+            }
+            toml_edit::Item::Value(toml_edit::Value::InlineTable(inline)) => {
+                if let Some(environment) = inline.get_mut("environment") {
+                    rewritten += rewrite_environment_value(environment, &mut resolve)?;
+                }
+            }
+            _ => {}
+        }
+    }
+    if rewritten == 0 {
+        return Ok(source.to_owned());
+    }
+    Ok(document.to_string())
+}
+
+/// Rewrites the dockerfile entry of one environment's image —
+/// `[environments.<id>]` and `[run.environment]` entries alike.
+fn rewrite_environment_item(
+    environment: &mut toml_edit::Item,
+    resolve: &mut impl FnMut(&str) -> Result<String>,
+) -> Result<usize> {
+    match environment {
+        toml_edit::Item::Table(table) => match table.get_mut("image") {
+            Some(image) => rewrite_image_item(image, resolve),
+            None => Ok(0),
+        },
+        toml_edit::Item::Value(value) => rewrite_environment_value(value, resolve),
+        _ => Ok(0),
+    }
+}
+
+fn rewrite_environment_value(
+    environment: &mut toml_edit::Value,
+    resolve: &mut impl FnMut(&str) -> Result<String>,
+) -> Result<usize> {
+    let Some(image) = environment
+        .as_inline_table_mut()
+        .and_then(|table| table.get_mut("image"))
+    else {
+        return Ok(0);
+    };
+    rewrite_image_value(image, resolve)
+}
+
+fn rewrite_image_item(
+    image: &mut toml_edit::Item,
+    resolve: &mut impl FnMut(&str) -> Result<String>,
+) -> Result<usize> {
+    match image {
+        toml_edit::Item::Table(table) => match table.get_mut("dockerfile") {
+            Some(dockerfile) => {
+                let Some(path) = dockerfile_path_item(dockerfile) else {
+                    return Ok(0);
+                };
+                *dockerfile = toml_edit::value(resolve(&path)?);
+                Ok(1)
+            }
+            None => Ok(0),
+        },
+        toml_edit::Item::Value(value) => rewrite_image_value(value, resolve),
+        _ => Ok(0),
+    }
+}
+
+fn rewrite_image_value(
+    image: &mut toml_edit::Value,
+    resolve: &mut impl FnMut(&str) -> Result<String>,
+) -> Result<usize> {
+    let Some(dockerfile) = image
+        .as_inline_table_mut()
+        .and_then(|table| table.get_mut("dockerfile"))
+    else {
+        return Ok(0);
+    };
+    let Some(path) = dockerfile_path_value(dockerfile) else {
+        return Ok(0);
+    };
+    *dockerfile = toml_edit::Value::from(resolve(&path)?);
+    Ok(1)
+}
+
+/// The referenced path of a `dockerfile = { path = ... }` entry, or `None`
+/// for every other shape (inline text, other tables) — those are Petri's
+/// to accept or refuse, never rewritten here.
+fn dockerfile_path_item(item: &toml_edit::Item) -> Option<String> {
+    match item {
+        toml_edit::Item::Value(value) => dockerfile_path_value(value),
+        toml_edit::Item::Table(table) => table.get("path")?.as_str().map(str::to_owned),
+        _ => None,
+    }
+}
+
+fn dockerfile_path_value(value: &toml_edit::Value) -> Option<String> {
+    value
+        .as_inline_table()?
+        .get("path")?
+        .as_str()
+        .map(str::to_owned)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -680,6 +849,188 @@ mod tests {
         let goal = &workflows["workflow.fabro"].files["@goal.md"];
         assert_eq!(goal.content, "goal\n");
         assert_eq!(goal.ref_.original, "@goal.md");
+    }
+
+    #[test]
+    fn stored_config_source_inlines_environment_dockerfile_paths() {
+        let temp = tempfile::tempdir().expect("temp directory should be created");
+        let workflow_dir = temp.path().join(".fabro/workflows/root");
+        write_file(
+            &workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# The toolchain environment, repo-declared (ADR-0042).
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "../../Dockerfile.toolchain" }
+"#,
+        );
+        write_file(
+            &workflow_dir.join("workflow.fabro"),
+            r"digraph Root {
+                start [shape=Mdiamond]
+                exit [shape=Msquare]
+                start -> exit
+            }",
+        );
+        // Mirrors the line workflows: `../../Dockerfile.toolchain` from
+        // `.fabro/workflows/<name>/` resolves to `.fabro/Dockerfile.toolchain`
+        // (the 5f75bd257 path fix).
+        write_file(
+            &temp.path().join(".fabro/Dockerfile.toolchain"),
+            "FROM toolchain\n",
+        );
+
+        let workflows = WorkflowBundler::new(temp.path(), &HashMap::new())
+            .bundle(&workflow_dir.join("workflow.toml"), None)
+            .expect("workflow should bundle");
+
+        // ADR-0042: Petri accepts `image.dockerfile` as inline text only
+        // (denkhaus/work#1233). The stored config source — what Petri
+        // re-parses from the bundle — carries the inlined text, and the
+        // comment above the environment table survives byte-identical.
+        let config = workflows[".fabro/workflows/root/workflow.fabro"]
+            .config
+            .as_ref()
+            .expect("stored workflow config should exist");
+        let value: toml::Value = config
+            .source
+            .parse()
+            .expect("stored config stays valid TOML");
+        assert_eq!(
+            value["environments"]["toolchain"]["image"]["dockerfile"]
+                .as_str()
+                .expect("dockerfile stays a string"),
+            "FROM toolchain\n",
+            "stored config carries the dockerfile text inline: {}",
+            config.source
+        );
+        assert!(
+            !config.source.contains("{ path"),
+            "no dockerfile {{ path }} form survives persist: {}",
+            config.source
+        );
+        assert!(
+            config
+                .source
+                .contains("# The toolchain environment, repo-declared (ADR-0042)."),
+            "comments outside the replaced value survive: {}",
+            config.source
+        );
+    }
+
+    fn bundled_dockerfile_entry(content: &str) -> types::ManifestFileEntry {
+        types::ManifestFileEntry {
+            content: content.to_owned(),
+            ref_:    types::ManifestFileRef {
+                from:     Some(".fabro/workflows/root/workflow.toml".to_owned()),
+                original: "Dockerfile".to_owned(),
+                type_:    types::ManifestFileRefType::Dockerfile,
+            },
+        }
+    }
+
+    #[test]
+    fn inline_config_dockerfiles_passes_sources_without_path_forms_through() {
+        let source = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+
+        let inlined = inline_config_dockerfiles(
+            Path::new("/root"),
+            &ManifestPath::from_wire(".fabro/workflows/root/workflow.toml").unwrap(),
+            source,
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            inlined, source,
+            "a source without dockerfiles returns byte-identical, no roundtrip"
+        );
+    }
+
+    #[test]
+    fn inline_config_dockerfiles_leaves_non_path_forms_to_petri() {
+        // Inline text is already the persist form; other table shapes are
+        // Petri's to refuse — the rewriter never invents content.
+        let source = r#"_version = 1
+
+[environments.toolchain.image]
+dockerfile = "FROM inline\n"
+
+[environments.other.image]
+dockerfile = { text = "FROM other\n" }
+"#;
+
+        let inlined = inline_config_dockerfiles(
+            Path::new("/root"),
+            &ManifestPath::from_wire(".fabro/workflows/root/workflow.toml").unwrap(),
+            source,
+            &HashMap::new(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            inlined, source,
+            "non-{{path}} forms stay byte-identical, no roundtrip"
+        );
+    }
+
+    #[test]
+    fn inline_config_dockerfiles_resolves_missing_collection_loudly() {
+        let source = r#"_version = 1
+
+[environments.toolchain.image]
+dockerfile = { path = "Missing.Dockerfile" }
+"#;
+
+        let error = inline_config_dockerfiles(
+            Path::new("/root"),
+            &ManifestPath::from_wire(".fabro/workflows/root/workflow.toml").unwrap(),
+            source,
+            &HashMap::new(),
+        )
+        .unwrap_err();
+
+        assert!(
+            error.to_string().contains("missing from the bundle"),
+            "error names the uncollected dockerfile: {error:#}"
+        );
+    }
+
+    #[test]
+    fn inline_config_dockerfiles_covers_inline_table_spellings() {
+        // The all-inline spelling: no `[environments.<id>.image]` headers,
+        // every level an inline table.
+        let source = r#"_version = 1
+
+environments = { toolchain = { provider = "docker", image = { dockerfile = { path = "Dockerfile" } } } }
+"#;
+
+        let files = HashMap::from([(
+            ".fabro/workflows/root/Dockerfile".to_owned(),
+            bundled_dockerfile_entry("FROM inline-spelling\n"),
+        )]);
+        let inlined = inline_config_dockerfiles(
+            Path::new("/root"),
+            &ManifestPath::from_wire(".fabro/workflows/root/workflow.toml").unwrap(),
+            source,
+            &files,
+        )
+        .unwrap();
+
+        let value: toml::Value = inlined.parse().expect("rewritten source stays valid TOML");
+        assert_eq!(
+            value["environments"]["toolchain"]["image"]["dockerfile"]
+                .as_str()
+                .expect("dockerfile stays a string"),
+            "FROM inline-spelling\n",
+            "the inline spelling is rewritten too: {inlined}"
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ expression: rendered
   "configs": [
     {
       "path": "<project-config>",
-      "source": "_version = 1/n/n[environments.project]/nprovider = \"docker\"/n/n[environments.project.image]/ndockerfile = { path = \"Project.Dockerfile\" }/n",
+      "source": "_version = 1/n/n[environments.project]/nprovider = \"docker\"/n/n[environments.project.image]/ndockerfile = \"\"\"/nFROM project/n\"\"\"/n",
       "type": "project"
     },
     {

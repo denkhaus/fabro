@@ -561,6 +561,42 @@ dockerfile = { path = "Dockerfile" }
     }
 
     #[test]
+    fn stored_workflow_config_inlines_environment_dockerfile_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        write_complete_fixture(temp.path());
+
+        let closure = collect_workflow_versions(Path::new("root"), temp.path()).unwrap();
+        let (_, root) = closure
+            .versions()
+            .find(|(_, version)| {
+                version.version().entrypoint().as_str() == ".fabro/workflows/root/workflow.fabro"
+            })
+            .expect("root version should be collected");
+
+        // ADR-0042: Petri accepts `image.dockerfile` as inline text only —
+        // the stored config the version carries must never hold the
+        // authoring-time `{ path }` form (run-create refusals,
+        // denkhaus/work#1233).
+        let source = root
+            .version()
+            .files()
+            .get(&WorkflowPath::new(".fabro/workflows/root/workflow.toml").unwrap())
+            .expect("stored workflow config should ride the version");
+        let value: toml::Value = source.parse().expect("stored config stays valid TOML");
+        assert_eq!(
+            value["run"]["environment"]["image"]["dockerfile"]
+                .as_str()
+                .expect("dockerfile stays a string"),
+            "FROM alpine\n",
+            "stored config carries the dockerfile text inline: {source}"
+        );
+        assert!(
+            !source.contains("{ path"),
+            "no dockerfile {{ path }} form survives persist: {source}"
+        );
+    }
+
+    #[test]
     fn package_identity_does_not_depend_on_checkout_location() {
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
