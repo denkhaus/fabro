@@ -58,8 +58,10 @@ export const handle = { wide: true };
 export default function RunObservations() {
   const { id } = useParams();
   const query = useRunObservations(id);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("painpoint");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("open");
+  // User decision 2026-11-10: everything visible by default — the
+  // filters narrow, they never surprise.
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const observations = useMemo<RunObservation[]>(
     () => query.data?.observations ?? [],

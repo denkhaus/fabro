@@ -89,17 +89,17 @@ describe("RunObservations", () => {
     // The triage badge of a linked, in-progress painpoint (the badge
     // renders uppercase through CSS; the text content stays lowercase).
     expect(text).toContain("in progress");
-    // The dropdown filters default to type=painpoint + status=open (the
-    // old open-painpoints default), so the note leaves the visible set.
-    expect(text).toMatch(/1\s+of\s+2\s+observations/);
-    expect(text).toContain("type: painpoint");
-    expect(text).toContain("status: open");
+    // User decision 2026-11-10: the dropdown filters default to
+    // type=all + status=all — everything visible, the note included.
+    expect(text).toMatch(/2\s+of\s+2\s+observations/);
+    expect(text).toContain("type: all");
+    expect(text).toContain("status: all");
     // The stage cell links into the run's stage view.
     const stageLink = JSON.stringify(json).includes("/stages/reviewer%403");
     expect(stageLink).toBe(true);
   });
 
-  test("open painpoints filter keeps untriaged and open painpoints, drops closed and notes", () => {
+  test("everything stays visible under the all/all defaults", () => {
     const renderer = renderObservations([
       {
         seq: 1,
@@ -133,11 +133,12 @@ describe("RunObservations", () => {
       },
     ]);
     const text = textFromNode(renderer.toJSON());
+    // User decision 2026-11-10: the filters narrow, they never surprise —
+    // untriaged, closed, and notes all render until a filter is chosen.
     expect(text).toContain("untriaged painpoint");
-    expect(text).toContain("untriaged");
-    expect(text).not.toContain("closed painpoint");
-    expect(text).not.toContain("plain note");
-    expect(text).toMatch(/1\s+of\s+3\s+observations/);
+    expect(text).toContain("closed painpoint");
+    expect(text).toContain("plain note");
+    expect(text).toMatch(/3\s+of\s+3\s+observations/);
   });
 
   // denkhaus/work#1235: the tracker URL resolves server-side — the
