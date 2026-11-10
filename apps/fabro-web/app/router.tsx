@@ -146,7 +146,7 @@ export const routes: RouteObject[] = [
           }),
           route("observations", ObservationsFeed),
           route("work", Work, {
-            children: [route(":key", { default: WorkDetail })],
+            children: [route("item", { default: WorkDetail })],
           }),
           route("insights", Insights, {
             children: [

@@ -1,4 +1,4 @@
-import { Link, useParams, useSearchParams } from "react-router";
+import { Link, useOutlet, useSearchParams } from "react-router";
 import useSWR from "swr";
 
 import { workItemsApi } from "../lib/api-client";
@@ -49,7 +49,15 @@ const COLUMNS: Array<DataTableColumn<WorkItemRow>> = [
     id: "key",
     header: "Key",
     cell: (row) => (
-      <Link to={`/work/${encodeURIComponent(row.key)}`} className="font-mono text-teal-500 hover:underline">
+      // The key rides a QUERY parameter (the same decision as the API
+      // door): it is opaque (`owner/repo#n`), and a slash inside a path
+      // segment is not routable — the router decodes before matching
+      // and the segment splits (the live deep link fell back to the
+      // list, 2026-11-10).
+      <Link
+        to={`/work/item?key=${encodeURIComponent(row.key)}`}
+        className="font-mono text-teal-500 hover:underline"
+      >
         {row.key}
       </Link>
     ),
@@ -68,6 +76,13 @@ const FILTERS: DataTableFilter[] = [
 ];
 
 export default function WorkItemsView() {
+  // A child route (/work/item?key=…) replaces the list when active —
+  // the parent must render the Outlet for the child to appear at all
+  // (the detail silently never showed while the list had no Outlet).
+  const outlet = useOutlet();
+  if (outlet) {
+    return outlet;
+  }
   return (
     <DataTable<WorkItemRow>
       swrKey="work-items"
@@ -106,8 +121,8 @@ export default function WorkItemsView() {
 }
 
 export function WorkItemDetail() {
-  const { key } = useParams();
   const [searchParams] = useSearchParams();
+  const key = searchParams.get("key");
   // Key-addressed fetch (denkhaus/work#1235): the list's text query
   // searches title and body, so the detail reads its own door. The
   // generated client orders the QUERY param first: (itemKey, projectId).
@@ -138,7 +153,7 @@ export function WorkItemDetail() {
         <h1 className="text-lg font-medium text-fg">{item.title}</h1>
         <span className="font-mono text-sm text-teal-500">{item.itemKey}</span>
         <Link
-          to={`/?${new URLSearchParams(searchParams).toString()}`}
+          to={`/work?${new URLSearchParams(searchParams).toString()}`}
           className="ml-auto text-xs text-fg-muted hover:text-fg"
         >
           back to the list

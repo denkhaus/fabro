@@ -30,8 +30,8 @@ function renderDetail(item: WorkItem | null): TestRenderer.ReactTestRenderer {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   const router = createMemoryRouter([
-    { path: "/work/:key", element: <WorkItemDetail /> },
-  ], { initialEntries: ["/work/denkhaus%2Fwork%2312"] });
+    { path: "/work/item", element: <WorkItemDetail /> },
+  ], { initialEntries: ["/work/item?key=denkhaus%2Fwork%2312"] });
 
   let renderer: TestRenderer.ReactTestRenderer | undefined;
   TestRenderer.act(() => {
@@ -89,8 +89,8 @@ describe("WorkItemDetail", () => {
     // A different key: SWR's global cache would replay the first test's
     // entry for the same key otherwise.
     const router = createMemoryRouter([
-      { path: "/work/:key", element: <WorkItemDetail /> },
-    ], { initialEntries: ["/work/denkhaus%2Fwork%2399"] });
+      { path: "/work/item", element: <WorkItemDetail /> },
+    ], { initialEntries: ["/work/item?key=denkhaus%2Fwork%2399"] });
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     let renderer: TestRenderer.ReactTestRenderer | undefined;
     TestRenderer.act(() => {
