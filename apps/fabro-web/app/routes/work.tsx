@@ -3,7 +3,7 @@ import useSWR from "swr";
 
 import { workItemsApi } from "../lib/api-client";
 import type { ListWorkItemsSortEnum } from "@qltysh/fabro-api-client";
-import { DataTable, type DataTableColumn, type DataTableFilter } from "../components/data-table";
+import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 
 /**
@@ -12,6 +12,8 @@ import { EmptyState, ErrorState, LoadingState } from "../components/state";
  * and filtered through the shared data table control (#1201), with the
  * lane/priority/type filters the tracker's labels carry.
  */
+
+export const handle = { wide: true };
 
 const LANE_OPTIONS = [
   { value: "loop", label: "loop" },
@@ -96,7 +98,7 @@ export default function WorkItemsView() {
           url: item.url ?? "",
           updatedAt: item.updatedAt ?? "",
         }));
-        const total = rows.length < limit ? (page - 1) * limit + rows.length : (page + 1) * limit;
+        const total = estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
     />
@@ -106,11 +108,13 @@ export default function WorkItemsView() {
 export function WorkItemDetail() {
   const { key } = useParams();
   const [searchParams] = useSearchParams();
-  const { data, isLoading, error } = useSWR(["work-item", key], async () =>
-    (await workItemsApi.listWorkItems("fabro", undefined, key, 5, undefined, undefined, 1))
-      .data?.data ?? [],
+  // Key-addressed fetch (denkhaus/work#1235): the list's text query
+  // searches title and body, so the detail reads its own door. The
+  // client encodes the path parameter itself.
+  const { data: item, isLoading, error } = useSWR(
+    ["work-item", key],
+    async () => (await workItemsApi.getWorkItem("fabro", key ?? "")).data ?? null,
   );
-  const item = data.find((candidate) => candidate.itemKey === key);
 
   if (isLoading) {
     return <LoadingState label="Loading work item…" />;
@@ -118,12 +122,12 @@ export function WorkItemDetail() {
   if (error) {
     return <ErrorState title="Work item failed to load" description={String(error)} />;
   }
-  if (!item) {
+  if (!item || (item.itemKey && key && item.itemKey !== key)) {
     return (
       <div className="py-12">
         <EmptyState
           title="Work item not found"
-          description={`No item matches ${key ?? "this key"}. Closed items surface through the text search.`}
+          description={`No item matches ${key ?? "this key"}.`}
         />
       </div>
     );

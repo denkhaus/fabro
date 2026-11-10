@@ -1,14 +1,19 @@
 import { Link } from "react-router";
 
-import { DataTable, type DataTableColumn, type DataTableFilter } from "../components/data-table";
+import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { observationsApi } from "../lib/api-client";
+import { formatAbsoluteDateTime } from "../lib/format";
 
 /**
  * The global observations view (denkhaus/work#1200): every run's
  * observation records in one feed — type and triage state as dropdown
  * filters (user directive 2026-11-08: no checkboxes, no radios), the
- * pager rides the shared data table control (#1201).
+ * pager rides the shared data table control (#1201). Table refinements
+ * (denkhaus/work#1235): full run ids, absolute datetimes, the
+ * server-resolved tracker URLs on linked items.
  */
+
+export const handle = { wide: true };
 
 interface FeedRow {
   id: string;
@@ -19,7 +24,7 @@ interface FeedRow {
   triage: string;
   text: string;
   recordedAt: string;
-  items: string;
+  items: Array<{ key: string; url: string | null }>;
 }
 
 const TRIAGE_STYLE: Record<string, string> = {
@@ -44,7 +49,7 @@ const COLUMNS: Array<DataTableColumn<FeedRow>> = [
         to={`/runs/${row.runId}/observations`}
         className="font-mono text-teal-500 hover:underline"
       >
-        {row.runId.slice(0, 13)}…
+        {row.runId}
       </Link>
     ),
   },
@@ -75,7 +80,29 @@ const COLUMNS: Array<DataTableColumn<FeedRow>> = [
     id: "items",
     header: "Work items",
     cell: (row) =>
-      row.items ? <span className="font-mono text-fg-3">{row.items}</span> : <span className="text-fg-muted">—</span>,
+      row.items.length ? (
+        <span className="font-mono text-fg-3">
+          {row.items.map((item, index) => (
+            <span key={item.key}>
+              {index > 0 && ", "}
+              {item.url ? (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-teal-500 hover:underline"
+                >
+                  {item.key}
+                </a>
+              ) : (
+                item.key
+              )}
+            </span>
+          ))}
+        </span>
+      ) : (
+        <span className="text-fg-muted">—</span>
+      ),
   },
 ];
 
@@ -103,17 +130,6 @@ const FILTERS: DataTableFilter[] = [
   { key: "q", label: "Search", kind: "text", placeholder: "Text contains…" },
 ];
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${day}.${month}. ${hours}:${minutes}`;
-}
-
 export default function ObservationsFeedView() {
   return (
     <DataTable<FeedRow>
@@ -140,13 +156,15 @@ export default function ObservationsFeedView() {
           category: item.category ?? "",
           triage: item.triage_state ?? "untriaged",
           text: item.text ?? "",
-          recordedAt: formatWhen(item.recorded_at ?? null),
+          recordedAt: formatAbsoluteDateTime(item.recorded_at ?? null),
           items: (item.linked_work_items ?? [])
-            .map((link) => link.item_key ?? "")
-            .filter(Boolean)
-            .join(", "),
+            .map((link) => ({
+              key: link.item_key ?? "",
+              url: link.item_url ?? null,
+            }))
+            .filter((linked) => linked.key),
         }));
-        const total = rows.length < limit ? (page - 1) * limit + rows.length : (page + 1) * limit;
+        const total = estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
     />

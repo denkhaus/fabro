@@ -51,6 +51,8 @@ const ITEM_STATE_LABEL: Record<string, string> = {
   closed: "closed",
 };
 
+// #1235: the shell escape stays (the tab's own container bounds at
+// 96rem like the other two tables); the old own `max-w-5xl` is gone.
 export const handle = { wide: true };
 
 export default function RunObservations() {
@@ -97,7 +99,7 @@ export default function RunObservations() {
     );
   }
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[96rem] space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-xs text-fg-muted">
           {visible.length} of {observations.length} observations
@@ -128,10 +130,10 @@ export default function RunObservations() {
           </select>
         </div>
       </div>
-      <div className="overflow-hidden rounded-md border border-line">
+      <div className="overflow-hidden rounded-md border border-line bg-panel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-line bg-panel/60 text-left text-xs font-medium text-fg-3">
+            <tr className="border-b border-line bg-panel text-left text-xs font-medium text-fg-3">
               <th className="px-4 py-2.5 font-medium">Stage</th>
               <th className="px-4 py-2.5 font-medium">Type</th>
               <th className="px-4 py-2.5 font-medium">State</th>
@@ -176,7 +178,18 @@ export default function RunObservations() {
                     {(observation.linked_work_items ?? []).length
                       ? (observation.linked_work_items ?? []).map((link) => (
                           <span key={link.item_key} className="mr-2 inline-block">
-                            {link.item_key}
+                            {link.item_url ? (
+                              <a
+                                href={link.item_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-teal-500 hover:underline"
+                              >
+                                {link.item_key}
+                              </a>
+                            ) : (
+                              link.item_key
+                            )}
                             {link.item_state && (
                               <span className="ml-1 text-fg-muted">
                                 ({ITEM_STATE_LABEL[link.item_state] ?? link.item_state})

@@ -7060,6 +7060,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-items/{itemKey}:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+      - schema:
+          type: string
+        in: path
+        name: itemKey
+        required: true
+        description: The work item key (`owner/repo#12`) or bare number.
+    get:
+      operationId: getWorkItem
+      tags: [Work Items]
+      summary: Get one work item by key
+      description: |
+        The work item at `itemKey`, including closed items. The detail
+        read the web work view links its key column to (denkhaus/work
+        #1235): the list's text `query` searches title and body, so a
+        key-addressed fetch needs its own door. Read-only; every
+        mutation keeps its own endpoint.
+      responses:
+        "200":
+          description: The work item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "403":
+          description: Not a run-management actor of this project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/projects/{projectId}/work-items/close:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -14866,6 +14917,14 @@ components:
             The linked item's live state at read time, resolved
             server-side beside the link: open with no live claim, open
             with a live claim (a run is working it), or closed. Null when
+            the tracker cannot resolve the item.
+        item_url:
+          type: ["string", "null"]
+          description: >-
+            The linked item's tracker URL, resolved server-side beside
+            the state (denkhaus/work#1235): the work item is an abstract
+            interface — forgejo, gitea, gitlab possible, only github
+            implemented — so clients never build forge URLs. Null when
             the tracker cannot resolve the item.
       description: |-
         One work-item link on an observation record: the chain's last

@@ -208,6 +208,50 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
+         * The work item at `itemKey`, including closed items. The detail read the web work view links its key column to (denkhaus/work #1235): the list\'s text `query` searches title and body, so a key-addressed fetch needs its own door. Read-only; every mutation keeps its own endpoint.
+         * @summary Get one work item by key
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkItem: async (projectId: string, itemKey: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('getWorkItem', 'projectId', projectId)
+            // verify required parameter 'itemKey' is not null or undefined
+            assertParamExists('getWorkItem', 'itemKey', itemKey)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/{itemKey}`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)))
+                .replace(`{${"itemKey"}}`, encodeURIComponent(String(itemKey)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -932,6 +976,20 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The work item at `itemKey`, including closed items. The detail read the web work view links its key column to (denkhaus/work #1235): the list\'s text `query` searches title and body, so a key-addressed fetch needs its own door. Read-only; every mutation keeps its own endpoint.
+         * @summary Get one work item by key
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getWorkItem(projectId: string, itemKey: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getWorkItem(projectId, itemKey, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.getWorkItem']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -1183,6 +1241,17 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
             return localVarFp.createWorkItem(projectId, workItemCreateRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * The work item at `itemKey`, including closed items. The detail read the web work view links its key column to (denkhaus/work #1235): the list\'s text `query` searches title and body, so a key-addressed fetch needs its own door. Read-only; every mutation keeps its own endpoint.
+         * @summary Get one work item by key
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkItem(projectId: string, itemKey: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+            return localVarFp.getWorkItem(projectId, itemKey, options).then((request) => request(axios, basePath));
+        },
+        /**
          * The server mutex. One non-terminal claim exists per item and per run; a losing concurrent grant returns outcome=conflict with the live claim.
          * @summary Atomically grant a work item to a run
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -1387,6 +1456,18 @@ export class WorkItemsApi extends BaseAPI {
      */
     public createWorkItem(projectId: string, workItemCreateRequest: WorkItemCreateRequest, options?: RawAxiosRequestConfig) {
         return WorkItemsApiFp(this.configuration).createWorkItem(projectId, workItemCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The work item at `itemKey`, including closed items. The detail read the web work view links its key column to (denkhaus/work #1235): the list\'s text `query` searches title and body, so a key-addressed fetch needs its own door. Read-only; every mutation keeps its own endpoint.
+     * @summary Get one work item by key
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {string} itemKey The work item key (&#x60;owner/repo#12&#x60;) or bare number.
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getWorkItem(projectId: string, itemKey: string, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).getWorkItem(projectId, itemKey, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

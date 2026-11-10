@@ -30,6 +30,10 @@ export interface ObservationWorkItemLink {
      * The linked item\'s live state at read time, resolved server-side beside the link: open with no live claim, open with a live claim (a run is working it), or closed. Null when the tracker cannot resolve the item.
      */
     'item_state'?: ObservationWorkItemLinkItemStateEnum | null;
+    /**
+     * The linked item\'s tracker URL, resolved server-side beside the state (denkhaus/work#1235): the work item is an abstract interface — forgejo, gitea, gitlab possible, only github implemented — so clients never build forge URLs. Null when the tracker cannot resolve the item.
+     */
+    'item_url'?: string | null;
 }
 
 export const ObservationWorkItemLinkItemStateEnum = {

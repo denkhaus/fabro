@@ -139,4 +139,55 @@ describe("RunObservations", () => {
     expect(text).not.toContain("plain note");
     expect(text).toMatch(/1\s+of\s+3\s+observations/);
   });
+
+  // denkhaus/work#1235: the tracker URL resolves server-side — the
+  // linked key anchors to the tracker, never a client-built forge URL;
+  // a null URL keeps plain text.
+  test("linked items anchor to the server-resolved tracker URL", () => {
+    function keysInsideAnchors(node: unknown, insideAnchor: boolean, found: Set<string>): void {
+      if (typeof node === "string") {
+        if (insideAnchor) found.add(node);
+        return;
+      }
+      if (!node || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const child of node) keysInsideAnchors(child, insideAnchor, found);
+        return;
+      }
+      const element = node as {
+        type?: string;
+        props?: { href?: string };
+        children?: unknown;
+      };
+      const isAnchor = insideAnchor || element.type === "a";
+      const href = element.props?.href;
+      if (isAnchor && typeof href === "string") found.add(href);
+      keysInsideAnchors(element.children, isAnchor, found);
+    }
+
+    const renderer = renderObservations([
+      {
+        seq: 1,
+        category: "painpoint",
+        text: "linked twice",
+        execution: 1,
+        firing: 1,
+        recorded_at: "2026-11-08T00:00:00Z",
+        stage: null,
+        linked_work_items: [
+          { item_key: "denkhaus/work#12", item_state: "open", item_url: "https://tracker.example/issues/12" },
+          { item_key: "denkhaus/work#13", item_state: null, item_url: null },
+        ],
+      },
+    ]);
+    const json = renderer.toJSON();
+    const text = textFromNode(json);
+    expect(text).toContain("denkhaus/work#12");
+    expect(text).toContain("denkhaus/work#13");
+    const anchored = new Set<string>();
+    keysInsideAnchors(json, false, anchored);
+    expect(anchored.has("https://tracker.example/issues/12")).toBe(true);
+    expect(anchored.has("denkhaus/work#12")).toBe(true);
+    expect(anchored.has("denkhaus/work#13")).toBe(false);
+  });
 });

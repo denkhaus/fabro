@@ -105,6 +105,27 @@ export function formatTileTimestamp(iso: string): string {
 }
 
 /**
+ * Format an ISO 8601 timestamp as the observation tables' absolute
+ * datetime (`dd.MM.yyyy HH:mm:ss`, local time, zero-padded, with
+ * seconds — denkhaus/work#1235: absolute, never relative). Assembled
+ * from explicit date parts like the tile formatter. Falls back to the
+ * input if unparseable.
+ */
+export function formatAbsoluteDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const date = new Date(ms);
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+}
+
+/**
  * Format an ISO 8601 timestamp as the board tile's relative age in
  * long-form English (`just now`, `X minutes ago`, `X hours ago`,
  * `X days ago` — days unbounded; the absolute dot-date always sits

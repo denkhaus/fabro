@@ -219,13 +219,15 @@ async fn linked_items_of_run(
     };
     let mut resolved = Vec::new();
     for link in links.iter().filter(|link| link.seq == seq) {
-        let item_state = resolve_linked_item_state(state, &link.project_id, &link.item_key)
-            .await
-            .map(LinkedItemState::into_wire);
+        let linked = resolve_linked_item(state, &link.project_id, &link.item_key).await;
+        let (item_state, item_url) = linked.map_or((None, None), |item| {
+            (Some(LinkedItemState::into_wire(item.state)), Some(item.url))
+        });
         resolved.push(ObservationWorkItemLink {
             item_key: link.item_key.clone(),
             linked_at: Some(link.linked_at),
             item_state,
+            item_url,
         });
     }
     resolved
@@ -862,6 +864,7 @@ async fn list_observations(
                         item_key:   link.item_key,
                         linked_at:  Some(link.linked_at),
                         item_state: None,
+                        item_url:   None,
                     });
             }
         }
@@ -873,14 +876,14 @@ async fn list_observations(
             );
         }
     }
-    // The linked items' live states, resolved once per distinct
-    // (project, item): closed, open with a live claim (a run is working
-    // it), or open. An unresolvable item keeps null — the column stays
-    // honest rather than guessing.
-    let mut item_state_of: HashMap<(String, String), Option<LinkedItemState>> = HashMap::new();
+    // The linked items' live states and tracker URLs, resolved once per
+    // distinct (project, item): closed, open with a live claim (a run is
+    // working it), or open. An unresolvable item keeps nulls — the column
+    // stays honest rather than guessing.
+    let mut resolved_of: HashMap<(String, String), Option<ResolvedLinkedItem>> = HashMap::new();
     for (project_id, item_key) in &linked_pairs {
-        let resolved = resolve_linked_item_state(&state, project_id, item_key).await;
-        item_state_of.insert((project_id.clone(), item_key.clone()), resolved);
+        let resolved = resolve_linked_item(&state, project_id, item_key).await;
+        resolved_of.insert((project_id.clone(), item_key.clone()), resolved);
     }
     for links in links_of_seq.values_mut() {
         for link in links {
@@ -889,11 +892,11 @@ async fn list_observations(
                 .find(|(_, key)| key == &link.item_key)
                 .cloned();
             if let Some((project_id, item_key)) = state_key {
-                link.item_state = item_state_of
-                    .get(&(project_id, item_key))
-                    .copied()
-                    .flatten()
-                    .map(LinkedItemState::into_wire);
+                let resolved = resolved_of.get(&(project_id, item_key)).cloned().flatten();
+                link.item_state = resolved
+                    .as_ref()
+                    .map(|item| LinkedItemState::into_wire(item.state));
+                link.item_url = resolved.map(|item| item.url);
             }
         }
     }
@@ -938,20 +941,20 @@ impl LinkedItemState {
 /// whatever the provider's indexing lag says. An unresolvable item
 /// (project gone, tracker failure) returns None — the column stays
 /// honest rather than guessing.
-async fn resolve_linked_item_state(
+/// A linked item's live state and tracker URL, resolved together in one
+/// tracker round-trip (denkhaus/work#1235: the client never builds forge
+/// URLs — the work item is an abstract interface).
+#[derive(Clone)]
+struct ResolvedLinkedItem {
+    state: LinkedItemState,
+    url:   String,
+}
+
+async fn resolve_linked_item(
     state: &AppState,
     project_id: &str,
     item_key: &str,
-) -> Option<LinkedItemState> {
-    if matches!(
-        state
-            .work_store()
-            .active_claim_for_item(project_id, item_key)
-            .await,
-        Ok(Some(_))
-    ) {
-        return Some(LinkedItemState::InProgress);
-    }
+) -> Option<ResolvedLinkedItem> {
     let project = state
         .work_store()
         .project(project_id)
@@ -960,10 +963,24 @@ async fn resolve_linked_item_state(
         .flatten()?;
     let tracker = state.work_tracker_for_project(&project).await.ok()?;
     let item = tracker.get(&project, item_key).await.ok().flatten()?;
-    match item.state.as_str() {
-        "closed" => Some(LinkedItemState::Closed),
-        _ => Some(LinkedItemState::Open),
-    }
+    let state = if matches!(
+        state
+            .work_store()
+            .active_claim_for_item(project_id, item_key)
+            .await,
+        Ok(Some(_))
+    ) {
+        LinkedItemState::InProgress
+    } else {
+        match item.state.as_str() {
+            "closed" => LinkedItemState::Closed,
+            _ => LinkedItemState::Open,
+        }
+    };
+    Some(ResolvedLinkedItem {
+        state,
+        url: item.url,
+    })
 }
 
 /// One stored observation record as the API serves it. The category is
@@ -985,5 +1002,193 @@ fn wire_observation(
         stage,
         linked_work_items,
         recorded_at: chrono::DateTime::from_timestamp_millis(recorded_at_ms.cast_signed()),
+    }
+}
+
+#[cfg(test)]
+mod link_resolution_tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
+
+    use super::LinkedItemState;
+    use crate::server::AppState;
+    use crate::test_support::TestAppStateBuilder;
+
+    /// A tracker whose `get` answers one scripted item — the seam the
+    /// observation tables' link resolution reads through
+    /// (denkhaus/work#1235: state and URL resolve together, one
+    /// round-trip).
+    struct UrlScriptedTracker {
+        item: Option<WorkItem>,
+    }
+
+    #[async_trait]
+    impl TrackerProvider for UrlScriptedTracker {
+        async fn list(
+            &self,
+            _project: &WorkProject,
+            _filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            Ok(Vec::new())
+        }
+
+        async fn get(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok(self.item.clone())
+        }
+
+        async fn create(
+            &self,
+            _project: &WorkProject,
+            _draft: WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+
+        async fn update(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+
+        async fn close(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+
+        async fn comment(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+
+        async fn project_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+
+        async fn clear_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+    }
+
+    fn scripted_item(state: &str, url: &str) -> WorkItem {
+        WorkItem {
+            item_key:   "denkhaus/work#12".to_string(),
+            title:      "Scripted".to_string(),
+            body:       String::new(),
+            state:      state.to_string(),
+            labels:     Vec::new(),
+            priority:   2,
+            url:        url.to_string(),
+            updated_at: None,
+        }
+    }
+
+    async fn state_with(tracker: UrlScriptedTracker) -> Arc<AppState> {
+        let state = TestAppStateBuilder::new()
+            .work_tracker(Arc::new(tracker) as Arc<dyn TrackerProvider>)
+            .build();
+        let store = fabro_work::WorkStore::new(state.db_pool.clone());
+        store
+            .upsert_project(&WorkProject {
+                project_id:               "fabro".to_string(),
+                display_name:             "Fabro".to_string(),
+                tracker_provider:         "github".to_string(),
+                tracker_repo:             "denkhaus/work".to_string(),
+                target_repo:              None,
+                project_label:            "project:fabro".to_string(),
+                lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                    .into_iter()
+                    .collect(),
+                claim_label_prefix:       "fabro:run:".to_string(),
+                claim_comment_enabled:    false,
+                backpressure_open_pr_cap: 0,
+            })
+            .await
+            .expect("project upserts");
+        state
+    }
+
+    #[tokio::test]
+    async fn a_resolved_link_carries_its_state_and_tracker_url_together() {
+        let state = state_with(UrlScriptedTracker {
+            item: Some(scripted_item(
+                "open",
+                "https://tracker.example/denkhaus/work/issues/12",
+            )),
+        })
+        .await;
+
+        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12")
+            .await
+            .expect("the scripted item resolves");
+
+        assert!(
+            matches!(resolved.state, LinkedItemState::Open),
+            "the live state rides the resolution"
+        );
+        assert_eq!(
+            resolved.url, "https://tracker.example/denkhaus/work/issues/12",
+            "the tracker URL rides the SAME round-trip — clients never build forge URLs"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_closed_item_resolves_closed_with_its_url() {
+        let state = state_with(UrlScriptedTracker {
+            item: Some(scripted_item(
+                "closed",
+                "https://tracker.example/denkhaus/work/issues/12",
+            )),
+        })
+        .await;
+
+        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12")
+            .await
+            .expect("the scripted item resolves");
+
+        assert!(matches!(resolved.state, LinkedItemState::Closed));
+        assert_eq!(
+            resolved.url,
+            "https://tracker.example/denkhaus/work/issues/12"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unresolvable_item_stays_absent_rather_than_guessed() {
+        let state = state_with(UrlScriptedTracker { item: None }).await;
+
+        assert!(
+            super::resolve_linked_item(&state, "fabro", "denkhaus/work#13")
+                .await
+                .is_none(),
+            "no item, no resolution — the column stays honest with nulls"
+        );
     }
 }

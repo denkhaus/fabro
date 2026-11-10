@@ -40,6 +40,17 @@ export type DataTableFetcher<Row> = (args: {
   filters: Record<string, string>;
 }) => Promise<{ rows: Row[]; total: number }>;
 
+/**
+ * The page-window total estimate the fetchers share when the backend
+ * pages without a count: a short page means no next page, a full page
+ * means at least one more (the pager then discovers the end on the last
+ * page). Not a real count — the tracker and the observations feed have
+ * no cheap one.
+ */
+export function estimatePageTotal(rowsOnPage: number, page: number, limit: number): number {
+  return rowsOnPage < limit ? (page - 1) * limit + rowsOnPage : (page + 1) * limit;
+}
+
 const PAGE_SIZES = [10, 25, 50, 100];
 
 export function DataTable<Row extends { id: string }>({
@@ -109,7 +120,7 @@ export function DataTable<Row extends { id: string }>({
   const filtered = filters.some((filter) => filterValues[filter.key] != null);
 
   return (
-    <div className="space-y-3">
+    <div className="mx-auto max-w-[96rem] space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {filters.map((filter) =>
           filter.kind === "text" ? (
@@ -156,7 +167,7 @@ export function DataTable<Row extends { id: string }>({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-md border border-line">
+      <div className="overflow-hidden rounded-md border border-line bg-panel">
         <div className="max-h-[70vh] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-panel">
@@ -217,26 +228,23 @@ export function DataTable<Row extends { id: string }>({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-fg-muted">
-        <label className="flex items-center gap-1.5">
-          <span>/ page</span>
-          <select
-            aria-label="Items per page"
-            value={String(limit)}
-            onChange={(event) =>
-              updateParams((params) => {
-                params.set("limit", event.target.value);
-                params.delete("page");
-              })
-            }
-            className="rounded border border-line bg-panel px-1.5 py-1 text-fg"
-          >
-            {PAGE_SIZES.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-        </label>
+        <select
+          aria-label="Items per page"
+          value={String(limit)}
+          onChange={(event) =>
+            updateParams((params) => {
+              params.set("limit", event.target.value);
+              params.delete("page");
+            })
+          }
+          className="rounded border border-line bg-panel px-1.5 py-1 text-fg"
+        >
+          {PAGE_SIZES.map((size) => (
+            <option key={size} value={size}>
+              {size}
+            </option>
+          ))}
+        </select>
         {currentPage > 1 && (
           <Link
             to={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), page: String(currentPage - 1) }).toString()}`}
