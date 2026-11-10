@@ -7060,15 +7060,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/v1/projects/{projectId}/work-items/{itemKey}:
+  /api/v1/projects/{projectId}/work-items/item:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
-      - schema:
-          type: string
-        in: path
-        name: itemKey
-        required: true
-        description: The work item key (`owner/repo#12`) or bare number.
     get:
       operationId: getWorkItem
       tags: [Work Items]
@@ -7078,7 +7072,18 @@ paths:
         read the web work view links its key column to (denkhaus/work
         #1235): the list's text `query` searches title and body, so a
         key-addressed fetch needs its own door. Read-only; every
-        mutation keeps its own endpoint.
+        mutation keeps its own endpoint. The key rides a QUERY
+        parameter — it is opaque and provider-stable (`owner/repo#n`
+        today), and a slash inside a path parameter is not routable
+        (the first live proof of the path form 400'd on the encoded
+        slash, 2026-11-10).
+      parameters:
+        - name: itemKey
+          in: query
+          required: true
+          description: The work item key (e.g. `owner/repo#12`).
+          schema:
+            type: string
       responses:
         "200":
           description: The work item

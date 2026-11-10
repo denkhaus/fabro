@@ -54,10 +54,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             "/projects/{projectId}/work-items",
             get(list_work_items).post(create_work_item),
         )
-        .route(
-            "/projects/{projectId}/work-items/{itemKey}",
-            get(get_work_item),
-        )
+        .route("/projects/{projectId}/work-items/item", get(get_work_item))
         .route(
             "/projects/{projectId}/work-items/close",
             post(close_work_item),
@@ -527,20 +524,29 @@ struct WorkItemQuery {
 
 /// One work item by key, including closed items (denkhaus/work#1235):
 /// the list's text `query` searches title and body, so a key-addressed
-/// fetch needs its own door — the web work view's detail read.
+/// fetch needs its own door — the web work view's detail read. The key
+/// rides a QUERY parameter: it is opaque (`owner/repo#n`), and a slash
+/// inside a path parameter is not routable (the path form 400'd on the
+/// encoded slash in the first live proof, 2026-11-10).
+#[derive(Debug, serde::Deserialize)]
+struct WorkItemGetQuery {
+    item_key: String,
+}
+
 async fn get_work_item(
     auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
-    Path((project_id, item_key)): Path<(String, String)>,
+    Path(project_id): Path<String>,
+    ExtraQuery(query): ExtraQuery<WorkItemGetQuery>,
 ) -> Result<Response, ApiError> {
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     let item = tracker
-        .get(project, &item_key)
+        .get(project, &query.item_key)
         .await
         .map_err(tracker_failed)?
-        .ok_or_else(|| ApiError::not_found(format!("work item `{item_key}` not found")))?;
+        .ok_or_else(|| ApiError::not_found(format!("work item `{}` not found", query.item_key)))?;
     Ok(Json(api_item(item)).into_response())
 }
 
