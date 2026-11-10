@@ -109,6 +109,24 @@ index (`incidents.md`) carries the full stories.
   `level` field does not exist). Do NOT read
   `docker logs rootprint-vector`: that container's stdout carries only
   vector's own boot lines; events go to the opentelemetry sink.
+- QUERY SYNTAX (learned the hard way, 2026-11-10): the `body` field has
+  NO positions indexed — a phrase-quoted body query
+  (`-q 'body:"some phrase"'`) fails with QUICKWIT_VALIDATION 400.
+  Match body text as AND-joined bare terms instead:
+  `-q 'service_name:fabro AND severity_text:WARN AND body:create'`.
+  Field-value pairs combine with AND; only field queries carry quotes
+  safely.
+- SCOPE BY SERVICE: the index is shared. Production is
+  `service_name:fabro`, the local stack `service_name:fabro-lokal`,
+  unrelated services ride along (e.g. `brightctl`) — always carry the
+  service filter, or discover names first with
+  `rootprint values --fields service_name --since 1h`.
+- FIRST PROBE `rootprint health` (auth + backend alive; a 401 is a
+  key/config problem to fix, not a query to retry). `hist` gives the
+  volume shape (`--interval 30m`), `search` the rows; search output is
+  JSONL — redirect to a FILE and post-process (python/jq), never parse
+  in the head of a shell call. Give search a generous timeout
+  (minutes, not seconds).
 - `severity_text` values are unreliable for catch-alls — filter on body
   text for those. INFO is not ingested, so run timelines come from
   `fabro ps`/events.
