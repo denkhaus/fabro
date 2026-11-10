@@ -150,8 +150,27 @@ deploy windows, toolchain pins, fork releases, and bench landing.
 
 ## Production deploy
 
+- The line's release path is HOST-BUILT (ADR-0041):
+  `just host-release <user@host> <port> <arch> <full-sha>` builds and
+  tags the image ON the release host (`denkhaus/fabro:<version>-<sha12>`;
+  the full sha from `git rev-parse HEAD` of the pushed tip). The HOST
+  ARGUMENT CARRIES THE USER (`root@<ip>`) — a bare IP makes scp connect
+  as the local username and die on `/opt/fabro-release` permissions
+  (2026-11-10). The tofu apply then CONSUMES THE LOCAL TAG
+  (`fabro_image_ref=":<version>-<sha12>"` — nothing is pulled; a
+  missing tag fails the docker_image read), so the recipe runs FIRST,
+  the apply second.
+- `just image-release` (build on THIS machine + GHCR push) is NOT the
+  line's path: it burns the local uplink and needs a local GHCR login.
+  The GHCR repository is the FROM-SCRATCH FALLBACK — fed by the
+  post-deploy host-side mirror push (`ghcr_mirror_enabled`, disabled
+  while #1231 blocks the org-package write), never by a local release
+  build. The tofu `release_install`/`buildx_install` resources
+  PROVISION the host for the recipe (git, the scp target, the buildx
+  plugin); they do not build anything themselves — the build is the
+  recipe's.
 - After substantial engine changes (binary-need check: any `lib/` path
-  in the merged work): `just image-release` + fabro-tofu apply —
+  in the merged work): build (above) + fabro-tofu apply —
   NON-INTERACTIVE (the justfile profile picker is fzf-only by design;
   name the profile explicitly):
   `cd ~/dev/fabro-tofu && export TF_VAR_state_passphrase="$(mise exec --
