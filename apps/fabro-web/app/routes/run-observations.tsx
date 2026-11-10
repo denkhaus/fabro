@@ -133,7 +133,7 @@ export default function RunObservations() {
       <div className="overflow-hidden rounded-md border border-line bg-panel">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-line bg-panel text-left text-xs font-medium text-fg-3">
+            <tr className="border-b border-line bg-panel-alt text-left text-xs font-medium text-fg-3">
               <th className="px-4 py-2.5 font-medium">Stage</th>
               <th className="px-4 py-2.5 font-medium">Type</th>
               <th className="px-4 py-2.5 font-medium">State</th>

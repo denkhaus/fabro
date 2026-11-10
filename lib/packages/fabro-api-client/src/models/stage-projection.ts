@@ -39,6 +39,9 @@ import type { StageInferenceProjection } from './stage-inference-projection';
 import type { StageModelUsage } from './stage-model-usage';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { StageObservation } from './stage-observation';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { StageState } from './stage-state';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -110,6 +113,10 @@ export interface StageProjection {
      * Effective model-callable tools exposed to this agent stage session. Tool parameter schemas are intentionally omitted from this projection.
      */
     'agent_tools'?: Array<ToolSummary>;
+    /**
+     * The observations this stage recorded through the fabro_observation_record tool (ADR-0038: the genus is the observation, a painpoint is one category), folded from the run\'s observation.recorded platform records by stage position. Absent when the stage recorded nothing durable.
+     */
+    'observations'?: Array<StageObservation>;
     'inference'?: StageInferenceProjection | null;
     /**
      * Start of an external ACP agent process, if one is running. ACP agents do not expose Fabro\'s internal LLM brackets, so the process lifetime supplies their live inference estimate.

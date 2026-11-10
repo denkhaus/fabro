@@ -13265,6 +13265,24 @@ components:
           type: object
           additionalProperties: true
 
+    StageObservation:
+      description: >-
+        One observation a stage recorded, folded onto it by position
+        (ADR-0038: the genus is the observation, a painpoint is one
+        category).
+      type: object
+      required: [seq, category, text]
+      properties:
+        seq:
+          type: integer
+          format: uint64
+          description: The platform record's seq — the entry's identity within the run.
+        category:
+          $ref: "#/components/schemas/RunObservationCategory"
+        text:
+          type: string
+          description: The entry as the agent wrote it.
+
     StageProjection:
       description: Observable projection data for one workflow stage execution.
       type: object
@@ -13384,6 +13402,16 @@ components:
             Tool parameter schemas are intentionally omitted from this projection.
           items:
             $ref: "#/components/schemas/ToolSummary"
+        observations:
+          type: array
+          description: >
+            The observations this stage recorded through the
+            fabro_observation_record tool (ADR-0038: the genus is the
+            observation, a painpoint is one category), folded from the
+            run's observation.recorded platform records by stage
+            position. Absent when the stage recorded nothing durable.
+          items:
+            $ref: "#/components/schemas/StageObservation"
         inference:
           oneOf:
             - $ref: "#/components/schemas/StageInferenceProjection"

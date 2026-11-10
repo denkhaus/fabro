@@ -122,6 +122,14 @@ export default function RunDetail({ params }: { params: { id: string } }) {
   const lifecycleToastStateRef = useRef(createLifecycleToastState());
   const filesCount = runQuery.data?.diff?.files_changed ?? null;
   const childrenCount = runQuery.data?.children_count ?? null;
+  // The observations badge counts the projection's positioned records
+  // (one per stage fold); positionless server-origin records join the
+  // tab's own list but not this count — the badge is an affordance,
+  // not an audit.
+  const observationsCount = Object.values(runStateQuery.data?.stages ?? {}).reduce(
+    (count, stage) => count + (stage.observations?.length ?? 0),
+    0,
+  ) || null;
   const hasSandbox = runHasSandbox(runStateQuery.data);
   // The coding agent's fold says a round was interrupted and the prompt
   // waits for a steer; the stage's state says the stage is still running,
@@ -136,6 +144,7 @@ export default function RunDetail({ params }: { params: { id: string } }) {
     hasSandbox,
     filesCount,
     childrenCount,
+    observationsCount,
   });
   const steerBarRef = useRef<SteerBarHandle | null>(null);
   const now = useTickingNow(

@@ -33,10 +33,12 @@ export function buildRunDetailTabs({
   hasSandbox,
   filesCount,
   childrenCount,
+  observationsCount,
 }: {
   hasSandbox: boolean;
   filesCount: number | null;
   childrenCount: number | null;
+  observationsCount: number | null;
 }) {
   const tabs: RunDetailTab[] = [];
   for (const tab of allTabs) {
@@ -45,6 +47,8 @@ export function buildRunDetailTabs({
       tabs.push({ ...tab, count: filesCount });
     } else if (tab.name === "Children") {
       tabs.push({ ...tab, count: childrenCount });
+    } else if (tab.name === "Observations") {
+      tabs.push({ ...tab, count: observationsCount });
     } else {
       tabs.push(tab);
     }

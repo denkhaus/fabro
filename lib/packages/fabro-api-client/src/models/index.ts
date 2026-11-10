@@ -514,6 +514,7 @@ export * from './stage-context-window-unavailable-reason';
 export * from './stage-handler';
 export * from './stage-inference-projection';
 export * from './stage-model-usage';
+export * from './stage-observation';
 export * from './stage-outcome';
 export * from './stage-projection';
 export * from './stage-state';

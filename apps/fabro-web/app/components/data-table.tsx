@@ -170,7 +170,7 @@ export function DataTable<Row extends { id: string }>({
       <div className="overflow-hidden rounded-md border border-line bg-panel">
         <div className="max-h-[70vh] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-panel">
+            <thead className="sticky top-0 z-10 bg-panel-alt">
               <tr className="border-b border-line text-left text-xs font-medium text-fg-3">
                 {columns.map((column) => (
                   <th

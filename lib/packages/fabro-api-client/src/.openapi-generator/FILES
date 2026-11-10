@@ -547,6 +547,7 @@ models/stage-context-window.ts
 models/stage-handler.ts
 models/stage-inference-projection.ts
 models/stage-model-usage.ts
+models/stage-observation.ts
 models/stage-outcome.ts
 models/stage-projection.ts
 models/stage-state.ts
