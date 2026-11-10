@@ -110,10 +110,10 @@ export function WorkItemDetail() {
   const [searchParams] = useSearchParams();
   // Key-addressed fetch (denkhaus/work#1235): the list's text query
   // searches title and body, so the detail reads its own door. The
-  // client encodes the path parameter itself.
+  // generated client orders the QUERY param first: (itemKey, projectId).
   const { data: item, isLoading, error } = useSWR(
     ["work-item", key],
-    async () => (await workItemsApi.getWorkItem("fabro", key ?? "")).data ?? null,
+    async () => (await workItemsApi.getWorkItem(key ?? "", "fabro")).data ?? null,
   );
 
   if (isLoading) {

@@ -14,7 +14,7 @@ mock.module("../lib/api-client", () => ({
   ...realApiClient,
   workItemsApi: {
     ...realApiClient.workItemsApi,
-    getWorkItem: async (_project: string, itemKey: string) => ({
+    getWorkItem: async (itemKey: string, _project: string) => ({
       data:
         currentItem && currentItem.itemKey === itemKey
           ? currentItem
