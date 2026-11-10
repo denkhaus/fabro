@@ -1,4 +1,19 @@
-*
-!docker/entrypoint.sh
-!docker/settings.toml
-!tmp/docker-context/**
+# Root build-context ignore. The release pipeline's server image builds
+# from the STAGED context (tmp/docker-context/<arch>/fabro, staged by
+# cargo dev docker-build), so this file governs the OTHER root-context
+# builds — chiefly the engine's environment builds (ADR-0042: the
+# toolchain image cooks over the run's checkout; the engine feeds the
+# inline dockerfile text, so per-Dockerfile ignore overrides never
+# apply — the root file is the only lever). It therefore allows the
+# repo tree and excludes only the heavyweight, machine-local
+# directories no cook reads. History: this file was once `*`-exclusive
+# with staged allows (the release-pipeline shape); that starved every
+# root-context build — the first live cooks all died at COPY "not
+# found" (2026-11-10, denkhaus/work#1252).
+.git
+target
+tmp
+node_modules
+dist
+.fabro/cook
+.fabro/judgments
