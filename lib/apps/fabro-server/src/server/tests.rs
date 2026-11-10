@@ -351,7 +351,7 @@ macro_rules! checked_response {
 }
 
 #[derive(Clone, Debug)]
-struct CapturedTracingEvent {
+pub(crate) struct CapturedTracingEvent {
     fields: Vec<(String, String)>,
 }
 
@@ -383,7 +383,8 @@ impl Visit for CaptureVisitor {
 }
 
 struct ServerLogCaptureLayer {
-    events: StdArc<StdMutex<Vec<CapturedTracingEvent>>>,
+    events:  StdArc<StdMutex<Vec<CapturedTracingEvent>>>,
+    message: &'static str,
 }
 
 impl<S: Subscriber> Layer<S> for ServerLogCaptureLayer {
@@ -400,7 +401,7 @@ impl<S: Subscriber> Layer<S> for ServerLogCaptureLayer {
         if visitor
             .fields
             .iter()
-            .any(|(name, value)| name == "message" && value == "HTTP response")
+            .any(|(name, value)| name == "message" && value == self.message)
         {
             self.events
                 .lock()
@@ -416,15 +417,28 @@ fn capture_server_logs() -> (
     tracing::dispatcher::DefaultGuard,
     StdArc<StdMutex<Vec<CapturedTracingEvent>>>,
 ) {
+    capture_server_logs_matching("HTTP response")
+}
+
+/// Captures the server's tracing events that carry `message` — the
+/// assertion seam for log-field pins beyond the HTTP response log
+/// (denkhaus/work#1234: the admission rejection's diagnostics).
+pub(crate) fn capture_server_logs_matching(
+    message: &'static str,
+) -> (
+    tracing::dispatcher::DefaultGuard,
+    StdArc<StdMutex<Vec<CapturedTracingEvent>>>,
+) {
     let events = StdArc::new(StdMutex::new(Vec::new()));
     let subscriber = Registry::default().with(ServerLogCaptureLayer {
         events: StdArc::clone(&events),
+        message,
     });
     let guard = subscriber::set_default(subscriber);
     (guard, events)
 }
 
-fn captured_field<'a>(event: &'a CapturedTracingEvent, name: &str) -> Option<&'a str> {
+pub(crate) fn captured_field<'a>(event: &'a CapturedTracingEvent, name: &str) -> Option<&'a str> {
     event
         .fields
         .iter()

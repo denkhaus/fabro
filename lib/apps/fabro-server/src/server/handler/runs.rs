@@ -970,10 +970,22 @@ fn run_intent_admission_error(error: RunIntentAdmissionError) -> Response {
                 "Run intent admission failed"
             );
         }
-        RunIntentAdmissionError::Lowering(_) | RunIntentAdmissionError::Compiler(_) => {
+        RunIntentAdmissionError::Lowering(_) => {
             tracing::warn!(
                 error = %error,
                 error_chain = ?error_util::collect_chain(&error),
+                "Run intent admission rejected"
+            );
+        }
+        RunIntentAdmissionError::Compiler(compiler) => {
+            // The response body curates the diagnostics; the log carries
+            // them too — a validation failure's Display is bare
+            // ("Validation failed"), and a status-only trail cost the
+            // 2026-11-09 outage diagnosis hours (denkhaus/work#1234).
+            tracing::warn!(
+                error = %error,
+                error_chain = ?error_util::collect_chain(&error),
+                detail = %compiler_error_detail(compiler),
                 "Run intent admission rejected"
             );
         }
@@ -1153,7 +1165,6 @@ async fn validate_intent_environment(
 ) -> Result<(), EnvironmentSelectionError> {
     let configured_provider = run_manifest::configured_sandbox_provider(&settings.run);
     let effective_provider = run_manifest::effective_sandbox_provider(&settings.run);
-    let _ = &settings.run.environment.image;
     // No `image.dockerfile` incompatibility since ADR-0042: a
     // dockerfile-only environment on the docker provider is the BUILD
     // case — the engine builds the image at scope acquisition — and an
@@ -1703,6 +1714,8 @@ fn build_command_log_response(
 mod admission_refusal_tests {
     use axum::body::to_bytes;
     use axum::http::StatusCode;
+    use fabro_types::diagnostic::{Diagnostic, Severity};
+    use fabro_workflow::Error as WorkflowError;
     use serde_json::Value;
 
     use super::run_intent_admission_error;
@@ -1758,5 +1771,44 @@ mod admission_refusal_tests {
 
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
         assert_eq!(body["errors"][0]["code"], "run_compile_invalid", "{body}");
+    }
+
+    /// A validation refusal's Display is bare ("Validation failed"); the
+    /// rejection WARN must carry the diagnostics the response body curates
+    /// (denkhaus/work#1234, gap 2: the 2026-11-09 outage diagnosis read
+    /// `error_chain=["Validation failed"]` with nothing to fix).
+    #[tokio::test]
+    async fn validation_refusals_log_their_diagnostics() {
+        let (_guard, events) =
+            crate::server::tests::capture_server_logs_matching("Run intent admission rejected");
+        let diagnostic = Diagnostic {
+            rule: "unsupported.workflow_toml.environments.image.dockerfile".to_string(),
+            severity: Severity::Error,
+            message: "the `{ path }` form is Fabro's persist-time inlining".to_string(),
+            ..Diagnostic::default()
+        };
+
+        let (status, _body) = refusal_body(RunIntentAdmissionError::Compiler(
+            RunCompilerError::Workflow(WorkflowError::ValidationFailed {
+                diagnostics: vec![diagnostic],
+            }),
+        ))
+        .await;
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        let events = events.lock().expect("captured log events").clone();
+        let event = events
+            .iter()
+            .find(|event| {
+                crate::server::tests::captured_field(event, "message")
+                    == Some("Run intent admission rejected")
+            })
+            .expect("the rejection warn fired");
+        let detail = crate::server::tests::captured_field(event, "detail")
+            .expect("the warn carries the diagnostics detail");
+        assert!(
+            detail.contains("persist-time inlining"),
+            "the detail names the diagnostic message: {detail}"
+        );
     }
 }

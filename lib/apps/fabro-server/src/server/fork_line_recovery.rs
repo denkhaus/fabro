@@ -42,8 +42,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::to_bytes;
-use axum::response::Response;
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunFailure, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
@@ -636,11 +634,11 @@ pub(crate) async fn manual_window_refusal(
 /// admission set: the adjudicator's 18:00 fire class). That refusal is a
 /// HELD fire, never a create failure. Consumes the response body — only
 /// the scheduled fire's failure path calls here.
-pub(crate) async fn create_refusal_is_provider_window(response: Response) -> bool {
-    let Ok(bytes) = to_bytes(response.into_body(), 16 * 1024).await else {
-        return false;
-    };
-    serde_json::from_slice::<serde_json::Value>(&bytes)
+/// Whether a create refusal body is the provider-window hold. Takes the
+/// already-read body bytes: the scheduler reads the body once for its own
+/// logging (denkhaus/work#1234) and consults the gate on the same bytes.
+pub(crate) fn create_refusal_is_provider_window(body: &[u8]) -> bool {
+    serde_json::from_slice::<serde_json::Value>(body)
         .ok()
         .is_some_and(|body| body["errors"][0]["code"].as_str() == Some("provider_window_closed"))
 }

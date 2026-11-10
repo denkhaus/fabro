@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::to_bytes;
 use axum::http::{HeaderMap, StatusCode};
 use chrono::{DateTime, Utc};
 use croner::errors::CronError;
@@ -663,6 +664,22 @@ pub(crate) async fn fire_scheduled_automation_run(
 
     let status = response.status();
     if !status.is_success() {
+        // #1234's equivalence invariant (gap 3): the manual replay —
+        // `fabro create --workflow-repo <repo> --workflow-ref <ref>
+        // --environment <id> ...` — and this scheduled fire compile
+        // through the SAME create-from-intent admission over the SAME
+        // collected version. The replay IS the reproduction of the
+        // scheduler's intent: reproduce a 422 here by replaying the
+        // automation's coordinate, never by guessing at internals.
+        // Read the body ONCE (bounded) and surface it: the create
+        // response curates the refusal detail (the diagnostics the
+        // admission logged), and discarding it cost the 2026-11-09
+        // outage diagnosis hours — status-only errors named nothing to
+        // fix (denkhaus/work#1234).
+        let body = to_bytes(response.into_body(), 16 * 1024)
+            .await
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_default();
         // fabro-1162 (denkhaus/work#1162): a provider-window refusal from
         // the create path's gate is a HELD fire, never a create failure.
         // The scheduler-side gate fails open for a fire whose provider set
@@ -674,7 +691,7 @@ pub(crate) async fn fire_scheduled_automation_run(
         // like the tick's holds: log only, `last_error` stays empty, and
         // 409 stays reserved for genuine create conflicts.
         if status == StatusCode::CONFLICT
-            && super::fork_line_recovery::create_refusal_is_provider_window(response).await
+            && super::fork_line_recovery::create_refusal_is_provider_window(body.as_bytes())
         {
             state
                 .provider_gate
@@ -690,16 +707,18 @@ pub(crate) async fn fire_scheduled_automation_run(
             );
             return;
         }
+        let detail = refusal_body_detail(&body);
         record_scheduler_error(
             state.as_ref(),
             &automation_id,
-            &format!("Failed to create scheduled automation run ({status})"),
+            &format!("Failed to create scheduled automation run ({status}): {detail}"),
         )
         .await;
         warn!(
             run_id = %run_id,
             due_at = %due_at,
             status = %status,
+            body = %body,
             "Failed to create scheduled automation run",
         );
         return;
@@ -728,6 +747,41 @@ pub(crate) async fn fire_scheduled_automation_run(
         due_at = %due_at,
         "Scheduled automation run queued",
     );
+}
+
+/// A compact, bounded extraction of a create refusal's body for the
+/// automation's `last_error` (denkhaus/work#1234): `title: detail` of the
+/// first error when the standard error shape parses, else the raw text —
+/// truncated so a pathological body cannot bloat the stored error.
+fn refusal_body_detail(body: &str) -> String {
+    const MAX_LEN: usize = 500;
+    let compact = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            let error = value.get("errors")?.get(0)?;
+            let title = error
+                .get("title")
+                .and_then(|title| title.as_str())
+                .unwrap_or_default();
+            let detail = error
+                .get("detail")
+                .and_then(|detail| detail.as_str())
+                .unwrap_or_default();
+            Some(if detail.is_empty() {
+                title.to_owned()
+            } else {
+                format!("{title}: {detail}")
+            })
+        });
+    let text = compact.unwrap_or_else(|| body.trim().to_owned());
+    if text.len() <= MAX_LEN {
+        return text;
+    }
+    let mut end = MAX_LEN;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
 }
 
 async fn record_scheduler_error(state: &AppState, id: &AutomationId, message: &str) {
@@ -792,6 +846,10 @@ pub(crate) fn run_due_schedules_once<'a>(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "scheduler tests stage checkout fixtures with sync std::fs writes"
+)]
 pub(crate) mod tests {
     use fabro_automation::{
         AutomationDraft, AutomationGitWorkflowSource, AutomationReplace, AutomationTrigger,
@@ -1250,6 +1308,109 @@ pub(crate) mod tests {
         assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
     }
 
+    /// The 2026-11-09 incident's exact shape (denkhaus/work#1233 + #1234
+    /// gap 3): a workflow.toml authoring
+    /// `dockerfile = { path = "..." }`. Production materializes by
+    /// collecting the repo fresh per fire; the collected bytes must carry
+    /// the inline text, and the create path must ADMIT them — manual and
+    /// scheduled compiles see the same source.
+    #[tokio::test]
+    async fn a_path_dockerfile_workflow_fires_green_on_the_scheduled_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let workflow_dir = temp.path().join(".fabro/workflows/root");
+        std::fs::create_dir_all(&workflow_dir).unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.toml"),
+            r#"_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "Dockerfile" }
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            workflow_dir.join("workflow.fabro"),
+            r"digraph Root { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }",
+        )
+        .unwrap();
+        std::fs::write(workflow_dir.join("Dockerfile"), "FROM probe\n").unwrap();
+
+        let closure =
+            fabro_manifest::collect_workflow_versions(std::path::Path::new("root"), temp.path())
+                .expect("the { path } workflow should collect");
+        let root = closure
+            .versions()
+            .find(|(_, version)| {
+                version.version().entrypoint().as_str() == ".fabro/workflows/root/workflow.fabro"
+            })
+            .expect("root version collected")
+            .1;
+        let version = fabro_workflow_version::ValidatedWorkflowVersion::new(
+            fabro_types::WorkflowVersion::new(
+                root.version().entrypoint().clone(),
+                root.version().files().clone(),
+                root.version().workflow_dependencies().clone(),
+            )
+            .expect("collected version reshapes"),
+        )
+        .expect("collected version revalidates");
+
+        let materializer =
+            TestAutomationRunMaterializer::succeed_with_version(git_target(), version);
+        let state = test_state_with_materializer(materializer);
+        // The launch must SELECT the environment: Petri parses an
+        // environment's image only when a launch or `[run.environment]`
+        // names it (the production fire carried `--environment
+        // toolchain`).
+        state
+            .environment_store()
+            .create(fabro_environment::EnvironmentDraft {
+                id:       fabro_environment::EnvironmentId::new("toolchain")
+                    .expect("valid environment id"),
+                settings: fabro_types::settings::run::EnvironmentSettings {
+                    provider: fabro_types::SandboxProviderKind::DOCKER,
+                    ..fabro_types::settings::run::EnvironmentSettings::default()
+                },
+            })
+            .await
+            .expect("toolchain environment should persist");
+        seed_work_project(state.as_ref()).await;
+        state
+            .automation_store()
+            .create(AutomationDraft {
+                work_project:    Some("fabro".to_owned()),
+                on_overlap:      None,
+                id:              AutomationId::new("path-form")
+                    .expect("test automation id is valid"),
+                name:            "Path form".to_string(),
+                description:     None,
+                environment_id:  Some("toolchain".to_string()),
+                target:          target(),
+                workflow_source: None,
+                workflow:        "workflow.fabro".to_string(),
+                triggers:        vec![schedule_trigger("schedule", "* * * * *", true)],
+            })
+            .await
+            .expect("test automation should be created");
+        let mut planner = AutomationSchedulePlanner::default();
+
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+
+        assert_eq!(
+            stored_runs(state.as_ref()).await.len(),
+            1,
+            "the {{ path }} dockerfile workflow creates — the collector's \
+             persist-time inlining feeds Petri inline text"
+        );
+    }
+
     #[tokio::test]
     async fn scheduled_fire_is_refused_when_a_required_provider_has_no_stored_credential() {
         // Only openai carries a credential in this state; the automation's
@@ -1292,6 +1453,15 @@ pub(crate) mod tests {
         assert!(
             last_error.contains("Failed to create scheduled automation run"),
             "the refusal should surface as the automation's last error: {last_error}"
+        );
+        // Gap 1 (denkhaus/work#1234): the create response body carries the
+        // curated refusal detail; the scheduler error must surface it, not
+        // discard it — the 2026-11-09 outage diagnosis read status-only
+        // errors for hours while the body named the `{ path }` defect.
+        assert!(
+            last_error.contains("zai"),
+            "the last error carries the refusal body's detail (the missing \
+             provider): {last_error}"
         );
     }
 

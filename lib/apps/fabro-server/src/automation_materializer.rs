@@ -410,6 +410,21 @@ impl TestAutomationRunMaterializer {
         })))
     }
 
+    /// A scheduled fire whose workflow is an already-collected version —
+    /// the production materializer's shape: the repo is collected fresh
+    /// per fire (denkhaus/work#1234, gap 3: the collected bytes the
+    /// create path admits are the bytes the collector produced).
+    pub fn succeed_with_version(
+        target: GitRunTarget,
+        version: fabro_workflow_version::ValidatedWorkflowVersion,
+    ) -> Self {
+        Self::new(Ok(Box::new(TestMaterializedWorkflow {
+            version,
+            target,
+            store: true,
+        })))
+    }
+
     pub fn return_unstored_version(target: GitRunTarget) -> Self {
         Self::new(Ok(Box::new(TestMaterializedWorkflow {
             version: test_workflow_version(),
