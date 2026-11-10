@@ -530,6 +530,9 @@ struct WorkItemQuery {
 /// encoded slash in the first live proof, 2026-11-10).
 #[derive(Debug, serde::Deserialize)]
 struct WorkItemGetQuery {
+    /// camelCase on the wire (the spec's `itemKey`) — the first
+    /// multi-word query param on this surface.
+    #[serde(rename = "itemKey")]
     item_key: String,
 }
 
