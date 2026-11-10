@@ -505,14 +505,13 @@ impl Client {
         // send_api and thus re-enters this probe; the flag swap above
         // makes that re-entry a no-op (depth is bounded at two), and
         // the box satisfies the compiler's recursion check.
-        let info = match Box::pin(self.get_system_info()).await {
-            Ok(info) => info,
+        let Ok(info) = Box::pin(self.get_system_info()).await else {
             // Transport trouble is the request's story to tell, not the
             // probe's; a version verdict needs a reachable, answering
             // server.
-            Err(_) => return Ok(()),
+            return Ok(());
         };
-        enforce_run_channel_floor(&info.version, RUN_CHANNEL_MIN_SERVER)
+        enforce_run_channel_floor(info.version.as_deref(), RUN_CHANNEL_MIN_SERVER)
     }
 
     async fn refresh_access_token(&self, failed_access_token: &str) -> Result<()> {
@@ -3157,7 +3156,7 @@ static RUN_CHANNEL_FLOOR_CHECKED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Refuses a channel server below the floor, naming both versions.
-fn enforce_run_channel_floor(server_version: &Option<String>, floor: &str) -> Result<()> {
+fn enforce_run_channel_floor(server_version: Option<&str>, floor: &str) -> Result<()> {
     let Some(version) = server_version else {
         bail!(
             "run channel compatibility: the serving server reported no version; this client \
@@ -3189,11 +3188,10 @@ fn server_meets_floor(server: &str, floor: &str) -> std::result::Result<bool, St
             .ok_or_else(|| text.to_string())?;
         let minor = parts
             .next()
-            .map(|part| {
+            .and_then(|part| {
                 let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
                 digits.parse::<u64>().ok()
             })
-            .unwrap_or(None)
             .ok_or_else(|| text.to_string())?;
         Ok((major, minor))
     };
@@ -3275,18 +3273,16 @@ mod tests {
     /// and the refusal names both versions.
     #[test]
     fn run_channel_floor_gate_names_both_versions() {
-        assert!(enforce_run_channel_floor(&Some("99.0.0".to_owned()), "0.362").is_ok());
-        assert!(enforce_run_channel_floor(&Some("0.362.0-fork.32".to_owned()), "0.362").is_ok());
-        let below = enforce_run_channel_floor(&Some("0.361.0".to_owned()), "0.362").unwrap_err();
+        assert!(enforce_run_channel_floor(Some("99.0.0"), "0.362").is_ok());
+        assert!(enforce_run_channel_floor(Some("0.362.0-fork.32"), "0.362").is_ok());
+        let below = enforce_run_channel_floor(Some("0.361.0"), "0.362").unwrap_err();
         let text = below.to_string();
         assert!(text.contains("0.361.0"), "{text}");
         assert!(text.contains("0.362"), "{text}");
-        assert!(enforce_run_channel_floor(&None, "0.0").is_err());
+        assert!(enforce_run_channel_floor(None, "0.0").is_err());
         // The landing floor refuses nothing today — the mechanism's
         // first exercise is the first deliberate bump.
-        assert!(
-            enforce_run_channel_floor(&Some("0.0.1".to_owned()), RUN_CHANNEL_MIN_SERVER).is_ok()
-        );
+        assert!(enforce_run_channel_floor(Some("0.0.1"), RUN_CHANNEL_MIN_SERVER).is_ok());
     }
 
     use chrono::Duration as ChronoDuration;
