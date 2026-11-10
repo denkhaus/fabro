@@ -10,6 +10,7 @@ type StatusFilter = "all" | "open" | "untriaged" | "filed" | "in_progress" | "cl
 
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { useRunObservations } from "../lib/queries";
+import { categoryBadgeClass } from "../components/badges";
 
 const EMPTY_VALUE = "—";
 
@@ -163,8 +164,10 @@ export default function RunObservations() {
                       EMPTY_VALUE
                     )}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-fg-2">
-                    {observation.category}
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span className={categoryBadgeClass(observation.category)}>
+                      {observation.category}
+                    </span>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span

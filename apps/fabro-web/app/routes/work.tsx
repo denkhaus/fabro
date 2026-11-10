@@ -5,6 +5,8 @@ import { workItemsApi } from "../lib/api-client";
 import type { ListWorkItemsSortEnum } from "@qltysh/fabro-api-client";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
+import { Markdown } from "../components/stage-renderers/primitives";
+import { labelBadgeClass, prioBadgeClass, typeBadgeClass } from "../components/badges";
 
 /**
  * The work items view (denkhaus/work#1199): the tracker's read surface
@@ -64,8 +66,26 @@ const COLUMNS: Array<DataTableColumn<WorkItemRow>> = [
     sortKey: "updated",
   },
   { id: "title", header: "Title", cell: (row) => row.title },
-  { id: "priority", header: "Prio", cell: (row) => <span className="font-mono">{row.priority}</span> },
-  { id: "type", header: "Type", cell: (row) => <span className="font-mono">{row.type}</span> },
+  {
+    id: "priority",
+    header: "Prio",
+    cell: (row) =>
+      row.priority === "—" ? (
+        ""
+      ) : (
+        <span className={prioBadgeClass(row.priority)}>{row.priority}</span>
+      ),
+  },
+  {
+    id: "type",
+    header: "Type",
+    cell: (row) =>
+      row.type === "—" ? (
+        ""
+      ) : (
+        <span className={typeBadgeClass(row.type)}>{row.type}</span>
+      ),
+  },
   { id: "lane", header: "Lane", cell: (row) => (row.lane === "—" ? "" : <span className="font-mono">{row.lane}</span>) },
 ];
 
@@ -161,16 +181,13 @@ export function WorkItemDetail() {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {(item.labels ?? []).map((label) => (
-          <span
-            key={label}
-            className="rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] text-fg-muted"
-          >
+          <span key={label} className={labelBadgeClass(label)}>
             {label}
           </span>
         ))}
       </div>
-      <div className="whitespace-pre-wrap rounded-md border border-line bg-panel/60 px-4 py-3 text-sm text-fg-2">
-        {item.body}
+      <div className="rounded-md border border-line bg-panel/60 px-4 py-3 text-sm">
+        <Markdown content={item.body ?? ""} />
       </div>
       {item.url && (
         <a

@@ -23,6 +23,14 @@ mock.module("../lib/api-client", () => ({
   },
 }));
 
+// The Markdown renderer draws through dangerouslySetInnerHTML —
+// invisible to react-test-renderer's tree. Render the content as plain
+// text here; the markdown formatting itself is the primitives'
+// tested surface.
+mock.module("../components/stage-renderers/primitives", () => ({
+  Markdown: ({ content }: { content: string }) => <div>{content}</div>,
+}));
+
 const { WorkItemDetail } = await import("./work");
 
 function renderDetail(item: WorkItem | null): TestRenderer.ReactTestRenderer {

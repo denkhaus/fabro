@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { observationsApi } from "../lib/api-client";
 import { formatAbsoluteDateTime } from "../lib/format";
+import { categoryBadgeClass } from "../components/badges";
 
 /**
  * The global observations view (denkhaus/work#1200): every run's
@@ -56,7 +57,7 @@ const COLUMNS: Array<DataTableColumn<FeedRow>> = [
   {
     id: "type",
     header: "Type",
-    cell: (row) => <span className="font-mono">{row.category}</span>,
+    cell: (row) => <span className={categoryBadgeClass(row.category)}>{row.category}</span>,
   },
   {
     id: "state",
