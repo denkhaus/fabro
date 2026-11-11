@@ -17,7 +17,7 @@ use fabro_interview::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::platform_records::{
-    PlatformRecord, RunLifecycleKind, RunLifecycleRecord, StoredPlatformRecord,
+    PlatformRecord, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord, StoredPlatformRecord,
 };
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::{ApprovalMode, RunMode};
@@ -9779,6 +9779,91 @@ async fn archive_unknown_run_returns_not_found() {
         .unwrap();
 
     assert_status!(response, StatusCode::NOT_FOUND).await;
+}
+
+/// work#1275: the archive door refused `human_needed` runs because its
+/// terminal set predated the kind (work#1072). The engine parks a run
+/// `human_needed` through its deadlock-exit fold; this test seeds the
+/// same projection through platform records alone — no engine race
+/// against a finishing minimal run: the created record, the legal
+/// status chain to `Running`, then the park. The `Dead` transition kind
+/// applies its carried status without writing a conclusion, which is
+/// exactly the no-side-effect seeding the door's precondition needs.
+#[tokio::test]
+async fn a_human_needed_run_archives_and_unarchives() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = fixtures::RUN_1;
+
+    let created = PlatformRecord::RunCreated(RunCreatedRecord {
+        spec:         fabro_types::test_support::test_run_spec(),
+        title:        None,
+        parent_id:    None,
+        retried_from: None,
+        web_url:      None,
+    });
+    super::run_records::append(&state, run_id, created)
+        .await
+        .expect("the created record appends");
+    let step = |kind, status| {
+        super::run_records::lifecycle(&state, run_id, super::run_records::transition(kind, status))
+    };
+    step(RunLifecycleKind::Runnable, RunStatus::Runnable)
+        .await
+        .expect("runnable");
+    step(RunLifecycleKind::Starting, RunStatus::Starting)
+        .await
+        .expect("starting");
+    step(RunLifecycleKind::Running, RunStatus::Running)
+        .await
+        .expect("running");
+    step(RunLifecycleKind::Dead, RunStatus::HumanNeeded)
+        .await
+        .expect("the human_needed park");
+
+    // The park took — asserted first, so a seeding failure cannot pass
+    // the door assertions vacuously.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(api(&format!("/runs/{run_id}")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_json(response.into_body()).await;
+    assert_eq!(
+        body["lifecycle"]["status"]["kind"], "human_needed",
+        "the seeding must park the run human_needed, got {body}"
+    );
+
+    for (path, archived) in [("/archive", true), ("/unarchive", false)] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api(&format!("/runs/{run_id}{path}")))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = body_json(response.into_body()).await;
+        assert_eq!(status, StatusCode::OK, "the door accepts the parked run");
+        assert_eq!(
+            body["lifecycle"]["status"]["kind"], "human_needed",
+            "archive keeps the parked status: {body}"
+        );
+        assert_eq!(
+            body["lifecycle"]["archived"], archived,
+            "the archive flag follows the operation: {body}"
+        );
+    }
 }
 
 #[tokio::test]

@@ -20,3 +20,9 @@ node_modules
 dist
 .fabro/cook
 .fabro/judgments
+# Live credentials never ride a build context (rust-security review,
+# sprint 85): dev machines carry real keys in the untracked .env — not
+# reachable today (the cook COPYs explicit paths and the engine packs a
+# fresh clone), but one `COPY . .` must not ship them. The tracked
+# .env.example stays context-visible.
+.env
