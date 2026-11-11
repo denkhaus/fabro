@@ -306,12 +306,14 @@ mod tests {
         let listed = list_observations_text(&ObservationListResult {
             run_id:       "01M5844J1FDD".to_string(),
             observations: vec![RunObservation {
-                seq:         1,
-                category:    ObservationCategory::Painpoint,
-                text:        "gate.refused_push\nevery push failed".to_string(),
-                execution:   None,
-                firing:      None,
-                recorded_at: None,
+                seq:               1,
+                category:          ObservationCategory::Painpoint,
+                text:              "gate.refused_push\nevery push failed".to_string(),
+                execution:         None,
+                firing:            None,
+                stage:             None,
+                linked_work_items: Vec::new(),
+                recorded_at:       None,
             }],
         });
         assert_eq!(
