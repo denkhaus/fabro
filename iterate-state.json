@@ -1,8 +1,8 @@
 {
   "sprints_completed": 84,
-  "sprints_reflected": 83,
+  "sprints_reflected": 84,
   "last_arch_review_at_sprint": 84,
-  "last_reflection": "2026-11-06",
+  "last_reflection": "2026-11-11",
   "last_code_review_at_sprint": 84,
   "last_rust_security_review_at_sprint": 80,
   "sprints": [

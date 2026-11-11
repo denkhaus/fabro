@@ -149,7 +149,7 @@ Fork-only pin files (`lib/**/tests/fork_*.rs`, `lib/**/src/**/fork_*.rs`) are or
 Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run. Two crates import it: `fabro-petri` (the engine adapters) and `fabro-dot` (Petri's DOT parser, for reading a graph's shape and file references).
 
 ### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
-- **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`
+- **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`. Reading a run's timeline (the diagnosis entry point): `fabro events <run> --pretty [--tail N] [--since 42m]`
 - **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
 - **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
 - **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
