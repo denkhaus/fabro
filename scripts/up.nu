@@ -31,6 +31,34 @@ def alarm [holder: string] {
     exit 1
 }
 
+# Bench configuration as code (retro 2026-11-11, sprint 84): the local
+# toolchain catalog entry must be INERT (docker: null) like production's
+# — a stale finished image makes every workflow-declared env build
+# refuse compile ("set one", work#1252's first-drive block). Idempotent:
+# nulls the image only when the entry carries one.
+def reconcile-toolchain-catalog [] {
+    let server = 'http://127.0.0.1:32276'
+    let s = (open ~/.fabro/auth.json | get servers | get -o $server)
+    let token = ($s | get -o token | default ($s | get -o access_token | default ''))
+    let auth = {Authorization: $"Bearer ($token)"}
+    let full = (http get --headers $auth $"($server)/api/v1/environments/toolchain" --full)
+    if (($full | get body | get image | get -o docker | default null) == null) {
+        print "up: toolchain catalog entry already inert"
+        return
+    }
+    let headers = ($full | get headers | get response | default [])
+    let etag = ($headers | where name == etag | get -o value.0 | default '')
+    if ($etag | is-empty) {
+        print -e "up: no ETag on the toolchain environment — leaving the catalog untouched"
+        return
+    }
+    let body = ($full | get body | reject id revision | update image {|_e|
+        {docker: null, dockerfile: null}
+    } | to json)
+    http put --headers ({Authorization: $"Bearer ($token)", If-Match: $etag}) -t 'application/json' $"($server)/api/v1/environments/toolchain" $body | ignore
+    print "up: toolchain catalog entry nulled (the inert production shape)"
+}
+
 def main [--locked] {
     if not $locked {
         # Entry: acquire the pipeline-wide flock by re-execing this script
@@ -57,6 +85,7 @@ def main [--locked] {
     just install-cli
     just compose-up
     just wait-healthy
+    reconcile-toolchain-catalog
     just smoke
     just clean
 }

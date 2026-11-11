@@ -88,6 +88,15 @@ directives, and verification recipes. Edit mechanics also live in
 
 ## Fork and dependency wiring
 
+- NEVER switch branches on a dirty index (2026-11-11, sprint 84: a
+  checkout with a staged-new vendor tree DELETED it from disk — only
+  the fork-branch export and the frozen patch saved the sprint).
+  Commit first, or edit another branch's file through plumbing
+  (GIT_INDEX_FILE=<temp> + read-tree + update-index --cacheinfo +
+  write-tree + commit-tree + update-ref — never worktree or index),
+  and freeze the sprint diff to a patch BEFORE any risky git
+  operation: the patch is the recovery source.
+
 - Delegated builds (the explicit-choice case): feed implementation items
   with pointers — files, trait seams, guideline pages.
 - A fix on a forked dep repo is NOT shipped until every consuming

@@ -25,10 +25,17 @@ model {
 
       sandbox-runtime = service "Sandbox runtime" {
         description '''
-          Docker (default), Host and Daytona providers. Every sandbox
+          Docker (default), Host and Daytona providers — the provider
+          layer is the VENDORED sandbox-driver fork (ADR-0034, the
+          third fork; its docker plugin carries the build-diagnostics
+          enrichment, work#1253: build failures render the bollard
+          cause chain and the daemon output tail). Every sandbox
           carries the petri.run label; deleting a run deletes its
           sandboxes through the lease ledger.
         '''
+        metadata {
+          code "vendor/sandbox-driver"
+        }
       }
 
       run-channel = service "Per-run channel" {
