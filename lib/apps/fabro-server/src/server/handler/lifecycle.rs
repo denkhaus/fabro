@@ -1021,10 +1021,11 @@ pub(super) async fn run_archive_operation(
         .map_err(|err| WorkflowError::engine(err.to_string()))?
         .ok_or_else(|| WorkflowError::RunNotFound(id.to_string()))?;
     let current = projection.status;
-    let terminal = matches!(
-        current,
-        RunStatus::Succeeded { .. } | RunStatus::Failed { .. } | RunStatus::Dead
-    );
+    // The platform's own terminal predicate (#1072: human_needed is a
+    // terminal kind — a decision request, immutable, board rank 5). The
+    // hand-rolled set here predated that kind and refused archived
+    // handling of parked runs (work#1275).
+    let terminal = current.is_terminal();
     let archived = projection.archived_at.is_some();
     let record = match action {
         ArchiveAction::Archive if archived => {
@@ -1032,8 +1033,8 @@ pub(super) async fn run_archive_operation(
         }
         ArchiveAction::Archive if !terminal => {
             return Err(WorkflowError::Precondition(format!(
-                "run {id} must be terminal (succeeded, failed, or dead) to archive; current \
-                 status is {current}"
+                "run {id} must be terminal (succeeded, failed, human_needed, or dead) to \
+                 archive; current status is {current}"
             )));
         }
         ArchiveAction::Archive => PlatformRecord::RunArchived,
