@@ -69,11 +69,11 @@ imported = "2026-10-24"
 vendor = "vendor/sandbox-driver"
 fork = "denkhaus/sandbox-driver"
 branch = "fabro"
-fork_sha = "95fe68946e69b806d9d2a9c7ff9f78baa8c8d217"
+fork_sha = "b07a424002d68c027b5f3e41c1a6843a3a845364"
 upstream = "lithoscomputer/sandbox-driver"
 upstream_sha = "90b0d825767105d4b42e59fdbd116c4d66b87d83"
-tree_sha = "603856ab108807ca2a0f3e554a30abe3ecab5ce7"
-content_sha256 = "253ca1734c3808eb7ace9f3c54e2f454a7ccaf3e9d8214946f421f61b36aeba0"
+tree_sha = "39eb0842469cc8714b772f96015433ca6cbe54a5"
+content_sha256 = "635fad569fa0602b32b13acdcc3f3b99925ca0a1f97fda0854a3407cee41ff82"
 files = 247
 crates = [
     "sandbox-driver",
