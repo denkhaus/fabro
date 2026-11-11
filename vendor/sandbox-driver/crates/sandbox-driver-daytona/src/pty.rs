@@ -1,0 +1,149 @@
+//! Interactive terminals over the Daytona toolbox PTY WebSocket.
+//!
+//! Built on the SDK's `PtyHandle` (the daemon's `create-connect`
+//! protocol): input crosses as binary frames, output arrives on a
+//! bounded channel, resize and kill delegate to the toolbox REST
+//! endpoints.
+
+use std::collections::HashMap;
+use std::process;
+
+use async_trait::async_trait;
+use daytona_sdk::{PtyCreateOptions, PtyHandle};
+use sandbox_driver::{Pty, PtyOptions, PtySession, PtySize, Result};
+use tokio::sync::{Mutex, RwLock, mpsc};
+
+use crate::sdk::{DaytonaClient, daytona_error};
+use crate::{resolve_path, toolbox};
+
+/// The PTY facet of one Daytona sandbox.
+pub struct DaytonaPty {
+    client:      DaytonaClient,
+    sandbox_id:  String,
+    working_dir: String,
+}
+
+impl DaytonaPty {
+    pub(crate) fn new(client: DaytonaClient, sandbox_id: String, working_dir: String) -> Self {
+        Self {
+            client,
+            sandbox_id,
+            working_dir,
+        }
+    }
+
+    fn resolve_dir(&self, dir: Option<&str>) -> String {
+        dir.map_or_else(
+            || self.working_dir.clone(),
+            |dir| resolve_path(&self.working_dir, dir),
+        )
+    }
+}
+
+#[async_trait]
+impl Pty for DaytonaPty {
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            provider_kind = "daytona",
+            sandbox_id = %self.sandbox_id,
+            rows = options.size.rows,
+            cols = options.size.cols,
+            env_count = options.env.len()
+        ),
+        err
+    )]
+    async fn open(&self, options: &PtyOptions) -> Result<Box<dyn PtySession>> {
+        let process = toolbox::process(&self.client, &self.sandbox_id).await?;
+
+        // Random nonce plus host pid, like sessions: never collides with
+        // a concurrent or crashed driver's terminal.
+        let nonce: u64 = rand::random();
+        let id = format!("sandbox-driver-{}-{nonce:016x}", process::id());
+        let envs: HashMap<String, String> = options
+            .env
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        let create = PtyCreateOptions {
+            cwd:  Some(self.resolve_dir(options.working_dir.as_deref())),
+            envs: (!envs.is_empty()).then_some(envs),
+            size: Some(daytona_sdk::PtySize {
+                rows: options.size.rows,
+                cols: options.size.cols,
+            }),
+        };
+        let mut handle = process
+            .create_pty(&id, create)
+            .await
+            .map_err(|error| daytona_error("opening pty", error))?;
+        let output = handle
+            .take_output_receiver()
+            .expect("a newly created PTY owns its output receiver");
+        Ok(Box::new(DaytonaPtySession {
+            handle: RwLock::new(handle),
+            output: Mutex::new(output),
+        }))
+    }
+}
+
+struct DaytonaPtySession {
+    /// Input and resize take a shared guard. Close takes the exclusive
+    /// guard. Output has its own lock so a blocked read never prevents
+    /// input, resize, or close.
+    handle: RwLock<PtyHandle>,
+    output: Mutex<mpsc::Receiver<Vec<u8>>>,
+}
+
+#[async_trait]
+impl PtySession for DaytonaPtySession {
+    #[tracing::instrument(
+        skip_all,
+        fields(provider_kind = "daytona", byte_count = bytes.len()),
+        err
+    )]
+    async fn write_input(&self, bytes: &[u8]) -> Result<()> {
+        self.handle
+            .read()
+            .await
+            .send_input(bytes)
+            .await
+            .map_err(|error| daytona_error("writing pty input", error))
+    }
+
+    #[tracing::instrument(skip_all, fields(provider_kind = "daytona"), err)]
+    async fn read_output(&self) -> Result<Option<Vec<u8>>> {
+        Ok(self.output.lock().await.recv().await)
+    }
+
+    #[tracing::instrument(
+        skip_all,
+        fields(provider_kind = "daytona", rows = size.rows, cols = size.cols),
+        err
+    )]
+    async fn resize(&self, size: PtySize) -> Result<()> {
+        self.handle
+            .read()
+            .await
+            .resize(size.cols, size.rows)
+            .await
+            .map(|_| ())
+            .map_err(|error| daytona_error("resizing pty", error))
+    }
+
+    #[tracing::instrument(skip_all, fields(provider_kind = "daytona"), err)]
+    async fn close(&self) -> Result<()> {
+        // Kill the terminal process (fabro's DELETE-on-close semantics),
+        // tolerating an already-dead session, then drop the socket.
+        let mut handle = self.handle.write().await;
+        if let Err(error) = handle.kill().await {
+            let error = daytona_error("stopping pty process", error);
+            tracing::debug!(error = %error, "pty process was already stopped");
+        }
+        if let Err(error) = handle.disconnect().await {
+            let error = daytona_error("disconnecting pty", error);
+            tracing::warn!(error = %error, "pty disconnect failed");
+        }
+        Ok(())
+    }
+}

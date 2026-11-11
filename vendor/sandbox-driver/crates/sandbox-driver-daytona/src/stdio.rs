@@ -1,0 +1,316 @@
+//! Long-lived bidirectional stdio processes over command sessions.
+//!
+//! The toolbox has no raw byte pipes for session commands: stdin crosses
+//! as UTF-8 strings through the session input endpoint, and streamed
+//! logs arrive as UTF-8 text (lossily decoded by the SDK's demux). That
+//! makes this transport **UTF-8 only** — exactly right for the ACP
+//! backends the facet exists for (newline-delimited JSON both ways), and
+//! wrong for arbitrary binary streams. Stdin bytes that are not valid
+//! UTF-8 close the pipe rather than corrupting the stream, and there is
+//! no way to signal stdin EOF (ACP never needs one; a workload that does
+//! belongs on [`crate::DaytonaExec`]'s streamed or one-shot stdin).
+
+use std::str;
+use std::sync::Arc;
+use std::time::Duration;
+
+use daytona_sdk::{DaytonaError, ProcessService};
+use sandbox_driver::{
+    Result, SpawnSpec, StderrTail, StdioProcess, StdioProcessHandle, Termination,
+};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream, duplex};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+use tokio::time;
+
+use crate::sdk::{DaytonaClient, daytona_error};
+use crate::session::Session;
+use crate::shell::exec_line;
+use crate::toolbox;
+
+/// Buffered bytes per stdio pipe.
+const PIPE_CAPACITY: usize = 64 * 1024;
+/// Poll interval for the command's exit code.
+const STATUS_POLL: Duration = Duration::from_millis(250);
+
+pub(crate) async fn spawn(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+    cwd: &str,
+    spec: &SpawnSpec,
+) -> Result<StdioProcess> {
+    let sandbox = toolbox::sandbox(client, sandbox_id).await?;
+    // Both toolbox handles come before the session exists, so a failed
+    // connection leaves nothing to close.
+    let stream_process = toolbox::process_of(&sandbox).await?;
+    let input_process = toolbox::process_of(&sandbox).await?;
+
+    let command = exec_line(&spec.launch_env(), &spec.program, &spec.args);
+    let (session, started) = Session::start_command(client, &sandbox, cwd, &command).await?;
+    let command_id = started.cmd_id;
+
+    let (stdout_reader, stderr_tail, stream_task) =
+        spawn_output_pump(stream_process, sandbox_id, session.id(), &command_id);
+    let (stdin_writer, stdin_task) =
+        spawn_input_pump(input_process, sandbox_id, session.id(), &command_id);
+
+    let handle = DaytonaStdioHandle {
+        sandbox_id: sandbox_id.to_owned(),
+        session: Mutex::new(session),
+        command_id,
+        stream_task: Mutex::new(Some(stream_task)),
+        stdin_task: Mutex::new(Some(stdin_task)),
+    };
+
+    Ok(StdioProcess {
+        stdin: Box::pin(stdin_writer),
+        stdout: Box::pin(stdout_reader),
+        stderr_tail,
+        handle: Box::new(handle),
+    })
+}
+
+/// Stdout: the log stream's stdout side feeds one half of a local pipe;
+/// the caller reads the other half. Stderr is the bounded diagnostic
+/// tail from the facet contract, not a stream. The task ends when the
+/// stream closes, which drops the writer half and delivers EOF.
+fn spawn_output_pump(
+    process: ProcessService,
+    sandbox_id: &str,
+    session_id: &str,
+    command_id: &str,
+) -> (DuplexStream, StderrTail, JoinHandle<()>) {
+    let (stdout_into, stdout_reader) = duplex(PIPE_CAPACITY);
+    let stderr_tail = StderrTail::default();
+    let task = tokio::spawn({
+        let sandbox_id = sandbox_id.to_owned();
+        let session_id = session_id.to_owned();
+        let command_id = command_id.to_owned();
+        let stdout_into = Arc::new(Mutex::new(stdout_into));
+        let stderr_tail = stderr_tail.clone();
+        async move {
+            let outcome = process
+                .get_session_command_logs_stream(
+                    &session_id,
+                    &command_id,
+                    move |chunk: String| {
+                        let stdout_into = Arc::clone(&stdout_into);
+                        async move {
+                            // A closed reader means the caller dropped
+                            // stdout; drain silently so control flow
+                            // (exit polling) is unaffected.
+                            if stdout_into
+                                .lock()
+                                .await
+                                .write_all(chunk.as_bytes())
+                                .await
+                                .is_err()
+                            {
+                                tracing::debug!(
+                                    provider_kind = "daytona",
+                                    "stdio output reader closed"
+                                );
+                            }
+                            Ok::<_, DaytonaError>(())
+                        }
+                    },
+                    move |chunk: String| {
+                        let stderr_tail = stderr_tail.clone();
+                        async move {
+                            stderr_tail.push(chunk.as_bytes());
+                            Ok::<_, DaytonaError>(())
+                        }
+                    },
+                )
+                .await;
+            if let Err(error) = outcome {
+                let error = daytona_error("following stdio logs", error);
+                tracing::warn!(
+                    provider_kind = "daytona",
+                    sandbox_id = %sandbox_id,
+                    error = %error,
+                    "stdio log stream failed"
+                );
+            }
+            // Dropping the writer half delivers EOF to the reader.
+        }
+    });
+    (stdout_reader, stderr_tail, task)
+}
+
+/// Stdin: the caller writes bytes into a local pipe; a pump forwards
+/// complete UTF-8 prefixes through the session input endpoint, holding
+/// back a split multi-byte character until its remainder arrives.
+/// Invalid UTF-8 ends the pump (the caller's next write fails with a
+/// closed pipe) instead of corrupting the stream.
+fn spawn_input_pump(
+    process: ProcessService,
+    sandbox_id: &str,
+    session_id: &str,
+    command_id: &str,
+) -> (DuplexStream, JoinHandle<()>) {
+    let (stdin_writer, mut stdin_reader) = duplex(PIPE_CAPACITY);
+    let task = tokio::spawn({
+        let sandbox_id = sandbox_id.to_owned();
+        let session_id = session_id.to_owned();
+        let command_id = command_id.to_owned();
+        async move {
+            let mut pending: Vec<u8> = Vec::new();
+            let mut buffer = vec![0u8; PIPE_CAPACITY];
+            loop {
+                let read = match stdin_reader.read(&mut buffer).await {
+                    Ok(0) => break,
+                    Err(error) => {
+                        tracing::warn!(
+                            provider_kind = "daytona",
+                            sandbox_id = %sandbox_id,
+                            error = ?error,
+                            "stdio input pipe failed"
+                        );
+                        break;
+                    }
+                    Ok(read) => read,
+                };
+                pending.extend_from_slice(&buffer[..read]);
+                let Some(valid_up_to) = complete_utf8_prefix(&pending) else {
+                    // Genuinely invalid bytes, not a split character:
+                    // refuse rather than corrupt.
+                    tracing::warn!(
+                        provider_kind = "daytona",
+                        sandbox_id = %sandbox_id,
+                        "stdio input was not valid UTF-8"
+                    );
+                    break;
+                };
+                if valid_up_to == 0 {
+                    continue;
+                }
+                let data = String::from_utf8_lossy(&pending[..valid_up_to]).into_owned();
+                pending.drain(..valid_up_to);
+                if let Err(error) = process
+                    .send_session_command_input(&session_id, &command_id, &data)
+                    .await
+                {
+                    let error = daytona_error("forwarding stdio input", error);
+                    tracing::warn!(
+                        provider_kind = "daytona",
+                        sandbox_id = %sandbox_id,
+                        error = %error,
+                        "stdio input forwarding failed"
+                    );
+                    break;
+                }
+            }
+        }
+    });
+    (stdin_writer, task)
+}
+
+/// The length of the longest prefix of `bytes` that is complete UTF-8:
+/// the whole slice when it is valid, the length before a trailing
+/// multi-byte character that is still arriving, and `None` when the
+/// bytes hold a sequence no continuation could complete.
+fn complete_utf8_prefix(bytes: &[u8]) -> Option<usize> {
+    match str::from_utf8(bytes) {
+        Ok(_) => Some(bytes.len()),
+        Err(error) if error.error_len().is_some() => None,
+        Err(error) => Some(error.valid_up_to()),
+    }
+}
+
+struct DaytonaStdioHandle {
+    sandbox_id:  String,
+    session:     Mutex<Session>,
+    command_id:  String,
+    stream_task: Mutex<Option<JoinHandle<()>>>,
+    stdin_task:  Mutex<Option<JoinHandle<()>>>,
+}
+
+impl DaytonaStdioHandle {
+    async fn abort_pumps(&self) {
+        if let Some(task) = self.stdin_task.lock().await.take() {
+            task.abort();
+        }
+        if let Some(mut task) = self.stream_task.lock().await.take() {
+            // Give the log stream a moment to drain naturally — the
+            // session deletion closes it server-side — then abort.
+            if time::timeout(Duration::from_secs(2), &mut task)
+                .await
+                .is_err()
+            {
+                tracing::warn!(
+                    provider_kind = "daytona",
+                    sandbox_id = %self.sandbox_id,
+                    "stdio log stream did not close"
+                );
+                task.abort();
+            }
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl StdioProcessHandle for DaytonaStdioHandle {
+    #[tracing::instrument(
+        skip_all,
+        fields(provider_kind = "daytona", sandbox_id = %self.sandbox_id)
+    )]
+    async fn terminate(&self) {
+        // Deleting the session kills the command and closes its streams.
+        self.session.lock().await.close().await;
+        self.abort_pumps().await;
+    }
+
+    #[tracing::instrument(
+        skip_all,
+        fields(provider_kind = "daytona", sandbox_id = %self.sandbox_id)
+    )]
+    async fn wait(&self) -> (Termination, Option<i32>) {
+        loop {
+            let polled = {
+                let session = self.session.lock().await;
+                session.exit_code(&self.command_id).await
+            };
+            match polled {
+                Ok(Some(code)) => {
+                    self.abort_pumps().await;
+                    return (Termination::Exited, Some(code));
+                }
+                Ok(None) => {}
+                // The session is gone — terminate() ran, or the sandbox
+                // dropped it.
+                Err(error) => {
+                    tracing::debug!(error = %error, "stdio command session closed");
+                    self.abort_pumps().await;
+                    return (Termination::Killed, None);
+                }
+            }
+            time::sleep(STATUS_POLL).await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::complete_utf8_prefix;
+
+    #[test]
+    fn a_split_multibyte_character_is_held_back_until_it_completes() {
+        // "é" is two bytes; "😀" is four.
+        assert_eq!(complete_utf8_prefix(b"ab\xC3"), Some(2));
+        assert_eq!(complete_utf8_prefix(b"ab\xC3\xA9"), Some(4));
+        assert_eq!(complete_utf8_prefix(b"a\xF0\x9F\x98"), Some(1));
+        assert_eq!(complete_utf8_prefix(b"a\xF0\x9F\x98\x80b"), Some(6));
+        assert_eq!(complete_utf8_prefix(b""), Some(0));
+        assert_eq!(complete_utf8_prefix(b"\xE2\x82"), Some(0));
+    }
+
+    #[test]
+    fn invalid_bytes_are_refused_rather_than_forwarded() {
+        assert_eq!(complete_utf8_prefix(b"ab\xFF"), None);
+        // A continuation byte with no lead byte can never complete.
+        assert_eq!(complete_utf8_prefix(b"\xA9"), None);
+        // An invalid byte after a split character is still invalid.
+        assert_eq!(complete_utf8_prefix(b"a\xC3\x28"), None);
+    }
+}

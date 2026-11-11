@@ -2,7 +2,7 @@
 #
 # The vendored trees are SNAPSHOTS: vendor/<name> equals the git tree of the
 # fork commit named below; the fork's history lives in its GitHub repository
-# (denkhaus/petri, denkhaus/pebble), which stays the upstream-PR vehicle and
+# (one per section below), which stays the upstream-PR vehicle and
 # the sync partner. The fabro repository carries no fork history on purpose.
 #
 # Checked by `scripts/vendor-pins-fixtures.nu` (`just vendor-pins`, battery
@@ -65,3 +65,24 @@ crates = [
     "pebble-coding-agent",
 ]
 imported = "2026-10-24"
+[sandbox-driver]
+vendor = "vendor/sandbox-driver"
+fork = "denkhaus/sandbox-driver"
+branch = "fabro"
+fork_sha = "95fe68946e69b806d9d2a9c7ff9f78baa8c8d217"
+upstream = "lithoscomputer/sandbox-driver"
+upstream_sha = "90b0d825767105d4b42e59fdbd116c4d66b87d83"
+tree_sha = "603856ab108807ca2a0f3e554a30abe3ecab5ce7"
+content_sha256 = "253ca1734c3808eb7ace9f3c54e2f454a7ccaf3e9d8214946f421f61b36aeba0"
+files = 247
+crates = [
+    "sandbox-driver",
+    "sandbox-driver-daytona",
+    "sandbox-driver-daytona-config",
+    "sandbox-driver-docker",
+    "sandbox-driver-docker-config",
+    "sandbox-driver-host",
+    "sandbox-driver-protocol",
+    "sandbox-driver-testing",
+]
+imported = "2026-11-11"

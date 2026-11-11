@@ -1,0 +1,1085 @@
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::future::Future;
+use std::io::Cursor;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+use std::{fmt, future, io};
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+
+use crate::capabilities::Capability;
+use crate::error::{Error, Result};
+use crate::sanitize::OutputSanitization;
+
+/// The interpreter [`ExecSpec::bash`] names, resolved through `PATH`
+/// (NixOS has no `/bin/bash`).
+const BASH: &str = "bash";
+const BASH_COMMAND_FLAG: &str = "-c";
+
+/// The env a Bash helper launches with: `env` with `BASH_ENV` blank. Any
+/// other spec launches with `env` as given.
+fn launch_env(
+    bash_helper: bool,
+    env: &BTreeMap<String, String>,
+) -> Cow<'_, BTreeMap<String, String>> {
+    if bash_helper && env.get(BASH_ENV_VAR).is_none_or(|value| !value.is_empty()) {
+        let mut env = env.clone();
+        env.insert(BASH_ENV_VAR.to_owned(), String::new());
+        Cow::Owned(env)
+    } else {
+        Cow::Borrowed(env)
+    }
+}
+/// Bash sources this file before running `-c` source; the helper blanks
+/// it so a sandbox environment cannot run code ahead of the script.
+pub const BASH_ENV_VAR: &str = "BASH_ENV";
+
+/// Command execution inside a sandbox.
+///
+/// # The exec contract (normative)
+///
+/// A spec names a program and its arguments, and a provider executes that
+/// vector directly, with `execvp` semantics: `program` is resolved through
+/// the command's `PATH` when it contains no slash, and every argument
+/// reaches the process unchanged. No shell is involved, so nothing is
+/// split, globbed, or expanded. Buffered and streaming execution must not
+/// differ in how the vector is run.
+///
+/// A caller who wants shell semantics asks for them with
+/// [`ExecSpec::bash`], which is the one place the Bash contract lives. The
+/// [`crate::run_bash_probe`] helper verifies that a sandbox can serve it,
+/// and belongs in every provider's conformance run because the
+/// exec-derived facets are Bash scripts.
+#[async_trait]
+pub trait Exec: Send + Sync {
+    /// Runs a command to completion, buffering output.
+    async fn run(&self, spec: &ExecSpec) -> Result<ExecResult>;
+
+    /// Runs a command, delivering output through `controls.sink` as it
+    /// arrives. Providers that cannot stream fall back to buffered
+    /// execution, replay the output through the sink, and report
+    /// `live_streaming: false`.
+    ///
+    /// Control contracts: the two stop tokens are raw signals, not a
+    /// policy. `controls.term` sends SIGTERM to the command's process
+    /// group once and then waits; a command that ignores it keeps running
+    /// until `controls.kill` sends SIGKILL. A stop resolves the call
+    /// normally, with [`Termination::Cancelled`] for `term` and
+    /// [`Termination::Killed`] for `kill` (`Killed` wins when both fired).
+    /// A caller who wants an escalation ladder owns it: fire `term`, wait
+    /// as long as it likes, fire `kill`. A provider that cannot deliver a
+    /// signal (Daytona ends a command by deleting its session) ends the
+    /// command on either token and reports the one it honoured.
+    ///
+    /// The provider's own stops have no caller present to escalate, so
+    /// they are hard: `spec.timeout` and a failing sink SIGKILL the
+    /// command, resolving with [`Termination::TimedOut`] and
+    /// [`Termination::Cancelled`]. A caller who wants the ladder run
+    /// for it — TERM, a grace, then KILL, for the timeout and for its
+    /// own `term` alike — sets [`ExecSpec::stop_grace`], and the
+    /// provider runs the ladder through [`crate::run_with_stop_grace`].
+    ///
+    /// The sink is awaited per chunk — a slow consumer backpressures the
+    /// read loop. Output beyond `controls.retained_output_limit` is still
+    /// drained (and counted in [`CaptureStats::omitted_bytes`]), never left
+    /// to block the process. `controls.stdin` streams standard input for
+    /// the life of the command; it is capability-gated on
+    /// `exec.stdin_stream` and rejected with [`Error::Unsupported`] where
+    /// undeclared.
+    ///
+    /// A provider that does not support stdin or stops must reject a call
+    /// that supplies them with [`Error::Unsupported`] (`exec.stdin` /
+    /// `exec.stop`) — never run the command with the input silently
+    /// dropped. Capability preflight is the supported way to avoid the
+    /// error.
+    async fn run_streaming(
+        &self,
+        spec: &ExecSpec,
+        controls: ExecControls,
+    ) -> Result<ExecStreamingResult>;
+
+    /// Spawns a long-lived bidirectional stdio process (ACP backends).
+    ///
+    /// Capability-gated on `exec.stdio_process`; the default returns
+    /// [`Error::Unsupported`].
+    async fn spawn_stdio(&self, spec: &SpawnSpec) -> Result<StdioProcess> {
+        let _ = spec;
+        Err(Error::unsupported(Capability::ExecStdioProcess))
+    }
+}
+
+/// Serializable execution request — exactly what crosses the JSON-RPC
+/// boundary. Process-local control objects travel in [`ExecControls`].
+///
+/// `Debug` redacts the arguments (they can embed credentialed URLs — the
+/// git credential rewrite does), env values, and stdin, so tracing a
+/// spec can never leak them; fabro enforced the same rule by omitting
+/// `Debug` entirely.
+#[derive(Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ExecSpec {
+    /// The executable, resolved through the command's `PATH` when it has
+    /// no slash; see the trait-level contract.
+    pub program:             String,
+    /// Arguments after the program, passed unchanged.
+    pub args:                Vec<String>,
+    /// `None` waits forever. [`ExecSpec::new`] starts at
+    /// [`ExecSpec::DEFAULT_TIMEOUT`]; opt out with
+    /// [`ExecSpec::no_timeout`].
+    pub timeout:             Option<Duration>,
+    /// How long a stop waits after SIGTERM before SIGKILL. `None`, the
+    /// default, keeps stops raw: the timeout and a failing sink kill
+    /// outright and a caller's `term` is one signal. With a grace, the
+    /// provider runs the ladder for the timeout, a failing sink, and the
+    /// caller's `term`; the caller's `kill` stays immediate. A provider
+    /// that cannot deliver a signal ends the command on the TERM.
+    #[serde(default)]
+    pub stop_grace:          Option<Duration>,
+    pub working_dir:         Option<String>,
+    pub env:                 BTreeMap<String, String>,
+    /// Written to the process then closed for EOF. A broken pipe while
+    /// writing (the `head -1` case) is not an error.
+    pub stdin:               Option<Vec<u8>>,
+    /// Output policy for buffered results and streaming sink chunks. PTY
+    /// sessions and [`Exec::spawn_stdio`] remain raw.
+    #[serde(default)]
+    pub output_sanitization: OutputSanitization,
+}
+
+impl ExecSpec {
+    /// Applied by [`ExecSpec::new`]: generous enough for a long build,
+    /// but a wedged command cannot hang a caller forever. fabro's exec
+    /// API made every caller pick a timeout; the default keeps that
+    /// fail-safe without forcing the choice.
+    pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(3600);
+
+    /// A spec that runs `program` with no arguments; add them with
+    /// [`ExecSpec::arg`] or [`ExecSpec::args`].
+    pub fn new(program: impl Into<String>) -> Self {
+        Self {
+            program:             program.into(),
+            args:                Vec::new(),
+            timeout:             Some(Self::DEFAULT_TIMEOUT),
+            stop_grace:          None,
+            working_dir:         None,
+            env:                 BTreeMap::new(),
+            stdin:               None,
+            output_sanitization: OutputSanitization::Raw,
+        }
+    }
+
+    /// A spec that evaluates `script` as Bash source: the argv
+    /// `bash -c <script>`, non-login, with Bash's options untouched (no
+    /// `errexit`, no `pipefail`, no POSIX mode) and `BASH_ENV` blanked so
+    /// no startup file runs first. A script wanting other options sets
+    /// them itself. This is the Bash contract; it holds wherever the
+    /// sandbox has `bash` on `PATH`, which [`crate::run_bash_probe`]
+    /// verifies. The blank wins: providers launch the helper with
+    /// [`Self::launch_env`], which restores it over any `BASH_ENV` a caller
+    /// sets later, so no embedder has to remember it.
+    pub fn bash(script: impl Into<String>) -> Self {
+        Self::new(BASH)
+            .args([BASH_COMMAND_FLAG, &script.into()])
+            .env_var(BASH_ENV_VAR, "")
+    }
+
+    /// Whether this spec is the Bash helper's argv, `bash -c <script>`.
+    #[must_use]
+    pub fn is_bash_helper(&self) -> bool {
+        self.program == BASH
+            && self
+                .args
+                .first()
+                .is_some_and(|flag| flag == BASH_COMMAND_FLAG)
+    }
+
+    /// The environment a provider launches the command with: the spec's
+    /// env, with `BASH_ENV` blanked for the Bash helper whatever the caller
+    /// set, so a startup file never runs ahead of a `bash -c` script.
+    #[must_use]
+    pub fn launch_env(&self) -> Cow<'_, BTreeMap<String, String>> {
+        launch_env(self.is_bash_helper(), &self.env)
+    }
+
+    #[must_use]
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    #[must_use]
+    pub fn args<I, S>(mut self, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.args.extend(args.into_iter().map(Into::into));
+        self
+    }
+
+    /// Deliberately unbounded: wait forever on the command.
+    #[must_use]
+    pub fn no_timeout(mut self) -> Self {
+        self.timeout = None;
+        self
+    }
+
+    #[must_use]
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Asks the provider to stop the command gracefully: SIGTERM, then
+    /// SIGKILL once `grace` has passed. See [`ExecSpec::stop_grace`].
+    #[must_use]
+    pub fn stop_grace(mut self, grace: Duration) -> Self {
+        self.stop_grace = Some(grace);
+        self
+    }
+
+    #[must_use]
+    pub fn working_dir(mut self, dir: impl Into<String>) -> Self {
+        self.working_dir = Some(dir.into());
+        self
+    }
+
+    #[must_use]
+    pub fn env_var(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
+    }
+
+    #[must_use]
+    pub fn stdin(mut self, bytes: Vec<u8>) -> Self {
+        self.stdin = Some(bytes);
+        self
+    }
+
+    #[must_use]
+    pub fn output_sanitization(mut self, policy: OutputSanitization) -> Self {
+        self.output_sanitization = policy;
+        self
+    }
+}
+
+impl fmt::Debug for ExecSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecSpec")
+            .field("program", &self.program)
+            .field("args", &"<redacted>")
+            .field("timeout", &self.timeout)
+            .field("stop_grace", &self.stop_grace)
+            .field("working_dir", &self.working_dir)
+            .field("env_keys", &self.env.keys().collect::<Vec<_>>())
+            .field("stdin_bytes", &self.stdin.as_ref().map(Vec::len))
+            .field("output_sanitization", &self.output_sanitization)
+            .finish()
+    }
+}
+
+/// Which output stream a chunk belongs to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+/// Async output sink for streaming execution. Awaited per chunk; returning
+/// an error cancels the execution.
+pub type OutputSink = Arc<
+    dyn Fn(OutputStream, Vec<u8>) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
+>;
+
+/// Process-local controls for [`Exec::run_streaming`]. Never serialized;
+/// on the wire these map to negotiated execution IDs.
+///
+/// Two stop signals and no policy: `term` SIGTERMs the process group once
+/// and resolves with [`Termination::Cancelled`] when the command then
+/// ends; `kill` SIGKILLs the group and resolves with
+/// [`Termination::Killed`]. Escalation between them is the caller's.
+#[derive(Clone, Default)]
+pub struct ExecControls {
+    /// SIGTERM to the process group, once. Nothing more follows.
+    pub term:                  Option<CancellationToken>,
+    /// SIGKILL to the process group.
+    pub kill:                  Option<CancellationToken>,
+    /// Streamed standard input, written to the process as it becomes
+    /// readable and closed at its EOF. Mutually exclusive with
+    /// [`ExecSpec::stdin`]; capability-gated on `exec.stdin_stream`.
+    pub stdin:                 Option<StdinSource>,
+    pub sink:                  Option<OutputSink>,
+    /// Retention cap for the buffered copy in the result (head + tail);
+    /// output beyond it is drained and counted, not kept. `None` keeps no copy.
+    pub retained_output_limit: Option<usize>,
+}
+
+impl ExecControls {
+    /// Explicit bounded capture for whole-value convenience methods.
+    pub fn buffered() -> Self {
+        Self {
+            retained_output_limit: Some(crate::DEFAULT_BUFFER_BYTES),
+            ..Self::default()
+        }
+    }
+
+    /// The standard input the command should be fed, if any: the streamed
+    /// source when set, else the fixed [`ExecSpec::stdin`] bytes. The two
+    /// never coexist (the control-plane contract), so a stream wins when
+    /// both are given; a source another consumer already took reads as
+    /// empty. Providers feed the reader with [`feed_stdin`].
+    pub fn stdin_reader(&self, spec: &ExecSpec) -> Option<StdinReader> {
+        match (&self.stdin, &spec.stdin) {
+            (Some(source), _) => Some(
+                source
+                    .take()
+                    .unwrap_or_else(|| Box::pin(Cursor::new(Vec::new()))),
+            ),
+            (None, Some(bytes)) => Some(Box::pin(Cursor::new(bytes.clone()))),
+            (None, None) => None,
+        }
+    }
+
+    /// Resolves with the level of the first stop token to fire — the
+    /// one-level view for a provider that cannot deliver a signal and
+    /// ends the command the same way for either. Never resolves when
+    /// neither token is set.
+    pub async fn stop_requested(&self) -> StopLevel {
+        tokio::select! {
+            () = stop_signal(self.term.as_ref()) => StopLevel::Term,
+            () = stop_signal(self.kill.as_ref()) => StopLevel::Kill,
+        }
+    }
+}
+
+/// Which stop token fired.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopLevel {
+    /// [`ExecControls::term`].
+    Term,
+    /// [`ExecControls::kill`].
+    Kill,
+}
+
+impl StopLevel {
+    /// The termination a provider reports for a command this stop ended.
+    pub fn termination(self) -> Termination {
+        match self {
+            Self::Term => Termination::Cancelled,
+            Self::Kill => Termination::Killed,
+        }
+    }
+}
+
+impl fmt::Debug for ExecControls {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecControls")
+            .field("term", &self.term.is_some())
+            .field("kill", &self.kill.is_some())
+            .field("stdin", &self.stdin.is_some())
+            .field("sink", &self.sink.is_some())
+            .field("retained_output_limit", &self.retained_output_limit)
+            .finish()
+    }
+}
+
+/// Resolves when an optional token is cancelled; never resolves when
+/// there is no token, so it slots into a `select!` arm unconditionally.
+pub async fn stop_signal(token: Option<&CancellationToken>) {
+    match token {
+        Some(token) => token.cancelled().await,
+        None => future::pending().await,
+    }
+}
+
+/// The boxed reader a [`StdinSource`] hands to the running provider.
+pub type StdinReader = Pin<Box<dyn AsyncRead + Send>>;
+
+/// A streamed standard input for [`ExecControls::stdin`].
+///
+/// The reader is handed over exactly once: the provider that runs the
+/// command takes it, so a cloned `ExecControls` shares one source. The
+/// source is closed for EOF when the reader ends; a process that stops
+/// reading its input disconnecting the pipe is not an error.
+#[derive(Clone)]
+pub struct StdinSource {
+    reader: Arc<Mutex<Option<StdinReader>>>,
+}
+
+impl StdinSource {
+    pub fn new(reader: impl AsyncRead + Send + 'static) -> Self {
+        Self {
+            reader: Arc::new(Mutex::new(Some(Box::pin(reader)))),
+        }
+    }
+
+    /// Takes the reader; `None` once a provider has already taken it.
+    pub fn take(&self) -> Option<StdinReader> {
+        self.reader
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+}
+
+/// Copies `reader` into the process stdin, then closes it for EOF. A
+/// command that stops reading its input (`head -1`) disconnecting the
+/// pipe is normal; any other failure means the command saw truncated
+/// input and must not pass silently.
+pub async fn feed_stdin<W: AsyncWrite + Unpin>(
+    mut stdin: W,
+    mut reader: StdinReader,
+) -> Result<()> {
+    fn is_disconnect(error: &io::Error) -> bool {
+        matches!(
+            error.kind(),
+            io::ErrorKind::BrokenPipe
+                | io::ErrorKind::ConnectionReset
+                | io::ErrorKind::ConnectionAborted
+        )
+    }
+    if let Err(error) = copy(&mut reader, &mut stdin).await {
+        if is_disconnect(&error) {
+            return Ok(());
+        }
+        return Err(Error::io("writing exec stdin", error));
+    }
+    if let Err(error) = stdin.shutdown().await {
+        if is_disconnect(&error) {
+            return Ok(());
+        }
+        return Err(Error::io("closing exec stdin", error));
+    }
+    Ok(())
+}
+
+/// Ends the task a provider spawned on [`feed_stdin`] once the command
+/// is done. Unwritten stdin bytes are unwanted then, so the task is
+/// aborted rather than joined unbounded: a backgrounded grandchild that
+/// inherited the pipe could otherwise block the writer forever. A task
+/// that had already finished reports its own result; one that was cut
+/// short is fine; one that panicked is an error.
+pub async fn finish_stdin_writer(task: JoinHandle<Result<()>>) -> Result<()> {
+    task.abort();
+    match task.await {
+        Ok(result) => result,
+        Err(join_error) if join_error.is_cancelled() => Ok(()),
+        Err(join_error) => Err(Error::io(
+            "exec stdin writer task",
+            io::Error::other(join_error),
+        )),
+    }
+}
+
+impl fmt::Debug for StdinSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StdinSource").finish_non_exhaustive()
+    }
+}
+
+/// How a command ended.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Termination {
+    Exited,
+    /// Ended by the provider at `spec.timeout`.
+    TimedOut,
+    /// Ended by [`ExecControls::term`] (or a failing sink).
+    Cancelled,
+    /// Ended by [`ExecControls::kill`].
+    Killed,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Result of a buffered command run. Output is bytes: sandbox output is
+/// not guaranteed UTF-8.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ExecResult {
+    pub stdout:      Vec<u8>,
+    pub stderr:      Vec<u8>,
+    /// Meaningful only when `termination` is [`Termination::Exited`].
+    /// A timed-out or cancelled run may still carry a code the provider
+    /// happened to observe (a trapped SIGTERM exiting 0, a kill
+    /// wrapper's 143) — never treat `Some(0)` alone as success; use
+    /// [`ExecResult::success`], which checks the termination.
+    pub exit_code:   Option<i32>,
+    /// The signal that ended the command's process, when the provider
+    /// observed one — a foreign `kill`, or the caller's own stop
+    /// ladder — whatever the `termination`. `None` when the process
+    /// exited on its own or the provider cannot tell; a provider that only
+    /// sees a shell's `128 + N` convention decodes it with
+    /// [`ExecResult::from_shell_status`].
+    #[serde(default)]
+    pub signal:      Option<i32>,
+    pub termination: Termination,
+    pub duration:    Duration,
+}
+
+impl ExecResult {
+    pub fn new(termination: Termination, exit_code: Option<i32>, duration: Duration) -> Self {
+        Self {
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            exit_code,
+            signal: None,
+            termination,
+            duration,
+        }
+    }
+
+    /// Reads a shell-reported status: `128 + N` means the child died of
+    /// signal `N`, anything else is an ordinary exit code. The code is
+    /// kept intact either way. The signal is decoded for every
+    /// termination: a foreign `kill` on a natural exit, and the signal the
+    /// provider's own ladder landed on a cancelled, killed, or timed-out
+    /// command — `termination` says who stopped it, `signal` says how.
+    /// A process that deliberately exits with such a code is
+    /// indistinguishable; the convention is the best a wrapper shell can
+    /// report.
+    pub fn from_shell_status(
+        termination: Termination,
+        status: Option<i32>,
+        duration: Duration,
+    ) -> Self {
+        let mut result = Self::new(termination, status, duration);
+        if let Some(code) = status {
+            if (129..=192).contains(&code) {
+                result.signal = Some(code - 128);
+            }
+        }
+        result
+    }
+
+    /// Stdout decoded lossily for display.
+    pub fn stdout_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.stdout).into_owned()
+    }
+
+    /// Stderr decoded lossily for display.
+    pub fn stderr_lossy(&self) -> String {
+        String::from_utf8_lossy(&self.stderr).into_owned()
+    }
+
+    /// Whether the command exited on its own with code 0.
+    pub fn success(&self) -> bool {
+        self.termination == Termination::Exited && self.exit_code == Some(0)
+    }
+}
+
+/// Retention accounting for one captured stream. Counts describe bytes after
+/// [`ExecSpec::output_sanitization`] has been applied.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[serde(default)]
+pub struct CaptureStats {
+    pub observed_bytes: usize,
+    pub retained_bytes: usize,
+    pub omitted_bytes:  usize,
+    /// Bytes were lost *beyond* this accounting: the provider could not
+    /// finish draining the stream (a post-exit drain bound expired), or
+    /// its transport tore the output and the loss is counted in
+    /// [`ExecStreamingResult::output_loss`], so `observed_bytes` and
+    /// `omitted_bytes` undercount the real output. Retention-cap omission
+    /// is not truncation — `omitted_bytes` already counts it.
+    #[serde(default)]
+    pub truncated:      bool,
+}
+
+impl CaptureStats {
+    /// Accounting for a fully retained buffer: everything observed was
+    /// kept.
+    pub fn complete(bytes: usize) -> Self {
+        Self {
+            observed_bytes: bytes,
+            retained_bytes: bytes,
+            omitted_bytes:  0,
+            truncated:      false,
+        }
+    }
+}
+
+/// Output a provider lost between the command and its capture accounting,
+/// counted where the loss was noticed. Daytona carries exec output through
+/// a text-only toolbox that can tear the encoded stream; its decoder
+/// discards each unreadable record, resyncs at the next newline, and
+/// counts what it threw away here. The bytes those records would have
+/// decoded to, and the stream they belonged to, are unknown, so a loss
+/// also sets [`CaptureStats::truncated`] on both streams. Every other
+/// provider reports zero.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+#[serde(default)]
+pub struct OutputLoss {
+    /// Encoded records the decoder discarded.
+    pub dropped_frames: u64,
+    /// Encoded bytes those records held, their newline included.
+    pub dropped_bytes:  u64,
+}
+
+impl OutputLoss {
+    /// Whether any output was lost.
+    pub fn is_lossy(self) -> bool {
+        self.dropped_frames != 0 || self.dropped_bytes != 0
+    }
+}
+
+/// Result of a streaming run, with honesty flags: degradations (combined
+/// output, buffered replay, a torn transport) are reported, not hidden.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct ExecStreamingResult {
+    pub result:            ExecResult,
+    /// Stdout and stderr were genuinely separate streams.
+    pub streams_separated: bool,
+    /// Output was delivered while the command ran (vs. replayed after).
+    pub live_streaming:    bool,
+    pub stdout_capture:    CaptureStats,
+    pub stderr_capture:    CaptureStats,
+    /// Output the provider's transport lost before it could be captured or
+    /// delivered. Additive on the wire: an older peer reports zero.
+    #[serde(default)]
+    pub output_loss:       OutputLoss,
+}
+
+impl ExecStreamingResult {
+    /// Converts an explicitly captured result only when every byte is retained
+    /// and delivered. Execution may have had effects even when this fails.
+    pub fn into_complete(self) -> Result<ExecResult> {
+        if self.stdout_capture.truncated
+            || self.stderr_capture.truncated
+            || self.output_loss.is_lossy()
+        {
+            return Err(Error::Transport(crate::TransportError::new(
+                "command output delivery was incomplete",
+            )));
+        }
+        if self.stdout_capture.omitted_bytes != 0 || self.stderr_capture.omitted_bytes != 0 {
+            return Err(Error::LimitExceeded {
+                limit:     "retained_output_bytes".into(),
+                max_bytes: self
+                    .stdout_capture
+                    .retained_bytes
+                    .max(self.stderr_capture.retained_bytes),
+            });
+        }
+        Ok(self.result)
+    }
+
+    /// Wraps a buffered result with the honesty flags at their degraded
+    /// defaults (`streams_separated: false`, `live_streaming: false`);
+    /// providers set the flags they actually deliver. Capture stats
+    /// start as fully-retained accounting of the wrapped buffers — a
+    /// provider that truncated at the source overrides them — so
+    /// `observed_bytes: 0` can never sit beside non-empty output.
+    pub fn new(result: ExecResult) -> Self {
+        let stdout_capture = CaptureStats::complete(result.stdout.len());
+        let stderr_capture = CaptureStats::complete(result.stderr.len());
+        Self {
+            result,
+            streams_separated: false,
+            live_streaming: false,
+            stdout_capture,
+            stderr_capture,
+            output_loss: OutputLoss::default(),
+        }
+    }
+}
+
+/// Serializable spawn request for [`Exec::spawn_stdio`]. The program and
+/// arguments run under the same contract as [`ExecSpec`]. `Debug` redacts
+/// the arguments and env values, as on [`ExecSpec`].
+#[derive(Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct SpawnSpec {
+    pub program:     String,
+    pub args:        Vec<String>,
+    pub working_dir: Option<String>,
+    pub env:         BTreeMap<String, String>,
+}
+
+impl fmt::Debug for SpawnSpec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpawnSpec")
+            .field("program", &self.program)
+            .field("args", &"<redacted>")
+            .field("working_dir", &self.working_dir)
+            .field("env_keys", &self.env.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl SpawnSpec {
+    /// A spec that spawns `program` with no arguments; add them with
+    /// [`SpawnSpec::arg`] or [`SpawnSpec::args`].
+    pub fn new(program: impl Into<String>) -> Self {
+        Self {
+            program:     program.into(),
+            args:        Vec::new(),
+            working_dir: None,
+            env:         BTreeMap::new(),
+        }
+    }
+
+    /// A spec that evaluates `script` as Bash source, under the same
+    /// contract as [`ExecSpec::bash`].
+    pub fn bash(script: impl Into<String>) -> Self {
+        let mut spec = Self::new(BASH).args([BASH_COMMAND_FLAG, &script.into()]);
+        spec.env.insert(BASH_ENV_VAR.to_owned(), String::new());
+        spec
+    }
+
+    /// Whether this spec is the Bash helper's argv, `bash -c <script>`.
+    #[must_use]
+    pub fn is_bash_helper(&self) -> bool {
+        self.program == BASH
+            && self
+                .args
+                .first()
+                .is_some_and(|flag| flag == BASH_COMMAND_FLAG)
+    }
+
+    /// The environment a provider spawns the process with; see
+    /// [`ExecSpec::launch_env`].
+    #[must_use]
+    pub fn launch_env(&self) -> Cow<'_, BTreeMap<String, String>> {
+        launch_env(self.is_bash_helper(), &self.env)
+    }
+
+    #[must_use]
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    #[must_use]
+    pub fn args<I, S>(mut self, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.args.extend(args.into_iter().map(Into::into));
+        self
+    }
+
+    #[must_use]
+    pub fn working_dir(mut self, dir: impl Into<String>) -> Self {
+        self.working_dir = Some(dir.into());
+        self
+    }
+
+    #[must_use]
+    pub fn env_var(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
+    }
+}
+
+/// A live bidirectional stdio process.
+///
+/// Stderr is not a stream: it is a bounded rolling tail intended for
+/// diagnostics on unexpected exit.
+///
+/// There is no cancel token: the handle is the one lifecycle channel.
+/// A caller with a `CancellationToken` wires it to
+/// [`StdioProcessHandle::terminate`] itself:
+///
+/// ```ignore
+/// tokio::select! {
+///     () = token.cancelled() => process.handle.terminate().await,
+///     outcome = process.handle.wait() => { /* natural exit */ }
+/// }
+/// ```
+///
+/// Dropping the handle does **not** stop the process — it runs to its
+/// natural exit — so a caller that abandons the handle without
+/// `terminate` leaks the workload.
+pub struct StdioProcess {
+    pub stdin:       Pin<Box<dyn AsyncWrite + Send>>,
+    pub stdout:      Pin<Box<dyn AsyncRead + Send>>,
+    pub stderr_tail: StderrTail,
+    pub handle:      Box<dyn StdioProcessHandle>,
+}
+
+impl fmt::Debug for StdioProcess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StdioProcess").finish_non_exhaustive()
+    }
+}
+
+/// Control handle for a spawned stdio process.
+#[async_trait]
+pub trait StdioProcessHandle: Send + Sync {
+    /// Requests termination (best-effort process-group kill).
+    async fn terminate(&self);
+
+    /// Waits for the process to end.
+    async fn wait(&self) -> (Termination, Option<i32>);
+}
+
+const DEFAULT_STDERR_TAIL_BYTES: usize = 8 * 1024;
+
+/// Bounded rolling tail of stderr output.
+#[derive(Clone, Debug)]
+pub struct StderrTail {
+    inner: Arc<Mutex<TailBuffer>>,
+}
+
+#[derive(Debug)]
+struct TailBuffer {
+    max_bytes: usize,
+    bytes:     Vec<u8>,
+    truncated: bool,
+}
+
+impl StderrTail {
+    pub fn new(max_bytes: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(TailBuffer {
+                max_bytes,
+                bytes: Vec::new(),
+                truncated: false,
+            })),
+        }
+    }
+
+    /// Appends bytes, keeping only the newest `max_bytes`.
+    pub fn push(&self, chunk: &[u8]) {
+        let mut tail = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        tail.bytes.extend_from_slice(chunk);
+        let max = tail.max_bytes;
+        if tail.bytes.len() > max {
+            let excess = tail.bytes.len() - max;
+            tail.bytes.drain(..excess);
+            tail.truncated = true;
+        }
+    }
+
+    /// Reads `stderr` to EOF into the tail. Ends at EOF, which for a
+    /// process's own pipe is when it exits, or at the first read error,
+    /// which is logged: the tail is a diagnostic and never fails a
+    /// process. Providers spawn this beside the process they hand out.
+    pub async fn pump(self, mut stderr: impl AsyncRead + Unpin) {
+        let mut buffer = [0u8; 4096];
+        loop {
+            match stderr.read(&mut buffer).await {
+                Ok(0) => break,
+                Err(error) => {
+                    tracing::warn!(error = ?error, "stdio stderr reader failed");
+                    break;
+                }
+                Ok(read) => self.push(&buffer[..read]),
+            }
+        }
+    }
+
+    /// The retained tail decoded lossily, prefixed with an ellipsis when
+    /// earlier output was dropped.
+    pub fn to_string_lossy(&self) -> String {
+        let tail = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let text = String::from_utf8_lossy(&tail.bytes);
+        if tail.truncated {
+            format!("…{text}")
+        } else {
+            text.into_owned()
+        }
+    }
+}
+
+impl Default for StderrTail {
+    fn default() -> Self {
+        Self::new(DEFAULT_STDERR_TAIL_BYTES)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::duplex;
+    use tokio::task::yield_now;
+
+    use super::*;
+
+    #[test]
+    fn exec_spec_defaults_to_a_bounded_timeout() {
+        let spec = ExecSpec::new("true");
+        assert_eq!(spec.timeout, Some(ExecSpec::DEFAULT_TIMEOUT));
+        assert_eq!(ExecSpec::new("true").no_timeout().timeout, None);
+    }
+
+    #[test]
+    fn shell_status_decodes_the_signal_for_every_termination() {
+        let duration = Duration::from_millis(1);
+        for termination in [
+            Termination::Exited,
+            Termination::Cancelled,
+            Termination::Killed,
+            Termination::TimedOut,
+        ] {
+            let result = ExecResult::from_shell_status(termination, Some(143), duration);
+            assert_eq!(result.signal, Some(15), "{termination:?}");
+            assert_eq!(result.exit_code, Some(143), "the code stays intact");
+            let result = ExecResult::from_shell_status(termination, Some(137), duration);
+            assert_eq!(result.signal, Some(9), "{termination:?}");
+        }
+        // Ordinary codes, and no code at all, carry no signal.
+        assert_eq!(
+            ExecResult::from_shell_status(Termination::Exited, Some(7), duration).signal,
+            None
+        );
+        assert_eq!(
+            ExecResult::from_shell_status(Termination::Cancelled, None, duration).signal,
+            None
+        );
+    }
+
+    #[test]
+    fn bash_helper_is_bash_dash_c_with_bash_env_blanked() {
+        let spec = ExecSpec::bash("echo $HOME");
+        assert_eq!(spec.program, "bash");
+        assert_eq!(spec.args, ["-c", "echo $HOME"]);
+        assert_eq!(spec.env.get("BASH_ENV").map(String::as_str), Some(""));
+
+        let spawn = SpawnSpec::bash("cat");
+        assert_eq!(spawn.program, "bash");
+        assert_eq!(spawn.args, ["-c", "cat"]);
+        assert_eq!(spawn.env.get("BASH_ENV").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn exec_and_spawn_spec_debug_redact_secrets() {
+        let spec = ExecSpec::new("curl")
+            .arg("https://user:hunter2@host/")
+            .env_var("API_TOKEN", "hunter2")
+            .stdin(b"hunter2".to_vec());
+        let debug = format!("{spec:?}");
+        assert!(!debug.contains("hunter2"), "debug: {debug}");
+        assert!(debug.contains("curl"), "the program stays visible: {debug}");
+        assert!(debug.contains("API_TOKEN"), "keys stay visible: {debug}");
+
+        let spawn = SpawnSpec::new("run")
+            .args(["--token", "hunter2"])
+            .env_var("API_TOKEN", "hunter2");
+        let debug = format!("{spawn:?}");
+        assert!(!debug.contains("hunter2"), "debug: {debug}");
+        assert!(debug.contains("API_TOKEN"), "keys stay visible: {debug}");
+    }
+
+    #[test]
+    fn stderr_tail_keeps_only_newest_bytes() {
+        let tail = StderrTail::new(8);
+        tail.push(b"0123456789");
+        assert_eq!(tail.to_string_lossy(), "…23456789");
+        tail.push(b"AB");
+        assert_eq!(tail.to_string_lossy(), "…456789AB");
+    }
+
+    #[tokio::test]
+    async fn the_stderr_pump_reads_to_eof_into_the_tail() {
+        let tail = StderrTail::new(8);
+        let (mut writer, reader) = duplex(4);
+        let pump = tokio::spawn(tail.clone().pump(reader));
+        writer.write_all(b"0123456789").await.expect("write");
+        drop(writer);
+        pump.await.expect("the pump ends at EOF");
+        assert_eq!(tail.to_string_lossy(), "…23456789");
+    }
+
+    #[tokio::test]
+    async fn finishing_the_stdin_writer_aborts_a_blocked_write_and_keeps_a_result() {
+        // A writer blocked on a full pipe is cut short, not joined.
+        let (writer, _reader) = duplex(1);
+        let blocked = tokio::spawn(feed_stdin(
+            writer,
+            Box::pin(Cursor::new(vec![0u8; 64 * 1024])),
+        ));
+        yield_now().await;
+        finish_stdin_writer(blocked)
+            .await
+            .expect("an aborted writer is not an error");
+
+        // A writer that already finished reports its own outcome.
+        let finished = tokio::spawn(async { Err(Error::io("writing", io::Error::other("boom"))) });
+        while !finished.is_finished() {
+            yield_now().await;
+        }
+        let error = finish_stdin_writer(finished)
+            .await
+            .expect_err("the writer's own error surfaces");
+        assert!(
+            matches!(&error, Error::Io { context, .. } if context == "writing"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn capture_stats_truncated_is_additive_on_the_wire() {
+        // A v1 payload without the field must decode, defaulting false.
+        let old = r#"{"observed_bytes":3,"retained_bytes":3,"omitted_bytes":0}"#;
+        let stats: CaptureStats = serde_json::from_str(old).expect("old shape decodes");
+        assert!(!stats.truncated);
+        assert!(!CaptureStats::complete(3).truncated);
+    }
+
+    #[test]
+    fn exec_result_success_requires_clean_exit() {
+        let ok = ExecResult::new(Termination::Exited, Some(0), Duration::from_millis(1));
+        assert!(ok.success());
+        let cancelled = ExecResult::new(Termination::Cancelled, Some(0), Duration::from_millis(1));
+        assert!(!cancelled.success());
+    }
+
+    #[test]
+    fn the_bash_helpers_blank_bash_env_wins_at_launch() {
+        // A later env_var overrides the blank in the spec, as any map insert
+        // would; the launch env restores it for the helper only.
+        let helper = ExecSpec::bash("echo hi").env_var("BASH_ENV", "/etc/startup.sh");
+        assert!(helper.is_bash_helper());
+        assert_eq!(
+            helper.env.get("BASH_ENV").map(String::as_str),
+            Some("/etc/startup.sh")
+        );
+        let env = helper.launch_env();
+        assert_eq!(env.get("BASH_ENV").map(String::as_str), Some(""));
+        assert!(matches!(env, Cow::Owned(_)));
+
+        // Already blank: nothing to restore, so the env is borrowed as is.
+        assert!(matches!(
+            ExecSpec::bash("true").launch_env(),
+            Cow::Borrowed(_)
+        ));
+
+        // A caller that removed the blank altogether still launches blank.
+        let mut stripped = ExecSpec::bash("true");
+        stripped.env.clear();
+        assert_eq!(
+            stripped.launch_env().get("BASH_ENV").map(String::as_str),
+            Some("")
+        );
+
+        // Any other program keeps the caller's BASH_ENV: it is not the helper.
+        let program = ExecSpec::new("sh")
+            .args(["-c", "true"])
+            .env_var("BASH_ENV", "/etc/startup.sh");
+        assert!(!program.is_bash_helper());
+        assert_eq!(
+            program.launch_env().get("BASH_ENV").map(String::as_str),
+            Some("/etc/startup.sh")
+        );
+
+        let spawn = SpawnSpec::bash("cat").env_var("BASH_ENV", "/etc/startup.sh");
+        assert_eq!(
+            spawn.launch_env().get("BASH_ENV").map(String::as_str),
+            Some("")
+        );
+    }
+}

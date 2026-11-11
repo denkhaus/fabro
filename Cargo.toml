@@ -7,7 +7,7 @@ members = [
 ]
 # Vendored fork crates (fabro-eeee) stay their OWN workspaces: no feature
 # unification with the fabro graph, their suites run in their own workspace.
-exclude = ["vendor/petri", "vendor/pebble"]
+exclude = ["vendor/petri", "vendor/pebble", "vendor/sandbox-driver"]
 default-members = ["lib/apps/fabro-cli"]
 resolver = "2"
 
@@ -253,3 +253,27 @@ pebble-agent = { path = "vendor/pebble/crates/pebble-agent" }
 # ride into the build on the next `cargo update` — an undeliberate intake
 # (ADR-0024). Same content as the fork's today; the pin makes it stay so.
 pebble-cli-core = { path = "vendor/pebble/crates/pebble-cli-core" }
+
+
+# FORK PATCH (work#1253, sprint 84): the docker plugin's image-build path
+# flattened every build failure to `docker error: building image` — the
+# bollard stream error's source chain and the daemon's build output never
+# reached the message (ProviderError carries the cause in OpaqueSource but
+# its Display renders no chain). The engine environment-build (ADR-0042)
+# failed opaque on every live attempt; nothing was diagnosable. The fork
+# branch `fabro` renders the walked chain plus the daemon output tail in
+# the plugin's build path. FORK-PRIVATE by user decision 2026-11-11 (no
+# upstream offer for now).
+#
+# VENDORED (work#1253, 2026-11-11): the fork crates live in-tree at
+# vendor/sandbox-driver (snapshot import; provenance in vendor/PINS.toml).
+# The GitHub fork stays the history archive.
+[patch."https://github.com/lithoscomputer/sandbox-driver.git"]
+sandbox-driver = { path = "vendor/sandbox-driver/crates/sandbox-driver" }
+sandbox-driver-protocol = { path = "vendor/sandbox-driver/crates/sandbox-driver-protocol" }
+sandbox-driver-docker = { path = "vendor/sandbox-driver/crates/sandbox-driver-docker" }
+sandbox-driver-docker-config = { path = "vendor/sandbox-driver/crates/sandbox-driver-docker-config" }
+sandbox-driver-host = { path = "vendor/sandbox-driver/crates/sandbox-driver-host" }
+sandbox-driver-daytona = { path = "vendor/sandbox-driver/crates/sandbox-driver-daytona" }
+sandbox-driver-daytona-config = { path = "vendor/sandbox-driver/crates/sandbox-driver-daytona-config" }
+sandbox-driver-testing = { path = "vendor/sandbox-driver/crates/sandbox-driver-testing" }

@@ -6349,7 +6349,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "async-trait",
  "globset",
@@ -6366,7 +6365,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6394,7 +6392,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-daytona-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "sandbox-driver-docker-config",
  "serde",
@@ -6404,7 +6401,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#236196ed134dd594e7678e38ebbe968097f1935c"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6425,7 +6421,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-docker-config"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "serde",
  "serde_json",
@@ -6434,7 +6429,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-host"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6452,7 +6446,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-protocol"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -6469,7 +6462,6 @@ dependencies = [
 [[package]]
 name = "sandbox-driver-testing"
 version = "0.1.0"
-source = "git+https://github.com/lithoscomputer/sandbox-driver?branch=main#90b0d825767105d4b42e59fdbd116c4d66b87d83"
 dependencies = [
  "async-trait",
  "sandbox-driver",

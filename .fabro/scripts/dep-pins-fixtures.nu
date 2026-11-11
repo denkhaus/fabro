@@ -55,16 +55,17 @@
 # zai 429 killed the loop planner with retries: 0). Patching our forks is
 # expected; the rev move is recorded here per ADR-0027 decision 2/3.
 #
-# Scope: the GIT-pinned engine dependencies only (lithos-llm,
-# sandbox-driver, twins, daytona-sdk-rust). petri and pebble are VENDORED
-# in-tree since fabro-eeee (2026-10-24): their pin is the vendor snapshot
+# Scope: the GIT-pinned engine dependencies only (lithos-llm, twins,
+# daytona-sdk-rust). petri, pebble, and sandbox-driver are VENDORED
+# in-tree (petri+pebble since fabro-eeee 2026-10-24, sandbox-driver since
+# work#1253 2026-11-11): their pin is the vendor snapshot
 # in vendor/PINS.toml, checked by `scripts/vendor-pins-fixtures.nu` (a path package
 # leaves no rev in the lock, so this battery cannot see them). Our own
 # seeds crate is tag-pinned.
 
 const LOCK = 'Cargo.lock'
 
-const ENGINE_REPOS = ['lithos-llm', 'sandbox-driver', 'twins', 'daytona-sdk-rust']
+const ENGINE_REPOS = ['lithos-llm', 'twins', 'daytona-sdk-rust']
 
 # package name -> allowed rev(s), 12-hex prefixes.
 const PINS = {
@@ -72,16 +73,9 @@ const PINS = {
     "daytona-sdk": ["0e69058c888a"]
     "daytona-toolbox-client": ["0e69058c888a"]
     "lithos-llm": ["fd42e6b2805b"]
-    # petri + pebble are VENDORED since fabro-eeee (2026-10-24): their
-    # provenance lives in vendor/PINS.toml, checked by scripts/vendor-pins-fixtures.nu.
-    "sandbox-driver": ["90b0d8257671"]
-    "sandbox-driver-daytona": ["236196ed134d"]
-    "sandbox-driver-daytona-config": ["90b0d8257671"]
-    "sandbox-driver-docker": ["236196ed134d"]
-    "sandbox-driver-docker-config": ["90b0d8257671"]
-    "sandbox-driver-host": ["90b0d8257671"]
-    "sandbox-driver-protocol": ["90b0d8257671"]
-    "sandbox-driver-testing": ["90b0d8257671"]
+    # petri + pebble + sandbox-driver are VENDORED (fabro-eeee,
+    # work#1253): their provenance lives in vendor/PINS.toml, checked by
+    # scripts/vendor-pins-fixtures.nu.
     "twin-core": ["19bf6ae2fbfc"]
     "twin-openai": ["19bf6ae2fbfc"]
 }
@@ -147,10 +141,12 @@ def main [] {
     }
 
     # Teeth: the parser must actually see revs (a broken parse would make
-    # both loops above trivially green). 14 git-pinned engine packages
-    # remain after the petri/pebble vendoring (fabro-eeee); the vendored
-    # 18 are checked by scripts/vendor-pins-fixtures.nu.
-    if ($locked | transpose | length) < 10 {
+    # both loops above trivially green). 6 git-pinned engine packages
+    # remain after the vendoring waves (petri+pebble fabro-eeee,
+    # sandbox-driver work#1253 — the 8 sandbox packages moved to the
+    # vendor tree); the vendored are checked by
+    # scripts/vendor-pins-fixtures.nu.
+    if ($locked | transpose | length) < 5 {
         print $"RED: the parser found only ($locked | transpose | length) engine packages — far too few; the lock parse is broken, this battery proves nothing"
         $red = true
     } else {

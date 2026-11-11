@@ -257,12 +257,13 @@ impl DockerBuildPlan {
     }
 }
 
-/// The awk line that reads the sandbox-driver rev `Cargo.lock` resolves,
-/// so the plugin build can never drift from the dependency the binary
-/// linked. The Lithos git deps track `branch = "main"` upstream, so the
-/// rev lives in the lockfile, not in `Cargo.toml` (same source upstream's
-/// CI plugin job reads). A raw string: the pattern is shell-awk, not Rust.
-const SANDBOX_PIN_SED: &str = r#"REV=$(awk '/^name = "sandbox-driver"$/{getline; getline; sub(/.*#/, ""); sub(/".*/, ""); print; exit}' Cargo.lock)"#;
+/// The sandbox-driver plugins build from the VENDORED tree at
+/// `vendor/sandbox-driver` (work#1253, ADR-0034): the same sources the
+/// binary links through the `[patch]` path dependencies — the plugins
+/// cannot drift from the linked crates by construction. The container
+/// mounts the repository at /src, so the manifest is a stable relative
+/// path; no rev extraction, no git checkout.
+const SANDBOX_PLUGIN_MANIFEST: &str = "vendor/sandbox-driver/Cargo.toml";
 
 /// Nushell release vendored into the server image for host-side hooks
 /// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged
@@ -327,16 +328,8 @@ fn build_script(target: &str, zig_arch: &str) -> String {
          fi; \
          rustup target add {target}; \
          cargo zigbuild --locked --release -p fabro-cli --target {target}; \
-         {SANDBOX_PIN_SED}; \
-         test -n \"$REV\"; \
-         CHECKOUT=$(ls -d ${{CARGO_HOME:-$HOME/.cargo}}/git/checkouts/sandbox-driver-*/$REV 2>/dev/null | head -1); \
-         if [ -z \"$CHECKOUT\" ]; then \
-         git clone --quiet https://github.com/lithoscomputer/sandbox-driver /tmp/sandbox-driver; \
-         git -C /tmp/sandbox-driver checkout --quiet $REV; \
-         CHECKOUT=/tmp/sandbox-driver; \
-         fi; \
-         echo building sandbox-driver plugins at rev $REV; \
-         cargo zigbuild --locked --release --manifest-path \"$CHECKOUT/Cargo.toml\" \
+         echo building sandbox-driver plugins from the vendored tree; \
+         cargo zigbuild --locked --release --manifest-path \"{SANDBOX_PLUGIN_MANIFEST}\" \
          -p sandbox-driver-docker -p sandbox-driver-host --target {target} --target-dir $CARGO_TARGET_DIR"
     )
 }
