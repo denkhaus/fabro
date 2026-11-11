@@ -127,7 +127,7 @@ const SMOKES = [
     # Provider-window gate twin-smoke presence battery (fabro-2919): the
     # twin scenarios are a Rust pin that runs in every plain fabro-server
     # test round; this battery is the silent-deletion net for the pin
-    # file, its scenario names, its TOUCHPOINTS row, and the justfile
+    # file, its scenario names, and the justfile
     # ceremony recipe (`just smoke-window-gate`) that names it pre-deploy.
     '.fabro/scripts/window-gate-smoke.nu'
     # judgment-shadow sync battery (fabro-d367): the host hook's script
@@ -173,13 +173,6 @@ const BATTERIES = [
     # local-session mirror) must stay byte-identical; the battery
     # hash-compares both trees (run-images.nu's sha256 pattern).
     '.fabro/scripts/skill-parity-fixtures.nu'
-    # touchpoints parity (fabro-de32, arch-gate sprint 9): every
-    # tracked fork-only pin file must be named in the touchpoints
-    # registry and every literal row path must exist — the two-pin
-    # rule machine-checked in both directions (was reviewer-prompt
-    # only; live gaps found at filing: fork_exec_guard x2,
-    # fork_structured).
-    '.fabro/scripts/touchpoints-parity-fixtures.nu'
     # likec4 landscape validation (retro 2026-11-01): the .likec4/
     # target-landscape project must validate — a spec/model typo once
     # reached the user before any check ran. HOST-ONLY: loudly skips
@@ -187,12 +180,11 @@ const BATTERIES = [
     # sandboxes); the dev-host sweep is the net.
     '.fabro/scripts/likec4-fixtures.nu'
     # Dependency freeze pin (ADR-0027, 2026-10-09): the locked revs of the
-    # GIT-pinned engine dependency repos (lithos-llm, sandbox-driver,
-    # twins, daytona-sdk-rust) must equal the recorded list — a dep bump
+    # GIT-pinned engine dependency repos must equal the recorded list — a dep bump
     # cannot ride in silently; it is a deliberate edit plus a reason.
     '.fabro/scripts/dep-pins-fixtures.nu'
-    # Vendored fork provenance (fabro-eeee, ADR-0034): vendor/petri and
-    # vendor/pebble must still be the snapshots recorded in
+    # Vendored fork provenance (fabro-eeee, ADR-0034): every vendored
+    # tree must still be the snapshot recorded in
     # vendor/PINS.toml (content hash, tree sha), and every patched crate
     # must resolve from the tree instead of a git source again.
     'scripts/vendor-pins-fixtures.nu'

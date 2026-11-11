@@ -142,7 +142,7 @@ Before merging changes that add or move shared test helpers, verify:
 - `rg -n "create_app_state|test-only-name"` does not show production call sites
 - release/debug artifacts do not contain fake secrets, fixture tokens, or test helper symbols when built without `test-support`
 
-Fork-only pin files (`lib/**/tests/fork_*.rs`, `lib/**/src/**/fork_*.rs`) follow the **two-pin rule**: every one needs a row in `TOUCHPOINTS.md` (repo root) naming it by basename. The touchpoints-parity battery enforces the pair — it sees COMMITTED files only, so an unregistered pin fires at the sprint close (`scripts/sprint-close.nu` runs it), not before.
+Fork-only pin files (`lib/**/tests/fork_*.rs`, `lib/**/src/**/fork_*.rs`) are ordinary regression tests; most carry the only behavior coverage their feature has. The two-pin TOUCHPOINTS rule is RETIRED (ADR-0043): no registry, no per-feature bookkeeping. Presence pins remain in force only at VENDOR seams — a feature living inside `vendor/{petri,pebble,sandbox-driver}` may keep a fork-only presence test asserting it survives the vendor seam (a `just vendor import` from a wrong fork state rewrites `vendor/PINS.toml` cleanly and would silently drop the feature).
 
 ## Architecture
 
@@ -187,11 +187,14 @@ When working in an area covered by a strategy doc, read the relevant document
 - **`docs/internal/error-handling-strategy.md`** — read when changing error types, using `anyhow`/`thiserror`, adding `.map_err(...)`, converting errors to `String`, changing API error responses, or touching CLI/miette/log/telemetry error rendering
 - **`docs/internal/react-effects-policy.md`** — read when adding or refactoring React effects in `apps/fabro-web`; direct `useEffect` calls should be avoided in component code
 
-## Vendored fork crates (petri, pebble)
+## Vendored fork crates (petri, pebble, sandbox-driver)
 
-`vendor/petri` and `vendor/pebble` are in-tree SNAPSHOTS of the
-`denkhaus/petri` and `denkhaus/pebble` fork branches (`fabro`), consumed
-through the path `[patch]` blocks in `Cargo.toml` (ADR-0034). The fork
+`vendor/petri`, `vendor/pebble`, and `vendor/sandbox-driver` are in-tree
+SNAPSHOTS of the `denkhaus/petri`, `denkhaus/pebble`, and
+`denkhaus/sandbox-driver` fork branches (`fabro`), consumed
+through the path `[patch]` blocks in `Cargo.toml` (ADR-0034; the
+sandbox-driver fork carries the build-diagnostics enrichment,
+work#1253). The fork
 repositories stay the history archive and the upstream-PR vehicle; this
 repository carries no fork history.
 
@@ -274,4 +277,4 @@ Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/` (one series: lab-
 
 ### Sprint ledger
 
-`iterate-state.json` (repo root) is the iterate-cycle ledger; rotated-out sprints live in `iterate-state-archive.jsonl`. A sprint close is ONE command — `echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review] [--ran-arch-review] [--ran-rust-security]` (repo root, after the sprint's last substantive commit): it appends the record, rotates, runs touchpoints parity, and prints the next close's gates plus the commit-message skeleton. Gate arithmetic alone: `just gates [N]` — %2 code review, %3 architecture review, %5 rust-security review. Never compute the gates by hand.
+`iterate-state.json` (repo root) is the iterate-cycle ledger; rotated-out sprints live in `iterate-state-archive.jsonl`. A sprint close is ONE command — `echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review] [--ran-arch-review] [--ran-rust-security]` (repo root, after the sprint's last substantive commit): it appends the record, rotates, and prints the next close's gates plus the commit-message skeleton. Gate arithmetic alone: `just gates [N]` — %2 code review, %3 architecture review, %5 rust-security review. Never compute the gates by hand.

@@ -245,8 +245,9 @@ validate-workflows target="":
 lint-nu:
     nu scripts/lint-nu.nu
 
-# Vendored fork crates (fabro-eeee, ADR-0034): vendor/petri and
-# vendor/pebble are SNAPSHOTS of the denkhaus fork branches, consumed
+# Vendored fork crates (fabro-eeee/work#1253, ADR-0034): vendor/petri,
+# vendor/pebble, and vendor/sandbox-driver are SNAPSHOTS of the denkhaus
+# fork branches, consumed
 # through the path patches in Cargo.toml. `vendor-pins` proves the
 # snapshot — content hash, tree sha against the fork commit, and that
 # every patched crate resolves from the tree instead of a git source.
@@ -280,7 +281,7 @@ gates sprint="":
     nu scripts/gates-due.nu {{ sprint }}
 
 # Sprint close, ONE entry point (append record from stdin, rotate,
-# touchpoints parity, gates for the next sprint, commit skeleton):
+# gates for the next sprint, commit skeleton):
 #   echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review ...]
 # The --ran-* flags move the ledger's last_*_at_sprint markers for gates
 # that ran at this close. Run from the repo root, after the sprint's

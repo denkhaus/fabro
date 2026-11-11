@@ -18,10 +18,7 @@
 #      RAN at this close records that it ran).
 #   3. rotation via scripts/rotate-sprint-notes.nu (keep 10, archive
 #      JSONL) — never hand-roll this again.
-#   4. touchpoints parity: the two-pin rule sees COMMITTED files, so the
-#      close is the first moment a new fork pin without its TOUCHPOINTS
-#      row can be caught (sprint 74: it was, late and by luck).
-#   5. gates for sprint N+1 via scripts/gates-due.nu, plus the
+#   4. gates for sprint N+1 via scripts/gates-due.nu, plus the
 #      commit-message skeleton with the gate line filled — paste both.
 #
 # The state file is written with 1-space indent (the format the ledger
@@ -84,15 +81,7 @@ def main [
     # 3: rotation (idempotent, archives overflow to the JSONL)
     nu ($SCRIPTS_DIR | path join 'rotate-sprint-notes.nu')
 
-    # 4: the two-pin rule, at the moment it can see the sprint's commits
-    let pins = (do { nu .fabro/scripts/touchpoints-parity-fixtures.nu } | complete)
-    if $pins.exit_code != 0 {
-        print -e ($pins.stdout + $pins.stderr)
-        fail 'touchpoints parity is RED — add the registry row before the ledger commit'
-    }
-    print ($pins.stdout | str trim)
-
-    # 5: gates for the NEXT sprint + the commit skeleton
+    # 4: gates for the NEXT sprint + the commit skeleton
     print ''
     nu ($SCRIPTS_DIR | path join 'gates-due.nu') ($sprint + 1)
     print ''

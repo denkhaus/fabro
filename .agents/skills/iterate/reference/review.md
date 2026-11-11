@@ -39,8 +39,9 @@ classes, and the architecture gate.
   `-- fork_seam` filter matches NOTHING since the suite split; a filter
   that runs 0 tests is a silent skip and nextest exits 4), plus every
   newer `fork_*` test file of the crates you touched.
-- Every NEW fork feature carries a presence pin (fork-only test file +
-  TOUCHPOINTS row); a pin-less fork feature ships only with a filed
+- Every NEW fork feature inside a VENDORED tree carries a presence pin
+  (fork-only test file, ADR-0043 — vendor seams only, the registry is
+  retired); a pin-less vendor-seam feature ships only with a filed
   follow-up item. A RED fork-only test = a landed fork feature
   regressed: fix or revert, never relax the test.
 
@@ -62,11 +63,12 @@ classes, and the architecture gate.
 - BEFORE declaring a gate healthy, run EVERY battery named in
   `scripts/qualitygate.nu` (grep its `smokes` + `batteries` lists, run
   each with `nu`, read each exit code). Cargo rounds and the workflow
-  smokes can be fully green while a registered parity battery stays
-  red: one fork feature shipped with its pin file but no touchpoints
-  registry row, and nothing noticed for days (found by
-  `touchpoints-parity-fixtures.nu`). Seconds of work; the only net for
-  the missing-row / missing-registration class.
+  smokes can be fully green while a registered battery stays red — a
+  pin file, a battery script, or a documented check can silently rot
+  while everything else passes (the touchpoints registry's own battery
+  once caught a pin without its row days late; the registry is retired,
+  ADR-0043, the sweep discipline stays). Seconds of work; the only net
+  for the missing-registration class.
 
 ## Environment artifact vs regression
 

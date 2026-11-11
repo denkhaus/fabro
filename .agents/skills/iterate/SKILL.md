@@ -190,8 +190,9 @@ filed), the language gate is clean, and every battery named in
   references inside prompts — provenance lives in graph comments and
   the tracker. The mechanical net is the prompt-lint evidence ban.
 - Fork-feature regression check: run the fork-only presence suites of
-  every crate you touched; every NEW fork feature carries a presence
-  pin (fork-only test file + TOUCHPOINTS row). Red fork-only test =
+  every crate you touched; every NEW fork feature inside a VENDORED
+  tree carries a presence pin (fork-only test file, ADR-0043 — vendor
+  seams only, no registry). Red fork-only test =
   regressed fork feature: fix or revert, never relax the test.
 - Loop-asset battery sweep before declaring a gate healthy: run EVERY
   battery named in `scripts/qualitygate.nu`, read each exit code.
@@ -401,9 +402,14 @@ reality.
   `just vendor-pins` green. Dependency work never ends silently
   unfinished — an impossible export leaves a handoff item naming fork,
   branch and local state EXPLICITLY.
-- Fork-feature presence pinning: every durable fork feature lives in a
-  fork-only source file wired through minimal one-line seams, with a
-  presence test in a fork-only test file plus a TOUCHPOINTS row.
+- Fork-feature presence pinning (ADR-0043: the TOUCHPOINTS two-pin rule
+  is RETIRED): fork features live in fork-only source files wired
+  through minimal one-line seams, with behavior tests as ordinary
+  regression tests. A PRESENCE pin is due only at VENDOR seams
+  (vendor/{petri,pebble,sandbox-driver}): a feature inside a vendored
+  tree keeps a fork-only presence test asserting it survives the seam —
+  a `just vendor import` from a wrong fork state rewrites PINS.toml
+  cleanly and would silently drop it.
 - Session/line boundary (fabro-cadd lesson): session bookkeeping
   (ledger, reflection, gate cadence) is iterate-skill-LOCAL at the repo
   root; anything proposing to port it into line assets is

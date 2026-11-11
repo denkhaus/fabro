@@ -22,7 +22,7 @@ mod tests {
 
     use crate::catalog::build_catalog;
 
-    /// Presence pin (two-pin rule, merge-upstream touchpoints): proves the
+    /// Presence pin: proves the
     /// one-line seam in `catalog::build_catalog` still layers this overlay.
     /// Without the seam the zai default reverts to the lithos built-in and
     /// the glm-4.7 always-reasoning fix (fabro-cd27) is gone.

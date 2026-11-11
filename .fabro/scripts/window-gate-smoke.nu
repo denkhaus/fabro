@@ -4,7 +4,7 @@
 # `cargo nextest run -p fabro-server` round — the loop lane never compiles
 # product code, so a cargo round does not belong in this registry); this
 # battery is the silent-deletion net for that pin, the fabro-8b38 class:
-# the fork-only test file, both scenario names, its TOUCHPOINTS row, the
+# the fork-only test file, both scenario names, the
 # justfile ceremony recipe, and the fabro-test sticky scenario flag it
 # depends on must all keep existing. A renamed or dropped pin REDs here
 # instead of green-lining the next gate round.
@@ -38,14 +38,11 @@ must_contain 'lib/apps/fabro-server/src/server/fork_window_gate_twin_tests.rs' '
 #    the file never compiles — the pin silently stops running).
 must_contain 'lib/apps/fabro-server/src/server.rs' 'mod fork_window_gate_twin_tests;' 'the twin-smoke module wiring'
 
-# 3. The two-pin rule: the pin file is named in the touchpoints registry.
-must_contain 'TOUCHPOINTS.md' 'fork_window_gate_twin_tests.rs' 'the TOUCHPOINTS row'
-
-# 4. The deploy ceremony recipe names the smoke command.
+# 3. The deploy ceremony recipe names the smoke command.
 must_contain 'justfile' 'smoke-window-gate' 'the justfile ceremony recipe'
 must_contain 'justfile' 'cargo nextest run -p fabro-server window_gate' 'the recipe runs the window_gate filter'
 
-# 5. The twin scenario the pin depends on stays sticky-capable (a client
+# 4. The twin scenario the pin depends on stays sticky-capable (a client
 #    that retries a scripted 429 must keep meeting the scripted answer).
 must_contain 'lib/foundation/fabro-test/src/lib.rs' 'pub fn sticky' \
     'TwinScenario::sticky'

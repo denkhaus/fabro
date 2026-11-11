@@ -17,7 +17,7 @@
 //!
 //! This guard was dropped once by the #832 salvage merge (00ffd60f6
 //! incident). It lives in this fork-only file with its presence tests in
-//! `fork_duplicate_child_guard_tests.rs` and a touchpoints row — merges
+//! `fork_duplicate_child_guard_tests.rs` — merges
 //! cannot conflict it away, and a dropped seam call reds the gate.
 
 use fabro_types::{RunId, WorkflowVersionId};
