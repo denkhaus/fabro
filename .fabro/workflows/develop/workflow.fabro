@@ -59,7 +59,12 @@ digraph Develop {
         shape=parallelogram,
         script="sh .fabro/scripts/toolchain-guard.sh develop",
         timeout="30s",
-        max_retries=0
+        max_retries=0,
+        // work#1277: the default `route` policy let a red guard take its
+        // unconditional edge into the planner (sprint-85 misfire). `exit`
+        // ends the run failed AT the guard — the teaching error rides the
+        // record and the Slack lifecycle, the LLM stages never start.
+        on_failure="exit"
     ]
 
     // ADR-0032 phase 3 deleted the develop tracker_guard node — its

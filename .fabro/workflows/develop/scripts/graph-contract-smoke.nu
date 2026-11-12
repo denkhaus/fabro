@@ -24,6 +24,10 @@
 #      first and start has NO second outgoing edge (fabro-2357). The
 #      lane_check node is TEMPORARILY REVERTED (work#1156); the graph
 #      pins the reverted shape and the node returns with the fix.
+#      The guard node carries on_failure="exit" (work#1277): the
+#      default `route` policy let a red guard take its unconditional
+#      edge into the planner (sprint-85 misfire, run killed manually);
+#      `exit` ends the run failed AT the guard instead.
 #   5. The claim-contract chain: planner -> preflight ("Seed claimed"),
 #      preflight reading the granted-item packet on stdin
 #      (stdin_source="current_item_json", script line carries
@@ -93,6 +97,18 @@ def main [] {
     let start_edges = ($code | where {|l| ($l | str trim | str starts-with 'start ->')})
     if ($start_edges | length) != 1 {
         fail $'start must have exactly ONE outgoing edge, the placement guard; found ($start_edges | length) — a second edge would bypass it'
+    }
+    # work#1277: the guard's red must STOP the run, never route on. The
+    # env_guard node block must carry on_failure="exit" (petri Policy::Exit
+    # skips the unconditional edge); the default `route` policy routed a
+    # red guard straight into the planner in sprint 85.
+    let guard_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'env_guard ['} | get -o index | first | default null)
+    if $guard_start == null { fail 'env_guard node not found' }
+    let guard_end = ($lines | enumerate | where {|e| $e.index > $guard_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
+    if $guard_end == null { fail 'env_guard node block not terminated' }
+    let guard_block = ($lines | skip ($guard_start + 1) | take ($guard_end - $guard_start - 1))
+    if not ($guard_block | any {|l| ($l | str trim) == 'on_failure="exit"'}) {
+        fail 'env_guard missing on_failure="exit" (work#1277): the default route policy lets a red guard take its unconditional edge into the planner — the guard red must end the run'
     }
 
     # 5. claim-contract chain (fabro-c42f, ADR-0032 form)

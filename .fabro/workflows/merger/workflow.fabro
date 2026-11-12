@@ -28,7 +28,10 @@ digraph Merger {
         shape=parallelogram,
         script="sh .fabro/scripts/toolchain-guard.sh merger",
         timeout="30s",
-        max_retries=0
+        max_retries=0,
+        // work#1277 (class fix, the develop graph's pin): `exit` ends the
+        // run failed AT the guard instead of routing the red onward.
+        on_failure="exit"
     ]
 
     // The fast path (stage E, grilled mirror of the adjudicator's): ONE

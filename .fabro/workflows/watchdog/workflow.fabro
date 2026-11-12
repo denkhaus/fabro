@@ -24,7 +24,11 @@ digraph Watchdog {
         shape=parallelogram,
         script="sh .fabro/scripts/toolchain-guard.sh watchdog",
         timeout="30s",
-        max_retries=0
+        max_retries=0,
+        // work#1277 (class fix, the develop graph's pin): `exit` ends the
+        // run failed AT the guard — without it a sandbox without nu died
+        // cryptically at the stall_check instead of at the teaching guard.
+        on_failure="exit"
     ]
 
     // The dead-man check (stage F, grilled 2026-11-05): for every gear,
