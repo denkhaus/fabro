@@ -596,27 +596,25 @@ ORDER BY granted_at_ms
         rows.iter().map(claim_from_row).collect()
     }
 
-    /// The run's released claims inside a recency window — the misroute
-    /// skip set for lane-head selection (denkhaus/work#1179): a run that
-    /// released an item (misroute, stale basis, planner skip) is not
-    /// re-granted it on its next grant tick, so the lane head advances
-    /// past items that run already declined. Other runs are unaffected.
-    pub async fn released_claims_of_run_since(
-        &self,
-        run_id: &RunId,
-        since: DateTime<Utc>,
-    ) -> Result<Vec<WorkClaim>> {
+    /// Every claim the run released — the misroute skip set for lane-head
+    /// selection (denkhaus/work#1179, run-lifetime scope per
+    /// denkhaus/work#1186): a run that released an item (misroute, stale
+    /// basis, planner skip) is never re-granted it for the rest of the
+    /// run's lifetime, so the lane head advances past items that run
+    /// already declined and a run that declined every open lane item
+    /// gets an empty claim instead of cycling. The skip is scoped to the
+    /// releasing run only; other runs stay free to claim the item.
+    pub async fn released_claims_of_run(&self, run_id: &RunId) -> Result<Vec<WorkClaim>> {
         let rows = sqlx::query(
             r"
 SELECT claim_id, project_id, item_key, run_id, lane, state,
        granted_at_ms, updated_at_ms, released_at_ms, release_reason, pr_url
 FROM work_claims
-WHERE run_id = ? AND state = 'released' AND released_at_ms >= ?
+WHERE run_id = ? AND state = 'released'
 ORDER BY released_at_ms
 ",
         )
         .bind(run_id.to_string())
-        .bind(since.timestamp_millis())
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(claim_from_row).collect()
@@ -1137,7 +1135,7 @@ fn timestamp_from_row(
 mod tests {
     use std::sync::Arc;
 
-    use chrono::Duration;
+    use chrono::{Duration, Utc};
     use sqlx::Connection as _;
     use sqlx::sqlite::{SqliteConnectOptions, SqliteConnection};
     use tokio::task::JoinSet;
@@ -1425,8 +1423,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn released_claims_of_run_since_scope_the_misroute_skip_set() {
-        let (_directory, store) = store().await;
+    async fn released_claims_of_run_skip_set_is_scoped_and_lifetime_long() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+            .await
+            .unwrap();
+        database.migrate().await.unwrap();
+        let store = WorkStore::new(database.clone_pool());
+        store.upsert_project(&project()).await.unwrap();
+
         let run_id = fabro_types::RunId::new();
         let other_run = fabro_types::RunId::new();
         let GrantOutcome::Granted(claim) = store
@@ -1449,12 +1454,10 @@ mod tests {
             .await
             .unwrap();
 
-        // The window covers the run's own released item, not another
-        // run's release, and excludes nothing the run released inside
-        // the window.
-        let now = chrono::Utc::now();
+        // The skip set covers the run's own released item, never another
+        // run's release (denkhaus/work#1179 scope).
         let keys = store
-            .released_claims_of_run_since(&run_id, now - Duration::hours(1))
+            .released_claims_of_run(&run_id)
             .await
             .unwrap()
             .into_iter()
@@ -1462,15 +1465,28 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(keys, vec!["denkhaus/work#1".to_string()]);
 
-        // A window that starts after the release sees nothing: the skip
-        // is recency-scoped, not permanent.
-        let later = now + Duration::hours(2);
-        assert!(
-            store
-                .released_claims_of_run_since(&run_id, later)
-                .await
-                .unwrap()
-                .is_empty()
+        // The skip is run-lifetime long, not windowed (denkhaus/work#1186):
+        // a release aged past any recency window still skips, so a run
+        // that outlives the old one-hour window cannot be re-served an
+        // item it already declined.
+        let aged_ms = (Utc::now() - Duration::hours(3)).timestamp_millis();
+        sqlx::query("UPDATE work_claims SET released_at_ms = ? WHERE claim_id = ?")
+            .bind(aged_ms)
+            .bind(&claim.claim_id)
+            .execute(&database.clone_pool())
+            .await
+            .unwrap();
+        let keys = store
+            .released_claims_of_run(&run_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|released| released.item_key)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            keys,
+            vec!["denkhaus/work#1".to_string()],
+            "an aged release still names its item in the skip set"
         );
     }
 

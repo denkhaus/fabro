@@ -34,11 +34,6 @@ use super::super::{
 };
 use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
 
-/// How long a released item stays skipped for its releasing run's
-/// `/next` ticks (denkhaus/work#1179). One hour covers a run's whole
-/// claim-release-reclaim loop; other runs are never affected.
-const RUN_RELEASE_SKIP_WINDOW: chrono::Duration = chrono::Duration::hours(1);
-
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/projects", get(list_projects))
@@ -1044,14 +1039,18 @@ async fn claim_next(
         .collect();
 
     // Misroute skip (denkhaus/work#1179): a run that released an item —
-    // misroute, stale basis, planner skip — is not re-granted the same
-    // item on its next grant tick; without the skip the lane head cycles
-    // over items no run of the lane can land and never surfaces the
-    // lower-priority landable candidates. The skip is per run and
-    // windowed; another run stays free to claim the skipped item.
+    // misroute, stale basis, planner skip — is never re-granted the same
+    // item for the rest of the run's lifetime (denkhaus/work#1186); a
+    // windowed skip expired under runs that outlive the window and
+    // re-served every released item in a release-and-ask livelock.
+    // Without the skip the lane head cycles over items no run of the
+    // lane can land and never surfaces the lower-priority landable
+    // candidates; with it, a run that declined every open lane item
+    // gets an empty claim. The skip is per run; another run stays free
+    // to claim the skipped item.
     let released_by_run = state
         .work_store()
-        .released_claims_of_run_since(&run_id, chrono::Utc::now() - RUN_RELEASE_SKIP_WINDOW)
+        .released_claims_of_run(&run_id)
         .await
         .map_err(store_error)?;
     claimed.extend(released_by_run.into_iter().map(|claim| claim.item_key));
@@ -1968,6 +1967,162 @@ mod resolve_self_tests {
         assert!(
             ghost.is_empty(),
             "no claim may land under the literal `self`"
+        );
+    }
+
+    async fn claim_next_ask(
+        state: &Arc<crate::server::AppState>,
+        principal: &Principal,
+        run_id: RunId,
+    ) -> serde_json::Value {
+        use axum::extract::{Path, State};
+
+        let response = super::claim_next(
+            RequiredRunManagementActor(principal.clone()),
+            State(Arc::clone(state)),
+            Path("self".to_string()),
+            axum::Json(fabro_api::types::WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_run_that_releases_every_lane_item_gets_an_empty_claim() {
+        use chrono::Utc;
+        use fabro_work::{TrackerProvider, WorkItem, WorkItemFilter};
+
+        struct TwoItemTracker;
+        fn item(key: &str, priority: i64) -> WorkItem {
+            WorkItem {
+                item_key: key.to_string(),
+                title: format!("Item {key}"),
+                body: "the spec".to_string(),
+                state: "open".to_string(),
+                labels: vec!["lane:loop".to_string()],
+                priority,
+                url: format!("https://github.com/denkhaus/work/issues/{key}"),
+                updated_at: Some(Utc::now()),
+            }
+        }
+        #[async_trait::async_trait]
+        impl TrackerProvider for TwoItemTracker {
+            async fn list(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _filter: WorkItemFilter,
+            ) -> anyhow::Result<Vec<WorkItem>> {
+                Ok(vec![item("denkhaus/work#1", 1), item("denkhaus/work#2", 2)])
+            }
+            async fn get(
+                &self,
+                _project: &fabro_work::WorkProject,
+                item_key: &str,
+            ) -> anyhow::Result<Option<WorkItem>> {
+                Ok(Some(item(item_key, 1)))
+            }
+            async fn create(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _draft: fabro_work::WorkItemDraft,
+            ) -> anyhow::Result<WorkItem> {
+                anyhow::bail!("not needed")
+            }
+            async fn update(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _title: Option<&str>,
+                _body: Option<&str>,
+            ) -> anyhow::Result<WorkItem> {
+                anyhow::bail!("not needed")
+            }
+            async fn close(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _reason: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn comment(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _body: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn project_claim(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _run_id: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn clear_claim(
+                &self,
+                _project: &fabro_work::WorkProject,
+                _item_key: &str,
+                _run_id: &str,
+            ) -> anyhow::Result<()> {
+                Ok(())
+            }
+        }
+
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(TwoItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        // claim → release all → claim returns none, no re-grant
+        // (denkhaus/work#1186): the same-run release skip is run-lifetime
+        // long, so exhausting the lane ends the loop instead of cycling.
+        let worker = Principal::Worker { run_id };
+        let mut granted_items = Vec::new();
+        for _ in 0..2 {
+            let body = claim_next_ask(&state, &worker, run_id).await;
+            assert_eq!(body["outcome"], "granted", "the lane still has items");
+            let claim_id = body["claim"]["claimId"].as_str().unwrap().to_string();
+            granted_items.push(body["item"]["itemKey"].as_str().unwrap().to_string());
+            state
+                .work_store()
+                .release(&claim_id, "misroute")
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            granted_items,
+            vec!["denkhaus/work#1".to_string(), "denkhaus/work#2".to_string()],
+            "the run claims each lane item exactly once"
+        );
+        let body = claim_next_ask(&state, &worker, run_id).await;
+        assert_eq!(
+            body["outcome"], "empty",
+            "a run that released every open lane item gets an empty claim, no re-grant"
         );
     }
 
