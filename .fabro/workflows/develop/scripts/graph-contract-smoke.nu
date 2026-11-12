@@ -102,13 +102,16 @@ def main [] {
     # env_guard node block must carry on_failure="exit" (petri Policy::Exit
     # skips the unconditional edge); the default `route` policy routed a
     # red guard straight into the planner in sprint 85.
+    # One binding, one truth: the literal serves the predicate and the
+    # fail message (the work#1057 rule — a hand-copied pair drifts).
+    let guard_policy = 'on_failure="exit"'
     let guard_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'env_guard ['} | get -o index | first | default null)
     if $guard_start == null { fail 'env_guard node not found' }
     let guard_end = ($lines | enumerate | where {|e| $e.index > $guard_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
     if $guard_end == null { fail 'env_guard node block not terminated' }
     let guard_block = ($lines | skip ($guard_start + 1) | take ($guard_end - $guard_start - 1))
-    if not ($guard_block | any {|l| ($l | str trim) == 'on_failure="exit"'}) {
-        fail 'env_guard missing on_failure="exit" (work#1277): the default route policy lets a red guard take its unconditional edge into the planner — the guard red must end the run'
+    if not ($guard_block | any {|l| ($l | str trim | str trim -r -c ',') == $guard_policy}) {
+        fail $"env_guard missing ($guard_policy) (work#1277): the default route policy lets a red guard take its unconditional edge into the planner — the guard red must end the run"
     }
 
     # 5. claim-contract chain (fabro-c42f, ADR-0032 form)

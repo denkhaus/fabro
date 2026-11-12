@@ -95,6 +95,13 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   NO window: fix or file first (the repo's own rule — new product bugs
   land as FACETS row + probe BEFORE any deploy). The bench refuses a
   non-local FABRO_SERVER; carry the local override explicitly.
+  COMPOSITIONAL GATE (user decision sprint 81, re-demanded 2026-11-12
+  after two wasted full rounds): the gate COMPOSES — a full table is
+  due once per stack/payload state; a red fixed by a targeted change
+  is proven by its SINGLE-PROBE drive plus, for integration legs, a
+  direct manual drive of the leg's script; the previous table remains
+  valid evidence for every untouched facet. NEVER rerun the full bench
+  to re-see greens you already have.
 - GATE-TOUCHING DEPLOYS: before the window, run
   `just smoke-window-gate` (the twin-scenario smoke: scripted 429 ->
   tick holds + manual fire refused; reopen -> next recheck tick fires)

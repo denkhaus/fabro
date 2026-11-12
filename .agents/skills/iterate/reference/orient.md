@@ -109,6 +109,12 @@ index (`incidents.md`) carries the full stories.
   `level` field does not exist). Do NOT read
   `docker logs rootprint-vector`: that container's stdout carries only
   vector's own boot lines; events go to the opentelemetry sink.
+- Session-side raw HTTP against the API (nu `http get` with a token
+  from `~/.fabro/auth.json`) 401s with a STALE OAuth token: only the
+  CLI refreshes it silently (sprint-86 lesson, twice). Prefer the CLI
+  verbs for prod reads; when raw HTTP is unavoidable, run one cheap
+  CLI call first (`fabro ps`) so the refreshed token lands in
+  auth.json, then read it (2026-11-12).
 - QUERY SYNTAX (learned the hard way, 2026-11-10): the `body` field has
   NO positions indexed — a phrase-quoted body query
   (`-q 'body:"some phrase"'`) fails with QUICKWIT_VALIDATION 400.
