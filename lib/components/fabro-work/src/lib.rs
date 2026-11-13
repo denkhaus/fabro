@@ -16,6 +16,7 @@ pub use store::{
 };
 pub use tracker::{
     NullTracker, TrackerProvider, WorkItem, WorkItemComment, WorkItemDraft, WorkItemFilter,
+    WorkItemPage,
 };
 
 pub type Result<T> = std::result::Result<T, Error>;

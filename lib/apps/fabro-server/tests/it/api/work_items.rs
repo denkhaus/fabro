@@ -332,6 +332,35 @@ mod next_item {
     }
 
     impl FakeTracker {
+        /// The filter's matches, untruncated and sorted the way the
+        /// GitHub adapter sorts (priority, then updated_at) — the
+        /// pipeline `list` pages and `list_with_total` also counts
+        /// (denkhaus/work#1296).
+        fn matching_items(&self, filter: &WorkItemFilter) -> Vec<WorkItem> {
+            let mut items: Vec<WorkItem> = self
+                .items
+                .lock()
+                .expect("work-item test step should succeed")
+                .iter()
+                .filter(|item| match filter.query.as_deref() {
+                    // Search mode mirrors the GitHub adapter: both states,
+                    // case-insensitive title+body text match, relevance
+                    // approximated by recency (the fake has no ranking
+                    // signal).
+                    Some(query) => {
+                        let needle = query.trim().to_lowercase();
+                        item.title.to_lowercase().contains(&needle)
+                            || item.body.to_lowercase().contains(&needle)
+                    }
+                    // List mode mirrors the open-only listing.
+                    None => item.state == "open",
+                })
+                .cloned()
+                .collect();
+            items.sort_by_key(|item| (item.priority, item.updated_at));
+            items
+        }
+
         fn with_items(items: Vec<WorkItem>) -> Arc<Self> {
             Arc::new(Self {
                 items:    Mutex::new(items),
@@ -385,38 +414,33 @@ mod next_item {
 
     #[async_trait]
     impl TrackerProvider for FakeTracker {
+        // The counting read (denkhaus/work#1296): the fake mirrors the
+        // GitHub adapter — the page is the filter's matches truncated
+        // to `limit`, the total is the UNtruncated match count.
         async fn list(
             &self,
             _project: &WorkProject,
             filter: WorkItemFilter,
         ) -> anyhow::Result<Vec<WorkItem>> {
             self.filters.lock().await.push(filter.clone());
-            let mut items: Vec<WorkItem> = self
-                .items
-                .lock()
-                .expect("work-item test step should succeed")
-                .iter()
-                .filter(|item| match filter.query.as_deref() {
-                    // Search mode mirrors the GitHub adapter: both states,
-                    // case-insensitive title+body text match, relevance
-                    // approximated by recency (the fake has no ranking
-                    // signal).
-                    Some(query) => {
-                        let needle = query.trim().to_lowercase();
-                        item.title.to_lowercase().contains(&needle)
-                            || item.body.to_lowercase().contains(&needle)
-                    }
-                    // List mode mirrors the open-only listing; the server
-                    // grants in the order the provider returns and the
-                    // GitHub adapter sorts by (priority, updated_at), so
-                    // the fake sorts the same way.
-                    None => item.state == "open",
-                })
-                .cloned()
-                .collect();
-            items.sort_by_key(|item| (item.priority, item.updated_at));
+            let mut items = self.matching_items(&filter);
             items.truncate(filter.limit.max(1));
             Ok(items)
+        }
+
+        async fn list_with_total(
+            &self,
+            _project: &WorkProject,
+            filter: WorkItemFilter,
+        ) -> anyhow::Result<fabro_work::WorkItemPage> {
+            self.filters.lock().await.push(filter.clone());
+            let mut items = self.matching_items(&filter);
+            let total = items.len() as u64;
+            items.truncate(filter.limit.max(1));
+            Ok(fabro_work::WorkItemPage {
+                items,
+                total: Some(total),
+            })
         }
 
         async fn get(
@@ -803,6 +827,11 @@ mod next_item {
         assert!(
             !keys.contains(&"denkhaus/work#10"),
             "non-matching items stay out: {keys:?}"
+        );
+        assert_eq!(
+            searched["total"].as_i64(),
+            Some(2),
+            "the pager's total is the tracker's exact match count (denkhaus/work#1296): {searched}"
         );
     }
 

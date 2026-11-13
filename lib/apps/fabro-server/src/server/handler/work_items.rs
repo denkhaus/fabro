@@ -438,35 +438,55 @@ async fn list_work_items(
             )));
         }
     };
+    // The pager's truthful total (denkhaus/work#1296): the tracker's
+    // counting read names the number of items the filter matches,
+    // independent of paging — the page-window estimate is gone.
+    let mut total: Option<u64> = None;
     let items = match sort {
-        None => tracker
-            .list(project, WorkItemFilter {
-                lane: params.lane,
-                limit: page_size,
-                query: params.query,
-                label: params.label,
-                page,
-            })
-            .await
-            .map_err(tracker_failed)?,
+        None => {
+            let page = tracker
+                .list_with_total(project, WorkItemFilter {
+                    lane: params.lane,
+                    limit: page_size,
+                    query: params.query,
+                    label: params.label,
+                    page,
+                })
+                .await
+                .map_err(tracker_failed)?;
+            total = page.total;
+            page.items
+        }
         Some((key, inverted)) => {
             // Sorting applies before paging: accumulate enough tracker
             // pages to cover the requested one (bounded to three tracker
-            // pages of 100 — the project's scale), sort, slice.
+            // pages of 100 — the project's scale), sort, slice. The
+            // total rides the FIRST tracker page's counting read; the
+            // later pages fetch items only (the count is page-invariant).
             const TRACKER_PAGE: usize = 100;
             let pages_needed = (page * page_size).div_ceil(TRACKER_PAGE);
             let mut accumulated: Vec<fabro_work::WorkItem> = Vec::new();
             for tracker_page in 1..=pages_needed.min(3) {
-                let batch = tracker
-                    .list(project, WorkItemFilter {
-                        lane:  params.lane.clone(),
-                        limit: TRACKER_PAGE,
-                        query: params.query.clone(),
-                        label: params.label.clone(),
-                        page:  tracker_page,
-                    })
-                    .await
-                    .map_err(tracker_failed)?;
+                let filter = WorkItemFilter {
+                    lane:  params.lane.clone(),
+                    limit: TRACKER_PAGE,
+                    query: params.query.clone(),
+                    label: params.label.clone(),
+                    page:  tracker_page,
+                };
+                let batch = if tracker_page == 1 {
+                    let page = tracker
+                        .list_with_total(project, filter)
+                        .await
+                        .map_err(tracker_failed)?;
+                    total = page.total;
+                    page.items
+                } else {
+                    tracker
+                        .list(project, filter)
+                        .await
+                        .map_err(tracker_failed)?
+                };
                 let exhausted = batch.len() < TRACKER_PAGE;
                 accumulated.extend(batch);
                 if exhausted {
@@ -496,7 +516,8 @@ async fn list_work_items(
         }
     };
     let response = WorkItemListResponse {
-        data: items.into_iter().map(api_item).collect(),
+        data:  items.into_iter().map(api_item).collect(),
+        total: total.map(|total| total.min(i64::MAX.unsigned_abs()).cast_signed()),
     };
     Ok(Json(response).into_response())
 }

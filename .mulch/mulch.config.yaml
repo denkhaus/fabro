@@ -43,6 +43,7 @@ domains:
   rust-server: {}
   frontend: {}
   security: {}
+  backend: {}
 governance:
   max_entries: 100
   warn_entries: 150

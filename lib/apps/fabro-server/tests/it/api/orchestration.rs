@@ -997,6 +997,21 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
             .await
             .expect("observation seed");
     }
+    records
+        .append(
+            &older,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Note,
+                    text:      "a plain note".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
     seed_work_project(&state).await;
     let link_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
     let link_request = Request::builder()
@@ -1023,7 +1038,7 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
         .header(header::AUTHORIZATION, format!("Bearer {token}"))
         .body(Body::empty())
         .expect("feed request builds");
-    let response = app.oneshot(request).await.expect("request runs");
+    let response = app.clone().oneshot(request).await.expect("request runs");
     let body = response_json(response, StatusCode::OK, "observations feed").await;
     let feed = body["observations"].as_array().expect("feed array");
     assert!(
@@ -1042,6 +1057,30 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
             .any(|item| item["text"].as_str() == Some("unlinked painpoint")),
         "the unlinked record is filtered out: {body}"
     );
+    // The pager's EXACT total (denkhaus/work#1296): the triage filter
+    // counts its derived matches (the walk), the unfiltered feed counts
+    // every record (the SQL count), and the category filter counts
+    // through SQL — stable across a full walk, never a growing guess.
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(1),
+        "the filtered feed counts its matches: {body}"
+    );
+    for (query, want) in [("", 3i64), ("category=painpoint", 2)] {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(api(&format!("/observations?{query}")))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("feed request builds");
+        let response = app.clone().oneshot(request).await.expect("request runs");
+        let body = response_json(response, StatusCode::OK, "observations feed").await;
+        assert_eq!(
+            body["total"].as_i64(),
+            Some(want),
+            "the {query:?} feed names its exact total: {body}"
+        );
+    }
 }
 
 /// Seed the work project through the user surface (the run_channel

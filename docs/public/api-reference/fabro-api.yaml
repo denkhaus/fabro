@@ -15011,12 +15011,20 @@ components:
 
     GlobalObservationList:
       type: object
-      required: [observations]
+      required: [observations, total]
       properties:
         observations:
           type: array
           items:
             $ref: "#/components/schemas/GlobalObservation"
+        total:
+          type: integer
+          format: int64
+          description: |-
+            The EXACT number of records the active filters match,
+            independent of paging — the pager's truthful total
+            (denkhaus/work#1296: the page-window estimate that grew
+            while paging is gone).
       description: One page of the global observations feed.
 
     RunObservationCategory:
@@ -19711,11 +19719,21 @@ components:
       type: object
       required:
         - data
+        - total
       properties:
         data:
           type: array
           items:
             $ref: "#/components/schemas/WorkItem"
+        total:
+          type: integer
+          format: int64
+          nullable: true
+          description: |-
+            The number of items the active filters match, independent of
+            paging (denkhaus/work#1296) — the tracker search's
+            total_count on both arms. Null only when the provider has
+            no counting read (test fakes, the null tracker).
 
     WorkItemCreateRequest:
       description: File a work item in the project's tracker.
