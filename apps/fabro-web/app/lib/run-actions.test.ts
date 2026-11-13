@@ -255,6 +255,73 @@ describe("run lifecycle actions", () => {
     expect(result.results.map((entry) => entry.outcome)).toEqual(["archived", "already_archived"]);
   });
 
+  test("archiveRuns chunks selections above the 250 cap and aggregates the summary (work#1297)", async () => {
+    const requests: CapturedRequest[] = [];
+    generatedAxios.defaults.adapter = (async (config) => {
+      requests.push({ url: config.url, method: config.method, data: config.data });
+      const runIds = (requestJsonBody({ data: config.data }) as { run_ids: string[] }).run_ids;
+      return {
+        data: batchResponse(
+          runIds.map((runId) => ({
+            run_id: runId,
+            ok: true,
+            outcome: "archived",
+            run: { ...makeRun({ kind: "succeeded", reason: "completed" }, true), id: runId },
+          })),
+        ),
+        status: 200,
+        statusText: "",
+        headers: {},
+        config,
+      };
+    }) as AxiosAdapter;
+
+    const runIds = Array.from({ length: 252 }, (_, i) => `run-${i + 1}`);
+    const result = await archiveRuns(runIds);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.url).toBe("/api/v1/runs/archive");
+    expect(requests[1]?.url).toBe("/api/v1/runs/archive");
+    const firstBatch = requestJsonBody(requests[0]!) as { run_ids: string[] };
+    const secondBatch = requestJsonBody(requests[1]!) as { run_ids: string[] };
+    expect(firstBatch.run_ids).toHaveLength(250);
+    expect(firstBatch.run_ids[0]).toBe("run-1");
+    expect(secondBatch.run_ids).toEqual(["run-251", "run-252"]);
+    expect(result.summary).toEqual({ requested: 252, succeeded: 252, failed: 0 });
+    expect(result.results).toHaveLength(252);
+  });
+
+  test("deleteRuns chunks selections above the 250 cap and aggregates the summary", async () => {
+    const requests: CapturedRequest[] = [];
+    generatedAxios.defaults.adapter = (async (config) => {
+      requests.push({ url: config.url, method: config.method, data: config.data });
+      const runIds = (requestJsonBody({ data: config.data }) as { run_ids: string[] }).run_ids;
+      return {
+        data: batchDeleteResponse(
+          runIds.map((runId) => ({ run_id: runId, ok: true, outcome: "deleted" })),
+        ),
+        status: 200,
+        statusText: "",
+        headers: {},
+        config,
+      };
+    }) as AxiosAdapter;
+
+    const runIds = Array.from({ length: 251 }, (_, i) => `run-${i + 1}`);
+    const result = await deleteRuns(runIds);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.url).toBe("/api/v1/runs/delete");
+    const firstBatch = requestJsonBody(requests[0]!) as { run_ids: string[]; force: boolean };
+    const secondBatch = requestJsonBody(requests[1]!) as { run_ids: string[]; force: boolean };
+    expect(firstBatch.run_ids).toHaveLength(250);
+    expect(secondBatch.run_ids).toEqual(["run-251"]);
+    expect(firstBatch.force).toBe(false);
+    expect(secondBatch.force).toBe(false);
+    expect(result.summary).toEqual({ requested: 251, succeeded: 251, failed: 0 });
+    expect(result.results).toHaveLength(251);
+  });
+
   test("unarchiveRuns resolves mixed per-item results without throwing", async () => {
     stubGeneratedAxiosOnce({
       status: 200,
