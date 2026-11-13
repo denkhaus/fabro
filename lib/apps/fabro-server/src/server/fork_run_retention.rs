@@ -16,12 +16,13 @@
 //! count + bytes) at INFO before deleting (logging-strategy: fixed
 //! message, data in fields).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use fabro_api::types::PruneRunsRequest;
+use fabro_store::platform_records::PlatformRecordKind;
 use fabro_types::RunId;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -178,6 +179,50 @@ async fn run_retention_supervisor(state: Arc<AppState>) {
     }
 }
 
+/// #1299 information clock: does this run carry an observation record
+/// no work item consumed? Untriaged = an `ObservationRecorded` record
+/// whose `(run_id, seq)` has no row in `work_observation_links` (any
+/// project). Run-level gate by decision (grill 2026-11-13); notes count
+/// like painpoints — a note becomes triaged only through a link (the
+/// agent pass may promote one through the category-agnostic link door).
+///
+/// Fail-closed: when the records or links query fails, the run BLOCKS —
+/// information is never lost to a read error.
+async fn run_has_untriaged_observations(state: &AppState, run_id: &RunId) -> bool {
+    let records = match state
+        .stores
+        .run_summaries
+        .platform_records()
+        .read_kind(run_id, PlatformRecordKind::ObservationRecorded)
+        .await
+    {
+        Ok(records) => records,
+        Err(error) => {
+            warn!(
+                %error,
+                %run_id,
+                "triage gate could not read observations; blocking the reap"
+            );
+            return true;
+        }
+    };
+    if records.is_empty() {
+        return false;
+    }
+    let linked: HashSet<u64> = match state.work_store().linked_items_for_run(run_id).await {
+        Ok(links) => links.into_iter().map(|link| link.seq).collect(),
+        Err(error) => {
+            warn!(
+                %error,
+                %run_id,
+                "triage gate could not read work-item links; blocking the reap"
+            );
+            return true;
+        }
+    };
+    records.iter().any(|record| !linked.contains(&record.seq))
+}
+
 /// Fail-open wrapper: a failing pass logs and waits for the next tick —
 /// retention is hygiene, never a reason to disturb the server.
 async fn retention_pass_logged(state: &AppState) {
@@ -214,9 +259,48 @@ pub(super) async fn run_retention_pass(
         return Ok(None);
     };
 
-    let plan = plan_prune(state, &request)
+    let mut plan = plan_prune(state, &request)
         .await
         .map_err(|error| anyhow::anyhow!("retention plan failed: {error:?}"))?;
+
+    // #1299 information clock: the triage gate. A run with ANY untriaged
+    // observation is not reapable — its records stay until a work item
+    // consumes them. Fail-closed per query (a read error blocks, never
+    // frees).
+    let planned_before_gate = plan.run_ids.len();
+    let mut reapable = Vec::with_capacity(planned_before_gate);
+    for run_id in plan.run_ids {
+        if !run_has_untriaged_observations(state, &run_id).await {
+            reapable.push(run_id);
+        }
+    }
+    plan.run_ids = reapable;
+    if plan.run_ids.len() != planned_before_gate {
+        info!(
+            planned = planned_before_gate,
+            gated = planned_before_gate - plan.run_ids.len(),
+            "retention plan gated runs with untriaged observations (#1299)"
+        );
+    }
+    let retained: HashSet<String> = plan
+        .run_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
+    plan.rows.retain(|row| {
+        row.run_id
+            .as_deref()
+            .is_some_and(|run_id| retained.contains(run_id))
+    });
+    plan.total_size_bytes = plan
+        .rows
+        .iter()
+        .map(|row| row.size_bytes.unwrap_or_default())
+        .sum::<i64>()
+        .max(0)
+        .try_into()
+        .unwrap_or_default();
+
     info!(
         max_run_age_days,
         runs = plan.run_ids.len(),

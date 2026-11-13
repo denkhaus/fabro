@@ -160,6 +160,162 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
 }
 
 //
+// #1299 information clock: the triage gate on the record reap (user
+// decision, grill 2026-11-13 — a run with ANY untriaged observation is
+// not reapable; the gate is the no-loss guarantee until the sweep
+// consumer lands).
+//
+
+/// Seeds a terminal run whose ULID clock is `days` days old (the age
+/// filter keys on the id's embedded timestamp) and returns its id.
+async fn seed_old_terminal_run(state: &AppState, days: i64) -> RunId {
+    let old = Utc::now() - ChronoDuration::days(days);
+    let run_id = RunId::from(ulid::Ulid::from_parts(
+        u64::try_from(old.timestamp_millis()).expect("post-1970 timestamp"),
+        0,
+    ));
+
+    let mut projection = fabro_types::RunProjection::new(
+        "old terminal run".to_string(),
+        fabro_types::RunSpec {
+            run_id,
+            settings: fabro_types::WorkflowSettings::default(),
+            graph: fabro_types::RunGraph::new("retention"),
+            graph_source: None,
+            workflow_slug: None,
+            workflow_version_id: None,
+            target: None,
+            automation: None,
+            source_directory: None,
+            labels: HashMap::default(),
+            provenance: fabro_types::test_support::test_run_provenance(),
+            definition_blob: None,
+            spec_blob: None,
+            git: None,
+            fork_source_ref: None,
+            admission: fabro_types::PetriAdmission::default(),
+        },
+        old,
+    );
+    projection.status = fabro_types::RunStatus::Succeeded {
+        reason: fabro_types::SuccessReason::Completed,
+    };
+
+    let pool = state.stores.run_summaries.pool();
+    let mut tx = pool.begin().await.expect("seed tx");
+    fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
+        .await
+        .expect("seed run row");
+    tx.commit().await.expect("seed commit");
+
+    // The plan walks the storage run dirs; a run without a scratch dir is
+    // invisible to it (the full-chain test's pattern).
+    let storage = fabro_config::Storage::new(state.server_storage_dir());
+    let scratch_root = storage.run_scratch(&run_id).root().to_path_buf();
+    tokio::fs::create_dir_all(&scratch_root)
+        .await
+        .expect("scratch dir");
+    tokio::fs::write(scratch_root.join("marker"), b"payload")
+        .await
+        .expect("scratch file");
+    run_id
+}
+
+/// Seeds one painpoint observation on the run and returns its stored seq.
+async fn seed_observation(state: &AppState, run_id: &RunId) -> u64 {
+    let stored = state
+        .stores
+        .run_summaries
+        .platform_records()
+        .append(
+            run_id,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "seeded observation".to_string(),
+                    execution: 0,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("seed observation record");
+    stored.seq
+}
+
+#[tokio::test]
+async fn retention_pass_spares_a_run_with_an_untriaged_observation() {
+    let state = test_app_state_with_isolated_storage();
+    set_retention(&state, 14);
+    let run_id = seed_old_terminal_run(&state, 15).await;
+    seed_observation(&state, &run_id).await;
+
+    let stats = fork_run_retention::run_retention_pass(&state)
+        .await
+        .expect("pass must not fail")
+        .expect("enabled configuration must report stats");
+
+    assert_eq!(
+        stats.deleted_count, 0,
+        "an untriaged observation gates the record reap (#1299)"
+    );
+    let after = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("list after");
+    assert_eq!(after.len(), 1, "the gated run row survives");
+}
+
+#[tokio::test]
+async fn retention_pass_reaps_a_run_whose_every_observation_is_linked() {
+    let state = test_app_state_with_isolated_storage();
+    set_retention(&state, 14);
+    state
+        .work_store()
+        .upsert_project(&fabro_work::WorkProject {
+            project_id:               "fabro".to_owned(),
+            display_name:             "Fabro".to_owned(),
+            tracker_provider:         "github".to_owned(),
+            tracker_repo:             "denkhaus/work".to_owned(),
+            target_repo:              None,
+            project_label:            "project:fabro".to_owned(),
+            lane_labels:              std::collections::BTreeMap::new(),
+            claim_label_prefix:       "fabro:run:".to_owned(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        })
+        .await
+        .expect("seed project");
+    let run_id = seed_old_terminal_run(&state, 15).await;
+    let seq = seed_observation(&state, &run_id).await;
+    state
+        .work_store()
+        .link_observation("fabro", "denkhaus/work#1", &run_id, seq)
+        .await
+        .expect("seed link");
+
+    let stats = fork_run_retention::run_retention_pass(&state)
+        .await
+        .expect("pass must not fail")
+        .expect("enabled configuration must report stats");
+
+    assert_eq!(
+        stats.deleted_count, 1,
+        "a fully triaged run reaps with the record clock"
+    );
+    let after = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("list after");
+    assert!(after.is_empty(), "the triaged run is gone");
+}
+
+//
 // Removal reaper (fabro-d616 arm b) + deletion tombstone.
 //
 
