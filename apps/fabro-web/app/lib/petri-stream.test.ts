@@ -159,6 +159,25 @@ describe("platform records", () => {
     expect(started?.category).toBe("petri");
     expect(rows.every((row) => !Number.isNaN(Date.parse(row.ts)))).toBe(true);
   });
+
+  test("the terminal pull request records list as their own rows", () => {
+    // The records carry no payload (work#1173) — the kind alone names
+    // the outcome; the row's detail stays empty.
+    const terminal = (kind: string, streamSeq: number): RunStreamItem => ({
+      ...parallel.stream[0],
+      stream_seq: streamSeq,
+      kind: "platform",
+      item: { seq: streamSeq, recorded_at: 0, record: { kind } },
+    });
+    const records = platformRecordsOf([
+      terminal("pull_request.merged", 90),
+      terminal("pull_request.closed", 91),
+    ]);
+    expect(records.map((record) => [record.kind, record.detail])).toEqual([
+      ["pull_request.merged", null],
+      ["pull_request.closed", null],
+    ]);
+  });
 });
 
 describe("stage renderers", () => {

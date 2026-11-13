@@ -258,6 +258,32 @@ fn platform_progress_event(record: &Value) -> Option<ProgressEvent> {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         }),
+        // The terminal PR outcome settles on the run's pull request link
+        // (denkhaus/work#1173): the record carries no payload — the
+        // kind alone names the outcome.
+        "pull_request.merged" => Some(ProgressEvent::PullRequestSettled { merged: true }),
+        "pull_request.closed" => Some(ProgressEvent::PullRequestSettled { merged: false }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{ProgressEvent, platform_progress_event};
+
+    #[test]
+    fn the_terminal_pull_request_records_acknowledge_the_outcome() {
+        let merged = platform_progress_event(&json!({"kind": "pull_request.merged"}))
+            .expect("the merged record shows a progress line");
+        assert!(matches!(merged, ProgressEvent::PullRequestSettled {
+            merged: true,
+        }));
+        let closed = platform_progress_event(&json!({"kind": "pull_request.closed"}))
+            .expect("the closed record shows a progress line");
+        assert!(matches!(closed, ProgressEvent::PullRequestSettled {
+            merged: false,
+        }));
     }
 }

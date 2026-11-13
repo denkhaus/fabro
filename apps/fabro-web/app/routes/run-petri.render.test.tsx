@@ -233,6 +233,25 @@ describe("a two-branch parallel run", () => {
     expect(html).toContain(String(checkpoint!.item.record.git_commit_sha).slice(0, 12));
   });
 
+  test("the merged pull request row carries the chip's mint state colour", () => {
+    // The terminal PR records carry no payload (work#1173); the kind
+    // alone names the outcome and colours the row like the PR chip.
+    const merged = {
+      ...fixture.stream[0],
+      stream_seq: 90,
+      kind: "platform" as const,
+      item: { seq: 90, recorded_at: 0, record: { kind: "pull_request.merged" } },
+    } as typeof fixture.stream[number];
+    const html = render(
+      <PlatformRecordsPanelView
+        records={platformRecordsOf([...fixture.stream, merged])}
+        projection={fixture.projection}
+      />,
+    );
+    expect(html).toContain("Pull request merged");
+    expect(html).toContain("text-mint");
+  });
+
   test("the sidebar groups the branches under the fork", () => {
     const branches = stages.filter((stage) => stage.parallelGroupId === "fork@1");
     expect(branches.map((stage) => stage.id)).toEqual(["a@1", "b@1"]);

@@ -60,6 +60,18 @@ impl InfoDisplay {
         );
     }
 
+    /// The terminal PR outcome (denkhaus/work#1173): merged is done
+    /// (green); closed-unmerged is not a failure and stays muted — the
+    /// PR chip's colour semantics.
+    pub(super) fn on_pull_request_settled(renderer: &ProgressRenderer, merged: bool) {
+        let (label, style) = if merged {
+            ("PR merged", &renderer.styles().bold_green)
+        } else {
+            ("PR closed", &renderer.styles().bold_dim)
+        };
+        Self::insert_info_line(renderer, &format!("{}", style.apply_to(label)));
+    }
+
     pub(super) fn on_edge_selected(
         &self,
         renderer: &ProgressRenderer,

@@ -448,6 +448,12 @@ export function platformRecordsOf(stream: PetriStream): PlatformRecordEntry[] {
       case "run.branch":
         detail = getString(rec, "run_branch") ?? null;
         break;
+      // The terminal PR outcome settles on the run's pull request link
+      // (denkhaus/work#1173): the record carries no payload of its own —
+      // the row's kind (and the panel's state colour) is the outcome.
+      case "pull_request.merged":
+      case "pull_request.closed":
+        break;
       default:
         continue;
     }

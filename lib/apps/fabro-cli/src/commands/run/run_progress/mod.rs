@@ -321,6 +321,9 @@ impl ProgressUI {
             ProgressEvent::PullRequestCreated { pr_url, draft } => {
                 InfoDisplay::on_pull_request_created(renderer, &pr_url, draft);
             }
+            ProgressEvent::PullRequestSettled { merged } => {
+                InfoDisplay::on_pull_request_settled(renderer, merged);
+            }
         }
     }
 }
