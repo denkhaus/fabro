@@ -853,12 +853,15 @@ impl PlatformRecordStore {
     }
 
     /// One page of one record kind ACROSS runs (the global feed's read:
-    /// newest or oldest first), narrowed by an optional exact run id and
-    /// a case-insensitive text containment over the stored record body.
+    /// newest or oldest first), narrowed by an optional exact run id, an
+    /// optional record category (inside the stored JSON — SQL's
+    /// `json_extract`, so the count below sees it too), and a
+    /// case-insensitive text containment over the stored record body.
     /// `offset` pages after the sort; the caller derives per-row state
     /// and filters beyond SQL's reach with its own over-fetch strategy.
     /// Returns the page (run id beside each record) and the total count
-    /// under the same SQL filters.
+    /// under the same SQL filters — the real total the observations
+    /// pager pages by (denkhaus/work#1296).
     pub async fn read_kind_global(
         &self,
         kind: PlatformRecordKind,
@@ -866,6 +869,7 @@ impl PlatformRecordStore {
         limit: usize,
         offset: usize,
         run_id: Option<&RunId>,
+        category: Option<&str>,
         text_contains: Option<&str>,
     ) -> Result<(Vec<(RunId, StoredPlatformRecord)>, u64)> {
         use sqlx::QueryBuilder;
@@ -878,6 +882,11 @@ impl PlatformRecordStore {
         query.push_bind(kind_tag);
         if let Some(id) = run_id {
             query.push(" AND run_id = ").push_bind(id.to_string());
+        }
+        if let Some(category) = category {
+            query
+                .push(" AND json_extract(record_json, '$.category') = ")
+                .push_bind(category.to_owned());
         }
         if let Some(needle) = text_contains {
             query
@@ -903,6 +912,11 @@ impl PlatformRecordStore {
         count.push_bind(kind_tag);
         if let Some(id) = run_id {
             count.push(" AND run_id = ").push_bind(id.to_string());
+        }
+        if let Some(category) = category {
+            count
+                .push(" AND json_extract(record_json, '$.category') = ")
+                .push_bind(category.to_owned());
         }
         if let Some(needle) = text_contains {
             count

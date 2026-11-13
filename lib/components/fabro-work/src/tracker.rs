@@ -80,6 +80,22 @@ pub trait TrackerProvider: Send + Sync {
         filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>>;
 
+    /// The same read as `list`, plus the result-set total when the
+    /// provider names one cheaply (GitHub search answers `total_count`;
+    /// the open-only list has no count). The total is the REAL number
+    /// the pager pages by (denkhaus/work#1296) — a pager that estimates
+    /// from the page length grows while paging. `None` when the
+    /// provider has no honest count; clients then fall back to relative
+    /// paging. The default delegates to `list` and reports no total.
+    async fn list_with_total(
+        &self,
+        project: &crate::WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<(Vec<WorkItem>, Option<u64>)> {
+        let items = self.list(project, filter).await?;
+        Ok((items, None))
+    }
+
     async fn get(
         &self,
         project: &crate::WorkProject,

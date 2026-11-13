@@ -316,6 +316,22 @@ impl GitHubTracker {
         filter: &WorkItemFilter,
         query: &str,
     ) -> anyhow::Result<Vec<WorkItem>> {
+        Ok(self
+            .search_items_with_total(project, filter, query)
+            .await?
+            .0)
+    }
+
+    /// The search read of `search_items` plus the result-set total:
+    /// GitHub search answers `total_count` beside the page, and that is
+    /// the REAL number the work view's pager pages by (denkhaus/work#1296)
+    /// — an estimated total grows with every visited page.
+    async fn search_items_with_total(
+        &self,
+        project: &WorkProject,
+        filter: &WorkItemFilter,
+        query: &str,
+    ) -> anyhow::Result<(Vec<WorkItem>, Option<u64>)> {
         let limit = filter.limit.clamp(1, 100);
         let page = filter.page.max(1);
         let trimmed = query.trim();
@@ -336,14 +352,18 @@ impl GitHubTracker {
         );
         let response = self.request(Method::GET, &url).send().await?;
         let value = self.send_json(response).await?;
+        let total = value.get("total_count").and_then(Value::as_u64);
         let values = value
             .get("items")
             .and_then(Value::as_array)
             .ok_or_else(|| anyhow::anyhow!("GitHub issue search returned no items array"))?;
-        Ok(values
-            .iter()
-            .filter_map(|value| self.json_item(value))
-            .collect())
+        Ok((
+            values
+                .iter()
+                .filter_map(|value| self.json_item(value))
+                .collect(),
+            total,
+        ))
     }
 }
 
@@ -357,6 +377,21 @@ impl TrackerProvider for GitHubTracker {
         match filter.query.as_deref() {
             Some(query) => self.search_items(project, &filter, query).await,
             None => self.list_open_items(project, &filter).await,
+        }
+    }
+
+    async fn list_with_total(
+        &self,
+        project: &WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<(Vec<WorkItem>, Option<u64>)> {
+        match filter.query.as_deref() {
+            Some(query) => self.search_items_with_total(project, &filter, query).await,
+            // The open-only listing walks GitHub's /issues endpoint,
+            // which answers pages, not a count — no honest total
+            // exists, so None keeps the pager honest instead of
+            // guessing (denkhaus/work#1296).
+            None => Ok((self.list_open_items(project, &filter).await?, None)),
         }
     }
 

@@ -438,9 +438,9 @@ async fn list_work_items(
             )));
         }
     };
-    let items = match sort {
+    let (items, total) = match sort {
         None => tracker
-            .list(project, WorkItemFilter {
+            .list_with_total(project, WorkItemFilter {
                 lane: params.lane,
                 limit: page_size,
                 query: params.query,
@@ -488,15 +488,22 @@ async fn list_work_items(
                 }
             });
             let start = (page - 1) * page_size;
-            accumulated
-                .into_iter()
-                .skip(start)
-                .take(page_size)
-                .collect::<Vec<_>>()
+            (
+                accumulated
+                    .into_iter()
+                    .skip(start)
+                    .take(page_size)
+                    .collect::<Vec<_>>(),
+                // The sorted path slices accumulated tracker pages — the
+                // accumulated window is not a result-set total, so no
+                // honest count exists to report (denkhaus/work#1296).
+                None,
+            )
         }
     };
     let response = WorkItemListResponse {
         data: items.into_iter().map(api_item).collect(),
+        total: total.map(|total| total.cast_signed()),
     };
     Ok(Json(response).into_response())
 }

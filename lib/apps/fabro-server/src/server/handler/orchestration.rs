@@ -128,6 +128,12 @@ async fn list_global_observations(
     };
     let mut offset = (page - 1) * page_size;
     let mut collected: Vec<GlobalObservation> = Vec::new();
+    // The REAL total (denkhaus/work#1296): a SQL COUNT under the same
+    // filters as the page — the pager's page count is stable across a
+    // full walk instead of growing per visited page. Null when the
+    // triage filter is set: triage derives per row beyond SQL's reach,
+    // so no honest count exists and the client falls back.
+    let mut sql_total: Option<u64> = None;
     for _round in 0..3 {
         let (entries, seen_total) = store
             .read_kind_global(
@@ -136,6 +142,7 @@ async fn list_global_observations(
                 over_fetch,
                 offset,
                 run_id.as_ref(),
+                category.as_ref().map(|category| category.as_str()),
                 params.q.as_deref(),
             )
             .await
@@ -146,7 +153,9 @@ async fn list_global_observations(
                     "Reading the observations feed failed.",
                 )
             })?;
-        let _ = seen_total;
+        if sql_total.is_none() {
+            sql_total = Some(seen_total);
+        }
         if entries.is_empty() {
             break;
         }
@@ -154,11 +163,6 @@ async fn list_global_observations(
             let PlatformRecord::ObservationRecorded(record) = &stored.record else {
                 continue;
             };
-            if let Some(wanted) = category {
-                if record.category != wanted {
-                    continue;
-                }
-            }
             let links = linked_items_of_run(&state, entry_run, stored.seq).await;
             let triage = derive_triage(&links);
             if let Some(wanted) = triage_filter {
@@ -185,7 +189,11 @@ async fn list_global_observations(
         offset += over_fetch;
     }
     let observations: Vec<_> = collected.into_iter().take(page_size).collect();
-    Ok(Json(GlobalObservationList { observations }).into_response())
+    let total = triage_filter.is_none().then(|| {
+        i64::try_from(sql_total.unwrap_or(0))
+            .expect("an SQLite COUNT fits an i64")
+    });
+    Ok(Json(GlobalObservationList { observations, total }).into_response())
 }
 
 /// The wire triage state and its derivation over a record's links.
