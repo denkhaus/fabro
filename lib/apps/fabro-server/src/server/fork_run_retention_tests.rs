@@ -21,6 +21,12 @@ fn set_retention(state: &AppState, max_run_age_days: u64) {
     *state.server_settings.write().expect("settings lock") = Arc::new(settings);
 }
 
+fn set_sandbox_reap(state: &AppState, floor_hours: u64) {
+    let mut settings = (*state.server_settings()).clone();
+    settings.server.retention.terminal_sandbox_age_hours = floor_hours;
+    *state.server_settings.write().expect("settings lock") = Arc::new(settings);
+}
+
 /// The scheduled pass asks for exactly this: the configured age in the
 /// CLI's own `older_than` grammar, execution (not dry-run), no other
 /// filter widening the blast radius.
@@ -169,6 +175,15 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
 /// Seeds a terminal run whose ULID clock is `days` days old (the age
 /// filter keys on the id's embedded timestamp) and returns its id.
 async fn seed_old_terminal_run(state: &AppState, days: i64) -> RunId {
+    seed_old_terminal_run_with(state, days, |_| {}).await
+}
+
+/// The seed with a projection mutation applied before the row is
+/// written (the sandbox-reap tests attach a sandbox instance this way).
+async fn seed_old_terminal_run_with<F>(state: &AppState, days: i64, mutate: F) -> RunId
+where
+    F: FnOnce(&mut fabro_types::RunProjection),
+{
     let old = Utc::now() - ChronoDuration::days(days);
     let run_id = RunId::from(ulid::Ulid::from_parts(
         u64::try_from(old.timestamp_millis()).expect("post-1970 timestamp"),
@@ -200,6 +215,20 @@ async fn seed_old_terminal_run(state: &AppState, days: i64) -> RunId {
     projection.status = fabro_types::RunStatus::Succeeded {
         reason: fabro_types::SuccessReason::Completed,
     };
+    // The summary's completed_at (the reap arm's clock) derives from the
+    // projection's conclusion record.
+    projection.conclusion = Some(fabro_types::Conclusion {
+        timestamp:            old,
+        status:               fabro_types::StageOutcome::Succeeded,
+        timing:               fabro_types::RunTiming::default(),
+        failure:              None,
+        final_git_commit_sha: None,
+        stages:               Vec::new(),
+        usage:                None,
+        diff:                 fabro_types::RunDiff::default(),
+        total_retries:        0,
+    });
+    mutate(&mut projection);
 
     let pool = state.stores.run_summaries.pool();
     let mut tx = pool.begin().await.expect("seed tx");
@@ -313,6 +342,123 @@ async fn retention_pass_reaps_a_run_whose_every_observation_is_linked() {
         .await
         .expect("list after");
     assert!(after.is_empty(), "the triaged run is gone");
+}
+
+/// Seeds the run's sandbox instance (retained: the arm's cursor).
+fn seed_sandbox(projection: &mut fabro_types::RunProjection, retained: bool) {
+    projection.sandbox = Some(fabro_types::RunSandbox::ready(
+        fabro_types::RunSandboxPlan {
+            provider: fabro_types::SandboxProviderKind::DOCKER,
+            image:    None,
+            snapshot: None,
+        },
+        fabro_types::RunSandboxInstance {
+            provider:          fabro_types::SandboxProviderKind::DOCKER,
+            image:             None,
+            snapshot:          None,
+            runtime:           fabro_types::RunSandboxRuntime {
+                id:                "petri-env-test".to_string(),
+                working_directory: "/workspace".to_string(),
+                repo_cloned:       None,
+                clone_origin_url:  None,
+                clone_branch:      None,
+                workspace_root:    None,
+                repos_root:        None,
+                primary_repo_link: None,
+                primary_repo_path: None,
+            },
+            ready_duration_ms: None,
+            retained:          Some(retained),
+        },
+    ));
+}
+
+//
+// #1299 disk clock: the sandbox-reap arm (work#168's grilled design).
+//
+
+#[tokio::test]
+async fn sandbox_reap_pass_is_a_noop_when_disabled() {
+    let state = test_app_state_with_isolated_storage();
+    set_sandbox_reap(&state, 0);
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("disabled arm must not fail");
+
+    assert!(
+        stats.is_none(),
+        "terminal_sandbox_age_hours=0 disables the arm (and the brake with it)"
+    );
+}
+
+#[tokio::test]
+async fn sandbox_reap_pass_fails_open_per_run_when_the_provider_config_is_absent() {
+    let state = test_app_state_with_isolated_storage();
+    set_sandbox_reap(&state, 48);
+    // The test state configures no docker provider: the per-run prune
+    // cannot load credentials, WARNs, and the pass fails OPEN — the run
+    // row, its records, and its sandbox cursor stay untouched.
+    let _run_id = seed_old_terminal_run_with(&state, 15, |projection| {
+        seed_sandbox(projection, true);
+    })
+    .await;
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("the pass itself must not fail")
+        .expect("the enabled arm reports stats");
+
+    assert_eq!(stats.candidates, 1, "the old terminal run is a candidate");
+    assert_eq!(
+        stats.failed, 1,
+        "the absent provider config fails the run open"
+    );
+    assert_eq!(stats.reaped, 0);
+    let after = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("list after");
+    assert_eq!(after.len(), 1, "the run row survives a failed reap");
+}
+
+#[tokio::test]
+async fn sandbox_reap_pass_skips_young_terminal_runs_without_the_brake() {
+    let state = test_app_state_with_isolated_storage();
+    set_sandbox_reap(&state, 48);
+    let run_id = seed_old_terminal_run_with(&state, 1, |projection| {
+        seed_sandbox(projection, true);
+    })
+    .await;
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("the pass must not fail")
+        .expect("the enabled arm reports stats");
+
+    assert_eq!(
+        stats.candidates, 0,
+        "a 1h-old terminal run stays under the 48h floor"
+    );
+    assert_eq!(after_sandbox_retained(&state, &run_id).await, Some(true));
+}
+
+/// The stored row's sandbox retained flag — the arm's idempotency
+/// cursor.
+async fn after_sandbox_retained(state: &AppState, run_id: &RunId) -> Option<bool> {
+    state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("list")
+        .iter()
+        .find(|run| run.id == *run_id)
+        .and_then(|run| run.sandbox.as_ref())
+        .and_then(fabro_types::RunSandbox::instance)
+        .and_then(|instance| instance.retained)
 }
 
 //

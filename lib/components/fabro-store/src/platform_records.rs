@@ -31,7 +31,7 @@ use std::sync::Arc;
 use fabro_types::{
     BlobHash, DiffSummary, GitIdentity, OrchestrationField, OrchestrationVerdict, PairId,
     PairTarget, Principal, PullRequestCreationId, PullRequestLink, RunControlAction, RunId,
-    RunNoticeLevel, RunSpec, RunStatus,
+    RunNoticeLevel, RunSpec, RunStatus, SandboxProviderKind,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnection, SqliteRow};
@@ -174,6 +174,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "run.orchestration")]
     #[strum(serialize = "run.orchestration")]
     RunOrchestration,
+    #[serde(rename = "sandbox.reaped")]
+    #[strum(serialize = "sandbox.reaped")]
+    SandboxReaped,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -284,6 +287,13 @@ pub enum PlatformRecord {
     /// (parked → enabled); absent records mean `pending`.
     #[serde(rename = "run.orchestration")]
     RunOrchestration(RunOrchestrationRecord),
+    /// The retention arm reaped the run's sandbox (work#1299 disk clock,
+    /// #168's decided design): the sandbox resources are gone through
+    /// Petri's lease ledger while every run record stays. The projection
+    /// folds the instance `retained: false` — the cursor the reap
+    /// candidates read.
+    #[serde(rename = "sandbox.reaped")]
+    SandboxReaped(SandboxReapedRecord),
 }
 
 impl PlatformRecord {
@@ -319,6 +329,7 @@ impl PlatformRecord {
             Self::WorkLanded(_) => PlatformRecordKind::WorkLanded,
             Self::ObservationRecorded(_) => PlatformRecordKind::ObservationRecorded,
             Self::RunOrchestration(_) => PlatformRecordKind::RunOrchestration,
+            Self::SandboxReaped(_) => PlatformRecordKind::SandboxReaped,
         }
     }
 
@@ -355,7 +366,8 @@ impl PlatformRecord {
             | Self::WorkReleased(_)
             | Self::WorkLanded(_)
             | Self::ObservationRecorded(_)
-            | Self::RunOrchestration(_) => None,
+            | Self::RunOrchestration(_)
+            | Self::SandboxReaped(_) => None,
         }
     }
 }
@@ -517,6 +529,34 @@ pub struct RunOrchestrationRecord {
     /// The gear run that wrote the verdict, when a workflow run did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub by_run:  Option<RunId>,
+}
+
+/// Why the retention arm reaped a sandbox: the terminal-age floor or the
+/// disk brake (work#1299; `strum` per the repo's enum rule).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, strum::Display, strum::EnumString,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum SandboxReapReason {
+    /// Past `terminal_sandbox_age_hours` after the run went terminal.
+    TerminalAge,
+    /// The disk brake widened the reap window below the age floor.
+    DiskBrake,
+}
+
+/// The retention arm reaped this run's sandbox (work#1299 disk clock):
+/// containers, volumes, and the sandbox's host workspace are gone through
+/// Petri's lease ledger; every run record stays. `provider_id` keeps the
+/// deleted resource addressable for post-mortems.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxReapedRecord {
+    /// The provider the sandbox lived on.
+    pub provider:    SandboxProviderKind,
+    /// The provider's own id of the reaped resource.
+    pub provider_id: String,
+    /// Why the arm took it: the age floor or the disk brake.
+    pub reason:      SandboxReapReason,
 }
 
 /// How long one observation entry may be — enforced at the append
@@ -1106,6 +1146,13 @@ mod tests {
                     field:   OrchestrationField::Merge,
                     verdict: OrchestrationVerdict::Enabled,
                     by_run:  Some(fixtures::RUN_2),
+                })
+            }
+            PlatformRecordKind::SandboxReaped => {
+                PlatformRecord::SandboxReaped(SandboxReapedRecord {
+                    provider:    SandboxProviderKind::DOCKER,
+                    provider_id: "petri-env-fixture".to_string(),
+                    reason:      SandboxReapReason::TerminalAge,
                 })
             }
             PlatformRecordKind::ObservationRecorded => {

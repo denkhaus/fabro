@@ -248,6 +248,15 @@ impl RunView {
                 projection.pull_request = None;
                 projection.pull_request_creation = None;
             }
+            // #1299 disk clock (work#168's decided design): the retention
+            // arm reaped the run's sandbox — the resources are gone, every
+            // run record stays. The fold clears the instance's retained
+            // flag: the cursor the reap candidates read.
+            PlatformRecord::SandboxReaped(_) => {
+                if let Some(sandbox) = projection.sandbox.as_mut() {
+                    sandbox.set_retained(false);
+                }
+            }
             // The PR outcome settles on the stored link
             // (denkhaus/work#1173): the run list projection carries it
             // for the board's PR state chip. A state record ahead of any
@@ -439,6 +448,70 @@ mod tests {
             2,
         );
         view
+    }
+
+    #[test]
+    fn sandbox_reaped_clears_the_instance_retained_flag() {
+        // work#1299 disk clock: the reap arm's record must fold the
+        // cursor the candidate filter reads — otherwise the arm would
+        // re-reap an already-reaped sandbox every tick.
+        use fabro_store::platform_records::{SandboxReapReason, SandboxReapedRecord};
+
+        use super::super::FoldState;
+        let mut view = RunView {
+            projection: Some(RunProjection::new(
+                "reap fold".to_string(),
+                types_support::test_run_spec(),
+                Utc::now(),
+            )),
+            state:      FoldState::default(),
+        };
+        let projection = view.projection.as_mut().expect("the seeded view");
+        projection.sandbox = Some(fabro_types::RunSandbox::ready(
+            fabro_types::RunSandboxPlan {
+                provider: fabro_types::SandboxProviderKind::DOCKER,
+                image:    None,
+                snapshot: None,
+            },
+            fabro_types::RunSandboxInstance {
+                provider:          fabro_types::SandboxProviderKind::DOCKER,
+                image:             None,
+                snapshot:          None,
+                runtime:           fabro_types::RunSandboxRuntime {
+                    id:                "petri-env-fold".to_string(),
+                    working_directory: "/workspace".to_string(),
+                    repo_cloned:       None,
+                    clone_origin_url:  None,
+                    clone_branch:      None,
+                    workspace_root:    None,
+                    repos_root:        None,
+                    primary_repo_link: None,
+                    primary_repo_path: None,
+                },
+                ready_duration_ms: None,
+                retained:          Some(true),
+            },
+        ));
+
+        view.fold_platform(
+            &stored(
+                2,
+                PlatformRecord::SandboxReaped(SandboxReapedRecord {
+                    provider:    fabro_types::SandboxProviderKind::DOCKER,
+                    provider_id: "petri-env-fold".to_string(),
+                    reason:      SandboxReapReason::TerminalAge,
+                }),
+            ),
+            2,
+        );
+
+        let retained = view
+            .projection
+            .as_ref()
+            .and_then(|projection| projection.sandbox.as_ref())
+            .and_then(fabro_types::RunSandbox::instance)
+            .and_then(|instance| instance.retained);
+        assert_eq!(retained, Some(false), "sandbox.reaped folds retained=false");
     }
 
     #[test]
