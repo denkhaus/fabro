@@ -234,6 +234,10 @@ proof ceremony with its pins committed.
   claim/queue waiting): the branch door is always open, integration is
   the merger's asynchronous job. The gated trunk push below remains
   only for what must ride the trunk itself (sprint ledger, releases).
+  After EVERY PR create, switch the checkout BACK to `denkhaus`
+  immediately (user rule 2026-11-13): the working tree belongs to the
+  trunk between changes — a feature branch left checked out breeds
+  accidental commits on the wrong branch.
 - Commit BEFORE tracker mutations land. Stage NAMED files only (never
   `git add -A`); the message travels through a file (`git commit -F`),
   written and verified THIS session; read it back before pushing.

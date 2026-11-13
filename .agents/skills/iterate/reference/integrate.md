@@ -75,7 +75,10 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   integrates it. Never self-merge, never wait locally for a free slot
   (no push-gate blocking, no claim/queue waiting): the branch door is
   always open and integration is asynchronous (precedents: PR #516 the
-  first, PR #526 the AGENTS.md CLI section). The trunk push through
+  first, PR #526 the AGENTS.md CLI section). After EVERY PR create,
+  switch the checkout BACK to `denkhaus` immediately (user rule
+  2026-11-13) — a feature branch left checked out breeds accidental
+  commits on the wrong branch. The trunk push through
   `push-gate.nu` below is the EXCEPTION path — the sprint ledger and
   release commits that must ride the trunk itself.
 - During the cycle: branch updates and read-only integration stay
