@@ -170,6 +170,8 @@ use crate::{
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
 #[cfg(test)]
+mod fork_graphviz_env_guard_tests;
+#[cfg(test)]
 mod fork_inspection_guard_tests;
 mod fork_line_recovery;
 #[cfg(test)]
