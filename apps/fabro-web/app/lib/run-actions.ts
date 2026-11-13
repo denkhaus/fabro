@@ -121,8 +121,13 @@ export async function deleteRuns(
   request?: Request,
 ): Promise<BatchDeleteRunsResponse> {
   try {
-    const body: BatchDeleteRunsRequest = { run_ids: runIds, force };
-    return await apiData(() => runsApi.batchDeleteRuns(body, requestSignalOptions(request)));
+    const batches = chunkRunIds(runIds);
+    const responses: BatchDeleteRunsResponse[] = [];
+    for (const batch of batches) {
+      const body: BatchDeleteRunsRequest = { run_ids: batch, force };
+      responses.push(await apiData(() => runsApi.batchDeleteRuns(body, requestSignalOptions(request))));
+    }
+    return mergeBatchDeleteResponses(responses);
   } catch (error) {
     throw lifecycleActionErrorFromError(error);
   }
@@ -302,16 +307,76 @@ async function batchRunLifecycleAction(
   request?: Request,
 ): Promise<BatchRunLifecycleResponse> {
   try {
-    const body: BatchRunLifecycleRequest = { run_ids: runIds };
-    switch (action) {
-      case "archive":
-        return await apiData(() => runsApi.batchArchiveRuns(body, requestSignalOptions(request)));
-      case "unarchive":
-        return await apiData(() => runsApi.batchUnarchiveRuns(body, requestSignalOptions(request)));
+    const batches = chunkRunIds(runIds);
+    const responses: BatchRunLifecycleResponse[] = [];
+    for (const batch of batches) {
+      const body: BatchRunLifecycleRequest = { run_ids: batch };
+      switch (action) {
+        case "archive":
+          responses.push(
+            await apiData(() => runsApi.batchArchiveRuns(body, requestSignalOptions(request))),
+          );
+          break;
+        case "unarchive":
+          responses.push(
+            await apiData(() => runsApi.batchUnarchiveRuns(body, requestSignalOptions(request))),
+          );
+          break;
+      }
     }
+    return mergeBatchLifecycleResponses(responses);
   } catch (error) {
     throw lifecycleActionErrorFromError(error);
   }
+}
+
+/**
+ * The batch lifecycle/delete endpoints cap every request at 250 run IDs and
+ * reject larger bodies wholesale (work#1297: archiving 252 runs from the UI
+ * failed with nothing archived). Chunk oversized selections into cap-sized
+ * requests; a selection at or under the cap — including an empty one, whose
+ * server-side validation error callers rely on — stays a single request.
+ */
+export const BATCH_RUN_IDS_CAP = 250;
+
+function chunkRunIds(runIds: string[]): string[][] {
+  if (runIds.length <= BATCH_RUN_IDS_CAP) return [runIds];
+  const chunks: string[][] = [];
+  for (let i = 0; i < runIds.length; i += BATCH_RUN_IDS_CAP) {
+    chunks.push(runIds.slice(i, i + BATCH_RUN_IDS_CAP));
+  }
+  return chunks;
+}
+
+function mergeBatchLifecycleResponses(
+  responses: BatchRunLifecycleResponse[],
+): BatchRunLifecycleResponse {
+  return {
+    results: responses.flatMap((response) => response.results),
+    summary: sumBatchSummaries(responses.map((response) => response.summary)),
+  };
+}
+
+function mergeBatchDeleteResponses(
+  responses: BatchDeleteRunsResponse[],
+): BatchDeleteRunsResponse {
+  return {
+    results: responses.flatMap((response) => response.results),
+    summary: sumBatchSummaries(responses.map((response) => response.summary)),
+  };
+}
+
+function sumBatchSummaries(
+  summaries: BatchRunLifecycleSummary[],
+): BatchRunLifecycleSummary {
+  return summaries.reduce(
+    (total, summary) => ({
+      requested: total.requested + summary.requested,
+      succeeded: total.succeeded + summary.succeeded,
+      failed:    total.failed + summary.failed,
+    }),
+    { requested: 0, succeeded: 0, failed: 0 },
+  );
 }
 
 function lifecycleActionErrorFromError(error: unknown): LifecycleActionError {
