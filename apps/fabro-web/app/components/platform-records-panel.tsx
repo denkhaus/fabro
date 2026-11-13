@@ -26,6 +26,19 @@ function kindLabel(kind: string): string {
 }
 
 /**
+ * The terminal PR outcome rows carry the PR chip's state colour map
+ * (denkhaus/work#1164): merged is done (mint); closed is not a failure
+ * and keeps the default muted look.
+ */
+const KIND_LABEL_CLASS: Record<string, string> = {
+  "pull_request.merged": "text-mint",
+};
+
+function kindLabelClass(kind: string): string {
+  return KIND_LABEL_CLASS[kind] ?? "text-fg-muted";
+}
+
+/**
  * The platform records of a Petri run: Fabro's own facts beside the engine's
  * events (a checkpoint with its commit, a pull request, a notice), each with
  * the stage it belongs to when it belongs to one.
@@ -67,7 +80,9 @@ export function PlatformRecordsPanelView({
             data-kind={record.kind}
             className="flex items-baseline gap-3"
           >
-            <span className="w-28 shrink-0 text-fg-muted">{kindLabel(record.kind)}</span>
+            <span className={`w-28 shrink-0 ${kindLabelClass(record.kind)}`}>
+              {kindLabel(record.kind)}
+            </span>
             <span className="min-w-0 flex-1 truncate font-mono text-fg-2">
               {record.detail ?? "—"}
             </span>

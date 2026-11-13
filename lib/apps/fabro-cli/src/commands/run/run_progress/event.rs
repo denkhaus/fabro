@@ -151,6 +151,12 @@ pub(super) enum ProgressEvent {
         pr_url: String,
         draft:  bool,
     },
+    /// The run's pull request settled into a terminal state
+    /// (denkhaus/work#1173): merged (the merge door, or an observed
+    /// external merge) or closed unmerged.
+    PullRequestSettled {
+        merged: bool,
+    },
 }
 
 /// The progress line for one coding agent event, given whether it came

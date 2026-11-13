@@ -799,6 +799,17 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
                 styles.dim.apply_to(suffix)
             ))
         }
+        // The terminal PR outcome (denkhaus/work#1173): merged is done
+        // (green), closed-unmerged is not a failure (dim, never red) —
+        // the PR chip's colour semantics.
+        "pull_request.merged" => Some(format!(
+            "{ts}   {}",
+            styles.bold_green.apply_to("Pull request merged")
+        )),
+        "pull_request.closed" => Some(format!(
+            "{ts}   {}",
+            styles.bold_dim.apply_to("Pull request closed")
+        )),
         "interview.answered" => {
             let principal = record.get("principal");
             let who = principal
@@ -1178,6 +1189,18 @@ mod tests {
         assert_eq!(exit_code_of(&finished), Some(0));
         let line = format_pretty(&finished, &styles, &mut state).expect("a lifecycle line");
         assert!(line.contains("\u{00b7} succeeded"), "{line}");
+    }
+
+    #[test]
+    fn the_terminal_pull_request_records_render_their_outcome() {
+        let styles = Styles::new(false);
+        let mut state = PrettyState::default();
+        let merged = platform(2, &json!({"kind": "pull_request.merged"}));
+        let line = format_pretty(&merged, &styles, &mut state).expect("a merged line");
+        assert!(line.contains("Pull request merged"), "{line}");
+        let closed = platform(3, &json!({"kind": "pull_request.closed"}));
+        let line = format_pretty(&closed, &styles, &mut state).expect("a closed line");
+        assert!(line.contains("Pull request closed"), "{line}");
     }
 
     #[test]
