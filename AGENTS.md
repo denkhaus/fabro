@@ -87,6 +87,36 @@ macOS note: if `cargo nextest run` fails with `Too many open files (os error 24)
 
 Before diagnosing 404s or "Invalid run ID" answers from a long-running local stack: `fabro version --server <url>` shows client vs server build identity — the stack is often just older than the route you just built (sprint-74: a two-day-stale stack ate `/runs/queue`). `/health` is deliberately build-free; the version command is the skew check.
 
+## Fabro CLI: operating the production line
+
+**CLI verbs first, raw HTTP never.** The verbs refresh OAuth tokens
+themselves and enforce the validation doors; a hand-rolled `curl` hits
+stale-token 401s and can bypass both (incidents: the sprint-86 session
+401s, and a 2026-11-13 raw `PUT /automations` replace where
+`fabro automations unpause` existed all along). Read the OpenAPI spec to
+understand a door — drive it through the verb.
+
+- Always pass `--server https://mirtuell.net` explicitly (bench hygiene
+  rule; never rely on `FABRO_SERVER`). If the installed CLI is older than
+  the tree, use the tree build: `./target/debug/fabro …`.
+- **Work items** (the tracker, ADR-0032 — full conventions in
+  `docs/agents/issue-tracker.md`): `fabro work list|show|create|close|lane|
+  radius|comments|claims`. Bodies travel via `--body-file -`, never the
+  command line; `close` wants `--reason`, `lane` is the ownership switch.
+- **Gears** (the schedule automations): `fabro automations
+  list|show|unpause|pause|set-schedule|fire|status|breaker`. The schedule
+  enabled flag is the authoritative pause state; `status` shows fire drift.
+- **Adjudication state**: `fabro run queue [--field merge|closable]
+  [--workflow develop] [--requires merge=enabled]` — the adjudicator's and
+  merger's worklists.
+- **Runs**: `fabro ps [-a]` lists runs; `fabro events <run> --pretty
+  [--tail N] [--since 42m]` is the diagnosis entry point;
+  `fabro inspect <run>` for detail.
+- **Observations**: `fabro observation list --run-id <id>` — a run's
+  observation records (the read door, ADR-0039).
+- **Auth/skew**: `fabro auth status` before blaming the server;
+  `fabro version --server <url>` for client/server skew.
+
 ## API workflow
 
 The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
