@@ -9361,6 +9361,10 @@ async fn interrupt_without_a_worker_channel_returns_unavailable() {
 
 #[tokio::test]
 async fn get_graph_returns_svg() {
+    if !fork_graphviz_env_guard_tests::graphviz_render_env_available().await {
+        tracing::warn!("{}", fork_graphviz_env_guard_tests::GRAPHVIZ_ENV_SKIP_NOTE);
+        return;
+    }
     let state = test_app_state();
     let app = crate::test_support::build_test_router(Arc::clone(&state));
 
@@ -9448,6 +9452,10 @@ async fn get_graph_source_returns_dot() {
 
 #[tokio::test]
 async fn render_graph_from_manifest_returns_svg() {
+    if !fork_graphviz_env_guard_tests::graphviz_render_env_available().await {
+        tracing::warn!("{}", fork_graphviz_env_guard_tests::GRAPHVIZ_ENV_SKIP_NOTE);
+        return;
+    }
     let app = test_app_with();
 
     let req = Request::builder()
@@ -9499,6 +9507,10 @@ async fn render_graph_from_manifest_returns_svg() {
 
 #[tokio::test]
 async fn render_graph_from_manifest_accepts_fabro_dotted_attributes() {
+    if !fork_graphviz_env_guard_tests::graphviz_render_env_available().await {
+        tracing::warn!("{}", fork_graphviz_env_guard_tests::GRAPHVIZ_ENV_SKIP_NOTE);
+        return;
+    }
     let app = test_app_with();
     let dot_source = r#"digraph X {
   start [shape=Mdiamond]
