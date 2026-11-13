@@ -441,7 +441,13 @@ digraph Develop {
         // adds exactly ONE write-capable grant: the observation
         // recorder (a record append, not a tree write — x.fs_write
         // stays empty and the file tools stay read-only).
-        x.fabro_tools="fabro_observation_record",
+        // #1303 (2026-11-13): fabro_blob joins — the prompt's evidence
+        // protocol COMMANDS it for blob-demoted captures and the
+        // reviewer died hunting files the engine never materializes;
+        // fabro_work_show joins because the prompt names it as the spec
+        // fallback and the list had silently dropped it (both
+        // read-only, the fabro-269d posture holds).
+        x.fabro_tools="fabro_blob,fabro_work_show,fabro_observation_record",
         x.observations="required",
         output_schema="routing",
         output_retries=2,

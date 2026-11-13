@@ -69,6 +69,19 @@ def main [] {
         fail 'planner x.fabro_tools missing fabro_work_next — the atomic claim grant (ADR-0032) must live on the planner node'
     }
 
+    # 8. #1303: the reviewer's evidence door — the prompt COMMANDS
+    # fabro_blob for blob-demoted captures; without the grant the
+    # reviewer hunts files the engine never materializes and dies at
+    # the all-error-round limit (run 01M7BAS8MN0FWAWCHXE73K1Z5R).
+    let r_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'reviewer ['} | get -o index | first | default null)
+    if $r_start == null { fail 'reviewer node not found' }
+    let r_end = ($lines | enumerate | where {|e| $e.index > $r_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
+    if $r_end == null { fail 'reviewer node block not terminated' }
+    let r_block = ($lines | skip ($r_start + 1) | take ($r_end - $r_start - 1))
+    if not ($r_block | any {|l| ($l | str contains 'fabro_blob')}) {
+        fail 'reviewer x.fabro_tools missing fabro_blob (#1303) — blob-demoted evidence is unreadable and every large review dies'
+    }
+
     # 2. report-only preflight never exits the run
     if ($lines | any {|l| ($l | str contains 'preflight -> exit')}) {
         fail 'preflight -> exit edge exists (fabro-83df regression): report-only preflight must never exit the run'
