@@ -23,15 +23,15 @@ const SANCTIONED_PREFIXES = [
 
 def main [remote: string, url: string] {
     if $remote != $REMOTE { exit 0 }
-    # The hook receives the pushed refs on stdin, line by line:
+    # Capture stdin ONCE at the top (git pipes the pushed refs):
     # <local ref> <local oid> <remote ref> <remote oid>
-    let lines = (input | lines | where {|l| ($l | str trim) != ''})
-    let touches_line = ($lines | any {|l|
+    let raw = ($in | lines | where {|l| ($l | str trim) != ''})
+    let touches_line = ($raw | any {|l|
         ($l | parse --regex '(?P<local_ref>\S+) (?P<local_oid>\S+) refs/heads/(?P<branch>\S+) (?P<remote_oid>\S+)' | get -o branch.0 | default '') == $LINE_BRANCH
     })
     if not $touches_line { exit 0 }
 
-    for l in $lines {
+    for l in $raw {
         let parsed = ($l | parse --regex '(?P<local_ref>\S+) (?P<local_oid>\S+) refs/heads/(?P<branch>\S+) (?P<remote_oid>\S+)')
         let branch = ($parsed | get -o branch.0 | default '')
         if $branch != $LINE_BRANCH { continue }
