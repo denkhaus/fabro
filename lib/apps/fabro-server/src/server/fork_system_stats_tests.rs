@@ -25,22 +25,27 @@ fn filesystem_usage_reuses_the_disk_brakes_percent_math() {
     let dir = temp_dir("usage");
     std::fs::create_dir_all(&dir).expect("mkdir");
     let row = filesystem_usage(&dir).expect("statvfs on a fresh temp dir");
-    let path = Path::new(&dir);
     // The door's percent must be the brake's number over the same
     // probe — a drift here means the door and the brake disagree about
-    // whether the disk is full.
-    let stats = fs2::statvfs(path).expect("statvfs");
-    let expected = percent_used(stats.total_space(), stats.available_space())
-        .expect("nonzero total on a temp dir");
-    assert_eq!(row.used_percent, Some(to_i64(expected)));
-    assert_eq!(row.total_bytes, Some(to_i64(stats.total_space())));
-    assert_eq!(row.available_bytes, Some(to_i64(stats.available_space())));
+    // whether the disk is full. Assert over the ROW's own numbers: a
+    // second statvfs call races other tests' temp writes on the shared
+    // filesystem (available bytes shift between reads; observed as a
+    // parallel-load gate failure 2026-11-14), while the row itself is
+    // one consistent snapshot.
+    let (Some(total), Some(available), Some(used_percent)) =
+        (row.total_bytes, row.available_bytes, row.used_percent)
+    else {
+        panic!("a fresh temp dir must yield full statvfs numbers: {row:?}");
+    };
+    assert!(total > 0, "nonzero total on a temp dir: {row:?}");
     assert_eq!(
+        row.available_bytes.map(|bytes| total.saturating_sub(bytes)),
         row.used_bytes,
-        Some(to_i64(
-            stats.total_space().saturating_sub(stats.available_space())
-        )),
+        "used = total - available"
     );
+    let expected = percent_used(total.unsigned_abs(), available.unsigned_abs())
+        .expect("nonzero total on a temp dir");
+    assert_eq!(used_percent, to_i64(expected));
     assert_eq!(
         row.path.as_deref(),
         Some(dir.display().to_string().as_str())

@@ -3957,14 +3957,23 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = vec![0_u8; 4096];
-            let read = stream.read(&mut request).await.unwrap();
-            let request = String::from_utf8_lossy(&request[..read]);
-            assert!(
-                request.starts_with("GET /api/v1/attach HTTP/1.1"),
-                "unexpected attach request: {request}"
-            );
+            // In a run channel (`FABRO_RUN_CHANNEL_TOKEN` present in the
+            // agent env) the one-shot floor probe rides `get_system_info`
+            // through `send_api` BEFORE `attach_events`; the probe fails
+            // open on any error, so answer non-attach requests with a
+            // bare 404 and keep accepting until the attach arrives.
+            let mut stream = loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 4096];
+                let read = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                if request.starts_with("GET /api/v1/attach HTTP/1.1") {
+                    break stream;
+                }
+                let not_found =
+                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                stream.write_all(not_found.as_bytes()).await.unwrap();
+            };
 
             let body = b"data: hello\n\n";
             let headers = format!(
