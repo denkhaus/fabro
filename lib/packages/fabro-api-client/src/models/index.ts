@@ -349,6 +349,8 @@ export * from './repo-check-response-permissions';
 export * from './repository-pull-request';
 export * from './repository-ref';
 export * from './resolved-automation-git-workflow-source';
+export * from './retry-latest-request';
+export * from './retry-latest-response';
 export * from './review-target';
 export * from './review-target-kind';
 export * from './rewind-request';

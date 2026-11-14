@@ -1,6 +1,7 @@
 mod create;
 mod fork;
 mod retry;
+mod retry_latest;
 mod rewind;
 mod timeline;
 
@@ -15,6 +16,9 @@ pub use fork::{
     persist_forked_run,
 };
 pub use retry::{ensure_retryable, reruns_last};
+pub use retry_latest::{
+    RetryLatestCompat, RetryLatestSpecInput, apply_retry_latest_lineage, graph_compat,
+};
 pub use rewind::{ensure_rewindable, superseded_record};
 pub use timeline::{
     ForkTarget, RunTimeline, StageLabel, StageLabels, TimelineEntry, TimelinePosition,
