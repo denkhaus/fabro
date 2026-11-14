@@ -219,10 +219,25 @@ observable, never restructurable. The full gate procedure:
 ## Phase 5 — Integrate
 
 Completion criterion: code committed (named files, message through a
-file, read back), pushed behind an OPEN gate, the tree clean, and any
-deploy window completed through its proof ceremony with its pins
-committed.
+file, read back), queued through the branch door or pushed behind an
+OPEN gate, the tree clean, and any deploy window completed through its
+proof ceremony with its pins committed.
 
+- SESSION CHANGES RIDE THE BRANCH DOOR (ADR-0040, user rule
+  re-demanded 2026-11-13): every session-side repo change — code,
+  docs, workflow assets — commits to its own `fix/…` / `feat/…` /
+  `docs/…` branch off `denkhaus`, pushes immediately (branch pushes
+  are never gated), and opens a PR against `denkhaus` carrying the
+  `merge:enabled` label — the MERGER integrates it. Never commit
+  session content straight to the trunk, never self-merge the PR, and
+  never wait locally for a free slot (no push-gate blocking, no
+  claim/queue waiting): the branch door is always open, integration is
+  the merger's asynchronous job. The gated trunk push below remains
+  only for what must ride the trunk itself (sprint ledger, releases).
+  After EVERY PR create, switch the checkout BACK to `denkhaus`
+  immediately (user rule 2026-11-13): the working tree belongs to the
+  trunk between changes — a feature branch left checked out breeds
+  accidental commits on the wrong branch.
 - Commit BEFORE tracker mutations land. Stage NAMED files only (never
   `git add -A`); the message travels through a file (`git commit -F`),
   written and verified THIS session; read it back before pushing.
