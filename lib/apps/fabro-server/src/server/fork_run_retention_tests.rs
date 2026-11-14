@@ -27,6 +27,16 @@ fn set_sandbox_reap(state: &AppState, floor_hours: u64) {
     *state.server_settings.write().expect("settings lock") = Arc::new(settings);
 }
 
+/// The reap arm with a disk brake threshold: `brake_percent` low enough
+/// that the REAL storage-disk usage exceeds it makes the brake active in
+/// tests (the brake only reads statvfs of the storage dir).
+fn set_sandbox_reap_with_brake(state: &AppState, floor_hours: u64, brake_percent: u64) {
+    let mut settings = (*state.server_settings()).clone();
+    settings.server.retention.terminal_sandbox_age_hours = floor_hours;
+    settings.server.retention.disk_brake_percent = brake_percent;
+    *state.server_settings.write().expect("settings lock") = Arc::new(settings);
+}
+
 /// The scheduled pass asks for exactly this: the configured age in the
 /// CLI's own `older_than` grammar, execution (not dry-run), no other
 /// filter widening the blast radius.
@@ -230,11 +240,24 @@ where
     });
     mutate(&mut projection);
 
+    // The runs row (the list views) AND the petri_projection row (the
+    // read `run_records::projection` does — the preserve gate's source).
+    let projection_json = serde_json::to_string(&projection).expect("projection json");
     let pool = state.stores.run_summaries.pool();
     let mut tx = pool.begin().await.expect("seed tx");
     fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
         .await
         .expect("seed run row");
+    sqlx::query(
+        "INSERT INTO petri_projection (run_id, projection_json, fold_json, positions_json, \
+         stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) ON CONFLICT(run_id) DO \
+         UPDATE SET projection_json = excluded.projection_json",
+    )
+    .bind(run_id.to_string())
+    .bind(&projection_json)
+    .execute(&mut *tx)
+    .await
+    .expect("seed projection row");
     tx.commit().await.expect("seed commit");
 
     // The plan walks the storage run dirs; a run without a scratch dir is
@@ -443,6 +466,81 @@ async fn sandbox_reap_pass_skips_young_terminal_runs_without_the_brake() {
         "a 1h-old terminal run stays under the 48h floor"
     );
     assert_eq!(after_sandbox_retained(&state, &run_id).await, Some(true));
+}
+
+//
+// work#1324: the preserve gate — `environment.lifecycle.preserve` must
+// stop the reap arm, exactly as it stops `delete_run_internal`.
+//
+
+/// Flags a seeded projection's environment lifecycle preserve setting.
+fn seed_preserve(projection: &mut fabro_types::RunProjection) {
+    projection.spec.settings.run.environment.lifecycle.preserve = true;
+}
+
+/// A preserve-flagged terminal run past the age floor (no brake needed)
+/// is a candidate but never reaped: the gate loads the projection and
+/// skips it. Red-first against work#1324's direct-prune implementation:
+/// that arm attempts the prune (counting `failed`, never `preserved`).
+#[tokio::test]
+async fn sandbox_reap_pass_preserves_a_preserve_flagged_run_past_the_floor() {
+    let state = test_app_state_with_isolated_storage();
+    set_sandbox_reap(&state, 48);
+    let run_id = seed_old_terminal_run_with(&state, 15, |projection| {
+        seed_sandbox(projection, true);
+        seed_preserve(projection);
+    })
+    .await;
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("the pass must not fail")
+        .expect("the enabled arm reports stats");
+
+    assert_eq!(stats.candidates, 1, "the old terminal run is a candidate");
+    assert_eq!(stats.preserved, 1, "the preserve gate skips the run");
+    assert_eq!(stats.reaped, 0);
+    assert_eq!(stats.failed, 0, "the gate short-circuits before the prune");
+    assert_eq!(
+        after_sandbox_retained(&state, &run_id).await,
+        Some(true),
+        "the preserve-flagged sandbox survives the reap pass"
+    );
+}
+
+/// The same gate under an ACTIVE disk brake: the brake removes the age
+/// floor for a young terminal run, and preserve still wins — the brake
+/// widens the window, never the protection set.
+#[tokio::test]
+async fn sandbox_reap_pass_preserves_a_preserve_flagged_run_under_the_brake() {
+    let state = test_app_state_with_isolated_storage();
+    // 1% is below any real disk usage: the brake reads statvfs of the
+    // storage dir and fires.
+    set_sandbox_reap_with_brake(&state, 48, 1);
+    let run_id = seed_old_terminal_run_with(&state, 1, |projection| {
+        seed_sandbox(projection, true);
+        seed_preserve(projection);
+    })
+    .await;
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("the pass must not fail")
+        .expect("the enabled arm reports stats");
+
+    assert!(stats.brake, "the 1% threshold makes the brake active");
+    assert_eq!(
+        stats.candidates, 1,
+        "the brake widens the window past the 48h floor"
+    );
+    assert_eq!(stats.preserved, 1, "the preserve gate skips the run");
+    assert_eq!(stats.reaped, 0);
+    assert_eq!(stats.failed, 0, "the gate short-circuits before the prune");
+    assert_eq!(
+        after_sandbox_retained(&state, &run_id).await,
+        Some(true),
+        "a preserve-flagged sandbox survives the reap under the brake"
+    );
 }
 
 /// The stored row's sandbox retained flag — the arm's idempotency
