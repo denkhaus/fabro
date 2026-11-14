@@ -7,9 +7,11 @@
 //! Issues in one central private repository; a Forgejo adapter slots in
 //! beside it without changes here.
 
+mod forge_pr;
 mod store;
 mod tracker;
 
+pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
 pub use store::{
     ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
     ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,

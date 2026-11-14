@@ -252,6 +252,8 @@ models/mcp-transport-view-stdio.ts
 models/mcp-transport-view.ts
 models/mcp-transport.ts
 models/merge-method.ts
+models/merge-repository-pull-request-request.ts
+models/merge-repository-pull-request-response.ts
 models/merge-run-pull-request-request.ts
 models/merge-run-pull-request-response.ts
 models/model-controls.ts
@@ -356,6 +358,7 @@ models/pull-request-details-timestamps.ts
 models/pull-request-details-unavailable-reason.ts
 models/pull-request-details.ts
 models/pull-request-link.ts
+models/pull-request-list-response.ts
 models/pull-request-meta.ts
 models/pull-request-ref.ts
 models/pull-request-response.ts
@@ -376,6 +379,7 @@ models/replace-environment-request.ts
 models/replace-mcp-server-request.ts
 models/repo-check-response-permissions.ts
 models/repo-check-response.ts
+models/repository-pull-request.ts
 models/repository-ref.ts
 models/resolved-automation-git-workflow-source.ts
 models/review-target-kind.ts

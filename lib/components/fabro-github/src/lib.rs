@@ -13,6 +13,7 @@ use crate::token_source::SecretString;
 
 pub mod access;
 pub mod identity;
+pub mod pull_request_forge;
 pub mod token_source;
 pub mod work_tracker;
 
@@ -957,6 +958,109 @@ pub async fn find_open_pull_request(
     let client = ctx.http_client()?;
     find_open_pull_request_with_client(&client, ctx, owner, repo, base, head, expected_head_sha)
         .await
+}
+
+/// One repository pull request as the label door (ADR-0040) lists it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ListedPullRequest {
+    pub number:   u64,
+    pub title:    String,
+    pub state:    String,
+    pub html_url: String,
+    pub labels:   Vec<String>,
+}
+
+/// The repo-level listing behind the label door: pull requests by state,
+/// optionally narrowed to one label. Labels live on the issues endpoint
+/// (the pulls endpoint does not carry them), so a label filter queries
+/// issues and keeps the entries that are pull requests.
+pub async fn list_pull_requests(
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    state: &str,
+    label: Option<&str>,
+) -> anyhow::Result<Vec<ListedPullRequest>> {
+    let client = ctx.http_client()?;
+    list_pull_requests_with_client(&client, ctx, owner, repo, state, label).await
+}
+
+pub async fn list_pull_requests_with_client(
+    client: &impl HttpClient,
+    ctx: &GitHubContext<'_>,
+    owner: &str,
+    repo: &str,
+    state: &str,
+    label: Option<&str>,
+) -> anyhow::Result<Vec<ListedPullRequest>> {
+    #[derive(Deserialize)]
+    struct IssueLabel {
+        name: String,
+    }
+
+    #[derive(Deserialize)]
+    struct IssueListItem {
+        number:       u64,
+        title:        String,
+        labels:       Vec<IssueLabel>,
+        html_url:     String,
+        state:        String,
+        pull_request: Option<serde_json::Value>,
+    }
+
+    let token = ctx
+        .creds
+        .resolve_bearer_token(
+            client,
+            owner,
+            repo,
+            ctx.base_url,
+            serde_json::json!({ "contents": "write", "pull_requests": "write" }),
+        )
+        .await?;
+    let mut url = DisplaySafeUrl::parse(&format!("{}/repos/{owner}/{repo}/issues", ctx.base_url))
+        .context("Failed to build the label door URL")?;
+    url.query_pairs_mut()
+        .append_pair("state", state)
+        .append_pair("per_page", "100");
+    if let Some(label) = label {
+        url.query_pairs_mut().append_pair("labels", label);
+    }
+    let auth = format!("Bearer {token}");
+    let resp = client
+        .request(
+            HttpMethod::Get,
+            &url.raw_string(),
+            &github_headers(&auth),
+            None,
+        )
+        .await
+        .context("The label door request failed")?;
+    if resp.status != 200 {
+        anyhow::bail!(
+            "The label door listing failed: HTTP {}: {}",
+            resp.status,
+            &resp.text()[..resp.text().len().min(512)]
+        );
+    }
+    let items: Vec<IssueListItem> = resp
+        .json()
+        .context("Decoding the label door listing failed")?;
+    Ok(items
+        .into_iter()
+        .filter_map(|item| {
+            // Only entries that are pull requests — plain issues never
+            // reach the label door.
+            item.pull_request.as_ref()?;
+            Some(ListedPullRequest {
+                number:   item.number,
+                title:    item.title,
+                state:    item.state,
+                html_url: item.html_url,
+                labels:   item.labels.into_iter().map(|label| label.name).collect(),
+            })
+        })
+        .collect())
 }
 
 #[allow(

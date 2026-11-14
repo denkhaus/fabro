@@ -48,6 +48,10 @@ import type { ForkResponse } from '../models';
 // @ts-ignore
 import type { LinkRunPullRequestRequest } from '../models';
 // @ts-ignore
+import type { MergeRepositoryPullRequestRequest } from '../models';
+// @ts-ignore
+import type { MergeRepositoryPullRequestResponse } from '../models';
+// @ts-ignore
 import type { MergeRunPullRequestRequest } from '../models';
 // @ts-ignore
 import type { MergeRunPullRequestResponse } from '../models';
@@ -61,6 +65,8 @@ import type { PreflightResponse } from '../models';
 import type { PullRequestCreation } from '../models';
 // @ts-ignore
 import type { PullRequestLink } from '../models';
+// @ts-ignore
+import type { PullRequestListResponse } from '../models';
 // @ts-ignore
 import type { PullRequestResponse } from '../models';
 // @ts-ignore
@@ -824,6 +830,64 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * The repo-level pull request listing through the server\'s GitHub App installation (ADR-0040\'s label door): pull requests of one repository, optionally filtered by label. The merger\'s label arm reads its session-PR worklist here — run-linked pull requests carry no label and stay owned by the run verdict flow (the label is the session admission, exactly one writer per PR).
+         * @summary List repository pull requests
+         * @param {string} repo The repository to list (&#x60;owner/name&#x60;).
+         * @param {ListPullRequestsStateEnum} [state] The pull request state filter (default &#x60;open&#x60;).
+         * @param {string} [label] Only pull requests carrying this label (for example &#x60;merge:enabled&#x60;, the ADR-0040 session admission).
+         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests: async (repo: string, state?: ListPullRequestsStateEnum, label?: string, limit?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'repo' is not null or undefined
+            assertParamExists('listPullRequests', 'repo', repo)
+            const localVarPath = `/api/v1/pull-requests`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (repo !== undefined) {
+                localVarQueryParameter['repo'] = repo;
+            }
+
+            if (state !== undefined) {
+                localVarQueryParameter['state'] = state;
+            }
+
+            if (label !== undefined) {
+                localVarQueryParameter['label'] = label;
+            }
+
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
          * @summary List a Run\'s Observations
          * @param {string} id Unique run identifier (ULID).
@@ -1146,6 +1210,51 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(runOrchestrationMarkRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The label door\'s write side (ADR-0040, work#1205): merges one pull request of the named repository by its opaque provider-stable id, through the server\'s forge integration. The merger\'s label arm uses this for session pull requests — the run-scoped merge door stays the authority for run-linked pull requests.
+         * @summary Merge repository pull request
+         * @param {string} id The pull request\&#39;s opaque provider-stable id (GitHub and Forgejo spell it the pull-request number).
+         * @param {MergeRepositoryPullRequestRequest} mergeRepositoryPullRequestRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeRepositoryPullRequest: async (id: string, mergeRepositoryPullRequestRequest: MergeRepositoryPullRequestRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('mergeRepositoryPullRequest', 'id', id)
+            // verify required parameter 'mergeRepositoryPullRequestRequest' is not null or undefined
+            assertParamExists('mergeRepositoryPullRequest', 'mergeRepositoryPullRequestRequest', mergeRepositoryPullRequestRequest)
+            const localVarPath = `/api/v1/pull-requests/{id}/merge`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(mergeRepositoryPullRequestRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -2201,6 +2310,22 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The repo-level pull request listing through the server\'s GitHub App installation (ADR-0040\'s label door): pull requests of one repository, optionally filtered by label. The merger\'s label arm reads its session-PR worklist here — run-linked pull requests carry no label and stay owned by the run verdict flow (the label is the session admission, exactly one writer per PR).
+         * @summary List repository pull requests
+         * @param {string} repo The repository to list (&#x60;owner/name&#x60;).
+         * @param {ListPullRequestsStateEnum} [state] The pull request state filter (default &#x60;open&#x60;).
+         * @param {string} [label] Only pull requests carrying this label (for example &#x60;merge:enabled&#x60;, the ADR-0040 session admission).
+         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listPullRequests(repo: string, state?: ListPullRequestsStateEnum, label?: string, limit?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PullRequestListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listPullRequests(repo, state, label, limit, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.listPullRequests']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
          * @summary List a Run\'s Observations
          * @param {string} id Unique run identifier (ULID).
@@ -2293,6 +2418,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.markRunOrchestration(id, runOrchestrationMarkRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['RunsApi.markRunOrchestration']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The label door\'s write side (ADR-0040, work#1205): merges one pull request of the named repository by its opaque provider-stable id, through the server\'s forge integration. The merger\'s label arm uses this for session pull requests — the run-scoped merge door stays the authority for run-linked pull requests.
+         * @summary Merge repository pull request
+         * @param {string} id The pull request\&#39;s opaque provider-stable id (GitHub and Forgejo spell it the pull-request number).
+         * @param {MergeRepositoryPullRequestRequest} mergeRepositoryPullRequestRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async mergeRepositoryPullRequest(id: string, mergeRepositoryPullRequestRequest: MergeRepositoryPullRequestRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<MergeRepositoryPullRequestResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.mergeRepositoryPullRequest(id, mergeRepositoryPullRequestRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.mergeRepositoryPullRequest']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -2738,6 +2877,19 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.linkRunPullRequest(id, linkRunPullRequestRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * The repo-level pull request listing through the server\'s GitHub App installation (ADR-0040\'s label door): pull requests of one repository, optionally filtered by label. The merger\'s label arm reads its session-PR worklist here — run-linked pull requests carry no label and stay owned by the run verdict flow (the label is the session admission, exactly one writer per PR).
+         * @summary List repository pull requests
+         * @param {string} repo The repository to list (&#x60;owner/name&#x60;).
+         * @param {ListPullRequestsStateEnum} [state] The pull request state filter (default &#x60;open&#x60;).
+         * @param {string} [label] Only pull requests carrying this label (for example &#x60;merge:enabled&#x60;, the ADR-0040 session admission).
+         * @param {number} [limit] Maximum items to return (1-100).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listPullRequests(repo: string, state?: ListPullRequestsStateEnum, label?: string, limit?: number, options?: RawAxiosRequestConfig): AxiosPromise<PullRequestListResponse> {
+            return localVarFp.listPullRequests(repo, state, label, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
          * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
          * @summary List a Run\'s Observations
          * @param {string} id Unique run identifier (ULID).
@@ -2813,6 +2965,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
          */
         markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunOrchestrationMarkResponse> {
             return localVarFp.markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The label door\'s write side (ADR-0040, work#1205): merges one pull request of the named repository by its opaque provider-stable id, through the server\'s forge integration. The merger\'s label arm uses this for session pull requests — the run-scoped merge door stays the authority for run-linked pull requests.
+         * @summary Merge repository pull request
+         * @param {string} id The pull request\&#39;s opaque provider-stable id (GitHub and Forgejo spell it the pull-request number).
+         * @param {MergeRepositoryPullRequestRequest} mergeRepositoryPullRequestRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        mergeRepositoryPullRequest(id: string, mergeRepositoryPullRequestRequest: MergeRepositoryPullRequestRequest, options?: RawAxiosRequestConfig): AxiosPromise<MergeRepositoryPullRequestResponse> {
+            return localVarFp.mergeRepositoryPullRequest(id, mergeRepositoryPullRequestRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * The merger\'s write door (ADR-0039 stage E): merge the target run\'s pull request server-side — the technical integration act. Authorization mirrors the verdict door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger (the hardcoded allowlist), and the TARGET must carry a pull request whose latest `merge` verdict is `enabled` — the adjudicator\'s content verdict. The merger never judges content; this door never writes a verdict (one door, one write). A declined merge (conflict, not mergeable) answers 409 with the `merge_conflict` code: the merger\'s fast path parks the run for the agent pass on exactly that signal.
@@ -3215,6 +3378,20 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
+     * The repo-level pull request listing through the server\'s GitHub App installation (ADR-0040\'s label door): pull requests of one repository, optionally filtered by label. The merger\'s label arm reads its session-PR worklist here — run-linked pull requests carry no label and stay owned by the run verdict flow (the label is the session admission, exactly one writer per PR).
+     * @summary List repository pull requests
+     * @param {string} repo The repository to list (&#x60;owner/name&#x60;).
+     * @param {ListPullRequestsStateEnum} [state] The pull request state filter (default &#x60;open&#x60;).
+     * @param {string} [label] Only pull requests carrying this label (for example &#x60;merge:enabled&#x60;, the ADR-0040 session admission).
+     * @param {number} [limit] Maximum items to return (1-100).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listPullRequests(repo: string, state?: ListPullRequestsStateEnum, label?: string, limit?: number, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).listPullRequests(repo, state, label, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * The run\'s `observation.recorded` records (ADR-0038) in `seq` order: the facts the run\'s stages recorded — the reporter\'s patch-visibility and Dockerfile-touch facts, agent-stage observations — with the category that decides whether the adjudicator\'s agent pass must look (a `painpoint`) or the fast path may proceed (only `note`s). The read door the fast-path script and the agent pass share (ADR-0039 stage D).
      * @summary List a Run\'s Observations
      * @param {string} id Unique run identifier (ULID).
@@ -3295,6 +3472,18 @@ export class RunsApi extends BaseAPI {
      */
     public markRunOrchestration(id: string, runOrchestrationMarkRequest: RunOrchestrationMarkRequest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).markRunOrchestration(id, runOrchestrationMarkRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The label door\'s write side (ADR-0040, work#1205): merges one pull request of the named repository by its opaque provider-stable id, through the server\'s forge integration. The merger\'s label arm uses this for session pull requests — the run-scoped merge door stays the authority for run-linked pull requests.
+     * @summary Merge repository pull request
+     * @param {string} id The pull request\&#39;s opaque provider-stable id (GitHub and Forgejo spell it the pull-request number).
+     * @param {MergeRepositoryPullRequestRequest} mergeRepositoryPullRequestRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public mergeRepositoryPullRequest(id: string, mergeRepositoryPullRequestRequest: MergeRepositoryPullRequestRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).mergeRepositoryPullRequest(id, mergeRepositoryPullRequestRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -3516,6 +3705,12 @@ export class RunsApi extends BaseAPI {
     }
 }
 
+export const ListPullRequestsStateEnum = {
+    OPEN: 'open',
+    CLOSED: 'closed',
+    ALL: 'all'
+} as const;
+export type ListPullRequestsStateEnum = typeof ListPullRequestsStateEnum[keyof typeof ListPullRequestsStateEnum];
 export const ListRunQueueFieldEnum = {
     MERGE: 'merge',
     CLOSABLE: 'closable'

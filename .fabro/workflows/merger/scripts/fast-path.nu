@@ -82,6 +82,72 @@ def smoke-merged-tree []: nothing -> string {
     }
 }
 
+# Pure: the provider-agnostic repository spelling of a forge origin URL
+# (`https://github.com/owner/name.git` and `git@host:owner/name.git` both
+# give `owner/name`; the label door takes exactly that spelling).
+export def origin-repo [url: string]: nothing -> any {
+    let url = ($url | str trim | str replace -r '\.git$' '')
+    if ($url | parse -r '^[a-z]+://[^/]+/(?<repo>[^/]+/[^/]+)$' | get -o repo.0) != null {
+        $url | parse -r '^[a-z]+://[^/]+/(?<repo>[^/]+/[^/]+)$' | get repo.0
+    } else if ($url | parse -r '^[^:/@]+@[^:]+:(?<repo>[^/]+/[^/]+)$' | get -o repo.0) != null {
+        $url | parse -r '^[^:/@]+@[^:]+:(?<repo>[^/]+/[^/]+)$' | get repo.0
+    } else {
+        null
+    }
+}
+
+# The label arm (ADR-0040's session half, work#1205): open pull requests
+# of the checkout's repository carrying the merge:enabled label — session
+# work integrating through the same door the run sweep uses. Run pull
+# requests carry no label, so the worklists cannot overlap. Version
+# skew: until the server ships the label door, the list call fails and
+# the arm SKIPS with a warning (never a stage failure — the run sweep
+# above already did its job).
+def label-arm [srv: string, smoke: bool]: nothing -> record {
+    let origin = (do { git remote get-url origin } | complete)
+    if $origin.exit_code != 0 {
+        print -e $"($CALLER): label arm cannot resolve the checkout origin — skipping"
+        return {listed: 0, merged: [], red_smoke: []}
+    }
+    let repo = (origin-repo $origin.stdout)
+    if $repo == null {
+        print -e $"($CALLER): label arm cannot parse the origin '($origin.stdout | str trim)' — skipping"
+        return {listed: 0, merged: [], red_smoke: []}
+    }
+
+    let list_res = (cli $CALLER ['pr' 'list' '--server' $srv '--repo' $repo '--label' 'merge:enabled' '--json'])
+    if $list_res.exit_code != 0 {
+        print -e $"($CALLER): label door unavailable on this server — skipping the session arm: ($list_res.stderr | str trim | str substring 0..160)"
+        return {listed: 0, merged: [], red_smoke: []}
+    }
+    let prs = ($list_res.stdout | from json | get -o data | default [])
+    if ($prs | is-empty) {
+        return {listed: 0, merged: [], red_smoke: []}
+    }
+    print $"($CALLER): label arm: ($prs | length) session pull request\(s\) admitted"
+
+    mut merged = []
+    mut red = []
+    for pr in $prs {
+        let merge_res = (cli $CALLER ['pr' 'merge-by-id' $pr.id '--server' $srv '--repo' $repo '--method' 'merge' '--json'])
+        if $merge_res.exit_code != 0 {
+            print -e $"($CALLER): label merge failed for #($pr.id): ($merge_res.stderr | str trim | str substring 0..200)"
+            continue
+        }
+        print $"($CALLER): merged session pull request #($pr.id) \(($pr.title | str substring 0..80)\)"
+        # The same grilled cheap smoke as the run sweep: the integrated
+        # tree must check. A red smoke cannot park (no run) — it reports
+        # loudly here and in the title; the operator reverts.
+        let smoke_verdict = (if $smoke { 'green' } else { smoke-merged-tree })
+        if $smoke_verdict == 'green' {
+            $merged = ($merged | append $pr.id)
+        } else {
+            $red = ($red | append $pr.id)
+        }
+    }
+    {listed: ($prs | length), merged: $merged, red_smoke: $red}
+}
+
 def main [--smoke]: nothing -> nothing {
     let srv = (server $CALLER)
     # The merger's worklist (work#1126): the closable anti-join
@@ -140,15 +206,20 @@ def main [--smoke]: nothing -> nothing {
         }
     }
 
+    # The label arm (work#1205): session pull requests admitted by the
+    # merge:enabled label integrate through the same door.
+    let label = (label-arm $srv $smoke)
+
     # The pass title (#1159 follow-through): the sweep shape lands on
     # the board tile. Advisory (work_channel::title-own-run).
-    title-own-run $CALLER $"Merger: merged \(($merged_enabled | length)\) with green smoke; parked \(($smoke_parked | length)\) red-smoke + \(($malformed_parked | length)\) malformed; \(($packets | length)\) packet\(s\) for the agent pass"
-    print $"($CALLER): merged \(($merged_enabled | length)\) with green smoke; parked \(($smoke_parked | length)\) on red smoke and \(($malformed_parked | length)\) malformed; \(($packets | length)\) packet\(s\) for the agent pass"
+    title-own-run $CALLER $"Merger: merged \(($merged_enabled | length)\) runs + \(($label.merged | length)\) session PRs with green smoke; parked \(($smoke_parked | length)\) red-smoke + \(($malformed_parked | length)\) malformed + \(($label.red_smoke | length)\) red session smokes; \(($packets | length)\) packet\(s\) for the agent pass"
+    print $"($CALLER): merged \(($merged_enabled | length)\) runs with green smoke; session arm merged \(($label.merged | length)\) of \(($label.listed)\) \(($label.red_smoke | length)\) red\); parked \(($smoke_parked | length)\) on red smoke and \(($malformed_parked | length)\) malformed; \(($packets | length)\) packet\(s\) for the agent pass"
     let integration = {
         packets: $packets,
         merged_enabled: $merged_enabled,
         smoke_parked: $smoke_parked,
         malformed_parked: $malformed_parked,
+        label_arm: $label,
     }
     let label = (if ($packets | is-empty) { "Queue empty" } else { "Runs pending integration" })
     emit-envelope $label 'integration' $integration $smoke

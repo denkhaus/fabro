@@ -849,6 +849,60 @@ impl Client {
         Ok(response.into_inner().data)
     }
 
+    /// The label door (ADR-0040, work#1205): a repository's pull requests
+    /// through the server's forge integration, optionally narrowed by label.
+    pub async fn list_pull_requests(
+        &self,
+        repo: &str,
+        state: &str,
+        label: Option<&str>,
+    ) -> Result<types::PullRequestListResponse> {
+        let repo = repo.to_string();
+        let state = state.to_string();
+        let label = label.map(str::to_string);
+        let response = self
+            .send_api(|client| async move {
+                let mut request = client.list_pull_requests().repo(repo).state(state);
+                if let Some(label) = label {
+                    request = request.label(label);
+                }
+                request.send().await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The label door's write side (work#1205): merge one repository pull
+    /// request by its opaque provider-stable id.
+    pub async fn merge_repository_pull_request(
+        &self,
+        repo: &str,
+        id: &str,
+        method: &str,
+    ) -> Result<types::MergeRepositoryPullRequestResponse> {
+        let repo = repo.to_string();
+        let id = id.to_string();
+        let method = method.to_string();
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .merge_repository_pull_request()
+                    .id(id)
+                    .body(types::MergeRepositoryPullRequestRequest {
+                        repo,
+                        method: method.parse().map_err(|_| {
+                            progenitor_client::Error::InvalidRequest(
+                                "unknown merge method (merge | squash | rebase)".to_string(),
+                            )
+                        })?,
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Retrieves one automation definition by id.
     pub async fn retrieve_automation(&self, id: &str) -> Result<types::Automation> {
         let response = self

@@ -1,10 +1,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::{Path, Query};
 use axum::http::{HeaderValue, header};
+use fabro_api::types::{
+    MergeRepositoryPullRequestRequest, MergeRepositoryPullRequestResponse, PullRequestListResponse,
+    RepositoryPullRequest,
+};
+use fabro_github::pull_request_forge::GitHubPullRequestForge;
 use fabro_store::platform_records::{
     PlatformRecord, PullRequestLinkedRecord, PullRequestRequestedRecord,
 };
+use fabro_types::settings::run::MergeStrategy;
+use fabro_work::{ForgeMergeMethod, ForgePullRequestError};
 
 use super::super::{
     ApiError, AppState, CloseRunPullRequestResponse, CreateRunPullRequestRequest, IntoResponse,
@@ -12,9 +20,15 @@ use super::super::{
     PullRequestLink, RequireRunScoped, Response, Router, RunId, State, StatusCode, get, post,
     run_records, warn,
 };
+use crate::principal_middleware::RequiredRunManagementActor;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/pull-requests", get(list_repository_pull_requests))
+        .route(
+            "/pull-requests/{number}/merge",
+            post(merge_repository_pull_request),
+        )
         .route(
             "/runs/{id}/pull_request",
             get(get_run_pull_request)
@@ -371,6 +385,151 @@ fn available_pull_request_response(
             details_status:             fabro_types::PullRequestDetailsStatus::Available,
             details_unavailable_reason: None,
         },
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ListPullRequestsQuery {
+    #[serde(default = "default_state")]
+    state: String,
+    label: Option<String>,
+    /// The repository to list (`owner/name`). Required — the server has
+    /// no canonical repo of its own; the caller (the merger arm) reads
+    /// it from its checkout's origin.
+    repo:  String,
+}
+
+fn default_state() -> String {
+    "open".to_string()
+}
+
+/// The forge pull-request port resolved from the server's integration:
+/// today the GitHub adapter behind [`PullRequestForge`] — a
+/// second forge slots in beside it without touching this handler or the
+/// merger workflow that reads the door through the CLI.
+async fn label_door_forge(
+    state: &AppState,
+) -> Result<std::sync::Arc<dyn fabro_work::PullRequestForge>, Response> {
+    let creds = load_server_github_credentials(state)
+        .await
+        .map_err(IntoResponse::into_response)?;
+    let http_client = state.http_client().map_err(|err| {
+        ApiError::with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            format!("GitHub integration unavailable on server: {err}"),
+            "integration_unavailable",
+        )
+        .into_response()
+    })?;
+    Ok(std::sync::Arc::new(GitHubPullRequestForge::new(
+        creds,
+        state.github_api_base_url.clone(),
+        http_client,
+    )))
+}
+
+/// The label door (ADR-0040's session half, work#1205): repo-level pull
+/// request listing through the server's forge integration. The merger's
+/// label arm reads its session-PR worklist here — run-linked pull
+/// requests carry no label and stay owned by the run verdict flow.
+async fn list_repository_pull_requests(
+    _auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListPullRequestsQuery>,
+) -> Response {
+    if !matches!(query.state.as_str(), "open" | "closed" | "all") {
+        return ApiError::bad_request(format!(
+            "unknown state '{}' (open | closed | all)",
+            query.state
+        ))
+        .into_response();
+    }
+    let forge = match label_door_forge(state.as_ref()).await {
+        Ok(forge) => forge,
+        Err(err) => return err,
+    };
+    match forge
+        .list_pull_requests(&query.repo, &query.state, query.label.as_deref())
+        .await
+    {
+        Ok(listing) => Json(PullRequestListResponse {
+            data: listing
+                .into_iter()
+                .map(|item| RepositoryPullRequest {
+                    id:     item.id,
+                    title:  item.title,
+                    state:  item.state,
+                    url:    item.url,
+                    labels: item.labels,
+                })
+                .collect(),
+        })
+        .into_response(),
+        Err(ForgePullRequestError::Failed(detail)) => {
+            warn!(error = %detail, "The label door listing failed");
+            ApiError::new(StatusCode::BAD_GATEWAY, detail).into_response()
+        }
+        Err(fabro_work::ForgePullRequestError::NotFound) => ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "The label door listing cannot name one pull request.".to_string(),
+            "not_found",
+        )
+        .into_response(),
+    }
+}
+
+/// The label door's write side (work#1205): merge one repository pull
+/// request by its opaque id — the session half of ADR-0040. The
+/// run-scoped merge door above stays the authority for run-linked pull
+/// requests.
+async fn merge_repository_pull_request(
+    _auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(body): Json<MergeRepositoryPullRequestRequest>,
+) -> Response {
+    if id.is_empty() {
+        return ApiError::bad_request("id must not be empty".to_string()).into_response();
+    }
+    let forge = match label_door_forge(state.as_ref()).await {
+        Ok(forge) => forge,
+        Err(err) => return err,
+    };
+    let method = match body.method {
+        MergeStrategy::Merge => ForgeMergeMethod::Merge,
+        MergeStrategy::Squash => ForgeMergeMethod::Squash,
+        MergeStrategy::Rebase => ForgeMergeMethod::Rebase,
+    };
+    match forge.merge_pull_request(&body.repo, &id, method).await {
+        Ok(()) => {
+            let url = forge
+                .list_pull_requests(&body.repo, "all", None)
+                .await
+                .ok()
+                .and_then(|listing| {
+                    listing
+                        .into_iter()
+                        .find(|item| item.id == id)
+                        .map(|item| item.url)
+                })
+                .unwrap_or_default();
+            Json(MergeRepositoryPullRequestResponse {
+                id,
+                url,
+                method: body.method,
+            })
+            .into_response()
+        }
+        Err(fabro_work::ForgePullRequestError::NotFound) => ApiError::with_code(
+            StatusCode::NOT_FOUND,
+            format!("No pull request '{id}' in {}", body.repo),
+            "not_found",
+        )
+        .into_response(),
+        Err(fabro_work::ForgePullRequestError::Failed(detail)) => {
+            warn!(error = %detail, "The label door merge failed");
+            ApiError::new(StatusCode::BAD_GATEWAY, detail).into_response()
+        }
     }
 }
 

@@ -2946,6 +2946,182 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/pull-requests:
+    get:
+      operationId: listPullRequests
+      tags: [Runs]
+      summary: List repository pull requests
+      description: >-
+        The repo-level pull request listing through the server's GitHub
+        App installation (ADR-0040's label door): pull requests of one
+        repository, optionally filtered by label. The merger's label arm
+        reads its session-PR worklist here — run-linked pull requests
+        carry no label and stay owned by the run verdict flow (the label
+        is the session admission, exactly one writer per PR).
+      parameters:
+        - name: repo
+          in: query
+          required: true
+          description: The repository to list (`owner/name`).
+          schema:
+            type: string
+          example: denkhaus/fabro
+        - name: state
+          in: query
+          required: false
+          description: The pull request state filter (default `open`).
+          schema:
+            type: string
+            enum: [open, closed, all]
+            default: open
+        - name: label
+          in: query
+          required: false
+          description: >-
+            Only pull requests carrying this label (for example
+            `merge:enabled`, the ADR-0040 session admission).
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Maximum items to return (1-100).
+          schema:
+            type: integer
+            format: int32
+      responses:
+        "200":
+          description: The pull request listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullRequestListResponse"
+        "401":
+          description: Not authenticated
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a run-management actor
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: GitHub request failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GitHub integration unavailable
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/pull-requests/{id}/merge:
+    post:
+      operationId: mergeRepositoryPullRequest
+      tags: [Runs]
+      summary: Merge repository pull request
+      description: >-
+        The label door's write side (ADR-0040, work#1205): merges one
+        pull request of the named repository by its opaque
+        provider-stable id, through the server's forge integration. The
+        merger's label arm uses this for session pull requests — the
+        run-scoped merge door stays the authority for run-linked pull
+        requests.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: >-
+            The pull request's opaque provider-stable id (GitHub and
+            Forgejo spell it the pull-request number).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeRepositoryPullRequestRequest"
+      responses:
+        "200":
+          description: Pull request merged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeRepositoryPullRequestResponse"
+        "400":
+          description: Malformed request body
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Not a run-management actor
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Pull request not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: GitHub request failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GitHub integration unavailable
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/pull_request:
     post:
       operationId: createRunPullRequest
@@ -15851,6 +16027,88 @@ components:
         login:
           type: string
           example: octocat
+
+    RepositoryPullRequest:
+      description: >-
+        One repository pull request as the forge-agnostic label door
+        lists it: the identity the merger needs (the opaque
+        provider-stable id, title, url, state) plus the labels that
+        drive admission.
+      type: object
+      required:
+        - id
+        - title
+        - state
+        - url
+        - labels
+      properties:
+        id:
+          type: string
+          description: >-
+            Opaque provider-stable identity (GitHub and Forgejo spell it
+            the pull-request number; GitLab would spell its iid).
+          example: "526"
+        title:
+          type: string
+          example: AGENTS.md the CLI-verbs-first rule
+        state:
+          type: string
+          description: The forge's own state word.
+          example: open
+        url:
+          type: string
+          example: https://github.com/denkhaus/fabro/pull/526
+        labels:
+          type: array
+          items:
+            type: string
+          example: ["merge:enabled"]
+
+    MergeRepositoryPullRequestRequest:
+      description: >-
+        Request body for merging a repository pull request through the
+        label door (ADR-0040). Provider-agnostic: `repo` is the forge's
+        `owner/name` spelling, `id` is the opaque provider-stable
+        identity.
+      type: object
+      required:
+        - repo
+        - method
+      properties:
+        repo:
+          type: string
+          description: The repository the pull request lives in (`owner/name`).
+          example: denkhaus/fabro
+        method:
+          $ref: "#/components/schemas/MergeMethod"
+
+    MergeRepositoryPullRequestResponse:
+      description: Response body for a label-door merge.
+      type: object
+      required:
+        - id
+        - url
+        - method
+      properties:
+        id:
+          type: string
+          example: "526"
+        url:
+          type: string
+          example: https://github.com/denkhaus/fabro/pull/526
+        method:
+          $ref: "#/components/schemas/MergeMethod"
+
+    PullRequestListResponse:
+      description: Repo-level pull request listing (the label door).
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/RepositoryPullRequest"
 
     PullRequestRef:
       description: Git reference summary for a pull request.

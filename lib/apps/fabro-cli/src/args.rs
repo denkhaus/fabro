@@ -1017,6 +1017,41 @@ pub(crate) struct PrViewArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct PrListArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The repository to list (`owner/name`)
+    #[arg(long)]
+    pub(crate) repo: String,
+
+    /// Only pull requests carrying this label (for example merge:enabled)
+    #[arg(long)]
+    pub(crate) label: Option<String>,
+
+    /// State filter: open, closed, or all
+    #[arg(long, default_value = "open")]
+    pub(crate) state: String,
+}
+
+#[derive(Args)]
+pub(crate) struct PrMergeByIdArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The pull request's opaque provider-stable id
+    pub(crate) id: String,
+
+    /// The repository the pull request lives in (`owner/name`)
+    #[arg(long)]
+    pub(crate) repo: String,
+
+    /// How the merge lands: merge, squash, or rebase
+    #[arg(long, default_value = "merge")]
+    pub(crate) method: String,
+}
+
+#[derive(Args)]
 pub(crate) struct PrLinkArgs {
     #[command(flatten)]
     pub(crate) server: ServerTargetArgs,
@@ -1713,6 +1748,8 @@ impl Commands {
                 PrCommand::View(_) => "pr view",
                 PrCommand::Merge(_) => "pr merge",
                 PrCommand::Close(_) => "pr close",
+                PrCommand::List(_) => "pr list",
+                PrCommand::MergeById(_) => "pr merge-by-id",
             },
             Self::Parent(ns) => match &ns.command {
                 ParentCommand::Link(_) => "parent link",
@@ -1830,6 +1867,10 @@ pub(crate) enum PrCommand {
     Merge(PrMergeArgs),
     /// Close a pull request
     Close(PrCloseArgs),
+    /// List a repository's pull requests (the label door, ADR-0040)
+    List(PrListArgs),
+    /// Merge a repository pull request by its provider-stable id
+    MergeById(PrMergeByIdArgs),
 }
 
 #[derive(Args)]

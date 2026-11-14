@@ -142,9 +142,25 @@ do {
     ]
 }
 
+# --- The label arm's origin parse (work#1205): provider-agnostic — the
+# forge host is irrelevant, the repository spelling is the contract.
+use fast-path.nu origin-repo
+def expect-repo [url: string, want: any]: nothing -> nothing {
+    let got = (origin-repo $url)
+    if $got != $want {
+        print -e $"smoke: FAIL — origin-repo '($url)' gave '($got)', wanted '($want)'"
+        exit 1
+    }
+}
+expect-repo "https://github.com/denkhaus/fabro.git" "denkhaus/fabro"
+expect-repo "https://forgejo.example/acme/widgets.git" "acme/widgets"
+expect-repo "git@github.com:denkhaus/fabro.git" "denkhaus/fabro"
+expect-repo "https://github.com/denkhaus/fabro" "denkhaus/fabro"
+expect-repo "not-a-remote" null
+
 rm -f $state
 end-fail-gate
-print "merger-fast-path-smoke: ok — clean merge + enabled mark, conflict packet, malformed park, parked re-entry, filter, argv grammar"
+print "merger-fast-path-smoke: ok — clean merge + enabled mark, conflict packet, malformed park, parked re-entry, filter, argv grammar, label-arm origin parse"
 
 # Sourcing fast-path.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
