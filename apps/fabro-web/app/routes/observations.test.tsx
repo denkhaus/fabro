@@ -22,8 +22,12 @@ const { default: ObservationsFeedView } = await import("./observations");
 
 let activeRenderer: TestRenderer.ReactTestRenderer | null = null;
 
-function renderFeed(observations: unknown[], initialEntry: string): TestRenderer.ReactTestRenderer {
-  currentFeed = { observations } as GlobalObservationList;
+function renderFeed(
+  observations: unknown[],
+  initialEntry: string,
+  total?: number,
+): TestRenderer.ReactTestRenderer {
+  currentFeed = { observations, total } as GlobalObservationList;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   const router = createMemoryRouter([
@@ -86,6 +90,36 @@ describe("ObservationsFeedView", () => {
     expect(text).not.toContain("…");
     // The run id links into the run's observations tab.
     expect(JSON.stringify(json)).toContain("/runs/01M6SGVZ4V1DABCDEFGH/observations");
+  });
+
+  // denkhaus/work#1296: the pager's total is the server's EXACT count,
+  // never the page-window estimate — a short first page over a 25-record
+  // feed renders 25 items and 3 pages (the estimate showed 2 items).
+  test("renders the served exact total, not a page-window estimate", async () => {
+    const renderer = await flushRows(renderFeed([
+      {
+        run_id: "01M6SGVZ4V1D",
+        seq: 1,
+        category: "note",
+        triage_state: "untriaged",
+        text: "one of many",
+        recorded_at: "2026-12-11T11:38:44Z",
+        linked_work_items: [],
+      },
+      {
+        run_id: "01M6SGVZ4V1E",
+        seq: 1,
+        category: "painpoint",
+        triage_state: "untriaged",
+        text: "another of many",
+        recorded_at: "2026-12-11T11:39:44Z",
+        linked_work_items: [],
+      },
+    ], "/observations?page=4", 25));
+    const text = textFromNode(renderer.toJSON());
+    expect(text).toMatch(/25\s+item/);
+    // The requested page 4 clamps to the last page of the 25-record feed.
+    expect(text).toMatch(/page\s+3\s+\/\s+3/);
   });
 
   // denkhaus/work#1235, decision 5: absolute `dd.MM.yyyy HH:mm:ss`

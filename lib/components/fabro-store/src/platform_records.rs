@@ -893,12 +893,18 @@ impl PlatformRecordStore {
     }
 
     /// One page of one record kind ACROSS runs (the global feed's read:
-    /// newest or oldest first), narrowed by an optional exact run id and
-    /// a case-insensitive text containment over the stored record body.
-    /// `offset` pages after the sort; the caller derives per-row state
-    /// and filters beyond SQL's reach with its own over-fetch strategy.
-    /// Returns the page (run id beside each record) and the total count
-    /// under the same SQL filters.
+    /// newest or oldest first), narrowed by an optional exact run id, a
+    /// case-insensitive text containment over the stored record body,
+    /// and — for records whose payload names a category — the exact
+    /// serde fragment of one category (`"category":"painpoint"`). The
+    /// category filter rides `record_json` the same way the text filter
+    /// does; a serde rename of the field would silently widen the
+    /// match, so the fragment is pinned by test. `offset` pages after
+    /// the sort; the caller derives per-row state and filters beyond
+    /// SQL's reach with its own over-fetch strategy. Returns the page
+    /// (run id beside each record) and the total count under the SAME
+    /// SQL filters (kind, run, text, category) — the pager's exact
+    /// total (denkhaus/work#1296).
     pub async fn read_kind_global(
         &self,
         kind: PlatformRecordKind,
@@ -907,24 +913,45 @@ impl PlatformRecordStore {
         offset: usize,
         run_id: Option<&RunId>,
         text_contains: Option<&str>,
+        category: Option<&str>,
     ) -> Result<(Vec<(RunId, StoredPlatformRecord)>, u64)> {
         use sqlx::QueryBuilder;
+
+        // The WHERE body the page fetch and the COUNT share: one
+        // definition, so the total can never drift from the page's
+        // filters (the drift class denkhaus/work#1296 closes).
+        fn push_global_feed_filters(
+            query: &mut QueryBuilder<Sqlite>,
+            kind_tag: &str,
+            run_id: Option<&RunId>,
+            text_contains: Option<&str>,
+            category: Option<&str>,
+        ) {
+            query.push(" WHERE kind = ").push_bind(kind_tag);
+            if let Some(id) = run_id {
+                query.push(" AND run_id = ").push_bind(id.to_string());
+            }
+            if let Some(needle) = text_contains {
+                query
+                    .push(" AND instr(lower(record_json), lower(")
+                    .push_bind(needle.to_owned())
+                    .push(")) > 0");
+            }
+            if let Some(category) = category {
+                query
+                    .push(" AND instr(record_json, ")
+                    .push_bind(format!("\"category\":\"{category}\""))
+                    .push(") > 0");
+            }
+        }
+
         let kind_tag: &str = kind.into();
         let order = if newest_first { "DESC" } else { "ASC" };
 
         let mut query = QueryBuilder::<Sqlite>::new(
-            "SELECT run_id, seq, recorded_at, record_json, execution, firing FROM platform_records WHERE kind = ",
+            "SELECT run_id, seq, recorded_at, record_json, execution, firing FROM platform_records",
         );
-        query.push_bind(kind_tag);
-        if let Some(id) = run_id {
-            query.push(" AND run_id = ").push_bind(id.to_string());
-        }
-        if let Some(needle) = text_contains {
-            query
-                .push(" AND instr(lower(record_json), lower(")
-                .push_bind(needle.to_owned())
-                .push(")) > 0");
-        }
+        push_global_feed_filters(&mut query, kind_tag, run_id, text_contains, category);
         query
             .push(" ORDER BY recorded_at ")
             .push(order)
@@ -938,18 +965,8 @@ impl PlatformRecordStore {
             .push_bind(i64::try_from(offset).unwrap_or(i64::MAX));
         let rows = query.build().fetch_all(&self.pool).await?;
 
-        let mut count =
-            QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM platform_records WHERE kind = ");
-        count.push_bind(kind_tag);
-        if let Some(id) = run_id {
-            count.push(" AND run_id = ").push_bind(id.to_string());
-        }
-        if let Some(needle) = text_contains {
-            count
-                .push(" AND instr(lower(record_json), lower(")
-                .push_bind(needle.to_owned())
-                .push(")) > 0");
-        }
+        let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM platform_records");
+        push_global_feed_filters(&mut count, kind_tag, run_id, text_contains, category);
         let total: i64 = count.build_query_scalar().fetch_one(&self.pool).await?;
 
         let mut records = Vec::with_capacity(rows.len());
@@ -1388,6 +1405,110 @@ mod tests {
                 .expect("an empty head reads"),
             None
         );
+    }
+
+    /// The global feed's exact total (denkhaus/work#1296): the COUNT
+    /// beside the page fetch honors every SQL filter — kind, run, text
+    /// AND the category serde fragment — so the pager's total never
+    /// disagrees with the page it sits under. The fragment assertion
+    /// doubles as the serde-drift guard: a rename of the record's
+    /// category field fails here before the SQL filter silently widens.
+    #[tokio::test]
+    async fn read_kind_global_counts_and_filters_the_exact_total() {
+        let store = store();
+        let run = fixtures::RUN_1;
+        let other = fixtures::RUN_2;
+        let painpoint = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  fabro_types::ObservationCategory::Painpoint,
+            text:      "the pager grew while paging".to_string(),
+            execution: 0,
+            firing:    1,
+        });
+        let note = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  fabro_types::ObservationCategory::Note,
+            text:      "nothing durable to record".to_string(),
+            execution: 0,
+            firing:    1,
+        });
+        let encoded = serde_json::to_string(&note).expect("the record serializes");
+        assert!(
+            encoded.contains("\"category\":\"note\""),
+            "the serde fragment the category filter greps: {encoded}"
+        );
+        store
+            .append(&run, &painpoint, None)
+            .await
+            .expect("the painpoint stores");
+        store
+            .append(&run, &note, None)
+            .await
+            .expect("the note stores");
+        store
+            .append(&other, &painpoint.clone(), None)
+            .await
+            .expect("the other run's painpoint stores");
+        store
+            .append(&other, &sample(PlatformRecordKind::RunArchived), None)
+            .await
+            .expect("a non-observation record stores");
+
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect("the unfiltered feed reads");
+        assert_eq!((entries.len(), total), (3, 3));
+
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                Some("note"),
+            )
+            .await
+            .expect("the category-filtered feed reads");
+        assert_eq!((entries.len(), total), (1, 1));
+
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                Some("pager grew"),
+                None,
+            )
+            .await
+            .expect("the text-filtered feed reads");
+        // Both painpoints share the text (the clone on the other run), so
+        // the text filter matches two — page and total agree.
+        assert_eq!((entries.len(), total), (2, 2));
+
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                Some(&run),
+                None,
+                None,
+            )
+            .await
+            .expect("the run-narrowed feed reads");
+        assert_eq!((entries.len(), total), (2, 2));
     }
 
     /// The gear substrate query (ADR-0039): `latest_verdicts_by_run`

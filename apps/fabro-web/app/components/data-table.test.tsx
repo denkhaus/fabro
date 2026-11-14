@@ -95,4 +95,28 @@ describe("DataTable (denkhaus/work#1201)", () => {
     const descending = renderTable("/?sort=-key");
     expect(JSON.stringify(descending.toJSON())).toContain("▼");
   });
+
+  // denkhaus/work#1296: the pager's total and page window come from the
+  // fetcher's SERVED total and stay STABLE across a full walk to the
+  // last page — no number appears mid-walk that was not there on load
+  // (the estimate defect: every visited full page grew the count).
+  test("keeps the served total and page count stable across a full walk", async () => {
+    const rowsOf = (page: number) =>
+      Array.from({ length: 10 }, (_, index) => {
+        const n = (page - 1) * 10 + index + 1;
+        return { id: `row-${n}`, key: `k${n}`, title: `row ${n}` };
+      });
+    const walk: Array<{ page: number; rows: Array<{ id: string; key: string; title: string }> }> = [
+      { page: 1, rows: rowsOf(1) },
+      { page: 2, rows: rowsOf(2) },
+      { page: 3, rows: rowsOf(3).slice(0, 5) },
+    ];
+    for (const step of walk) {
+      currentData = { rows: step.rows, total: 25 };
+      const renderer = renderTable(`/?page=${step.page}`);
+      const text = textOf(renderer);
+      expect(text).toMatch(/25\s+item/);
+      expect(text).toMatch(new RegExp(`page\\s+${step.page}\\s+/\\s+3`));
+    }
+  });
 });

@@ -22,4 +22,8 @@ import type { GlobalObservation } from './global-observation';
  */
 export interface GlobalObservationList {
     'observations': Array<GlobalObservation>;
+    /**
+     * The EXACT number of records the active filters match, independent of paging — the pager\'s truthful total (denkhaus/work#1296: the page-window estimate that grew while paging is gone).
+     */
+    'total': number;
 }

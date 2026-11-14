@@ -66,6 +66,16 @@ pub struct WorkItemFilter {
     pub page:  usize,
 }
 
+/// A paged list read that also names the TOTAL the filter matches —
+/// the pager's truthful count (denkhaus/work#1296), independent of
+/// paging. `total` is `None` only when the provider has no counting
+/// read; the surface then falls back to a page-window estimate.
+#[derive(Debug, Clone)]
+pub struct WorkItemPage {
+    pub items: Vec<WorkItem>,
+    pub total: Option<u64>,
+}
+
 /// The forge-agnostic tracker port. Implemented per forge; the work store
 /// and the server never name a forge.
 #[async_trait]
@@ -79,6 +89,21 @@ pub trait TrackerProvider: Send + Sync {
         project: &crate::WorkProject,
         filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>>;
+
+    /// The counting form of [`Self::list`] (denkhaus/work#1296): the
+    /// items of the requested page BESIDE the exact number of items the
+    /// filter matches. The default carries `list`'s items with an
+    /// unknown total, so providers without a counting read keep
+    /// compiling; the GitHub adapter answers exactly on both arms (the
+    /// search API's `total_count`).
+    async fn list_with_total(
+        &self,
+        project: &crate::WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<WorkItemPage> {
+        let items = self.list(project, filter).await?;
+        Ok(WorkItemPage { items, total: None })
+    }
 
     async fn get(
         &self,
@@ -185,6 +210,20 @@ impl TrackerProvider for NullTracker {
         _filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
         Ok(Vec::new())
+    }
+
+    /// A project without a forge has exactly zero items — the count is
+    /// exact, not unknown (denkhaus/work#1296).
+    async fn list_with_total(
+        &self,
+        project: &crate::WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<WorkItemPage> {
+        let _ = (project, filter);
+        Ok(WorkItemPage {
+            items: Vec::new(),
+            total: Some(0),
+        })
     }
 
     async fn get(
