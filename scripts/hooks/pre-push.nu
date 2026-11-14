@@ -1,0 +1,66 @@
+#!/usr/bin/env nu
+# pre-push: session changes ride the branch door (PR #528's rule, now
+# enforced). Every commit pushed to `denkhaus` must name its sanction:
+# a merger merge commit, a ceremony prefix, or an explicit [direct:]
+# marker. Everything else belongs on a branch + PR with merge:enabled.
+#
+# Installed by `just hooks` (git config core.hooksPath scripts/hooks).
+# The push-gate (.fabro/scripts/push-gate.nu) stays the run-activity
+# check; this hook is the branch-door check. Fail-closed on our own
+# errors: a broken check must not become an open door.
+
+const REMOTE = 'origin'
+const LINE_BRANCH = 'denkhaus'
+# Commit subjects that may land on denkhaus directly. Extend only by
+# naming a new ceremony class here (never by removing the check).
+const SANCTIONED_PREFIXES = [
+    'release:'
+    'sprint ledger:'
+    'mulch:'
+    'Merge pull request #'
+    'Merge PR #'
+]
+
+def main [remote: string, url: string] {
+    if $remote != $REMOTE { exit 0 }
+    # The hook receives the pushed refs on stdin, line by line:
+    # <local ref> <local oid> <remote ref> <remote oid>
+    let lines = (input | lines | where {|l| ($l | str trim) != ''})
+    let touches_line = ($lines | any {|l|
+        ($l | parse --regex '(?P<local_ref>\S+) (?P<local_oid>\S+) refs/heads/(?P<branch>\S+) (?P<remote_oid>\S+)' | get -o branch.0 | default '') == $LINE_BRANCH
+    })
+    if not $touches_line { exit 0 }
+
+    for l in $lines {
+        let parsed = ($l | parse --regex '(?P<local_ref>\S+) (?P<local_oid>\S+) refs/heads/(?P<branch>\S+) (?P<remote_oid>\S+)')
+        let branch = ($parsed | get -o branch.0 | default '')
+        if $branch != $LINE_BRANCH { continue }
+        let local_oid = ($parsed | get -o local_oid.0 | default '')
+        let remote_oid = ($parsed | get -o remote_oid.0 | default '')
+        if $local_oid == '' { continue }
+        # New commits only (a push of already-known history is a no-op).
+        let range = if ($remote_oid | str contains '0000000000000000000000000000000000000000') {
+            $local_oid
+        } else {
+            $"($remote_oid)..($local_oid)"
+        }
+        let revs = (do { ^git rev-list $range --first-parent } | complete)
+        if $revs.exit_code != 0 { continue }
+        for sha in ($revs.stdout | lines | where {|s| $s != ''}) {
+            let subject = (do { ^git log -1 --format=%s $sha } | complete | get stdout | str trim)
+            let sanctioned = ($SANCTIONED_PREFIXES | any {|p| $subject | str starts-with $p })
+            let marked = ($subject | str contains '[direct:')
+            if (not $sanctioned) and (not $marked) {
+                print -e $"╔══ BRANCH DOOR ══╗"
+                print -e $"commit ($sha | str substring 0..11) \"($subject)\" lands on denkhaus"
+                print -e $"without a sanction. Session changes ride the branch door:"
+                print -e $"  branch -> commit -> push -> PR (merge:enabled) -> back to denkhaus."
+                print -e $"Direct is for line-critical fixes only — name it in the subject"
+                print -e $"with [direct: <reason>], or use a ceremony prefix"
+                print -e $"(\($SANCTIONED_PREFIXES | str join ', '))."
+                exit 1
+            }
+        }
+    }
+    exit 0
+}
