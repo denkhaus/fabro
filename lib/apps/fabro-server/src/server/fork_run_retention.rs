@@ -16,19 +16,24 @@
 //! count + bytes) at INFO before deleting (logging-strategy: fixed
 //! message, data in fields).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use fabro_api::types::PruneRunsRequest;
-use fabro_types::RunId;
+use fabro_config::Storage;
+use fabro_petri::prune::{self, PruneRequest};
+use fabro_store::platform_records::{
+    PlatformRecord, PlatformRecordKind, SandboxReapReason, SandboxReapedRecord,
+};
+use fabro_types::{RunId, RunSandboxInstance};
 use tokio::task::JoinHandle;
 use tokio::time;
 use tracing::{Instrument as _, info, info_span, warn};
 
 use super::handler::system::{execute_prune, plan_prune};
-use super::{AppState, delete_run_internal, to_i64};
+use super::{AppState, delete_run_internal, run_records, to_i64};
 
 /// First pass waits out startup reconciliation (projector startup_pass,
 /// scheduler boot) before any deletion.
@@ -42,13 +47,14 @@ const RUN_RETENTION_SCAN_INTERVAL: Duration = Duration::from_hours(24);
 const REMOVAL_REAPER_INTERVAL: Duration = Duration::from_mins(5);
 const REMOVAL_REAPER_STUCK_AFTER: Duration = Duration::from_mins(15);
 
+/// Sandbox-reap arm cadence (work#1299 disk clock, #168's grilled
+/// design): every 15 minutes — statvfs is cheap, and a disk spike must
+/// not wait for the 24h retention cadence.
+const REAP_ARM_INTERVAL: Duration = Duration::from_mins(15);
+
 /// Host-disk usage percent for the filesystem backing `storage_dir`
 /// (on prod the same `/dev/vda3` the docker root lives on). `None` when
 /// statvfs fails — the brake then stays inert (fail-open).
-#[expect(
-    dead_code,
-    reason = "wired by the sandbox-reap supervisor arm in the #168 follow-up slice"
-)]
 pub(super) fn disk_used_percent(storage_dir: &std::path::Path) -> Option<u64> {
     let stats = fs2::statvfs(storage_dir).ok()?;
     percent_used(stats.total_space(), stats.available_space())
@@ -73,13 +79,6 @@ pub(super) fn percent_used(total: u64, available: u64) -> Option<u64> {
 /// quota-park runs are NEVER candidates; the brake widens the age
 /// window, never the protection set. `floor_hours == 0` disables the
 /// arm: no candidates at all. Oldest terminal transition first.
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "wired by the sandbox-reap supervisor arm in the #168 follow-up slice"
-    )
-)]
 pub(super) fn reap_candidates(
     runs: &[fabro_types::Run],
     now: DateTime<Utc>,
@@ -158,13 +157,17 @@ async fn run_retention_supervisor(state: Arc<AppState>) {
     }
 
     // Two cadences, one supervisor: the retention pass every 24h, the
-    // removal reaper every REMOVAL_REAPER_INTERVAL. Independent
-    // `interval_at` timers (a fresh `sleep` per loop iteration would
-    // reset the 24h arm on every 5-minute reaper tick).
+    // removal reaper every REMOVAL_REAPER_INTERVAL, the sandbox-reap arm
+    // every REAP_ARM_INTERVAL (work#1299's disk clock — statvfs is
+    // cheap; the 24h retention cadence is too slow for a disk spike).
+    // Independent `interval_at` timers (a fresh `sleep` per loop
+    // iteration would reset the 24h arm on every 5-minute reaper tick).
     let next_retention = time::Instant::now() + RUN_RETENTION_SCAN_INTERVAL;
     let mut retention = time::interval_at(next_retention, RUN_RETENTION_SCAN_INTERVAL);
     let next_reaper = time::Instant::now() + REMOVAL_REAPER_INTERVAL;
     let mut reaper = time::interval_at(next_reaper, REMOVAL_REAPER_INTERVAL);
+    let next_reap_arm = time::Instant::now() + REAP_ARM_INTERVAL;
+    let mut reap_arm = time::interval_at(next_reap_arm, REAP_ARM_INTERVAL);
     loop {
         tokio::select! {
             () = shutdown.cancelled() => break,
@@ -174,12 +177,237 @@ async fn run_retention_supervisor(state: Arc<AppState>) {
             _ = reaper.tick() => {
                 removal_reaper_pass_logged(&state).await;
             }
+            _ = reap_arm.tick() => {
+                reap_sandboxes_pass_logged(&state).await;
+            }
         }
     }
 }
 
+/// #1299 information clock: does this run carry an observation record
+/// no work item consumed? Untriaged = an `ObservationRecorded` record
+/// whose `(run_id, seq)` has no row in `work_observation_links` (any
+/// project). Run-level gate by decision (grill 2026-11-13); notes count
+/// like painpoints — a note becomes triaged only through a link (the
+/// agent pass may promote one through the category-agnostic link door).
+///
+/// Fail-closed: when the records or links query fails, the run BLOCKS —
+/// information is never lost to a read error.
+async fn run_has_untriaged_observations(state: &AppState, run_id: &RunId) -> bool {
+    let records = match state
+        .stores
+        .run_summaries
+        .platform_records()
+        .read_kind(run_id, PlatformRecordKind::ObservationRecorded)
+        .await
+    {
+        Ok(records) => records,
+        Err(error) => {
+            warn!(
+                %error,
+                %run_id,
+                "triage gate could not read observations; blocking the reap"
+            );
+            return true;
+        }
+    };
+    if records.is_empty() {
+        return false;
+    }
+    let linked: HashSet<u64> = match state.work_store().linked_items_for_run(run_id).await {
+        Ok(links) => links.into_iter().map(|link| link.seq).collect(),
+        Err(error) => {
+            warn!(
+                %error,
+                %run_id,
+                "triage gate could not read work-item links; blocking the reap"
+            );
+            return true;
+        }
+    };
+    records.iter().any(|record| !linked.contains(&record.seq))
+}
+
 /// Fail-open wrapper: a failing pass logs and waits for the next tick —
 /// retention is hygiene, never a reason to disturb the server.
+async fn reap_sandboxes_pass_logged(state: &AppState) {
+    if let Err(error) = reap_sandboxes_pass(state).await {
+        warn!(%error, "sandbox reap pass failed");
+    }
+}
+
+/// What one sandbox-reap pass did (work#1299 disk clock).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ReapPassStats {
+    pub candidates: usize,
+    pub reaped:     usize,
+    pub failed:     usize,
+    pub brake:      bool,
+}
+
+/// One sandbox-reap pass (work#1299 disk clock, #168's grilled design):
+/// reaps the SANDBOX of terminal runs past `terminal_sandbox_age_hours`
+/// — containers, volumes, and the sandbox's host workspace, through
+/// Petri's lease ledger — while every run record stays. The disk brake
+/// (`disk_brake_percent`, 0 = off) widens the window below the age
+/// floor, oldest-terminal-first; the candidate filter's protections
+/// (HumanNeeded, resumable park, `preserve`) hold under the brake.
+/// `Ok(None)` = the arm is disabled (`terminal_sandbox_age_hours: 0`,
+/// which also disables the brake — the brake only widens this arm's
+/// window). Per-run failures WARN and fail open to the next tick.
+pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Option<ReapPassStats>> {
+    let settings = state.server_settings().server.retention;
+    if settings.terminal_sandbox_age_hours == 0 {
+        return Ok(None);
+    }
+    let brake_active = settings.disk_brake_percent > 0
+        && disk_used_percent(&state.server_storage_dir())
+            .is_some_and(|used| used >= settings.disk_brake_percent);
+    let now = Utc::now();
+    let runs = state
+        .stores
+        .run_summaries
+        .list_all(now)
+        .await
+        .map_err(|error| anyhow::anyhow!("reap arm listing runs failed: {error:?}"))?;
+
+    // The candidate filter is pure (its own pin family); this pass owns
+    // the instances the candidates named and the reason each was taken.
+    let floor = chrono::Duration::hours(settings.terminal_sandbox_age_hours.cast_signed());
+    let mut instances = HashMap::new();
+    for run in &runs {
+        let Some(instance) = run
+            .sandbox
+            .as_ref()
+            .and_then(fabro_types::RunSandbox::instance)
+        else {
+            continue;
+        };
+        let age_past_floor = run
+            .timestamps
+            .completed_at
+            .is_some_and(|completed| now - completed >= floor);
+        let reason = if age_past_floor {
+            SandboxReapReason::TerminalAge
+        } else {
+            SandboxReapReason::DiskBrake
+        };
+        instances.insert(run.id, (instance.clone(), reason));
+    }
+    let candidates = reap_candidates(
+        &runs,
+        now,
+        settings.terminal_sandbox_age_hours,
+        brake_active,
+    );
+    info!(
+        candidates = candidates.len(),
+        floor_hours = settings.terminal_sandbox_age_hours,
+        brake_active,
+        "sandbox reap arm plan"
+    );
+
+    let mut reaped = 0usize;
+    let mut failed = 0usize;
+    for run_id in &candidates {
+        let Some((instance, reason)) = instances.get(run_id) else {
+            continue;
+        };
+        match reap_run_sandbox(state, run_id, instance, *reason).await {
+            Ok(()) => reaped += 1,
+            Err(error) => {
+                warn!(
+                    %error,
+                    %run_id,
+                    "sandbox reap failed; retrying next tick"
+                );
+                failed += 1;
+            }
+        }
+    }
+    info!(reaped, failed, "sandbox reap arm pass complete");
+    Ok(Some(ReapPassStats {
+        candidates: candidates.len(),
+        reaped,
+        failed,
+        brake: brake_active,
+    }))
+}
+
+/// Reaps ONE run's sandbox: the lease-ledger prune (never a provider
+/// call of the server's own), then the durable marks — the
+/// `sandbox.reaped` platform record (the stream's truth) and the stored
+/// projection's `retained: false` (the cursor the candidate filter
+/// reads; the projection fold carries the same state for live reads).
+async fn reap_run_sandbox(
+    state: &AppState,
+    run_id: &RunId,
+    instance: &RunSandboxInstance,
+    reason: SandboxReapReason,
+) -> anyhow::Result<()> {
+    let sandbox = state
+        .load_sandbox_provider_config(&instance.provider)
+        .await
+        .map_err(|error| anyhow::anyhow!("loading provider config: {error:#}"))?;
+    let run_dir = Storage::new(state.server_storage_dir())
+        .run_scratch(run_id)
+        .root()
+        .join("petri");
+    prune::prune(PruneRequest {
+        sandbox,
+        run_id: run_id.to_string(),
+        run_dir,
+        store: state.petri_runs.shared_store(),
+        provider: instance.provider.clone(),
+    })
+    .await
+    .map_err(|error| anyhow::anyhow!("petri lease-ledger prune: {error:?}"))?;
+
+    state
+        .stores
+        .run_summaries
+        .platform_records()
+        .append(
+            run_id,
+            &PlatformRecord::SandboxReaped(SandboxReapedRecord {
+                provider: instance.provider.clone(),
+                provider_id: instance.runtime.id.clone(),
+                reason,
+            }),
+            None,
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!("appending sandbox.reaped: {error:?}"))?;
+
+    // The durable cursor: fold retained=false into the stored projection
+    // row (zero migration — summary_json carries the whole sandbox).
+    if let Some(projection) = run_records::projection(state, *run_id)
+        .await
+        .map_err(|error| anyhow::anyhow!("loading projection: {error:#}"))?
+    {
+        let mut projection = (*projection).clone();
+        if let Some(sandbox) = projection.sandbox.as_mut() {
+            sandbox.set_retained(false);
+        }
+        let pool = state.stores.run_summaries.pool();
+        let mut transaction = pool
+            .begin()
+            .await
+            .map_err(|error| anyhow::anyhow!("summary write tx for the reap mark: {error:?}"))?;
+        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(
+            &mut transaction,
+            run_id,
+            &projection,
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!("writing the reap mark: {error:?}"))?;
+        transaction
+            .commit()
+            .await
+            .map_err(|error| anyhow::anyhow!("committing the reap mark: {error:?}"))?;
+    }
+    Ok(())
+}
 async fn retention_pass_logged(state: &AppState) {
     if let Err(error) = run_retention_pass(state).await {
         warn!(%error, "run retention pass failed");
@@ -214,9 +442,48 @@ pub(super) async fn run_retention_pass(
         return Ok(None);
     };
 
-    let plan = plan_prune(state, &request)
+    let mut plan = plan_prune(state, &request)
         .await
         .map_err(|error| anyhow::anyhow!("retention plan failed: {error:?}"))?;
+
+    // #1299 information clock: the triage gate. A run with ANY untriaged
+    // observation is not reapable — its records stay until a work item
+    // consumes them. Fail-closed per query (a read error blocks, never
+    // frees).
+    let planned_before_gate = plan.run_ids.len();
+    let mut reapable = Vec::with_capacity(planned_before_gate);
+    for run_id in plan.run_ids {
+        if !run_has_untriaged_observations(state, &run_id).await {
+            reapable.push(run_id);
+        }
+    }
+    plan.run_ids = reapable;
+    if plan.run_ids.len() != planned_before_gate {
+        info!(
+            planned = planned_before_gate,
+            gated = planned_before_gate - plan.run_ids.len(),
+            "retention plan gated runs with untriaged observations (#1299)"
+        );
+    }
+    let retained: HashSet<String> = plan
+        .run_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
+    plan.rows.retain(|row| {
+        row.run_id
+            .as_deref()
+            .is_some_and(|run_id| retained.contains(run_id))
+    });
+    plan.total_size_bytes = plan
+        .rows
+        .iter()
+        .map(|row| row.size_bytes.unwrap_or_default())
+        .sum::<i64>()
+        .max(0)
+        .try_into()
+        .unwrap_or_default();
+
     info!(
         max_run_age_days,
         runs = plan.run_ids.len(),

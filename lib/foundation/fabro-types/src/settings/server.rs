@@ -254,7 +254,10 @@ pub struct ServerSchedulerSettings {
 /// sandbox reaping (fabro-b1a4, fabro-3377; fork).
 ///
 /// `max_run_age_days` is the age after which a terminal run is pruned by
-/// the run-retention supervisor; `0` disables the pass entirely.
+/// the run-retention supervisor — the INFORMATION clock (records and
+/// artifacts): a run carrying any untriaged observation (a record with
+/// no work-item link) is NOT reapable until a consumer links it
+/// (work#1299, the triage gate); `0` disables the pass entirely.
 ///
 /// `terminal_sandbox_age_hours` is the age after a run's terminal
 /// transition at which the sandbox-reap arm may remove the run's sandbox
