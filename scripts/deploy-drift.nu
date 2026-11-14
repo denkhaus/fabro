@@ -40,7 +40,7 @@ def main [
     # in origin/denkhaus's history after any fetch).
     let live_full = (do { ^git rev-parse $"($short)^{commit}" } | complete)
     if $live_full.exit_code != 0 {
-        print $"deploy-drift: DEPLOY LIKELY DUE — live ($short) != tip ($tip_short), and the live sha is not in local history (fetch first for the file diff)"
+        print $"deploy-drift: DEPLOY LIKELY DUE — live ($short) != tip ($tip_short), and the live sha is not in local history \(fetch first for the file diff\)"
         return
     }
     let live = ($live_full.stdout | str trim)
