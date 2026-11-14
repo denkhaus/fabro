@@ -250,6 +250,100 @@ async fn retry_run(
     }
 }
 
+/// The item thread the successor inherits (work#1320): the item the
+/// source run worked — its live claim when the run still holds one, or
+/// the run's latest claim record when park or failure already released
+/// it (the 2026-11-14 case: the parked run's claim was gone, the item
+/// association recoverable only from the ledger's history).
+struct ItemThread {
+    project_id: String,
+    item_key:   String,
+    lane:       String,
+}
+
+async fn source_item_thread(state: &AppState, id: &RunId) -> Option<ItemThread> {
+    let store = state.work_store();
+    if let Ok(Some(claim)) = store.active_claim_for_run(id).await {
+        return Some(ItemThread {
+            project_id: claim.project_id,
+            item_key:   claim.item_key,
+            lane:       claim.lane,
+        });
+    }
+    let latest = store.latest_claims_of_runs(&[*id]).await.ok()?;
+    latest.into_iter().next().map(|claim| ItemThread {
+        project_id: claim.project_id,
+        item_key:   claim.item_key,
+        lane:       claim.lane,
+    })
+}
+
+/// Move the item thread to the successor: release the source's live
+/// claim, then grant the successor the same item — the atomic handoff
+/// that closes the snatch window between click and the successor's
+/// first planner act (the grill decision, 2026-11-14). Best effort: a
+/// terminal source's claim is bookkeeping, never a reason to fail the
+/// re-drive; every miss degrades to the planner's lane fallback.
+async fn transfer_item_thread(
+    state: &AppState,
+    source: &RunId,
+    successor: &RunId,
+    thread: &ItemThread,
+) {
+    let store = state.work_store();
+    if let Ok(Some(active)) = store.active_claim_for_run(source).await {
+        let reason = "retry-on-latest: the successor continues this item";
+        match store.release(&active.claim_id, reason).await {
+            Ok(released) => {
+                tracing::info!(
+                    claim_id = %released.claim_id,
+                    item_key = %released.item_key,
+                    successor_run_id = %successor,
+                    "retry-on-latest released the source claim"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(claim_id = %active.claim_id, error = %err, "retry-on-latest could not release the source claim");
+            }
+        }
+    }
+    match store
+        .grant(&fabro_work::GrantRequest {
+            project_id: thread.project_id.clone(),
+            item_key:   thread.item_key.clone(),
+            run_id:     *successor,
+            lane:       thread.lane.clone(),
+        })
+        .await
+    {
+        Ok(fabro_work::GrantOutcome::Granted(claim)) => {
+            tracing::info!(
+                claim_id = %claim.claim_id,
+                item_key = %claim.item_key,
+                successor_run_id = %successor,
+                "retry-on-latest item thread transferred"
+            );
+        }
+        // This run already holds the item — nothing to move.
+        Ok(fabro_work::GrantOutcome::AlreadyHeld(_)) => {}
+        Ok(fabro_work::GrantOutcome::Conflict(claim)) => {
+            tracing::warn!(
+                item_key = %thread.item_key,
+                held_by_run_id = %claim.run_id,
+                successor_run_id = %successor,
+                "retry-on-latest item transfer lost the race; the planner falls back to the lane"
+            );
+        }
+        Err(err) => {
+            tracing::warn!(
+                item_key = %thread.item_key,
+                error = %err,
+                "retry-on-latest item grant failed; the planner falls back to the lane"
+            );
+        }
+    }
+}
+
 /// The run's timeline: its checkpoint records, labelled through the
 /// projector's fold state.
 async fn timeline(state: &AppState, id: RunId) -> Result<RunTimeline, ApiError> {
@@ -686,7 +780,19 @@ async fn retry_latest_run(
     // the source's posture (target, environment, model, labels), and
     // prepares its worktree at the target branch's current tip.
     let new_run_id = RunId::new();
-    let goal = (!source.spec.graph.goal.is_empty()).then(|| source.spec.graph.goal.clone());
+    // The item thread (work#1320): the goal names the source's item so
+    // the successor's planner takes the itemKey fast path instead of a
+    // fresh lane grant; the claim transfer below makes the handoff
+    // atomic.
+    let item_thread = source_item_thread(state.as_ref(), &id).await;
+    let goal = match (&item_thread, !source.spec.graph.goal.is_empty()) {
+        (Some(thread), true) => Some(format!(
+            "{} — this re-drive continues {}",
+            source.spec.graph.goal, thread.item_key
+        )),
+        (Some(thread), false) => Some(format!("This re-drive continues {}", thread.item_key)),
+        (None, has_goal) => has_goal.then(|| source.spec.graph.goal.clone()),
+    };
     let environment_id = source.spec.settings.run.environment.id.clone();
     let created = Box::pin(super::runs::create_run_from_intent(
         Arc::clone(&state),
@@ -821,6 +927,12 @@ async fn retry_latest_run(
         warn!(new_run_id = %new_run_id, error = %err, "the re-drive notice was not recorded");
     }
 
+    // The claim handoff lands before the run starts: the successor
+    // holds the item when its planner first fires.
+    if let Some(thread) = &item_thread {
+        transfer_item_thread(state.as_ref(), &id, &new_run_id, thread).await;
+    }
+
     if let Err(err) = queue_run(state.as_ref(), new_run_id, &projection, false, actor).await {
         return err.into_response();
     }
@@ -835,4 +947,128 @@ async fn retry_latest_run(
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod retry_latest_item_thread_tests {
+    use std::collections::BTreeMap;
+
+    use fabro_types::RunId;
+    use fabro_work::{ClaimState, GrantOutcome, GrantRequest, WorkProject};
+
+    use super::{source_item_thread, transfer_item_thread};
+
+    fn project() -> WorkProject {
+        WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              BTreeMap::from([(
+                "develop".to_string(),
+                "lane:develop".to_string(),
+            )]),
+            claim_label_prefix:       "claimed".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_item_thread_resolves_live_recovers_released_and_transfers() {
+        let state = crate::test_support::test_app_state();
+        let store = state.work_store();
+        store.upsert_project(&project()).await.unwrap();
+
+        // Live claim: the source still holds the item.
+        let source = RunId::new();
+        let claim = match store
+            .grant(&GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1312".to_string(),
+                run_id:     source,
+                lane:       "develop".to_string(),
+            })
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(claim) => claim,
+            other => panic!("expected a grant, got {other:?}"),
+        };
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the live claim names the thread");
+        assert_eq!(thread.item_key, "denkhaus/work#1312");
+
+        // The parked case: the claim released, the association must
+        // recover from the ledger's history (the 2026-11-14 evidence).
+        store.release(&claim.claim_id, "parked").await.unwrap();
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the latest claim record recovers the thread");
+        assert_eq!(thread.item_key, "denkhaus/work#1312");
+        assert_eq!(thread.lane, "develop");
+
+        // The transfer: no live source claim left, so the successor
+        // simply receives the grant.
+        let successor = RunId::new();
+        transfer_item_thread(&state, &source, &successor, &thread).await;
+        let held = store
+            .active_claim_for_run(&successor)
+            .await
+            .unwrap()
+            .expect("the successor holds the item");
+        assert_eq!(held.item_key, "denkhaus/work#1312");
+        assert_eq!(held.state, ClaimState::Granted);
+    }
+
+    #[tokio::test]
+    async fn the_transfer_releases_a_live_source_claim_before_granting() {
+        let state = crate::test_support::test_app_state();
+        let store = state.work_store();
+        store.upsert_project(&project()).await.unwrap();
+
+        let source = RunId::new();
+        match store
+            .grant(&GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1313".to_string(),
+                run_id:     source,
+                lane:       "develop".to_string(),
+            })
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(_) => {}
+            other => panic!("expected a grant, got {other:?}"),
+        }
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the live claim names the thread");
+
+        let successor = RunId::new();
+        transfer_item_thread(&state, &source, &successor, &thread).await;
+
+        // The source's claim is gone, the successor's is live: the
+        // handoff is atomic from the item's point of view.
+        assert!(
+            store.active_claim_for_run(&source).await.unwrap().is_none(),
+            "the source no longer holds the item"
+        );
+        let held = store
+            .active_claim_for_run(&successor)
+            .await
+            .unwrap()
+            .expect("the successor holds the item");
+        assert_eq!(held.item_key, "denkhaus/work#1313");
+    }
+
+    #[tokio::test]
+    async fn a_source_without_any_claim_names_no_thread() {
+        let state = crate::test_support::test_app_state();
+        let stranger = RunId::new();
+        assert!(source_item_thread(&state, &stranger).await.is_none());
+    }
 }
