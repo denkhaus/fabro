@@ -161,18 +161,15 @@ directives, and verification recipes. Edit mechanics also live in
   material (they need items + LLM stages). Compose aspects rather than
   replaying whole lanes: a graph shape against its fold, an environment
   property against the arms that depend on it, an invocation grammar
-  against the runtime CLI. NEVER rerun the full bench for one facet's
-  red: the single-probe mode is the default; a red facet gets its
-  targeted probe plus, for integration legs, a direct manual drive of
-  the leg's script. PROTOCOL (user decision 2026-11-14, after the
-  tenth reflex violation — recorded as mulch `testing` failure): after
-  EVERY targeted fix to a bench facet, drive THE FACET (`just probe
-  NAME` / its `scripts/drive-<facet>.nu`). The full bench is a WINDOW
-  GATE, never a verification tool — running it to verify a fix is the
-  violation, even once. A new facet ships WITH its single driver in
-  the same land. Mechanical backstop (fabro-test): workbench.nu
-  refuses a start within 60 minutes of the last full round without
-  FULL_BENCH=1 (`just bench-full` is the deliberate door).
+  against the runtime CLI. NEVER rerun the full bench to verify a
+  targeted fix: the full bench is a WINDOW GATE — it runs once per
+  stack/payload state, at deploy windows. Verifying a fix means
+  driving the facet: `just probe NAME` (table probes) or
+  `nu scripts/drive-<facet>.nu` (facet drivers). A new facet ships
+  with its single driver in the same land. Mechanical backstop
+  (fabro-test): workbench.nu refuses a rerun within 60 minutes of the
+  last full round without FULL_BENCH=1 — `just bench-full` is the
+  deliberate door.
 - BENCH CROSS-CHECK VIA PLATFORM LOGS:
   after every test round — bench, probe, or supervised lap — query the
   log platform for the window's WARN/ERROR and reconcile the patterns
