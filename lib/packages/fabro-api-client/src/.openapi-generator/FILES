@@ -382,6 +382,7 @@ models/repo-check-response.ts
 models/repository-pull-request.ts
 models/repository-ref.ts
 models/resolved-automation-git-workflow-source.ts
+models/retry-latest-request-workflow-version-id.ts
 models/retry-latest-request.ts
 models/retry-latest-response.ts
 models/review-target-kind.ts

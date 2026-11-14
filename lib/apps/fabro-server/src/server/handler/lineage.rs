@@ -598,9 +598,24 @@ async fn retry_latest_run(
     headers: HeaderMap,
     body: Option<Json<api::RetryLatestRequest>>,
 ) -> Response {
-    let explicit_version = body
-        .and_then(|Json(body)| body.workflow_version_id)
-        .and_then(|version| version.parse().ok());
+    let explicit_version = match body.and_then(|Json(body)| body.workflow_version_id) {
+        // The typed branch: the WorkflowVersionId schema pattern already
+        // validated it during deserialization. The untyped nullable
+        // branch: a pattern-valid string parses; an invalid one is
+        // rejected — an explicit id is never silently resolved to the
+        // current one.
+        None | Some(api::RetryLatestRequestWorkflowVersionId::Variant1(None)) => None,
+        Some(api::RetryLatestRequestWorkflowVersionId::Variant0(id)) => Some(id),
+        Some(api::RetryLatestRequestWorkflowVersionId::Variant1(Some(raw))) => match raw.parse() {
+            Ok(parsed) => Some(parsed),
+            Err(_) => {
+                return ApiError::bad_request(
+                    "workflow_version_id is not a valid workflow version id (64 hex chars)",
+                )
+                .into_response();
+            }
+        },
+    };
     let source = match run_records::require_projection(state.as_ref(), id).await {
         Ok(source) => source,
         Err(err) => return err.into_response(),

@@ -15752,10 +15752,14 @@ components:
       type: object
       properties:
         workflow_version_id:
-          type: ["string", "null"]
+          oneOf:
+            - $ref: "#/components/schemas/WorkflowVersionId"
+            - nullable: true
+              type: string
           description: >
             The workflow version to re-admit. Defaults to the version the
-            newest run of the source's workflow slug used.
+            newest run of the source's workflow slug used. An invalid id
+            is rejected with 400, never silently resolved.
 
     RetryLatestResponse:
       description: >
