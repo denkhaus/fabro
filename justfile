@@ -111,8 +111,29 @@ build-image: web-deps
 # 2026-11-09: a 90-minute pipeline vanished this way, exit 255 only on
 # the manual kill).
 host-release host port arch='amd64' sha='':
-    @scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
-    @ssh -p {{ port }} -o ServerAliveInterval=30 -o ServerAliveCountMax=6 {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
+    ssh -p {{ port }} -o ServerAliveInterval=30 -o ServerAliveCountMax=6 {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'" | tee /tmp/host-release-last.log
+    # The CLI release binary (#1335): pull the packaged artifact back and
+    # attach it to the release tag — create-if-absent, clobber on upload.
+    # No gh on the host (and no host auth): the upload rides the dev
+    # machine's gh, per ADR-0041's credential posture.
+    artifact=$(grep -oP 'host-release: binary artifact \K.*' /tmp/host-release-last.log | tail -1 || true)
+    if [ -n "$artifact" ]; then
+      version=$(grep -oP 'host-release: pipeline start — denkhaus/fabro:\K[0-9a-z.\-]+' /tmp/host-release-last.log | tail -1)
+      sha_arg="{{ sha }}"
+      tmpdir=$(mktemp -d)
+      scp -P {{ port }} "{{ host }}:$artifact" "$tmpdir/" >/dev/null
+      gh release view "$version" --repo denkhaus/fabro >/dev/null 2>&1 \
+        || gh release create "$version" --repo denkhaus/fabro --target "$(git rev-parse HEAD)" --title "$version" --notes "Release $version. The CLI ships as the static musl binary attached below (work#1335)."
+      gh release upload "$version" "$tmpdir/$(basename "$artifact")" --repo denkhaus/fabro --clobber
+      echo "release binary attached: $version/$(basename "$artifact")"
+      rm -rf "$tmpdir"
+      ssh -p {{ port }} {{ host }} "rm -f '$artifact'"
+    else
+      echo "no binary artifact line in the host log — release attach skipped"
+    fi
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
