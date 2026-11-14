@@ -110,9 +110,11 @@ export default function WorkItemsView() {
       filters={FILTERS}
       emptyLabel="No open work items."
       fetcher={async ({ page, limit, sort, filters }) => {
-        // The work listing pages by (page, limit); the total that pages
-        // the pager is unavailable from the tracker cheaply — the page
-        // window sizes by whether the tracker returned a full page.
+        // The work listing pages by (page, limit); the pager's total is
+        // the tracker's exact count (GitHub search's total_count,
+        // denkhaus/work#1296) — the page-window estimate is only the
+        // fallback for a server (or generated client) that predates the
+        // field.
         const response = await workItemsApi.listWorkItems(
           "fabro",
           filters.query ? undefined : filters.lane,
@@ -133,7 +135,8 @@ export default function WorkItemsView() {
           url: item.url ?? "",
           updatedAt: item.updatedAt ?? "",
         }));
-        const total = estimatePageTotal(rows.length, page, limit);
+        const served = (response.data as { total?: number | null } | undefined)?.total;
+        const total = served ?? estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
     />

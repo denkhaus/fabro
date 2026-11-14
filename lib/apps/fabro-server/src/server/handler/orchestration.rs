@@ -31,6 +31,7 @@ use fabro_api::types::{
 };
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
+    StoredPlatformRecord,
 };
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
@@ -121,71 +122,138 @@ async fn list_global_observations(
     };
 
     let store = state.stores.run_summaries.platform_records();
-    let over_fetch = if triage_filter.is_some() {
-        page_size * 3
-    } else {
-        page_size
+    let offset = (page - 1) * page_size;
+    // The category filter rides the SQL WHERE (the serde fragment of
+    // the record's category), so the page fetch and its COUNT agree
+    // exactly; only the triage filter derives past SQL (work#1296).
+    let category_sql = category.map(|category| category.to_string());
+    let read_failed = |error| {
+        tracing::error!(error = ?error, "global observations read failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Reading the observations feed failed.",
+        )
     };
-    let mut offset = (page - 1) * page_size;
-    let mut collected: Vec<GlobalObservation> = Vec::new();
-    for _round in 0..3 {
-        let (entries, seen_total) = store
-            .read_kind_global(
-                PlatformRecordKind::ObservationRecorded,
-                newest_first,
-                over_fetch,
-                offset,
-                run_id.as_ref(),
-                params.q.as_deref(),
-            )
-            .await
-            .map_err(|err| {
-                tracing::error!(error = ?err, "global observations read failed");
-                ApiError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Reading the observations feed failed.",
+    let (observations, total) = match triage_filter {
+        None => {
+            let (entries, total) = store
+                .read_kind_global(
+                    PlatformRecordKind::ObservationRecorded,
+                    newest_first,
+                    page_size,
+                    offset,
+                    run_id.as_ref(),
+                    params.q.as_deref(),
+                    category_sql.as_deref(),
                 )
-            })?;
-        let _ = seen_total;
-        if entries.is_empty() {
-            break;
-        }
-        for (entry_run, stored) in &entries {
-            let PlatformRecord::ObservationRecorded(record) = &stored.record else {
-                continue;
-            };
-            if let Some(wanted) = category {
-                if record.category != wanted {
+                .await
+                .map_err(read_failed)?;
+            let mut rows = Vec::with_capacity(entries.len());
+            for (entry_run, stored) in &entries {
+                let PlatformRecord::ObservationRecorded(record) = &stored.record else {
                     continue;
+                };
+                let links = linked_items_of_run(&state, entry_run, stored.seq).await;
+                let triage = derive_triage(&links);
+                rows.push(wire_global_observation(
+                    entry_run, stored, record, triage, links,
+                ));
+            }
+            (rows, total)
+        }
+        Some(wanted) => {
+            // EXACT total under a post-SQL filter (work#1296): walk
+            // every matching record once, derive its triage, count the
+            // matches (the feed's scale makes the walk cheap), and slice
+            // the page from the walked matches — replacing the over-fetch
+            // rounds whose total could only grow while paging. Links are
+            // fetched once per run: a run with many records walks its
+            // ledger read a single time.
+            const WALK_BATCH: usize = 500;
+            let mut links_by_run: HashMap<RunId, Vec<fabro_work::ObservationLink>> = HashMap::new();
+            let mut matched: Vec<GlobalObservation> = Vec::new();
+            let mut walk_offset = 0usize;
+            loop {
+                let (entries, _seen) = store
+                    .read_kind_global(
+                        PlatformRecordKind::ObservationRecorded,
+                        newest_first,
+                        WALK_BATCH,
+                        walk_offset,
+                        run_id.as_ref(),
+                        params.q.as_deref(),
+                        category_sql.as_deref(),
+                    )
+                    .await
+                    .map_err(read_failed)?;
+                if entries.is_empty() {
+                    break;
+                }
+                let exhausted = entries.len() < WALK_BATCH;
+                for (entry_run, stored) in &entries {
+                    let PlatformRecord::ObservationRecorded(record) = &stored.record else {
+                        continue;
+                    };
+                    if !links_by_run.contains_key(entry_run) {
+                        let links = state
+                            .work_store()
+                            .linked_items_for_run(entry_run)
+                            .await
+                            .unwrap_or_default();
+                        links_by_run.insert(*entry_run, links);
+                    }
+                    let links =
+                        resolve_links_of_seq(&state, &links_by_run[entry_run], stored.seq).await;
+                    let triage = derive_triage(&links);
+                    if triage != wanted {
+                        continue;
+                    }
+                    matched.push(wire_global_observation(
+                        entry_run, stored, record, triage, links,
+                    ));
+                }
+                walk_offset += entries.len();
+                if exhausted {
+                    break;
                 }
             }
-            let links = linked_items_of_run(&state, entry_run, stored.seq).await;
-            let triage = derive_triage(&links);
-            if let Some(wanted) = triage_filter {
-                if triage != wanted {
-                    continue;
-                }
-            }
-            collected.push(GlobalObservation {
-                run_id:            entry_run.to_string(),
-                workflow_name:     None,
-                seq:               stored.seq.cast_signed(),
-                category:          record.category,
-                text:              record.text.clone(),
-                recorded_at:       chrono::DateTime::from_timestamp_millis(
-                    stored.recorded_at.cast_signed(),
-                ),
-                triage_state:      triage.into_wire(),
-                linked_work_items: links,
-            });
+            let total = matched.len() as u64;
+            let observations = matched
+                .into_iter()
+                .skip(offset)
+                .take(page_size)
+                .collect::<Vec<_>>();
+            (observations, total)
         }
-        if collected.len() >= page_size || entries.len() < over_fetch {
-            break;
-        }
-        offset += over_fetch;
+    };
+    Ok(Json(GlobalObservationList {
+        observations,
+        total: total.min(i64::MAX.unsigned_abs()).cast_signed(),
+    })
+    .into_response())
+}
+
+/// One stored observation record as the global feed serves it: the
+/// record's body beside its derived triage state and resolved links.
+fn wire_global_observation(
+    entry_run: &RunId,
+    stored: &StoredPlatformRecord,
+    record: &ObservationRecordedRecord,
+    triage: TriageState,
+    links: Vec<ObservationWorkItemLink>,
+) -> GlobalObservation {
+    GlobalObservation {
+        run_id:            entry_run.to_string(),
+        workflow_name:     None,
+        seq:               stored.seq.cast_signed(),
+        category:          record.category,
+        text:              record.text.clone(),
+        recorded_at:       chrono::DateTime::from_timestamp_millis(
+            stored.recorded_at.cast_signed(),
+        ),
+        triage_state:      triage.into_wire(),
+        linked_work_items: links,
     }
-    let observations: Vec<_> = collected.into_iter().take(page_size).collect();
-    Ok(Json(GlobalObservationList { observations }).into_response())
 }
 
 /// The wire triage state and its derivation over a record's links.
@@ -217,6 +285,18 @@ async fn linked_items_of_run(
     let Ok(links) = state.work_store().linked_items_for_run(run_id).await else {
         return Vec::new();
     };
+    resolve_links_of_seq(state, &links, seq).await
+}
+
+/// The links of ONE record (`seq`) resolved with their live item
+/// states; the global feed's triage walk feeds a per-run link cache
+/// through the same read so a run with many records is fetched once
+/// (work#1296).
+async fn resolve_links_of_seq(
+    state: &AppState,
+    links: &[fabro_work::ObservationLink],
+    seq: u64,
+) -> Vec<ObservationWorkItemLink> {
     let mut resolved = Vec::new();
     for link in links.iter().filter(|link| link.seq == seq) {
         let linked = resolve_linked_item(state, &link.project_id, &link.item_key).await;

@@ -173,7 +173,7 @@ impl GitHubTracker {
         } else {
             format!("seeds:{legacy_id}")
         };
-        let hits = self
+        let (hits, _total) = self
             .search_items(
                 project,
                 &WorkItemFilter {
@@ -310,12 +310,14 @@ impl GitHubTracker {
     /// the pre-create duplicate check must see what already closed, not
     /// just what is open). Search ranks by relevance; the caller's
     /// judgment decides whether a hit covers the planned filing.
+    /// Returns the page beside GitHub search's `total_count` — the
+    /// exact number the qualifiers match (denkhaus/work#1296).
     async fn search_items(
         &self,
         project: &WorkProject,
         filter: &WorkItemFilter,
         query: &str,
-    ) -> anyhow::Result<Vec<WorkItem>> {
+    ) -> anyhow::Result<(Vec<WorkItem>, u64)> {
         let limit = filter.limit.clamp(1, 100);
         let page = filter.page.max(1);
         let trimmed = query.trim();
@@ -323,12 +325,42 @@ impl GitHubTracker {
             anyhow::bail!("work item search query must not be blank");
         }
         let mut terms = vec![format!("repo:{}", self.repo), "is:issue".to_string()];
-        terms.extend(
-            Self::filter_labels(project, filter)
-                .into_iter()
-                .map(|label| format!("label:\"{label}\"")),
-        );
+        terms.extend(Self::label_qualifiers(project, filter));
         terms.push(trimmed.to_string());
+        let (value, total) = self.search_issues_json(&terms, limit, page).await?;
+        let values = value
+            .get("items")
+            .and_then(Value::as_array)
+            .ok_or_else(|| anyhow::anyhow!("GitHub issue search returned no items array"))?;
+        Ok((
+            values
+                .iter()
+                .filter_map(|value| self.json_item(value))
+                .collect(),
+            total,
+        ))
+    }
+
+    /// The search qualifiers every label-scoped search carries: the
+    /// project label, the lane's label when a lane is filtered, and the
+    /// raw label filter (denkhaus/work#1001) — one definition shared by
+    /// the item search and the count search.
+    fn label_qualifiers(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
+        Self::filter_labels(project, filter)
+            .into_iter()
+            .map(|label| format!("label:\"{label}\""))
+            .collect()
+    }
+
+    /// One GitHub search/issues call: the percent-encoded qualifier
+    /// terms, `per_page`/`page`, answered as the response JSON beside
+    /// its `total_count` (missing `total_count` reads as zero).
+    async fn search_issues_json(
+        &self,
+        terms: &[String],
+        limit: usize,
+        page: usize,
+    ) -> anyhow::Result<(Value, u64)> {
         let encoded = utf8_percent_encode(&terms.join(" "), NON_ALPHANUMERIC).to_string();
         let url = format!(
             "{}/search/issues?q={encoded}&per_page={limit}&page={page}",
@@ -336,14 +368,31 @@ impl GitHubTracker {
         );
         let response = self.request(Method::GET, &url).send().await?;
         let value = self.send_json(response).await?;
-        let values = value
-            .get("items")
-            .and_then(Value::as_array)
-            .ok_or_else(|| anyhow::anyhow!("GitHub issue search returned no items array"))?;
-        Ok(values
-            .iter()
-            .filter_map(|value| self.json_item(value))
-            .collect())
+        let total = value
+            .get("total_count")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        Ok((value, total))
+    }
+
+    /// The open-list arm's count (denkhaus/work#1296): GitHub's issue
+    /// LIST answers a page, never a total — the search API's
+    /// `total_count` over the same qualifiers (repo, issue-only, open,
+    /// the filter's labels) names it, one cheap request beside the page
+    /// fetch.
+    async fn count_open_items(
+        &self,
+        project: &WorkProject,
+        filter: &WorkItemFilter,
+    ) -> anyhow::Result<u64> {
+        let mut terms = vec![
+            format!("repo:{}", self.repo),
+            "is:issue".to_string(),
+            "is:open".to_string(),
+        ];
+        terms.extend(Self::label_qualifiers(project, filter));
+        let (_, total) = self.search_issues_json(&terms, 1, 1).await?;
+        Ok(total)
     }
 }
 
@@ -355,8 +404,33 @@ impl TrackerProvider for GitHubTracker {
         filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
         match filter.query.as_deref() {
-            Some(query) => self.search_items(project, &filter, query).await,
+            Some(query) => Ok(self.search_items(project, &filter, query).await?.0),
             None => self.list_open_items(project, &filter).await,
+        }
+    }
+
+    /// The exact-total form (denkhaus/work#1296): both arms answer the
+    /// page beside the number of items the filter matches — the search
+    /// arm from the same response's `total_count`, the open-list arm
+    /// from a count-only search with identical qualifiers.
+    async fn list_with_total(
+        &self,
+        project: &WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<fabro_work::WorkItemPage> {
+        if let Some(query) = filter.query.as_deref() {
+            let (items, total) = self.search_items(project, &filter, query).await?;
+            Ok(fabro_work::WorkItemPage {
+                items,
+                total: Some(total),
+            })
+        } else {
+            let items = self.list_open_items(project, &filter).await?;
+            let total = self.count_open_items(project, &filter).await?;
+            Ok(fabro_work::WorkItemPage {
+                items,
+                total: Some(total),
+            })
         }
     }
 
@@ -729,6 +803,99 @@ mod tests {
         assert_eq!(items[0].state, "closed");
         assert_eq!(items[0].item_key, "denkhaus/work#7");
         assert_eq!(items[1].state, "open");
+    }
+
+    /// The exact-total read (denkhaus/work#1296): the search arm's
+    /// `total_count` rides the SAME response as the items — the pager's
+    /// total without a second request.
+    #[tokio::test]
+    async fn list_with_total_surfaces_the_search_total_count() {
+        let server = httpmock::MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .header("User-Agent", "fabro")
+                    .query_param("per_page", "10")
+                    .query_param("page", "2");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 17,
+                    "items": [
+                        {"number": 4, "title": "One hit on page 2", "body": "b", "state": "open",
+                         "labels": [{"name": "project:fabro"}], "html_url": "u4",
+                         "updated_at": "2026-11-13T09:00:00Z"}
+                    ]
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let page = tracker
+            .list_with_total(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 10,
+                query: Some("watchdog".to_string()),
+                label: None,
+                page:  2,
+            })
+            .await
+            .expect("the counting search resolves");
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, Some(17), "the pager's total is total_count");
+    }
+
+    /// The open-list arm has no count on its list response — the exact
+    /// total comes from a count-only search with the SAME qualifiers
+    /// (repo, issue-only, open, the filter's labels; denkhaus/work#1296).
+    #[tokio::test]
+    async fn list_with_total_counts_the_open_arm_through_a_count_search() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "open")
+                    .query_param("labels", "project:fabro,lane:loop")
+                    .query_param("per_page", "10")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!([
+                    {"number": 5, "title": "An open item", "body": "b", "state": "open",
+                     "labels": [{"name": "project:fabro"}], "html_url": "u5",
+                     "updated_at": "2026-11-13T08:00:00Z"}
+                ]));
+            })
+            .await;
+        let counted = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .header("User-Agent", "fabro")
+                    .query_param(
+                        "q",
+                        "repo:denkhaus/work is:issue is:open label:\"project:fabro\" \
+                         label:\"lane:loop\"",
+                    )
+                    .query_param("per_page", "1")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 23, "items": []
+                }));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let page = tracker
+            .list_with_total(&project(), WorkItemFilter {
+                lane:  Some("loop".to_string()),
+                limit: 10,
+                query: None,
+                label: None,
+                page:  1,
+            })
+            .await
+            .expect("the counting list resolves");
+        listed.assert_calls_async(1).await;
+        counted.assert_calls_async(1).await;
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.total, Some(23), "the count search names the total");
     }
 
     #[tokio::test]

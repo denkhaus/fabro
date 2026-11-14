@@ -11,7 +11,10 @@ import { categoryBadgeClass } from "../components/badges";
  * filters (user directive 2026-11-08: no checkboxes, no radios), the
  * pager rides the shared data table control (#1201). Table refinements
  * (denkhaus/work#1235): full run ids, absolute datetimes, the
- * server-resolved tracker URLs on linked items.
+ * server-resolved tracker URLs on linked items. The pager's total is
+ * the server's EXACT count under the active filters (denkhaus/work#1296)
+ * — the page-window estimate is only the skew fallback for an older
+ * server.
  */
 
 export const handle = { wide: true };
@@ -165,7 +168,12 @@ export default function ObservationsFeedView() {
             }))
             .filter((linked) => linked.key),
         }));
-        const total = estimatePageTotal(rows.length, page, limit);
+        // The pager's total is the server's EXACT count under the active
+        // filters (denkhaus/work#1296) — never a page-window guess. The
+        // estimate stays only as the fallback for a server (or generated
+        // client) that predates the field.
+        const served = (response.data as { total?: number } | undefined)?.total;
+        const total = served ?? estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
     />

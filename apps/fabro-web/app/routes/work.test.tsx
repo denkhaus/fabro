@@ -5,10 +5,11 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import type { WorkItem } from "@qltysh/fabro-api-client";
 
 let currentItem: WorkItem | null = null;
+let listResult: { data: WorkItem[]; total: number | null } | undefined;
 
 // Partial-mock (the run-observations test's pattern): spread the REAL
 // module so every export stays available to later files in the same
-// run; override only the detail read.
+// run; override only the detail read and the list read.
 const realApiClient = await import("../lib/api-client");
 mock.module("../lib/api-client", () => ({
   ...realApiClient,
@@ -19,6 +20,9 @@ mock.module("../lib/api-client", () => ({
         currentItem && currentItem.itemKey === itemKey
           ? currentItem
           : null,
+    }),
+    listWorkItems: async () => ({
+      data: { data: listResult?.data ?? [], total: listResult?.total ?? null },
     }),
   },
 }));
@@ -31,7 +35,7 @@ mock.module("../components/stage-renderers/primitives", () => ({
   Markdown: ({ content }: { content: string }) => <div>{content}</div>,
 }));
 
-const { WorkItemDetail } = await import("./work");
+const { WorkItemDetail, default: WorkItemsView } = await import("./work");
 
 function renderDetail(item: WorkItem | null): TestRenderer.ReactTestRenderer {
   currentItem = item;
@@ -107,5 +111,41 @@ describe("WorkItemDetail", () => {
     await flushDetail(renderer!);
     const text = textFromNode(renderer!.toJSON());
     expect(text).toContain("Work item not found");
+  });
+});
+
+describe("WorkItemsView", () => {
+  afterEach(() => {
+    listResult = undefined;
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  // denkhaus/work#1296: the pager's total is the tracker's served
+  // count (GitHub search's total_count), never the page-window
+  // estimate — a 2-row first page over 12 open items renders 12 items
+  // and 2 pages (the estimate rendered 2 items and 1 page).
+  test("renders the served exact total, not a page-window estimate", async () => {
+    listResult = {
+      data: [
+        { ...ITEM, itemKey: "denkhaus/work#1" },
+        { ...ITEM, itemKey: "denkhaus/work#2" },
+      ],
+      total: 12,
+    };
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const router = createMemoryRouter([
+      { path: "/work", element: <WorkItemsView /> },
+      { path: "/work/item", element: <div>detail</div> },
+    ], { initialEntries: ["/work"] });
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    TestRenderer.act(() => {
+      renderer = TestRenderer.create(<RouterProvider router={router} />);
+    });
+    await TestRenderer.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const text = textFromNode(renderer!.toJSON());
+    expect(text).toMatch(/12\s+item/);
+    expect(text).toMatch(/page\s+1\s+\/\s+2/);
   });
 });
