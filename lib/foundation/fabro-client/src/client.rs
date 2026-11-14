@@ -1239,6 +1239,13 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    pub async fn get_system_stats(&self) -> Result<types::SystemStatsResponse> {
+        let response = self
+            .send_api(|client| async move { client.get_system_stats().send().await })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     pub async fn get_system_repair_runs(&self) -> Result<types::SystemRepairRunsResponse> {
         let response = self
             .send_api(|client| async move { client.get_system_repair_runs().send().await })

@@ -951,6 +951,12 @@ pub(crate) struct DfArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct StatsArgs {
+    #[command(flatten)]
+    pub(crate) connection: ServerConnectionArgs,
+}
+
+#[derive(Args)]
 pub(crate) struct SystemEventsArgs {
     #[command(flatten)]
     pub(crate) connection: ServerConnectionArgs,
@@ -1821,6 +1827,7 @@ impl Commands {
                 SystemCommand::Info(_) => "system info",
                 SystemCommand::Prune(_) => "system prune",
                 SystemCommand::Df(_) => "system df",
+                SystemCommand::Stats(_) => "system stats",
                 SystemCommand::Events(_) => "system events",
                 SystemCommand::Repair(args) => match &args.command {
                     SystemRepairCommand::Runs(_) => "system repair runs",
@@ -2775,6 +2782,8 @@ pub(crate) enum SystemCommand {
     Prune(RunsPruneArgs),
     /// Show disk usage
     Df(DfArgs),
+    /// Show which server filesystem is full and what the last reap freed
+    Stats(StatsArgs),
     /// Stream run events from the server
     Events(SystemEventsArgs),
     /// Inspect and repair durable server data
