@@ -20092,9 +20092,10 @@ components:
           items:
             $ref: "#/components/schemas/WorkItem"
         total:
-          type: integer
+          type:
+            - integer
+            - "null"
           format: int64
-          nullable: true
           description: |-
             The number of items the active filters match, independent of
             paging (denkhaus/work#1296) — the tracker search's
