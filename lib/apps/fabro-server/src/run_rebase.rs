@@ -78,6 +78,54 @@ pub(crate) async fn carry_checkpoint_work(
     }
 
     let tip = git_stdout(worktree_dir, &["rev-parse", "refs/retry-latest/source"]).await?;
+    replay_range(worktree_dir, source_base, &tip).await
+}
+
+/// Carry the checkpoint work out of the SOURCE's server-side snapshot
+/// repository (work#1320): a failed run never pushes its run branch to
+/// the origin — the checkpoints publish into the snapshot under
+/// `refs/checkpoints/*` — so the retry fetches those refs and replays
+/// `source_base..source_tip` onto the prepared worktree. The tip is the
+/// newest checkpoint commit's sha (read from the run's checkpoint
+/// records by the caller); a tip the snapshot does not hold answers
+/// `NoSourceBranch`, keeping the origin form's "nothing to carry"
+/// semantics.
+pub(crate) async fn carry_checkpoint_work_from_snapshot(
+    worktree_dir: &Path,
+    snapshot_repository: &Path,
+    source_tip: &str,
+    source_base: &str,
+) -> Result<Result<Rebased, RunRebaseError>, RunRebaseError> {
+    let repository = snapshot_repository.display().to_string();
+    let fetched = git(worktree_dir, &[
+        "fetch",
+        "--quiet",
+        &repository,
+        "+refs/checkpoints/*:refs/retry-latest/checkpoints/*",
+    ])
+    .await;
+    if matches!(fetched, GitOutcome::Failed) {
+        return Ok(Err(RunRebaseError::NoSourceBranch { branch: repository }));
+    }
+    let present = git(worktree_dir, &[
+        "cat-file",
+        "-e",
+        &format!("{source_tip}^{{commit}}"),
+    ])
+    .await;
+    if matches!(present, GitOutcome::Failed) {
+        return Ok(Err(RunRebaseError::NoSourceBranch { branch: repository }));
+    }
+    replay_range(worktree_dir, source_base, source_tip).await
+}
+
+/// Count and cherry-pick `source_base..tip` onto the prepared worktree:
+/// the shared tail of both carry sources.
+async fn replay_range(
+    worktree_dir: &Path,
+    source_base: &str,
+    tip: &str,
+) -> Result<Result<Rebased, RunRebaseError>, RunRebaseError> {
     let listed = git_stdout(worktree_dir, &[
         "rev-list",
         "--count",
@@ -112,7 +160,7 @@ pub(crate) async fn carry_checkpoint_work(
         return Ok(Ok(Rebased {
             commits:     0,
             source_base: source_base.to_string(),
-            source_tip:  tip,
+            source_tip:  tip.to_string(),
             touched:     Vec::new(),
         }));
     }
@@ -136,7 +184,7 @@ pub(crate) async fn carry_checkpoint_work(
         GitOutcome::Ran => Ok(Ok(Rebased {
             commits,
             source_base: source_base.to_string(),
-            source_tip: tip,
+            source_tip: tip.to_string(),
             touched,
         })),
         GitOutcome::Failed => {
@@ -303,6 +351,50 @@ mod tests {
             run(&scratch, &["push", "origin", branch]).await.unwrap();
             let _ = std::fs::remove_dir_all(&scratch);
         }
+
+        /// A failed run's SNAPSHOT repository: a bare repo holding the
+        /// work commit under a checkpoint ref and nothing else — the run
+        /// branch never becomes a ref there. Returns the repository and
+        /// the checkpoint commit's sha (the tip the records would name).
+        async fn push_snapshot_checkpoint(
+            &self,
+            check_ref: &str,
+            content: &str,
+        ) -> (PathBuf, String) {
+            let root = self.origin.parent().unwrap();
+            let scratch = root.join("snapshot-scratch");
+            let snapshot = root.join("snapshot.git");
+            std::fs::create_dir_all(&scratch).unwrap();
+            run(root, &[
+                "clone",
+                self.origin.to_str().unwrap(),
+                scratch.to_str().unwrap(),
+            ])
+            .await
+            .unwrap();
+            run(&scratch, &["config", "user.email", "t@example.com"])
+                .await
+                .unwrap();
+            run(&scratch, &["config", "user.name", "T"]).await.unwrap();
+            std::fs::write(scratch.join("work.txt"), content).unwrap();
+            run(&scratch, &["add", "."]).await.unwrap();
+            run(&scratch, &["commit", "-m", "checkpoint work"])
+                .await
+                .unwrap();
+            let tip = git_stdout(&scratch, &["rev-parse", "HEAD"]).await.unwrap();
+            run(root, &["init", "--bare", snapshot.to_str().unwrap()])
+                .await
+                .unwrap();
+            run(&scratch, &[
+                "push",
+                snapshot.to_str().unwrap(),
+                &format!("HEAD:{check_ref}"),
+            ])
+            .await
+            .unwrap();
+            let _ = std::fs::remove_dir_all(&scratch);
+            (snapshot, tip)
+        }
     }
 
     #[tokio::test]
@@ -374,5 +466,44 @@ mod tests {
         // The abort restored the worktree to the prepared tip.
         let content = std::fs::read_to_string(fixture.worktree.join("work.txt")).unwrap();
         assert_eq!(content, "moved tip\n");
+    }
+
+    #[tokio::test]
+    async fn carries_the_checkpoint_refs_from_a_snapshot_repository() {
+        let fixture = Fixture::build("snapshot-carry").await;
+        let (snapshot, tip) = fixture
+            .push_snapshot_checkpoint("refs/checkpoints/0/1/1", "snapshot work\n")
+            .await;
+        let carried =
+            carry_checkpoint_work_from_snapshot(&fixture.worktree, &snapshot, &tip, &fixture.base)
+                .await
+                .unwrap()
+                .expect("the snapshot carry succeeds");
+        assert_eq!(carried.commits, 1);
+        assert_eq!(carried.source_tip, tip);
+        assert_eq!(carried.touched, vec!["work.txt".to_string()]);
+        let content = std::fs::read_to_string(fixture.worktree.join("work.txt")).unwrap();
+        assert_eq!(content, "snapshot work\n");
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_without_the_tip_answers_nothing_to_carry() {
+        let fixture = Fixture::build("snapshot-miss").await;
+        let (snapshot, _tip) = fixture
+            .push_snapshot_checkpoint("refs/checkpoints/0/1/1", "other work\n")
+            .await;
+        let absent_tip = "0".repeat(40);
+        let carried = carry_checkpoint_work_from_snapshot(
+            &fixture.worktree,
+            &snapshot,
+            &absent_tip,
+            &fixture.base,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(carried, Err(RunRebaseError::NoSourceBranch { .. })),
+            "expected no source, got {carried:?}"
+        );
     }
 }

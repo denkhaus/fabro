@@ -43,6 +43,7 @@ use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_resp
 use super::runs::run_provenance;
 use crate::petri_check;
 use crate::run_rebase::{self as run_rebase_ops, RunRebaseError};
+use crate::server::run_publish::{find_snapshot_repository, snapshots_dir};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -569,6 +570,26 @@ async fn retry_latest_version(
     }
 }
 
+/// The newest checkpoint commit's sha of a run: the tip its snapshot
+/// repository provably holds (a failed run never pushes its branch —
+/// work#1320). `None` when the run recorded no checkpoint with a sha.
+async fn latest_checkpoint_sha(state: &AppState, id: &RunId) -> Option<String> {
+    let records = state
+        .stores
+        .run_summaries
+        .platform_records()
+        .read_kind(id, PlatformRecordKind::Checkpoint)
+        .await
+        .ok()?;
+    records
+        .iter()
+        .rev()
+        .find_map(|stored| match &stored.record {
+            fabro_store::PlatformRecord::Checkpoint(record) => record.git_commit_sha.clone(),
+            _ => None,
+        })
+}
+
 /// Report the successor failed with the picture, the same way a fork
 /// that could not be seeded is reported: the row exists, the reason is
 /// its evidence.
@@ -643,9 +664,20 @@ async fn retry_latest_run(
         Err(err) => return err.into_response(),
     };
     if Some(&version) == source.spec.workflow_version_id.as_ref() {
+        // Names both sides: the refusal self-diagnoses (work#1320's door
+        // ergonomics — the 2026-11-14 click needed code archaeology to
+        // learn the platform deploy had not moved the version).
+        let source_version = source
+            .spec
+            .workflow_version_id
+            .as_ref()
+            .map_or_else(|| "none".to_string(), ToString::to_string);
         return ApiError::new(
             StatusCode::CONFLICT,
-            "the newest workflow version is the one the source already ran; a plain retry replays it",
+            format!(
+                "the newest workflow version ({version}) is the one the source already ran \
+                 ({source_version}); a plain retry replays it",
+            ),
         )
         .into_response();
     }
@@ -706,21 +738,52 @@ async fn retry_latest_run(
         }
     }
 
-    // Carry the checkpoint work: the source run branch's commits since
-    // its base, cherry-picked onto the prepared worktree. A branch that
-    // was never pushed carries nothing (the re-drive starts fresh).
+    // Carry the checkpoint work: the source run's commits since its
+    // base, cherry-picked onto the prepared worktree. The SOURCE's
+    // snapshot repository comes first — a failed run never pushes its
+    // branch to the origin (work#1320); its work lives only in the
+    // snapshot, and the newest checkpoint record's sha names the tip.
+    // The origin stays the fallback (published branches of successful
+    // runs, or a reaped snapshot).
     let worktree = Storage::new(state.server_storage_dir())
         .run_scratch(&new_run_id)
         .worktree_dir();
     let source_branch = format!("fabro/run/{id}");
-    let carried = match run_rebase_ops::carry_checkpoint_work(
-        &worktree,
-        &git.origin_url,
-        &source_branch,
-        &source_base,
-    )
-    .await
-    {
+    let carry_result = if let Some(tip) = latest_checkpoint_sha(state.as_ref(), &id).await {
+        let snapshots = snapshots_dir(state.as_ref(), &id);
+        match find_snapshot_repository(&snapshots, &tip).await {
+            Some(repository) => {
+                run_rebase_ops::carry_checkpoint_work_from_snapshot(
+                    &worktree,
+                    &repository,
+                    &tip,
+                    &source_base,
+                )
+                .await
+            }
+            // No snapshot holds the tip (reaped, or a foreign checkout):
+            // the origin fallback — a branch that was never pushed
+            // carries nothing, the re-drive starts fresh.
+            None => {
+                run_rebase_ops::carry_checkpoint_work(
+                    &worktree,
+                    &git.origin_url,
+                    &source_branch,
+                    &source_base,
+                )
+                .await
+            }
+        }
+    } else {
+        run_rebase_ops::carry_checkpoint_work(
+            &worktree,
+            &git.origin_url,
+            &source_branch,
+            &source_base,
+        )
+        .await
+    };
+    let carried = match carry_result {
         Ok(Ok(carried)) => carried,
         Ok(Err(RunRebaseError::NoSourceBranch { .. })) => run_rebase_ops::Rebased {
             commits:     0,
