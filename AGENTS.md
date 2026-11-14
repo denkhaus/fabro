@@ -305,6 +305,10 @@ The five triage roles map onto the label standard (`prio:pN`, `type:*`, `lane:*`
 
 Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/` (one series: lab-branch era 0001–0031, denkhaus line 0032+). See `docs/agents/domain.md`.
 
+### Run checkout pipeline
+
+Who prepares a run's checkout (platform worktree → engine pack → sandbox), where the run branch comes from, and how environments select. Read `docs/agents/checkout-pipeline.md` before touching run creation, fork/retry, worktree preparation, or toolchain cooking.
+
 ### Sprint ledger
 
 `iterate-state.json` (repo root) is the iterate-cycle ledger; rotated-out sprints live in `iterate-state-archive.jsonl`. A sprint close is ONE command — `echo "<the sprint note>" | nu scripts/sprint-close.nu <N> [--ran-code-review] [--ran-arch-review] [--ran-rust-security]` (repo root, after the sprint's last substantive commit): it appends the record, rotates, and prints the next close's gates plus the commit-message skeleton. Gate arithmetic alone: `just gates [N]` — %2 code review, %3 architecture review, %5 rust-security review. Never compute the gates by hand.
