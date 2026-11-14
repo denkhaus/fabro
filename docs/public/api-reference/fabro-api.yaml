@@ -6124,6 +6124,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/DiskUsageResponse"
 
+  /api/v1/system/stats:
+    get:
+      operationId: getSystemStats
+      tags: [System]
+      summary: Retrieve Server Filesystem Stats
+      description: >-
+        Per-filesystem usage for the paths the server cares about (the
+        storage directory and the Docker data root beside it), plus what
+        the last sandbox-reap pass freed — the one call that answers which
+        filesystem is full and by what.
+      responses:
+        "200":
+          description: Server filesystem stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatsResponse"
+
   /api/v1/system/repair/runs:
     get:
       operationId: getSystemRepairRuns
@@ -19285,6 +19303,85 @@ components:
         reclaimable:
           type: boolean
           description: Whether the run is inactive and reclaimable.
+
+    SystemStatsResponse:
+      description: >-
+        Per-filesystem usage for the paths the server cares about, plus the
+        last sandbox-reap pass outcome (work#1326 stats door).
+      type: object
+      required: [filesystems]
+      properties:
+        filesystems:
+          type: array
+          description: >-
+            One row per probed path — the storage directory and, when it
+            exists, the Docker data root beside it. Identical numbers on two
+            rows mean the paths share one filesystem.
+          items:
+            $ref: "#/components/schemas/SystemFilesystemUsage"
+        last_reap_pass:
+          type: ["object", "null"]
+          description: >-
+            The last executed sandbox-reap pass, null before the first pass
+            ran or while the arm is disabled.
+          properties:
+            finished_at:
+              type: string
+              format: date-time
+              description: When the pass finished.
+            reaped:
+              type: integer
+              format: int64
+              description: Sandboxes reaped by the pass.
+            absent:
+              type: integer
+              format: int64
+              description: >-
+                Candidates whose sandbox was already absent — the idempotent
+                case, logged at debug, never an error.
+            failed:
+              type: integer
+              format: int64
+              description: Candidates whose reap failed and retries next tick.
+            freed_bytes:
+              type: integer
+              format: int64
+              description: >-
+                Estimated bytes freed: the reaped runs' host workspace sizes
+                summed before the prune.
+            disk_used_percent:
+              type: ["integer", "null"]
+              format: int64
+              description: >-
+                Storage-filesystem usage percent sampled after the pass,
+                null when statvfs failed.
+            brake:
+              type: boolean
+              description: Whether the disk brake widened the pass's window.
+
+    SystemFilesystemUsage:
+      description: One probed filesystem path.
+      type: object
+      properties:
+        path:
+          type: string
+          description: The probed path.
+        total_bytes:
+          type: integer
+          format: int64
+          description: Total space on the filesystem.
+        used_bytes:
+          type: integer
+          format: int64
+          description: Used space (total minus available, saturating).
+        available_bytes:
+          type: integer
+          format: int64
+          description: Available space.
+        used_percent:
+          type: integer
+          format: int64
+          description: Used space in whole percent, rounded down.
 
     PruneRunsRequest:
       description: Filters for system run pruning.

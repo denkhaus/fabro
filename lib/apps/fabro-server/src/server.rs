@@ -44,8 +44,8 @@ pub use fabro_api::types::{
     SystemDiskResourceScope, SystemDiskResources, SystemInfoResponse, SystemIntegrationStatus,
     SystemIntegrationsResponse, SystemMemoryResourceScope, SystemMemoryResources,
     SystemRepairRunIssue, SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts,
-    UpdateVariableRequest, UsageByModel, UsageStageRef, VariableListResponse, VncPreviewResponse,
-    WriteBlobResponse,
+    SystemStatsResponse, UpdateVariableRequest, UsageByModel, UsageStageRef, VariableListResponse,
+    VncPreviewResponse, WriteBlobResponse,
 };
 use fabro_auth::SqlVaultCredentialSource;
 use fabro_automation::{self, AutomationStore};
@@ -186,6 +186,9 @@ mod fork_run_stall_watchdog_tests;
 #[cfg(test)]
 #[cfg(test)]
 mod fork_slack_recovery_tests;
+pub(crate) mod fork_system_stats;
+#[cfg(test)]
+mod fork_system_stats_tests;
 #[cfg(test)]
 mod fork_window_gate_twin_tests;
 pub(crate) mod fork_work_registry;
@@ -1193,6 +1196,10 @@ pub struct AppState {
     worker_tokens: WorkerTokenKeys,
     started_at: Instant,
     resource_sampler: resource_sampler::ResourceSampler,
+    /// The last executed sandbox-reap pass's outcome, read by the
+    /// `/system/stats` door (fork_system_stats, denkhaus/work#1326):
+    /// "which filesystem is full, and what did the last reap free".
+    pub(crate) last_reap_pass: fork_system_stats::LastReapPassCell,
     max_concurrent_runs: usize,
     pub(crate) worker_control_bus: Arc<dyn WorkerControlBus>,
     /// The auth mode the server resolved at startup (ADR-0035): the
@@ -2913,6 +2920,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         worker_tokens,
         started_at: Instant::now(),
         resource_sampler: resource_sampler::ResourceSampler::new(),
+        last_reap_pass: std::sync::RwLock::new(None),
         max_concurrent_runs,
         worker_control_bus,
         auth_mode,
