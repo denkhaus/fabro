@@ -1,17 +1,11 @@
 {
-  "sprints_completed": 87,
+  "sprints_completed": 88,
   "sprints_reflected": 86,
   "last_arch_review_at_sprint": 87,
   "last_reflection": "2026-11-13",
-  "last_code_review_at_sprint": 86,
+  "last_code_review_at_sprint": 88,
   "last_rust_security_review_at_sprint": 85,
   "sprints": [
-    {
-      "sprint": 78,
-      "notes": [
-        "SPRINT 78 2026-11-05 (batch = #1072 COMPANION-FIRST + #1107 STAGE F ANCHOR — dependency order: the fast-path routing needs the kind; counts once; the stage-F grill ran TWO rounds with Jev pre-screens, all 16 decisions recorded in the epic BEFORE code): #1072 CLOSED (a2b5e85dc + folds 7ae1e908e) — the human_needed terminal kind landed WHOLE: taxonomy (unit variant, board_rank 5 decision column), the fork classifier parks the deadlock-exit family (never Failed{Deadlock}), THE MIGRATION the projection pin forced (the runs-table status CHECK rejected the kind; the post-fold upsert rolled back SILENTLY — run stayed Running, conclusion None, engine green; diagnosed via stored-records-vs-stream divergence; migration 2026110501 rebuilds the CHECK), store terminal sets DERIVED from TERMINAL_STATUS_KINDS with a drift pin (the review fold; active_run_for_automation onto QueryBuilder binds), steer/board_column_rank/breaker (no count — the watchdog owns stall visibility)/OpenAPI+parity/TS/web decision column (694/694)/ps amber/wait bold_yellow (a reachable-unreachable! caught post-commit — the Styles field missed the first 35-min build: mulch'd). Ride-along per the grill: THE CLAIM HOLDS; fast-path routes human_needed -> merge:parked LLM-free before any fact read (mutation-proven). STAGE F LANDED: the watchdog workflow (env guard + LLM-free stall check; enabled gear + no completed pass within 3x tick = GEAR STALL, exit 1, the red run IS the Slack alarm; disabled/absent = silent, the pause authoritative; meta-stall by list visibility), the stall-check smoke (4 arms, mutation-proven, battery row 26), shim automations/ps arms (queue lifecycle object-shape fidelity fix + the provided-record all binding — the review's hard finding), GLOSSARY (human_needed, Watchdog), likec4 (watchdog #evolving + real read edges), fabro-test PR #132 (probe-41 watchdog read doors + probe-30 human_needed flip, RED until fork.30 by the skew precedent). THE LOCAL LAP (grilled): probe-41 LIVE GREE... (line truncated to 2000 chars)"
-      ]
-    },
     {
       "sprint": 79,
       "notes": [
@@ -71,6 +65,12 @@
       "sprint": 87,
       "notes": [
         "SPRINT 87 2026-11-14 (the /storage incident window; batch = the handoff remainder superseded by events: #1296 salvage ANCHOR + the incident response; counts once via LOCAL substantive closures). LANDED: fork.35 deploy with three live proofs (version skew, Sandbox-Reap 243 sandboxes/disk 94->57%, label door taking #526/#528/#532) — #1296 closed via salvaged PR #532 (agent+tester green, died at the #1303 reviewer denial; evidence matrix in the item); Bench fully repaired (fabro-test #158 pipefail, #160 env declarations, #161 release binaries, #163 retire-parks — 36/42 green table + 6 targeted re-drives); first CLI release binary (0.362.0-fork.35, checksummed fetch pattern, user decision); fork/retry UI lab -> #1320 grilled AND built as PR #534/#535 (Retry on latest: API door + run_rebase cherry-pick carry + graph_compat + verdict-bar button; 1229+127+723 tests); %3 ARCH REVIEW RAN (local agent): two strong findings filed #1324 (preserve-gate bypass in the reap arm, p1) + #1325 (version-id typing, fixed in #535). Retro (user: all four built): mulch conventions x2, checkout-pipeline doc PR #536, #1326 stats door (develop), #1327 validator hardening (vendor seam). DEVIATIONS: grill park->created-then-failed (no platform park state); plain Retry untouched. INCIDENTS/LESSONS: hand-typed 28-hex sha wedged two host-release rounds (mulch convention); ghost create after aborted call; environment declare-vs-select trap (#1319); #1321 archived runs in gear worklists (p1, quick-fix offered); #1312 no answer door for human_needed parks (p1, user-confirmed twice). FRICTION NOTE: score 0.222 normal but drain_deficit 0.615 (91 creates vs 35 closes — the filing burst). Gears at close: merger+adjudicator+develop green (develop delivered #533/#1301 mid-session), watchdog paused pending user."
+      ]
+    },
+    {
+      "sprint": 88,
+      "notes": [
+        "The fork.36 window session. Local substantive work: the retry-latest facet rig fixed end to end and DEFERRED from the workbench loop (fabro-test #185 — six layered rig bugs, the carry gap documented in work#1320); the deploy window completed through its proof ceremony: smoke gate green, host-release with the FIRST automated binary release (tag 0.362.0-fork.36-33ae9cb69569), tofu apply healthy, version-skew proven, pin committed, all four gears re-armed. The user's production retry-latest click answered the same-version 409 — three semantics findings recorded in work#1320 (platform fixes do not move the workflow version; carry reads the wrong store; resolution is run-based by decision). Filed: #1343 (observations load), #1344 (table spinners), #1345 (owner park), #1346 (item work continuity), #1347 (workflow-version read door), #1350 (auth-header dedup); dependency web set on #1336. Retro through the skill: five candidates, all implemented (checkout-pipeline work-lifecycle section PR #549 with a corrected wrong bullet, #1197 scope extension past lint-nu, mulch door-precondition convention, #1320 door ergonomics, tofu gopass warm-up note). Code review (%2) ran: two folds on #185, PR #549 cleaned to docs-only, tofu AGENTS.md sha12 carve-out, #1350 filed. COUNTING CAVEAT: no item closed locally this sprint — a window and filing session; the ledger records 88 for gate continuity, the closure rule's letter is not met."
       ]
     }
   ]
