@@ -12,14 +12,19 @@
 #       architect, anything. NOTE: fabro ps --json carries
 #       status as {"kind": "..."} — a string compare against 'running'
 #       silently passes while runs are active (the 2026-09-17 violation).
-#   (b) NO live work claim on the line's project (ADR-0032 phase 3,
-#       e829 grill fork 4, settled 2026-10-21): claims in granted /
-#       active / awaiting_merge mean line work is in flight — the
-#       awaiting_merge claim's prUrl names the run-PR the merger window
-#       will land. Foreign PRs and claimless run-PRs (drained parks'
-#       journal vehicles) no longer block: the merger rebases base-first,
-#       and gh leaves the gate entirely (the line's own state is the
-#       authority). An unreachable claims view fails the gate CLOSED.
+#   (b) NO live work claim of an ACTIVE run on the line's project (ADR-0032
+#       phase 3, e829 grill fork 4, settled 2026-10-21; terminal-aware
+#       2026-11-13): a claim blocks only while its run is still working —
+#       plain `fabro ps` lists active runs, so a claim whose run is absent
+#       from that list belongs to a terminal run and is the RECONCILER's
+#       to heal (work_reconciler: "run status is the truth"), never the
+#       gate's to wait on. The 2026-11-13 incident: a FAILED run's orphan
+#       claim held the trunk for an hour with nothing in flight. The
+#       merger-era note: awaiting_merge claims of terminal runs no longer
+#       block either — the merger rebases base-first and its own gear run
+#       is ACTIVE during every sweep, so condition (a) owns that race.
+#       A claim whose run cannot be resolved fails the gate CLOSED.
+#       An unreachable claims view fails the gate CLOSED.
 #
 # Exit 0 = GATE OPEN (push allowed). Exit 1 = REFUSED (prints why).
 # Usage: nu .fabro/scripts/push-gate.nu [--branch denkhaus]
@@ -69,7 +74,19 @@ def main [
         print $"GATE REFUSED: claims view unreachable on ($server) — the gate fails closed, e829 fork 4"
         exit 1
     }
-    let blocking = ($claims | where {|c| ($c | get -o state | default '') in ['granted' 'active' 'awaiting_merge'] })
+    let active_ids = ($active | get run_id | each {|id| $id | str substring 0..26})
+    let blocking = ($claims | where {|c|
+        let state = ($c | get -o state | default '')
+        if $state not-in ['granted' 'active' 'awaiting_merge'] { return false }
+        # Terminal-aware (2026-11-13): plain ps lists ACTIVE runs only —
+        # a claiming run absent from it is terminal, and its claim is the
+        # reconciler's to heal, not the gate's to wait on. Unresolvable
+        # run ids fail CLOSED (return true blocks below). The claims view
+        # is camelCase (runId).
+        let claim_run = ($c | get -o runId | default '' | str substring 0..26)
+        if ($claim_run | is-empty) { return true }
+        $claim_run in $active_ids
+    })
     if ($active | length) > 0 {
         print $"GATE REFUSED: ($active | length) active runs: ($active | each {|r| $r.run_id } | str join ', ')"
         if ($blocking | length) > 0 { print $"also ($blocking | length) live claims" }
