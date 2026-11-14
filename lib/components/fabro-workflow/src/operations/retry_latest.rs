@@ -13,10 +13,13 @@
 //!   faulting node parks the successor for a human instead of firing into a
 //!   structure the seeded state does not fit.
 //!
-//! The pure halves live here (compatibility, spec assembly inputs);
-//! the server-side wiring resolves currency, re-admits, and parks.
+//! The pure half lives here (compatibility); the server-side wiring
+//! resolves currency, re-admits through the create path, carries the
+//! checkpoint work, and reports a failed successor (created-then-
+//! failed, the seeded-fork pattern) when the graphs or the carry
+//! refuse.
 
-use fabro_types::{RunGraph, RunId, RunSpec};
+use fabro_types::RunGraph;
 
 /// What retry-on-latest decided about the graphs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,30 +51,6 @@ pub fn graph_compat(old: &RunGraph, new: &RunGraph) -> RetryLatestCompat {
     } else {
         RetryLatestCompat::NodesMissing { missing }
     }
-}
-
-/// The inputs the server assembles for the re-driven spec. The
-/// compile/lower machinery stays server-side; this record names what
-/// the operation carries over from the source verbatim and what comes
-/// from the re-admitted version.
-#[derive(Clone, Debug)]
-pub struct RetryLatestSpecInput {
-    /// The source run being re-driven.
-    pub source_run_id:  RunId,
-    /// The checkpoint the re-drive starts from (the source's faulting
-    /// stage entry), carried into `fork_source_ref`.
-    pub checkpoint_sha: String,
-}
-
-/// Patch a freshly compiled spec (built from the re-admitted version)
-/// with the lineage facts of the re-drive: the fork source ref names
-/// the source run and its checkpoint, so lineage views read the same
-/// trail a plain fork writes.
-pub fn apply_retry_latest_lineage(spec: &mut RunSpec, input: &RetryLatestSpecInput) {
-    spec.fork_source_ref = Some(fabro_types::ForkSourceRef {
-        source_run_id:  input.source_run_id,
-        checkpoint_sha: input.checkpoint_sha.clone(),
-    });
 }
 
 #[cfg(test)]

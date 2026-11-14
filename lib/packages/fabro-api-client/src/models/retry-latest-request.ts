@@ -13,13 +13,13 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { RetryLatestRequestWorkflowVersionId } from './retry-latest-request-workflow-version-id';
 
 /**
  * Request body for re-driving a terminal run on current bases (work#1320). All fields optional.
  */
 export interface RetryLatestRequest {
-    /**
-     * The workflow version to re-admit. Defaults to the version the newest run of the source\'s workflow slug used.
-     */
-    'workflow_version_id'?: string | null;
+    'workflow_version_id'?: RetryLatestRequestWorkflowVersionId;
 }
