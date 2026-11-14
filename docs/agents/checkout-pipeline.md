@@ -49,3 +49,15 @@ Key facts:
   environments (`[environments.<id>]`); the create request SELECTS one
   (`--environment` / the automation body's `environment:` field) —
   declaring without selecting falls to the default sandbox (#1319).
+
+Cook cost budget (user directive 2026-11-14 — plan with it): the cook
+adds 0–30 minutes to the FIRST lap at a new checkout state — 0 when
+every layer is a cache hit, ~10 minutes when only the compile layer
+rebuilds (deps stay cached via the chef pattern), up to 30 minutes
+cold (observed specimen: run 01M7D3E048F94C7X21Q9HYPAT4 on
+2026-11-14). With the line merging PRs hourly, nearly every lap is the
+first at its tip. The line graphs' stall timeouts carry this —
+develop 63m (comfortable), merger 46m (tight with merge work),
+adjudicator 31m (at the ceiling: a cold cook plus any stall kills the
+lap) — until #1335 replaces the CLI compile with the pinned release
+binary and collapses the cook to layer hits + downloads.
