@@ -22,4 +22,8 @@ import type { GlobalObservation } from './global-observation';
  */
 export interface GlobalObservationList {
     'observations': Array<GlobalObservation>;
+    /**
+     * The REAL total under the SQL filters (category, run, q) — a COUNT beside the page fetch, the number the pager pages by (denkhaus/work#1296: the page-window total must be stable across a full walk, never an estimate that grows per visited page). Null when the `triage` filter is set: triage is derived per row beyond SQL\'s reach, so no honest count exists — clients fall back to relative paging.
+     */
+    'total'?: number | null;
 }

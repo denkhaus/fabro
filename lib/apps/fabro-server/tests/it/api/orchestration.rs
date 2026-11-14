@@ -1044,6 +1044,81 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
     );
 }
 
+/// denkhaus/work#1296: the feed carries the REAL total under the SQL
+/// filters — a SQL COUNT beside the page, so the pager's count is
+/// stable across a full walk instead of growing per visited page. The
+/// triage filter derives per row (beyond SQL's reach), so that arm
+/// reports total: null — the client falls back to relative paging.
+#[tokio::test]
+async fn the_global_observations_feed_reports_the_real_total() {
+    let (app, state, store) = orchestration_app();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for (category, text) in [
+        (fabro_types::ObservationCategory::Painpoint, "a painpoint"),
+        (fabro_types::ObservationCategory::Note, "one note"),
+        (fabro_types::ObservationCategory::Note, "two notes"),
+    ] {
+        records
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category,
+                        text: text.to_owned(),
+                        execution: 1,
+                        firing: 1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+
+    async fn feed(app: &axum::Router, token: &str, query: &str) -> Value {
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(api(&format!("/observations{query}")))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("feed request builds");
+        let response = app.clone().oneshot(request).await.expect("request runs");
+        response_json(response, StatusCode::OK, "observations feed").await
+    }
+
+    let body = feed(&app, &token, "").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(3),
+        "no filter counts all: {body}"
+    );
+    let body = feed(&app, &token, "?category=note").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(2),
+        "the category filter rides the SQL COUNT: {body}"
+    );
+    assert_eq!(
+        body["observations"].as_array().map(Vec::len),
+        Some(2),
+        "the category filter narrows the page too: {body}"
+    );
+    let body = feed(&app, &token, "?q=one").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(1),
+        "the text filter rides the SQL COUNT: {body}"
+    );
+    let body = feed(&app, &token, "?triage=untriaged").await;
+    assert!(
+        body["total"].is_null(),
+        "the triage filter has no honest count — total is null: {body}"
+    );
+}
+
 /// Seed the work project through the user surface (the run_channel
 /// precedent): the claims the decoration test grants need it.
 async fn seed_work_project(state: &Arc<fabro_server::server::AppState>) {

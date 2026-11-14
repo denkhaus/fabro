@@ -41,11 +41,12 @@ export type DataTableFetcher<Row> = (args: {
 }) => Promise<{ rows: Row[]; total: number }>;
 
 /**
- * The page-window total estimate the fetchers share when the backend
- * pages without a count: a short page means no next page, a full page
- * means at least one more (the pager then discovers the end on the last
- * page). Not a real count — the tracker and the observations feed have
- * no cheap one.
+ * The FALLBACK total estimate for fetchers whose backend reports no
+ * count: a short page means no next page, a full page means at least
+ * one more. Not a real count — it grows per visited full page, so any
+ * backend that CAN count reports the real total instead
+ * (denkhaus/work#1296); this estimate remains only where no honest
+ * count exists (e.g. triage-filtered observations).
  */
 export function estimatePageTotal(rowsOnPage: number, page: number, limit: number): number {
   return rowsOnPage < limit ? (page - 1) * limit + rowsOnPage : (page + 1) * limit;

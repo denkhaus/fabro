@@ -22,8 +22,12 @@ const { default: ObservationsFeedView } = await import("./observations");
 
 let activeRenderer: TestRenderer.ReactTestRenderer | null = null;
 
-function renderFeed(observations: unknown[], initialEntry: string): TestRenderer.ReactTestRenderer {
-  currentFeed = { observations } as GlobalObservationList;
+function renderFeed(
+  observations: unknown[],
+  initialEntry: string,
+  total?: number,
+): TestRenderer.ReactTestRenderer {
+  currentFeed = { observations, total } as GlobalObservationList;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
   const router = createMemoryRouter([
@@ -131,5 +135,50 @@ describe("ObservationsFeedView", () => {
     const text = textFromNode(json);
     expect(text).toContain("denkhaus/work#12");
     expect(JSON.stringify(json)).toContain("https://tracker.example/issues/12");
+  });
+
+  /// denkhaus/work#1296: the pager pages by the server's REAL total
+  /// (a SQL COUNT under the same filters) — a full page with a real
+  /// total NEVER grows the count the way the page-window estimate did.
+  test("a full page with a real total pages by that total, not the estimate", async () => {
+    const fullPage = Array.from({ length: 10 }, (_, index) => ({
+      run_id: "01M6SGVZ4V1D",
+      seq: index + 1,
+      category: "note",
+      triage_state: "untriaged",
+      text: `note ${index + 1}`,
+      recorded_at: "2026-12-11T10:38:44Z",
+      linked_work_items: [],
+    }));
+    // Distinct ?page per test (SWR dedupes an identical key — see the
+    // afterEach note); pages 1-3 are taken by the tests above.
+    const renderer = await flushRows(renderFeed(fullPage, "/observations?page=5", 12));
+    const text = textFromNode(renderer.toJSON()).replace(/\s+/g, "");
+    // 12 real observations -> "12 items" and 2 pages (the requested
+    // page 5 clamps to the real last page). The estimate would claim
+    // (5 + 1) * 10 = 60 — exactly the growth the defect showed (a
+    // number appearing that was not there before).
+    expect(text).toContain("12items");
+    expect(text).toContain("page2/2");
+    expect(text).not.toContain("60items");
+  });
+
+  /// denkhaus/work#1296: with the triage filter set the server cannot
+  /// count honestly (triage derives per row) and reports total: null —
+  /// the fetcher falls back to the page-window estimate.
+  test("a null total falls back to the page-window estimate", async () => {
+    const fullPage = Array.from({ length: 10 }, (_, index) => ({
+      run_id: "01M6SGVZ4V1D",
+      seq: index + 1,
+      category: "painpoint",
+      triage_state: "untriaged",
+      text: `painpoint ${index + 1}`,
+      recorded_at: "2026-12-11T10:38:44Z",
+      linked_work_items: [],
+    }));
+    const renderer = await flushRows(renderFeed(fullPage, "/observations?page=6"));
+    const text = textFromNode(renderer.toJSON()).replace(/\s+/g, "");
+    // No total: the fallback estimates (6 + 1) * 10 = 70.
+    expect(text).toContain("70items");
   });
 });

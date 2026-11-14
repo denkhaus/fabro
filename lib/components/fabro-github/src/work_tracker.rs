@@ -766,6 +766,68 @@ mod tests {
         assert_eq!(items[1].state, "open");
     }
 
+    /// denkhaus/work#1296: `list_with_total` surfaces GitHub search's
+    /// `total_count` — the REAL number the pager pages by — and stays
+    /// honest (no total) on the open-only listing, which answers pages,
+    /// not a count.
+    #[tokio::test]
+    async fn list_with_total_surfaces_the_search_count_and_none_in_list_mode() {
+        let server = httpmock::MockServer::start_async().await;
+        let searched = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/search/issues")
+                    .query_param("per_page", "25")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!({
+                    "total_count": 42,
+                    "items": [
+                        {"number": 9, "title": "Watchdog tuning", "body": "b", "state": "open",
+                         "labels": [{"name": "project:fabro"}], "html_url": "u9",
+                         "updated_at": "2026-10-21T05:00:00Z"}
+                    ]
+                }));
+            })
+            .await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "open")
+                    .query_param("per_page", "25")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!([]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let (items, total) = tracker
+            .list_with_total(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 25,
+                query: Some("watchdog".to_string()),
+                label: None,
+                page:  1,
+            })
+            .await
+            .expect("the search arm resolves");
+        assert_eq!(items.len(), 1);
+        assert_eq!(total, Some(42), "the search total is the real count");
+        let (items, total) = tracker
+            .list_with_total(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 25,
+                query: None,
+                label: None,
+                page:  1,
+            })
+            .await
+            .expect("the open-list arm resolves");
+        assert!(items.is_empty());
+        assert_eq!(total, None, "the open-only listing has no honest count");
+        searched.assert_calls_async(1).await;
+        listed.assert_calls_async(1).await;
+    }
+
     #[tokio::test]
     async fn a_blank_query_is_rejected_before_any_request() {
         let server = httpmock::MockServer::start_async().await;

@@ -165,7 +165,12 @@ export default function ObservationsFeedView() {
             }))
             .filter((linked) => linked.key),
         }));
-        const total = estimatePageTotal(rows.length, page, limit);
+        // The server counts under the same SQL filters (denkhaus/work#1296):
+        // the pager pages by the REAL total, stable across a full walk.
+        // Null when the triage filter is set (triage derives per row,
+        // beyond SQL's reach) — then the page-window estimate is the
+        // fallback.
+        const total = response.data?.total ?? estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
     />

@@ -502,8 +502,8 @@ async fn list_work_items(
         }
     };
     let response = WorkItemListResponse {
-        data: items.into_iter().map(api_item).collect(),
-        total: total.map(|total| total.cast_signed()),
+        data:  items.into_iter().map(api_item).collect(),
+        total: total.map(u64::cast_signed),
     };
     Ok(Json(response).into_response())
 }

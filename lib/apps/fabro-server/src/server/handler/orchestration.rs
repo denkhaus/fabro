@@ -128,6 +128,9 @@ async fn list_global_observations(
     };
     let mut offset = (page - 1) * page_size;
     let mut collected: Vec<GlobalObservation> = Vec::new();
+    // The category filter rides the SQL itself (`json_extract` over the
+    // stored record, the same filter the COUNT below sees).
+    let category_sql = category.map(|category| category.to_string());
     // The REAL total (denkhaus/work#1296): a SQL COUNT under the same
     // filters as the page — the pager's page count is stable across a
     // full walk instead of growing per visited page. Null when the
@@ -142,7 +145,7 @@ async fn list_global_observations(
                 over_fetch,
                 offset,
                 run_id.as_ref(),
-                category.as_ref().map(|category| category.as_str()),
+                category_sql.as_deref(),
                 params.q.as_deref(),
             )
             .await
@@ -189,11 +192,14 @@ async fn list_global_observations(
         offset += over_fetch;
     }
     let observations: Vec<_> = collected.into_iter().take(page_size).collect();
-    let total = triage_filter.is_none().then(|| {
-        i64::try_from(sql_total.unwrap_or(0))
-            .expect("an SQLite COUNT fits an i64")
-    });
-    Ok(Json(GlobalObservationList { observations, total }).into_response())
+    let total = triage_filter
+        .is_none()
+        .then(|| i64::try_from(sql_total.unwrap_or(0)).expect("an SQLite COUNT fits an i64"));
+    Ok(Json(GlobalObservationList {
+        observations,
+        total,
+    })
+    .into_response())
 }
 
 /// The wire triage state and its derivation over a record's links.

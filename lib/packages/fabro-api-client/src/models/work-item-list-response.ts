@@ -22,4 +22,8 @@ import type { WorkItem } from './work-item';
  */
 export interface WorkItemListResponse {
     'data': Array<WorkItem>;
+    /**
+     * The result-set total the tracker names cheaply — GitHub search\'s `total_count` in query mode (denkhaus/work#1296: the pager pages by a real number instead of a per-page estimate that grows while paging). Null when the provider has no count (the open-only list) or the request sorts server-side — clients fall back to relative paging.
+     */
+    'total'?: number | null;
 }
