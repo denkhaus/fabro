@@ -21,11 +21,15 @@ const SANCTIONED_PREFIXES = [
     'Merge PR #'
 ]
 
-def main [remote: string, url: string] {
+def main [
+    ...push_args: string  # lefthook's {push_args}: the remote (and url); default origin
+]: nothing -> nothing {
+    let remote = ($push_args | get -o 0 | default $REMOTE)
     if $remote != $REMOTE { exit 0 }
-    # Capture stdin ONCE at the top (git pipes the pushed refs):
-    # <local ref> <local oid> <remote ref> <remote oid>
-    let raw = ($in | lines | where {|l| ($l | str trim) != ''})
+    # Capture stdin ONCE (git pipes the pushed refs): <local ref>
+    # <local oid> <remote ref> <remote oid>. External cat through
+    # complete handles the closed-stdin case (empty, no hang).
+    let raw = (do { ^cat } | complete | get stdout | lines | where {|l| ($l | str trim) != ''})
     let touches_line = ($raw | any {|l|
         ($l | parse --regex '(?P<local_ref>\S+) (?P<local_oid>\S+) refs/heads/(?P<branch>\S+) (?P<remote_oid>\S+)' | get -o branch.0 | default '') == $LINE_BRANCH
     })
