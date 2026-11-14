@@ -40,6 +40,13 @@ pre-commit:
 
 pre-push:
   commands:
+    branch-door:
+      # The branch-door gate (PR #528's rule, enforced): commits pushed
+      # to origin/denkhaus must name their sanction — a merger merge
+      # subject, a ceremony prefix (release:, sprint ledger:, mulch:),
+      # or an explicit [direct: <reason>] marker. Reads git's pushed
+      # refs from stdin; {push_args} carries remote and url.
+      run: mise exec -- nu scripts/hooks/pre-push {push_args}
     betterleaks:
       tags: [security]
       # Full-history scan before anything leaves the machine, over the

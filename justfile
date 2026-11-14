@@ -294,3 +294,10 @@ gates sprint="":
 # it also runs in every plain fabro-server test round.
 smoke-window-gate:
     cargo nextest run -p fabro-server window_gate
+
+# Delete LOCAL branches whose commits are already on origin/denkhaus
+# (the remote side is GitHub's delete_branch_on_merge; local clones
+# keep merged branches forever without this). -d refuses unmerged.
+branch-sweep:
+    @git fetch --prune origin
+    @git branch --merged origin/denkhaus | grep -vE '^\*?\s*denkhaus$$' | xargs -r git branch -d
