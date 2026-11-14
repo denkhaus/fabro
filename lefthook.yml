@@ -1,8 +1,59 @@
-# lefthook (the fabro-tofu pattern): the branch-door pre-push gate.
-# Activate per clone: `lefthook install` (mise/bunx lefthook). The gate
-# script reads git's pushed refs from stdin; push args ride lefthook's
-# {push_args} (remote and url), defaulting to origin.
+# lefthook — fast git hooks manager (https://github.com/evilmartians/lefthook)
+# Binaries come from mise (lefthook + betterleaks in .mise.toml).
+# After cloning this repo:  just bootstrap
+# Run a group manually:     lefthook run pre-commit | pre-push
+#
+# Mirrors fabro-tofu's setup. The Rust gates stay in `just verify`
+# (tester runs them); commits stay fast — these hooks guard what only
+# a commit-time check can: what is ABOUT to land in a public repo.
+
+pre-commit:
+  parallel: true
+  commands:
+    betterleaks:
+      tags: [security]
+      # Secret scan of exactly what is being committed (staged diff).
+      # CREDENTIAL patterns only — the host-identity guard below covers
+      # the address/port class betterleaks cannot see. The baseline
+      # carries the audited false positives of the history (test
+      # fixture keys, redactor sources, checksum-as-key misdetections,
+      # 2026-11-09 audit — no real credentials among the 48); a NEW
+      # finding has a new fingerprint and still fails the push.
+      run: mise exec -- betterleaks git --staged --redact -b .betterleaks-baseline.json .
+    host-identity:
+      tags: [security]
+      # The 2026-11-09 leak class (production IP/port/root@ as recipe
+      # defaults, mulch mx-9c1e77): deployment host identity must never
+      # ride this public repo.
+      run: mise exec -- nu scripts/guards/host-identity.nu {staged_files}
+    lint-nu:
+      tags: [quality]
+      # Full nu lint (fast, ~2s over all scripts) whenever a .nu file
+      # is staged — the registration battery rides it.
+      glob: "*.nu"
+      run: mise exec -- nu scripts/lint-nu.nu
+    justfile:
+      tags: [quality]
+      # Parse-only recipe check (recipes are never executed).
+      glob: "justfile"
+      run: mise exec -- just --dry-run --list --list-heading '' --list-prefix '' >/dev/null
+
 pre-push:
   commands:
     branch-door:
-      run: nu scripts/hooks/pre-push {push_args}
+      # The branch-door gate (PR #528's rule, enforced): commits pushed
+      # to origin/denkhaus must name their sanction — a merger merge
+      # subject, a ceremony prefix (release:, sprint ledger:, mulch:),
+      # or an explicit [direct: <reason>] marker. Reads git's pushed
+      # refs from stdin; {push_args} carries remote and url.
+      run: mise exec -- nu scripts/hooks/pre-push {push_args}
+    betterleaks:
+      tags: [security]
+      # Full-history scan before anything leaves the machine, over the
+      # audited baseline (see pre-commit betterleaks for what it holds).
+      run: mise exec -- betterleaks git . --redact -b .betterleaks-baseline.json
+    host-identity:
+      tags: [security]
+      # The guard over the tracked tree — a missed pattern in older
+      # commits surfaces here, before the push.
+      run: mise exec -- nu scripts/guards/host-identity.nu {push_files}
