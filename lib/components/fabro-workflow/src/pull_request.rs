@@ -625,11 +625,27 @@ async fn enable_auto_merge_within_scope(
 }
 
 /// Fork surface (fabro-67e5 retry, W2-3): bounded retry around pull request
-/// creation. All attempts except the last retry once on transient
-/// (retryable) failures with a short backoff; deterministic failures fail
-/// fast carrying the scope remediation and the attempt history.
+/// creation. Retryable failures (transport, 5xx, and the rate-limit classes
+/// of denkhaus/work#1332) back off — exponentially, or per the answer's
+/// `Retry-After` hint — and only a persistent failure records
+/// pull_request.failed naming the terminal cause class; deterministic
+/// failures fail fast carrying the scope remediation and the attempt
+/// history.
 const PR_CREATE_ATTEMPTS: u32 = 3;
 const PR_CREATE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+/// Upper bound for a single rate-limit wait — the pipeline must not sleep
+/// unboundedly on a hostile `Retry-After` hint (denkhaus/work#1332).
+const PR_CREATE_RETRY_MAX_DELAY: Duration = Duration::from_mins(10);
+
+/// Backoff before the next attempt: exponential (2s, 4s, …) for generic
+/// transients; a rate-limit answer's `Retry-After` hint wins when present,
+/// clamped to the ceiling (denkhaus/work#1332).
+fn retry_delay(attempt: u32, error: &fabro_github::CreatePullRequestError) -> Duration {
+    if let Some(hint) = error.retry_after() {
+        return Duration::from_secs(hint).min(PR_CREATE_RETRY_MAX_DELAY);
+    }
+    PR_CREATE_RETRY_DELAY * (1u32 << (attempt - 1).min(5))
+}
 
 async fn create_pull_request_with_attempts<F, Fut>(
     owner: &str,
@@ -656,9 +672,10 @@ where
         tracing::warn!(
             attempt,
             error = %error,
-            "Transient pull request creation failure; retrying after a short backoff"
+            retry_after = ?error.retry_after(),
+            "Transient pull request creation failure; retrying after a backoff"
         );
-        sleep(PR_CREATE_RETRY_DELAY).await;
+        sleep(retry_delay(attempt, &error)).await;
     }
     let error = match create().await {
         Ok(created) => return Ok(created),
@@ -679,10 +696,21 @@ fn create_attempt_line(
 
 fn final_create_error(attempts: &[String], error: &fabro_github::CreatePullRequestError) -> String {
     let history = attempts.join("; ");
-    match error.scope_hint() {
-        Some(hint) if history.is_empty() => format!("pull request creation failed — {hint}"),
-        Some(hint) => format!("pull request creation failed — {hint} ({history})"),
-        None => history,
+    // Name the terminal cause class so the pull_request.failed record
+    // distinguishes quota exhaustion from a token-scope rejection
+    // (denkhaus/work#1332).
+    let cause = match error.failure_class() {
+        "rate" => "terminal cause: rate-class (GitHub rate limit)".to_string(),
+        "scope" => format!(
+            "terminal cause: scope-class — {}",
+            error.scope_hint().unwrap_or_default()
+        ),
+        _ => "terminal cause: transport/service".to_string(),
+    };
+    if history.is_empty() {
+        format!("pull request creation failed — {cause}")
+    } else {
+        format!("pull request creation failed — {cause} ({history})")
     }
 }
 
@@ -1968,5 +1996,100 @@ capabilities = { text = true }
         assert_eq!(title.chars().count(), 72);
         assert!(title.ends_with('\u{2026}'));
         harness.assert_mocks_called_once().await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Bounded retry past rate-limit windows (denkhaus/work#1332)
+    // -----------------------------------------------------------------------
+
+    fn scripted_rate_limit(retry_after_secs: Option<u64>) -> fabro_github::CreatePullRequestError {
+        fabro_github::CreatePullRequestError::RateLimited {
+            status: 403,
+            body: "API rate limit exceeded for installation ID 161242007".to_string(),
+            retry_after_secs,
+        }
+    }
+
+    #[test]
+    fn pr_create_retry_delay_is_exponential_and_honors_the_rate_hint() {
+        let transient =
+            fabro_github::CreatePullRequestError::Transport(anyhow::anyhow!("timed out"));
+        assert_eq!(retry_delay(1, &transient), Duration::from_secs(2));
+        assert_eq!(retry_delay(2, &transient), Duration::from_secs(4));
+
+        assert_eq!(
+            retry_delay(1, &scripted_rate_limit(Some(0))),
+            Duration::ZERO
+        );
+        assert_eq!(
+            retry_delay(1, &scripted_rate_limit(Some(60))),
+            Duration::from_mins(1)
+        );
+        assert_eq!(
+            retry_delay(1, &scripted_rate_limit(Some(99_999))),
+            PR_CREATE_RETRY_MAX_DELAY
+        );
+    }
+
+    #[tokio::test]
+    async fn pr_create_retries_past_a_scripted_rate_limit_window() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let witness = std::sync::Arc::clone(&calls);
+        let result = create_pull_request_with_attempts("owner", "repo", move || {
+            let calls = std::sync::Arc::clone(&witness);
+            async move {
+                let seen = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                if seen < 3 {
+                    Err(scripted_rate_limit(Some(0)))
+                } else {
+                    Ok(github_app::CreatedPullRequest {
+                        html_url: "https://example.test/pull/1".to_string(),
+                        number:   1,
+                        node_id:  "NODE".to_string(),
+                        title:    "Title".to_string(),
+                    })
+                }
+            }
+        })
+        .await;
+
+        let created = result.expect("the pipeline must retry past a transient rate window");
+        assert_eq!(created.number, 1);
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            PR_CREATE_ATTEMPTS as usize
+        );
+    }
+
+    #[tokio::test]
+    async fn pr_create_terminal_rate_failure_names_rate_class() {
+        let result = create_pull_request_with_attempts("owner", "repo", || async {
+            Err(scripted_rate_limit(Some(0)))
+        })
+        .await;
+
+        let message = result.expect_err("a persistent rate limit is terminal");
+        assert!(
+            message.contains("terminal cause: rate-class (GitHub rate limit)"),
+            "{message}"
+        );
+        assert!(message.contains("attempt 3"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn pr_create_terminal_scope_failure_names_scope_class() {
+        let result = create_pull_request_with_attempts("owner", "repo", || async {
+            Err(fabro_github::CreatePullRequestError::Status {
+                status: 403,
+                body:   "Resource not accessible by integration".to_string(),
+            })
+        })
+        .await;
+
+        let message = result.expect_err("a scope 403 is deterministic and terminal");
+        assert!(
+            message.contains("terminal cause: scope-class — 403 Forbidden"),
+            "{message}"
+        );
     }
 }

@@ -15,6 +15,7 @@ pub(crate) struct MockRoute {
     path:             String,
     status:           u16,
     response_body:    String,
+    response_headers: Vec<(String, String)>,
     assert_header:    Option<(String, MockHeaderCheck)>,
     assert_body_json: Option<serde_json::Value>,
 }
@@ -42,9 +43,18 @@ impl MockHttpClient {
             path: path.to_string(),
             status,
             response_body: body.to_string(),
+            response_headers: vec![],
             assert_header: None,
             assert_body_json: None,
         });
+        self
+    }
+
+    /// Attach a response header to the route just added with `on`
+    /// (rate-limit scripting: `Retry-After`, `x-ratelimit-remaining`).
+    pub(crate) fn with_res_header(mut self, name: &str, value: &str) -> Self {
+        self.routes.last_mut().unwrap().response_headers =
+            vec![(name.to_string(), value.to_string())];
         self
     }
 
@@ -89,7 +99,11 @@ impl HttpClient for MockHttpClient {
                     let actual = body.expect("Expected request body");
                     assert_eq!(actual, expected_body, "Request body mismatch for {url}");
                 }
-                return Ok(HttpResponse::new(route.status, route.response_body.clone()));
+                return Ok(HttpResponse::with_headers(
+                    route.status,
+                    route.response_body.clone(),
+                    route.response_headers.clone(),
+                ));
             }
         }
         panic!(

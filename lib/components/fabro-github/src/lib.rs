@@ -118,6 +118,15 @@ pub enum CreatePullRequestError {
     /// GitHub answered with a non-2xx status; classify by `status`.
     #[error("GitHub returned status {status} creating the pull request: {body}")]
     Status { status: u16, body: String },
+    /// GitHub refused the call for rate-limit reasons — a 429, or a 403
+    /// whose body or headers name an exhausted quota (denkhaus/work#1332).
+    /// Transient: worth a bounded retry after a wait, never a scope hint.
+    #[error("GitHub rate limit hit (status {status}): {body}")]
+    RateLimited {
+        status:           u16,
+        body:             String,
+        retry_after_secs: Option<u64>,
+    },
     /// A 2xx response could not be parsed.
     #[error("failed to parse pull request response: {0:#}")]
     Parse(#[source] anyhow::Error),
@@ -129,9 +138,37 @@ impl CreatePullRequestError {
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
-            Self::Transport(_) => true,
+            Self::Transport(_) | Self::RateLimited { .. } => true,
             Self::Status { status, .. } => *status >= 500,
             Self::Token(_) | Self::Client(_) | Self::Parse(_) => false,
+        }
+    }
+
+    /// Seconds GitHub asked the caller to wait before the next attempt,
+    /// when the rate-limit answer carried a `Retry-After` hint
+    /// (denkhaus/work#1332).
+    #[must_use]
+    pub fn retry_after(&self) -> Option<u64> {
+        match self {
+            Self::RateLimited {
+                retry_after_secs, ..
+            } => *retry_after_secs,
+            _ => None,
+        }
+    }
+
+    /// The terminal-failure class for records (denkhaus/work#1332):
+    /// `"rate"` (quota exhaustion), `"scope"` (token lacks the
+    /// permission), or `"other"` (transport/service/parse).
+    #[must_use]
+    pub fn failure_class(&self) -> &'static str {
+        match self {
+            Self::RateLimited { .. } => "rate",
+            Self::Status {
+                status: 401 | 403 | 404,
+                ..
+            } => "scope",
+            _ => "other",
         }
     }
 
@@ -452,11 +489,36 @@ pub enum HttpMethod {
 pub struct HttpResponse {
     pub status: u16,
     body:       String,
+    headers:    Vec<(String, String)>,
 }
 
 impl HttpResponse {
     pub fn new(status: u16, body: String) -> Self {
-        Self { status, body }
+        Self {
+            status,
+            body,
+            headers: Vec::new(),
+        }
+    }
+
+    /// Build a response carrying response headers, preserving their order
+    /// (rate-limit classification reads `Retry-After` and
+    /// `x-ratelimit-remaining`; denkhaus/work#1332).
+    pub fn with_headers(status: u16, body: String, headers: Vec<(String, String)>) -> Self {
+        Self {
+            status,
+            body,
+            headers,
+        }
+    }
+
+    /// First value of a response header, ASCII-case-insensitive.
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
     }
 
     pub fn json<T: for<'de> Deserialize<'de>>(&self) -> anyhow::Result<T> {
@@ -504,8 +566,18 @@ impl HttpClient for fabro_http::HttpClient {
         }
         let resp = builder.send().await.map_err(anyhow::Error::new)?;
         let status = resp.status().as_u16();
+        let headers = resp
+            .headers()
+            .iter()
+            .map(|(key, value)| {
+                (
+                    key.to_string(),
+                    value.to_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect();
         let text = resp.text().await.map_err(anyhow::Error::new)?;
-        Ok(HttpResponse::new(status, text))
+        Ok(HttpResponse::with_headers(status, text, headers))
     }
 }
 
@@ -1218,8 +1290,11 @@ pub async fn create_pull_request_with_client(
 
     // GitHub answers 201 on creation; every other status (including other
     // 2xx) is surfaced verbatim through the structured error so callers can
-    // classify retryable 5xx from deterministic 4xx.
+    // classify retryable rate-limit/5xx answers from deterministic 4xx.
     if resp.status != 201 {
+        if let Some(rate) = rate_limited(&resp) {
+            return Err(rate);
+        }
         return Err(CreatePullRequestError::Status {
             status: resp.status,
             body:   resp.text().to_string(),
@@ -1233,6 +1308,32 @@ pub async fn create_pull_request_with_client(
         number:   pr.number,
         node_id:  pr.node_id,
         title:    title.to_string(),
+    })
+}
+
+/// Classify a non-2xx pull-request answer as rate-class when GitHub names
+/// an exhausted quota (denkhaus/work#1332): a 429, or a 403 whose body
+/// says "rate limit" or whose headers carry a `Retry-After` / an
+/// exhausted `x-ratelimit-remaining`. Everything else stays a
+/// deterministic `Status` for the scope mapping.
+fn rate_limited(resp: &HttpResponse) -> Option<CreatePullRequestError> {
+    let retry_after = resp
+        .header("retry-after")
+        .and_then(|value| value.trim().parse::<u64>().ok());
+    let remaining_zero = resp
+        .header("x-ratelimit-remaining")
+        .is_some_and(|value| value.trim() == "0");
+    let body_names_rate_limit = resp.text().to_ascii_lowercase().contains("rate limit");
+    let is_rate = resp.status == 429
+        || (resp.status == 403
+            && (body_names_rate_limit || retry_after.is_some() || remaining_zero));
+    if !is_rate {
+        return None;
+    }
+    Some(CreatePullRequestError::RateLimited {
+        status:           resp.status,
+        body:             resp.text().to_string(),
+        retry_after_secs: retry_after,
     })
 }
 
@@ -2745,6 +2846,126 @@ mod tests {
         assert!(hint.starts_with("403 Forbidden — token lacks the scope"));
         assert!(hint.contains("pull-requests permission"), "{hint}");
         assert!(!error.is_retryable());
+    }
+
+    // -----------------------------------------------------------------------
+    // Rate-limit classification (denkhaus/work#1332)
+    // -----------------------------------------------------------------------
+
+    fn rate_limited_error(
+        status: u16,
+        body: &str,
+        retry_after_secs: Option<u64>,
+    ) -> CreatePullRequestError {
+        CreatePullRequestError::RateLimited {
+            status,
+            body: body.to_string(),
+            retry_after_secs,
+        }
+    }
+
+    #[test]
+    fn rate_limited_errors_retry_and_carry_no_scope_hint() {
+        let error = rate_limited_error(403, "API rate limit exceeded", Some(30));
+        assert!(error.is_retryable());
+        assert_eq!(error.retry_after(), Some(30));
+        assert!(error.scope_hint().is_none());
+        assert_eq!(error.failure_class(), "rate");
+    }
+
+    #[test]
+    fn failure_class_names_scope_and_other_answers() {
+        assert_eq!(
+            CreatePullRequestError::Status {
+                status: 403,
+                body:   String::new(),
+            }
+            .failure_class(),
+            "scope"
+        );
+        assert_eq!(
+            CreatePullRequestError::Transport(anyhow::anyhow!("timed out")).failure_class(),
+            "other"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_classifies_rate_limit_403_with_retry_after() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Post,
+                "/repos/owner/repo/pulls",
+                403,
+                "API rate limit exceeded for installation ID 161242007",
+            )
+            .with_res_header("Retry-After", "30");
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = create_pull_request_with_client(
+            &mock, &ctx, "owner", "repo", "main", "feature", "Title", "Body", false,
+        )
+        .await
+        .expect_err("rate-limit 403 must surface as RateLimited");
+
+        assert!(matches!(error, CreatePullRequestError::RateLimited {
+            retry_after_secs: Some(30),
+            ..
+        }));
+        assert!(error.is_retryable());
+        assert_eq!(error.failure_class(), "rate");
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_classifies_429_as_rate_limited() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Post,
+                "/repos/owner/repo/pulls",
+                429,
+                "Too many requests",
+            )
+            .with_res_header("Retry-After", "7");
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = create_pull_request_with_client(
+            &mock, &ctx, "owner", "repo", "main", "feature", "Title", "Body", false,
+        )
+        .await
+        .expect_err("429 must surface as RateLimited");
+
+        assert!(matches!(error, CreatePullRequestError::RateLimited {
+            retry_after_secs: Some(7),
+            ..
+        }));
+        assert!(error.scope_hint().is_none());
+    }
+
+    #[tokio::test]
+    async fn create_pull_request_classifies_403_with_exhausted_quota_header() {
+        let mock = MockHttpClient::new()
+            .on(
+                HttpMethod::Post,
+                "/repos/owner/repo/pulls",
+                403,
+                "Resource not accessible by integration",
+            )
+            .with_res_header("x-ratelimit-remaining", "0");
+        let creds = GitHubCredentials::Pat("pat-token".to_string());
+        let ctx = GitHubContext::new(&creds, "https://api.example.test");
+
+        let error = create_pull_request_with_client(
+            &mock, &ctx, "owner", "repo", "main", "feature", "Title", "Body", false,
+        )
+        .await
+        .expect_err("403 with an exhausted quota header must surface as RateLimited");
+
+        assert!(matches!(error, CreatePullRequestError::RateLimited {
+            retry_after_secs: None,
+            ..
+        }));
+        assert_eq!(error.failure_class(), "rate");
     }
 
     // -----------------------------------------------------------------------
