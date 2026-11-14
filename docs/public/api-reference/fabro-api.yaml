@@ -2519,6 +2519,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/retry-latest:
+    post:
+      operationId: retryLatestRun
+      tags: [Runs]
+      summary: Retry Run on Latest
+      description: >
+        Creates a new run re-driving the terminal source run on current
+        bases (work#1320): the workflow's CURRENT version (the version
+        the newest run of the same workflow slug used, or an explicit
+        version) is admitted fresh, the successor's worktree is prepared
+        at the target branch's current tip, and the source run branch's
+        checkpoint commits are cherry-picked on top — so a fault fixed
+        and merged after the source was created reaches the re-drive,
+        which a plain retry cannot do. The successor starts at the
+        graph's start; its earlier stages re-run on the carried files.
+        A graph that dropped node ids the source named, or a cherry-pick
+        conflict, fails the successor with the picture instead of
+        firing. Active and archived runs are not retryable.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryLatestRequest"
+      responses:
+        "201":
+          description: New re-driven run created and queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetryLatestResponse"
+        "400":
+          description: Invalid run ID or request body
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run or workflow version not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: >
+            Run is not terminal or is archived, no newer workflow version
+            exists, the new graph dropped nodes the source named, or the
+            checkpoint work conflicts — the successor is created failed
+            with the picture when it exists
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/retry:
     post:
       operationId: retryRun
@@ -15679,6 +15744,45 @@ components:
         target:
           type: ["string", "null"]
           description: Optional checkpoint target such as `@2`, `build`, or `build@1`. Defaults to the latest checkpoint.
+
+    RetryLatestRequest:
+      description: >
+        Request body for re-driving a terminal run on current bases
+        (work#1320). All fields optional.
+      type: object
+      properties:
+        workflow_version_id:
+          type: ["string", "null"]
+          description: >
+            The workflow version to re-admit. Defaults to the version the
+            newest run of the source's workflow slug used.
+
+    RetryLatestResponse:
+      description: >
+        Response returned after creating a re-driven run (retry on
+        latest).
+      type: object
+      required:
+        - source_run_id
+        - new_run_id
+        - workflow_version_id
+        - carried_commits
+      properties:
+        source_run_id:
+          type: string
+        new_run_id:
+          type: string
+        workflow_version_id:
+          type: string
+        carried_commits:
+          type: integer
+          format: uint64
+          description: The checkpoint commits cherry-picked onto the new base.
+        touched_files:
+          type: array
+          items:
+            type: string
+          description: The files the carried commits touched.
 
     RewindResponse:
       description: Response returned after rewind creates and starts a new run.

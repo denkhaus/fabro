@@ -1,9 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowPathIcon, ArrowUturnRightIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowPathIcon,
+  ArrowUturnRightIcon,
+  SparklesIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 
 import { useRun } from "../lib/queries";
-import { archiveRun, mapError, retryRun } from "../lib/run-actions";
+import { archiveRun, mapError, retryLatestRun, retryRun } from "../lib/run-actions";
 import type { Run } from "@qltysh/fabro-api-client";
 
 /**
@@ -15,7 +20,7 @@ import type { Run } from "@qltysh/fabro-api-client";
 export function RunVerdict({ runId }: { runId: string }) {
   const { data: run } = useRun(runId);
   const navigate = useNavigate();
-  const [busy, setBusy] = useState<null | "retry" | "fork" | "archive">(null);
+  const [busy, setBusy] = useState<null | "retry" | "retry-latest" | "fork" | "archive">(null);
   const [error, setError] = useState<string | null>(null);
 
   const status = run?.lifecycle.status;
@@ -29,15 +34,18 @@ export function RunVerdict({ runId }: { runId: string }) {
   const question = (run as { current_question?: { text?: string } | null }).current_question ?? null;
   const context = humanNeeded
     ? "The workflow stopped here and waits for a human decision. Read the recorded reason, then retry on the current line tip, continue from the checkpoint as a fork, or archive it off the board."
-    : "The run ended with a failure. The recorded reason is below; retry re-runs the failed stage on the files before it, fork continues from the last checkpoint, archive clears it off the board.";
+    : "The run ended with a failure. The recorded reason is below; retry re-runs the failed stage on the files before it, retry on latest re-drives it on the current workflow version and line tip with the checkpoint work carried, fork continues from the last checkpoint, archive clears it off the board.";
 
-  const act = async (kind: "retry" | "fork" | "archive") => {
+  const act = async (kind: "retry" | "retry-latest" | "fork" | "archive") => {
     setBusy(kind);
     setError(null);
     try {
       if (kind === "retry") {
         const next = await retryRun(runId);
         navigate(`/runs/${next.id}`);
+      } else if (kind === "retry-latest") {
+        const next = await retryLatestRun(runId);
+        navigate(`/runs/${next.new_run_id}`);
       } else if (kind === "archive") {
         // The verdict only shows for terminal or parked runs — cancel is
         // a no-op there. Archive is the disposition that clears the
@@ -86,6 +94,14 @@ export function RunVerdict({ runId }: { runId: string }) {
           className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-[11px] font-medium text-fg transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-60"
         >
           <ArrowPathIcon className="size-3.5" /> Retry
+        </button>
+        <button
+          type="button"
+          disabled={busy != null}
+          onClick={() => act("retry-latest")}
+          className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-[11px] font-medium text-fg transition-colors hover:border-line-strong disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <SparklesIcon className="size-3.5" /> Retry on latest
         </button>
         <button
           type="button"

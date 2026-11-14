@@ -72,6 +72,10 @@ import type { PullRequestResponse } from '../models';
 // @ts-ignore
 import type { RenderWorkflowGraphRequest } from '../models';
 // @ts-ignore
+import type { RetryLatestRequest } from '../models';
+// @ts-ignore
+import type { RetryLatestResponse } from '../models';
+// @ts-ignore
 import type { RewindRequest } from '../models';
 // @ts-ignore
 import type { RewindResponse } from '../models';
@@ -1596,6 +1600,49 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * Creates a new run re-driving the terminal source run on current bases (work#1320): the workflow\'s CURRENT version (the version the newest run of the same workflow slug used, or an explicit version) is admitted fresh, the successor\'s worktree is prepared at the target branch\'s current tip, and the source run branch\'s checkpoint commits are cherry-picked on top — so a fault fixed and merged after the source was created reaches the re-drive, which a plain retry cannot do. The successor starts at the graph\'s start; its earlier stages re-run on the carried files. A graph that dropped node ids the source named, or a cherry-pick conflict, fails the successor with the picture instead of firing. Active and archived runs are not retryable.
+         * @summary Retry Run on Latest
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RetryLatestRequest} [retryLatestRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryLatestRun: async (id: string, retryLatestRequest?: RetryLatestRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('retryLatestRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/retry-latest`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(retryLatestRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
@@ -2541,6 +2588,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Creates a new run re-driving the terminal source run on current bases (work#1320): the workflow\'s CURRENT version (the version the newest run of the same workflow slug used, or an explicit version) is admitted fresh, the successor\'s worktree is prepared at the target branch\'s current tip, and the source run branch\'s checkpoint commits are cherry-picked on top — so a fault fixed and merged after the source was created reaches the re-drive, which a plain retry cannot do. The successor starts at the graph\'s start; its earlier stages re-run on the carried files. A graph that dropped node ids the source named, or a cherry-pick conflict, fails the successor with the picture instead of firing. Active and archived runs are not retryable.
+         * @summary Retry Run on Latest
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RetryLatestRequest} [retryLatestRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async retryLatestRun(id: string, retryLatestRequest?: RetryLatestRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RetryLatestResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.retryLatestRun(id, retryLatestRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.retryLatestRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
@@ -3060,6 +3121,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.retrieveRunGraphSource(id, options).then((request) => request(axios, basePath));
         },
         /**
+         * Creates a new run re-driving the terminal source run on current bases (work#1320): the workflow\'s CURRENT version (the version the newest run of the same workflow slug used, or an explicit version) is admitted fresh, the successor\'s worktree is prepared at the target branch\'s current tip, and the source run branch\'s checkpoint commits are cherry-picked on top — so a fault fixed and merged after the source was created reaches the re-drive, which a plain retry cannot do. The successor starts at the graph\'s start; its earlier stages re-run on the carried files. A graph that dropped node ids the source named, or a cherry-pick conflict, fails the successor with the picture instead of firing. Active and archived runs are not retryable.
+         * @summary Retry Run on Latest
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RetryLatestRequest} [retryLatestRequest]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        retryLatestRun(id: string, retryLatestRequest?: RetryLatestRequest, options?: RawAxiosRequestConfig): AxiosPromise<RetryLatestResponse> {
+            return localVarFp.retryLatestRun(id, retryLatestRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Creates a new run from the terminal source run\'s last checkpoint and starts it. When the source failed on a stage, that stage runs again on the files of the stage before it; otherwise the new run continues from the last checkpoint as it stands. The new run records `retried_from` and `fork_source_ref`; the source run is left unchanged. Active and archived runs are not retryable.
          * @summary Retry Run
          * @param {string} id Unique run identifier (ULID).
@@ -3574,6 +3646,18 @@ export class RunsApi extends BaseAPI {
      */
     public retrieveRunGraphSource(id: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).retrieveRunGraphSource(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Creates a new run re-driving the terminal source run on current bases (work#1320): the workflow\'s CURRENT version (the version the newest run of the same workflow slug used, or an explicit version) is admitted fresh, the successor\'s worktree is prepared at the target branch\'s current tip, and the source run branch\'s checkpoint commits are cherry-picked on top — so a fault fixed and merged after the source was created reaches the re-drive, which a plain retry cannot do. The successor starts at the graph\'s start; its earlier stages re-run on the carried files. A graph that dropped node ids the source named, or a cherry-pick conflict, fails the successor with the picture instead of firing. Active and archived runs are not retryable.
+     * @summary Retry Run on Latest
+     * @param {string} id Unique run identifier (ULID).
+     * @param {RetryLatestRequest} [retryLatestRequest]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public retryLatestRun(id: string, retryLatestRequest?: RetryLatestRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).retryLatestRun(id, retryLatestRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

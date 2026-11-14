@@ -26,8 +26,10 @@ use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::{SqliteRunStore, admission};
+use fabro_store::platform_records::RunNoticeRecord;
 use fabro_store::{PlatformRecordKind, RunProjection};
 use fabro_types::diagnostic::Severity;
+use fabro_types::notice::RunNoticeLevel;
 use fabro_types::{FailureReason, Principal, RunId};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
@@ -40,6 +42,7 @@ use super::super::{
 use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_response};
 use super::runs::run_provenance;
 use crate::petri_check;
+use crate::run_rebase::{self as run_rebase_ops, RunRebaseError};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -47,6 +50,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/fork", post(fork_run))
         .route("/runs/{id}/rewind", post(rewind_run))
         .route("/runs/{id}/retry", post(retry_run))
+        .route("/runs/{id}/retry-latest", post(retry_latest_run))
 }
 
 /// Which operation a fork is made for: what it requires of the source and
@@ -519,4 +523,238 @@ fn workflow_operation_error(err: WorkflowError) -> ApiError {
         WorkflowError::RunNotFound(_) => ApiError::not_found("Run not found."),
         err => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
     }
+}
+
+/// The workflow version a retry-on-latest re-admits: the explicit one,
+/// else the version the NEWEST run of the source's workflow slug used.
+/// A source without a slug, or a newest version equal to the source's
+/// own, refuses: there is nothing newer to re-drive on.
+async fn retry_latest_version(
+    state: &AppState,
+    source: &RunProjection,
+    explicit: Option<fabro_types::WorkflowVersionId>,
+) -> Result<fabro_types::WorkflowVersionId, ApiError> {
+    if let Some(version) = explicit {
+        return Ok(version);
+    }
+    let Some(slug) = source.spec.workflow_slug.as_deref() else {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "the source run names no workflow slug; name a workflow_version_id explicitly",
+        ));
+    };
+    let summaries = state
+        .stores
+        .run_summaries
+        .list_all(chrono::Utc::now())
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    // list_all is newest first: the first versioned run of the slug is
+    // the currency.
+    let newest = summaries.iter().find_map(|run| {
+        let run_slug = run.workflow.slug.as_deref()?;
+        if run_slug != slug {
+            return None;
+        }
+        run.workflow_version_id
+    });
+    match newest {
+        Some(version) => Ok(version),
+        None => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!(
+                "no run of workflow {slug} names a workflow version; publish one or pass workflow_version_id"
+            ),
+        )),
+    }
+}
+
+/// Report the successor failed with the picture, the same way a fork
+/// that could not be seeded is reported: the row exists, the reason is
+/// its evidence.
+async fn fail_retry_latest_successor(state: &AppState, new_run_id: RunId, message: String) {
+    warn!(new_run_id = %new_run_id, error = %message, "the retry-on-latest successor could not be driven");
+    if let Err(record_err) = run_records::lifecycle(
+        state,
+        new_run_id,
+        run_records::failed(FailureReason::WorkflowError, message.clone()),
+    )
+    .await
+    {
+        error!(new_run_id = %new_run_id, error = %record_err, "the successor's failure was not recorded");
+    }
+}
+
+/// Retry-on-latest (work#1320): re-drive a terminal run on current
+/// bases — the workflow's current version admitted fresh, the
+/// successor's worktree prepared at the target branch tip with the
+/// source run branch's checkpoint commits cherry-picked on top. The
+/// successor starts at the graph's start (its earlier stages re-run on
+/// the carried files); graph incompatibilities and carry conflicts
+/// fail it with the picture.
+async fn retry_latest_run(
+    RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Option<Json<api::RetryLatestRequest>>,
+) -> Response {
+    let explicit_version = body
+        .and_then(|Json(body)| body.workflow_version_id)
+        .and_then(|version| version.parse().ok());
+    let source = match run_records::require_projection(state.as_ref(), id).await {
+        Ok(source) => source,
+        Err(err) => return err.into_response(),
+    };
+    if let Err(err) = operations::ensure_retryable(&source, &id) {
+        return workflow_operation_error(err).into_response();
+    }
+    let (Some(target), Some(git)) = (source.spec.target.clone(), source.spec.git.clone()) else {
+        return ApiError::new(
+            StatusCode::CONFLICT,
+            "retry-on-latest needs a git-backed source run (target and git context)",
+        )
+        .into_response();
+    };
+    let Some(source_base) = git.sha.clone() else {
+        return ApiError::new(
+            StatusCode::CONFLICT,
+            "the source run names no starting commit; its checkpoint work cannot be carried",
+        )
+        .into_response();
+    };
+
+    let version = match retry_latest_version(state.as_ref(), &source, explicit_version).await {
+        Ok(version) => version,
+        Err(err) => return err.into_response(),
+    };
+    if Some(&version) == source.spec.workflow_version_id.as_ref() {
+        return ApiError::new(
+            StatusCode::CONFLICT,
+            "the newest workflow version is the one the source already ran; a plain retry replays it",
+        )
+        .into_response();
+    }
+
+    // The successor: the create path compiles the CURRENT version with
+    // the source's posture (target, environment, model, labels), and
+    // prepares its worktree at the target branch's current tip.
+    let new_run_id = RunId::new();
+    let goal = (!source.spec.graph.goal.is_empty()).then(|| source.spec.graph.goal.clone());
+    let environment_id = source.spec.settings.run.environment.id.clone();
+    let created = Box::pin(super::runs::create_run_from_intent(
+        Arc::clone(&state),
+        super::runs::CreateRunFromIntentRequest {
+            intent:          fabro_types::RunIntent {
+                workflow_version_id: version,
+                target,
+                args: fabro_types::RunIntentArgs {
+                    model:            source.spec.settings.run.model.name.clone(),
+                    provider:         None,
+                    inputs:           std::collections::HashMap::default(),
+                    preserve_sandbox: None,
+                    dry_run:          None,
+                    auto_approve:     None,
+                    labels:           source.spec.labels.clone(),
+                },
+                environment_id: (!environment_id.is_empty()).then_some(environment_id),
+                parent_id: None,
+                title: Some(source.title().into_owned()),
+                goal,
+                force: None,
+            },
+            explicit_run_id: Some(new_run_id),
+            actor:           actor.clone(),
+            headers:         headers.clone(),
+            automation:      None,
+        },
+    ))
+    .await;
+    if !created.status().is_success() {
+        return created;
+    }
+
+    // Graph compatibility: the seeded-free successor runs the NEW
+    // graph; every node id the SOURCE graph named must still exist.
+    let projection = match run_records::require_projection(state.as_ref(), new_run_id).await {
+        Ok(projection) => projection,
+        Err(err) => return err.into_response(),
+    };
+    match operations::graph_compat(&source.spec.graph, &projection.spec.graph) {
+        operations::RetryLatestCompat::Compatible => {}
+        operations::RetryLatestCompat::NodesMissing { missing } => {
+            let message = format!(
+                "retry-on-latest: the new workflow version dropped node ids the source run used \
+                 ({missing:?}); re-drive needs a graph that keeps them"
+            );
+            fail_retry_latest_successor(state.as_ref(), new_run_id, message.clone()).await;
+            return ApiError::new(StatusCode::CONFLICT, message).into_response();
+        }
+    }
+
+    // Carry the checkpoint work: the source run branch's commits since
+    // its base, cherry-picked onto the prepared worktree. A branch that
+    // was never pushed carries nothing (the re-drive starts fresh).
+    let worktree = Storage::new(state.server_storage_dir())
+        .run_scratch(&new_run_id)
+        .worktree_dir();
+    let source_branch = format!("fabro/run/{id}");
+    let carried = match run_rebase_ops::carry_checkpoint_work(
+        &worktree,
+        &git.origin_url,
+        &source_branch,
+        &source_base,
+    )
+    .await
+    {
+        Ok(Ok(carried)) => carried,
+        Ok(Err(RunRebaseError::NoSourceBranch { .. })) => run_rebase_ops::Rebased {
+            commits:     0,
+            source_base: source_base.clone(),
+            source_tip:  source_base.clone(),
+            touched:     Vec::new(),
+        },
+        Ok(Err(RunRebaseError::Conflict { files })) => {
+            let message = format!(
+                "retry-on-latest: the checkpoint work conflicts on {files:?}; resolve the \
+                 carry by hand (the source branch is {source_branch})"
+            );
+            fail_retry_latest_successor(state.as_ref(), new_run_id, message.clone()).await;
+            return ApiError::new(StatusCode::CONFLICT, message).into_response();
+        }
+        Ok(Err(other)) | Err(other) => {
+            let message = error_util::collect_chain(&other).join(": ");
+            fail_retry_latest_successor(state.as_ref(), new_run_id, message.clone()).await;
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message).into_response();
+        }
+    };
+
+    // The re-drive's provenance on the successor's stream: what was
+    // carried, from where, onto what.
+    let notice = fabro_store::PlatformRecord::RunNotice(RunNoticeRecord {
+        level:   RunNoticeLevel::Info,
+        code:    "retry_on_latest".to_string(),
+        message: format!(
+            "re-drive of run {id}: workflow version {version}, checkpoint work carried: \
+             {} commit(s) from {source_branch} (base {source_base}, tip {})",
+            carried.commits, carried.source_tip
+        ),
+    });
+    if let Err(err) = run_records::append(state.as_ref(), new_run_id, notice).await {
+        warn!(new_run_id = %new_run_id, error = %err, "the re-drive notice was not recorded");
+    }
+
+    if let Err(err) = queue_run(state.as_ref(), new_run_id, &projection, false, actor).await {
+        return err.into_response();
+    }
+    (
+        StatusCode::CREATED,
+        Json(api::RetryLatestResponse {
+            source_run_id:       id.to_string(),
+            new_run_id:          new_run_id.to_string(),
+            workflow_version_id: version.to_string(),
+            carried_commits:     carried.commits as u64,
+            touched_files:       carried.touched.clone(),
+        }),
+    )
+        .into_response()
 }

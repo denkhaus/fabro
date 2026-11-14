@@ -5,6 +5,7 @@ import type {
   BatchRunLifecycleResponse,
   BatchRunLifecycleSummary,
   ErrorResponseEntry,
+  RetryLatestResponse,
   Run,
   RunControlAction,
 } from "@qltysh/fabro-api-client";
@@ -55,6 +56,21 @@ const TERMINAL_RUN_STATUSES = new Set<RunStatus>([
  */
 export async function retryRun(id: string, request?: Request): Promise<Run> {
   return apiData(() => runsApi.retryRun(id, undefined, requestSignalOptions(request)));
+}
+
+/**
+ * Retry a terminal run on current bases (work#1320): the workflow's
+ * current version is admitted fresh and the source run branch's
+ * checkpoint commits are cherry-picked onto the target branch's current
+ * tip — so a fault fixed and merged after the source was created
+ * reaches the re-drive, which a plain retry cannot. The successor
+ * starts at the graph's start; its earlier stages re-run on the carried
+ * files.
+ */
+export async function retryLatestRun(id: string, request?: Request): Promise<RetryLatestResponse> {
+  return apiData(() =>
+    runsApi.retryLatestRun(id, undefined, requestSignalOptions(request)),
+  );
 }
 
 export async function cancelRun(id: string, request?: Request): Promise<Run> {
