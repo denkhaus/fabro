@@ -170,9 +170,9 @@ export default function ObservationsFeedView() {
         }));
         // The pager's total is the server's EXACT count under the active
         // filters (denkhaus/work#1296) — never a page-window guess. The
-        // estimate stays only as the fallback for a server (or generated
-        // client) that predates the field.
-        const served = (response.data as { total?: number } | undefined)?.total;
+        // estimate stays only as the fallback for a server that predates
+        // the field.
+        const served = response.data?.total;
         const total = served ?? estimatePageTotal(rows.length, page, limit);
         return { rows, total };
       }}
