@@ -398,6 +398,10 @@ impl RunSummaryStore {
     /// verdict on the NAMED other field IS that verdict list — the
     /// merger's worklist is the `closable` anti-join restricted to
     /// `merge = enabled`.
+    ///
+    /// An ARCHIVED run never queues (denkhaus/work#1321): the archive
+    /// is the operator's removal from circulation — no gear may sweep,
+    /// packet, or park an archived run again.
     pub async fn adjudication_queue(
         &self,
         field: OrchestrationField,
@@ -442,7 +446,7 @@ impl RunSummaryStore {
         };
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
         query.push(format!(
-            " WHERE status IN ({list})",
+            " WHERE status IN ({list}) AND archived_at_ms IS NULL",
             list = TERMINAL_STATUS_LIST_SQL.as_str()
         ));
         if let Some(workflow) = workflow {
@@ -482,7 +486,9 @@ impl RunSummaryStore {
     /// pass reads `closable = enabled` — runs the merger merged and
     /// enabled, whose work items may now close. Shares the terminal and
     /// workflow-filter semantics of the anti-join queue; parked and
-    /// pending runs never match a settled verdict.
+    /// pending runs never match a settled verdict. An ARCHIVED run
+    /// never lists (denkhaus/work#1321): the archive removes the run
+    /// from circulation on every worklist.
     pub async fn verdict_queue(
         &self,
         field: OrchestrationField,
@@ -504,7 +510,7 @@ impl RunSummaryStore {
             .collect();
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
         query.push(format!(
-            " WHERE status IN ({list})",
+            " WHERE status IN ({list}) AND archived_at_ms IS NULL",
             list = TERMINAL_STATUS_LIST_SQL.as_str()
         ));
         if let Some(workflow) = workflow {
@@ -1135,8 +1141,9 @@ mod tests {
     /// settles it (`enabled` or `refused` — a `parked` latest verdict
     /// keeps it queued, see the part-2 pin below); the OTHER field's
     /// verdicts do not free it; non-terminal runs never queue; an
-    /// archived terminal run stays queued (archiving is bookkeeping,
-    /// not adjudication state).
+    /// archived terminal run leaves the queue too (denkhaus/work#1321:
+    /// the archive is the operator's removal from circulation, not
+    /// bookkeeping).
     #[tokio::test]
     async fn adjudication_queue_joins_terminal_runs_against_the_field_verdicts() {
         use fabro_types::{OrchestrationField, OrchestrationVerdict};
@@ -1203,7 +1210,8 @@ mod tests {
             "both terminal runs stay queued on the verdict-free field"
         );
 
-        // An archived terminal run stays queued.
+        // An archived terminal run leaves the queue (work#1321): the
+        // operator's archive removes the run from circulation.
         sqlx::query("UPDATE runs SET archived_at_ms = ? WHERE id = ?")
             .bind(now.timestamp_millis())
             .bind(failed.spec.run_id.to_string())
@@ -1214,10 +1222,10 @@ mod tests {
             .adjudication_queue(OrchestrationField::Merge, None, None, 50, now)
             .await
             .expect("the queue reads after archiving");
-        assert_eq!(
-            archived_queue.iter().map(|run| run.id).collect::<Vec<_>>(),
-            vec![failed.spec.run_id],
-            "archiving is bookkeeping, not adjudication state — the run stays queued"
+        assert!(
+            archived_queue.is_empty(),
+            "the archive removes the run from the worklist — the operator's \
+             out-of-circulation decision holds for every gear"
         );
     }
 
@@ -1225,7 +1233,8 @@ mod tests {
     /// flips — exactly the runs whose latest verdict on the field IS the
     /// named value list. Parked and never-verdicted runs never match;
     /// the workflow filter narrows like the anti-join; a verdict on
-    /// ANOTHER field never leaks in.
+    /// ANOTHER field never leaks in; an archived run never lists
+    /// (work#1321 — the archive removes a run from every worklist).
     #[tokio::test]
     async fn verdict_queue_lists_exactly_the_runs_settled_on_the_named_verdict() {
         use fabro_types::{OrchestrationField, OrchestrationVerdict};
@@ -1312,6 +1321,29 @@ mod tests {
             "exactly the closable-enabled develop run lists — parked, unverdicted, and \
              other-workflow runs stay out, and the merge verdict on the same run does not \
              leak into the closable filter"
+        );
+
+        // Archiving the merged run removes it from the closing pass's
+        // worklist too (work#1321): no gear sweeps an archived run.
+        sqlx::query("UPDATE runs SET archived_at_ms = ? WHERE id = ?")
+            .bind(now.timestamp_millis())
+            .bind(merged.spec.run_id.to_string())
+            .execute(&store.pool())
+            .await
+            .unwrap();
+        let archived_closing = store
+            .verdict_queue(
+                OrchestrationField::Closable,
+                OrchestrationVerdict::Enabled,
+                Some("develop"),
+                50,
+                now,
+            )
+            .await
+            .expect("the closing-pass queue reads after archiving");
+        assert!(
+            archived_closing.is_empty(),
+            "the archive removes a settled run from the closing pass's worklist"
         );
     }
 
