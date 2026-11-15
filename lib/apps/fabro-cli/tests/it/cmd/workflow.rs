@@ -16,6 +16,7 @@ fn help() {
     Commands:
       list    List available workflows
       create  Create a new workflow
+      show    Show a stored workflow version from the server
       help    Print this message or the help of the given subcommand(s)
 
     Options:

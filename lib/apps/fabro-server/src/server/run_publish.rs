@@ -129,7 +129,7 @@ impl AppState {
 /// The snapshots directory of a run: its scratch root's `petri`
 /// subdirectory, where the checkpoint hooks publish every workspace's
 /// bare snapshot repository.
-fn snapshots_dir(state: &AppState, run_id: &RunId) -> PathBuf {
+pub(crate) fn snapshots_dir(state: &AppState, run_id: &RunId) -> PathBuf {
     Storage::new(state.server_storage_dir())
         .run_scratch(run_id)
         .root()
@@ -139,7 +139,7 @@ fn snapshots_dir(state: &AppState, run_id: &RunId) -> PathBuf {
 
 /// The snapshot repository under `dir` that holds `head_sha`, if any:
 /// each candidate is probed with `git cat-file -e`.
-async fn find_snapshot_repository(dir: &Path, head_sha: &str) -> Option<PathBuf> {
+pub(crate) async fn find_snapshot_repository(dir: &Path, head_sha: &str) -> Option<PathBuf> {
     let mut entries = fs::read_dir(dir).await.ok()?;
     let mut repositories = Vec::new();
     while let Ok(Some(entry)) = entries.next_entry().await {

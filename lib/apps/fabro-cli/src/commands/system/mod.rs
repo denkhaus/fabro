@@ -3,6 +3,7 @@ mod events;
 mod info;
 mod prune;
 mod repair;
+mod stats;
 
 use anyhow::Result;
 
@@ -14,6 +15,7 @@ pub(crate) async fn dispatch(ns: SystemNamespace, base_ctx: &CommandContext) -> 
         SystemCommand::Info(args) => info::info_command(&args, base_ctx).await,
         SystemCommand::Prune(args) => prune::prune_command(&args, base_ctx).await,
         SystemCommand::Df(args) => df::df_command(&args, base_ctx).await,
+        SystemCommand::Stats(args) => stats::stats_command(&args, base_ctx).await,
         SystemCommand::Events(args) => events::events_command(&args, base_ctx).await,
         SystemCommand::Repair(args) => repair::repair_command(&args, base_ctx).await,
     }

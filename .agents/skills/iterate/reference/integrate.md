@@ -153,11 +153,11 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   decision. The local `image-release` recipe (build here + GHCR push)
   is RETIRED (removed 2026-11-10): the line builds host-side and the
   GHCR mirror pushes from the host.
-- Toolchain pairing: `fabro env pin-toolchain --from-run-images` (from
-  the repo at the deployed tip) — the parity gate refuses a tag whose
-  sha is not the deployed server's (working as designed; the wrapper
-  `.fabro/scripts/pin-toolchain.nu` checks the registry manifest
-  first). Run it FROM THE REPO AT THAT TIP.
+- Toolchain pairing is RETIRED (ADR-0042): the toolchain environment is
+  repo-declared and cooked by the engine at run initialization from the
+  checkout itself — no registry tag, no pin step, no parity gate. (The
+  retired `fabro env pin-toolchain --from-run-images` verb is gone from
+  the CLI; the fork.37 window confirmed it 2026-11-15.)
 - Recompute the sandbox-plugin sha per deploy (same pin rev usually
   means the same sha — verify, never assume):
   `docker run --rm --entrypoint sh <image> -c 'sha256sum
@@ -195,14 +195,13 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   plugin); they do not build anything themselves — the build is the
   recipe's.
 - After substantial engine changes (binary-need check: any `lib/` path
-  in the merged work): build (above) + fabro-tofu apply —
-  NON-INTERACTIVE (the justfile profile picker is fzf-only by design;
-  name the profile explicitly):
-  `cd ~/dev/fabro-tofu && export TF_VAR_state_passphrase="$(mise exec --
-  gopass show -o fabro-tofu/state-encryption)" && TF_DATA_DIR=
-  .terraform-prod mise exec -- tofu plan -var-file=envs/prod.tfvars`
-  — apply identically with `apply -auto-approve` after reviewing the
-  plan's add/change/destroy shape.
+  in the merged work): build (above) + fabro-tofu apply — the window is
+  DRIVEN BY `just deploy …` (scripts/deploy-window.nu): pause → build →
+  pins → plan → [review the add/change/destroy shape] → apply → arm →
+  commit. The gopass path for the state passphrase is deployment-
+  private: it resolves at runtime from the tofu repo's
+  `envs/state-secret` (kept out of every public artifact, user
+  directive 2026-11-15).
 - After EVERY tofu deploy: commit the fabro-tofu `variables.tf` image
   pin in the same session (the night-deploy near-miss: a night deploy applied
   via `-var` override, the uncommitted default bump was lost, and the

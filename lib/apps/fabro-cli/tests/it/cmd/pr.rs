@@ -14,13 +14,15 @@ fn help() {
     Usage: fabro pr [OPTIONS] <COMMAND>
 
     Commands:
-      create  Create a pull request from a completed run
-      link    Link or replace the GitHub pull request associated with a run
-      unlink  Unlink the pull request associated with a run
-      view    View pull request details
-      merge   Merge a pull request
-      close   Close a pull request
-      help    Print this message or the help of the given subcommand(s)
+      create       Create a pull request from a completed run
+      link         Link or replace the GitHub pull request associated with a run
+      unlink       Unlink the pull request associated with a run
+      view         View pull request details
+      merge        Merge a pull request
+      close        Close a pull request
+      list         List a repository's pull requests (the label door, ADR-0040)
+      merge-by-id  Merge a repository pull request by its provider-stable id
+      help         Print this message or the help of the given subcommand(s)
 
     Options:
           --json              Output as JSON [env: FABRO_JSON=]

@@ -46,6 +46,7 @@ domains:
   openapi: {}
   fabro-store: {}
   rust-testing: {}
+  api-design: {}
 governance:
   max_entries: 100
   warn_entries: 150

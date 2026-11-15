@@ -577,6 +577,7 @@ models/system-cpu-resource-scope.ts
 models/system-cpu-resources.ts
 models/system-disk-resource-scope.ts
 models/system-disk-resources.ts
+models/system-filesystem-usage.ts
 models/system-info-response.ts
 models/system-integration-status.ts
 models/system-integrations-response.ts
@@ -586,6 +587,8 @@ models/system-repair-run-issue.ts
 models/system-repair-runs-response.ts
 models/system-resources-response.ts
 models/system-run-counts.ts
+models/system-stats-response-last-reap-pass.ts
+models/system-stats-response.ts
 models/timeline-entry-response.ts
 models/tls-mode.ts
 models/todo-list-kind.ts

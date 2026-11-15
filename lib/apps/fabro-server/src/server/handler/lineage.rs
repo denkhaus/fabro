@@ -21,17 +21,19 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use fabro_api::types as api;
+use fabro_automation::AutomationId;
 use fabro_config::Storage;
 use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::{SqliteRunStore, admission};
 use fabro_store::platform_records::RunNoticeRecord;
-use fabro_store::{PlatformRecordKind, RunProjection};
+use fabro_store::{PlatformRecord, PlatformRecordKind, RunProjection};
 use fabro_types::diagnostic::Severity;
 use fabro_types::notice::RunNoticeLevel;
-use fabro_types::{FailureReason, Principal, RunId};
+use fabro_types::{FailureReason, Principal, RunId, RunTarget};
 use fabro_util::error as error_util;
+use fabro_work::{GrantOutcome, GrantRequest};
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::operations::{self, ForkTarget, ResolvedForkTarget, RunTimeline};
 use tracing::{error, warn};
@@ -41,8 +43,10 @@ use super::super::{
 };
 use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_response};
 use super::runs::run_provenance;
+use crate::automation_materializer::{AutomationRunMaterializeInput, RunMaterializeError};
 use crate::petri_check;
 use crate::run_rebase::{self as run_rebase_ops, RunRebaseError};
+use crate::server::run_publish::{find_snapshot_repository, snapshots_dir};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -246,6 +250,100 @@ async fn retry_run(
     {
         Ok(outcome) => run_response(state.as_ref(), outcome.new_run_id, StatusCode::CREATED).await,
         Err(err) => err.into_response(),
+    }
+}
+
+/// The item thread the successor inherits (work#1320): the item the
+/// source run worked — its live claim when the run still holds one, or
+/// the run's latest claim record when park or failure already released
+/// it (the 2026-11-14 case: the parked run's claim was gone, the item
+/// association recoverable only from the ledger's history).
+struct ItemThread {
+    project_id: String,
+    item_key:   String,
+    lane:       String,
+}
+
+async fn source_item_thread(state: &AppState, id: &RunId) -> Option<ItemThread> {
+    let store = state.work_store();
+    if let Ok(Some(claim)) = store.active_claim_for_run(id).await {
+        return Some(ItemThread {
+            project_id: claim.project_id,
+            item_key:   claim.item_key,
+            lane:       claim.lane,
+        });
+    }
+    let latest = store.latest_claims_of_runs(&[*id]).await.ok()?;
+    latest.into_iter().next().map(|claim| ItemThread {
+        project_id: claim.project_id,
+        item_key:   claim.item_key,
+        lane:       claim.lane,
+    })
+}
+
+/// Move the item thread to the successor: release the source's live
+/// claim, then grant the successor the same item — the atomic handoff
+/// that closes the snatch window between click and the successor's
+/// first planner act (the grill decision, 2026-11-14). Best effort: a
+/// terminal source's claim is bookkeeping, never a reason to fail the
+/// re-drive; every miss degrades to the planner's lane fallback.
+async fn transfer_item_thread(
+    state: &AppState,
+    source: &RunId,
+    successor: &RunId,
+    thread: &ItemThread,
+) {
+    let store = state.work_store();
+    if let Ok(Some(active)) = store.active_claim_for_run(source).await {
+        let reason = "retry-on-latest: the successor continues this item";
+        match store.release(&active.claim_id, reason).await {
+            Ok(released) => {
+                tracing::info!(
+                    claim_id = %released.claim_id,
+                    item_key = %released.item_key,
+                    successor_run_id = %successor,
+                    "retry-on-latest released the source claim"
+                );
+            }
+            Err(err) => {
+                tracing::warn!(claim_id = %active.claim_id, error = ?err, "retry-on-latest could not release the source claim");
+            }
+        }
+    }
+    match store
+        .grant(&GrantRequest {
+            project_id: thread.project_id.clone(),
+            item_key:   thread.item_key.clone(),
+            run_id:     *successor,
+            lane:       thread.lane.clone(),
+        })
+        .await
+    {
+        Ok(GrantOutcome::Granted(claim)) => {
+            tracing::info!(
+                claim_id = %claim.claim_id,
+                item_key = %claim.item_key,
+                successor_run_id = %successor,
+                "retry-on-latest item thread transferred"
+            );
+        }
+        // This run already holds the item — nothing to move.
+        Ok(GrantOutcome::AlreadyHeld(_)) => {}
+        Ok(GrantOutcome::Conflict(claim)) => {
+            tracing::warn!(
+                item_key = %thread.item_key,
+                held_by_run_id = %claim.run_id,
+                successor_run_id = %successor,
+                "retry-on-latest item transfer lost the race; the planner falls back to the lane"
+            );
+        }
+        Err(err) => {
+            tracing::warn!(
+                item_key = %thread.item_key,
+                error = ?err,
+                "retry-on-latest item grant failed; the planner falls back to the lane"
+            );
+        }
     }
 }
 
@@ -525,48 +623,108 @@ fn workflow_operation_error(err: WorkflowError) -> ApiError {
     }
 }
 
-/// The workflow version a retry-on-latest re-admits: the explicit one,
-/// else the version the NEWEST run of the source's workflow slug used.
-/// A source without a slug, or a newest version equal to the source's
-/// own, refuses: there is nothing newer to re-drive on.
-async fn retry_latest_version(
+/// Retry-on-latest resolution (work#1320 Part B): MATERIALIZE, never
+/// resolve — the successor creation compiles the workflow from the
+/// target branch's CURRENT tip, the same path the automation
+/// materializer takes at fire time, and registers that content as the
+/// version to re-admit. The materialized target carries the
+/// checked-out tip sha: the successor's checkout is the tip, never the
+/// source's pinned starting commit. An explicit workflow_version_id in
+/// the request keeps bypassing this (the caller pins what to re-drive).
+///
+/// The source's workflow slug is the workflow selector: an
+/// extensionless selector names `.fabro/workflows/<slug>/workflow.toml`
+/// inside the tip checkout, the same resolution a gear's fire performs.
+async fn retry_latest_materialize(
     state: &AppState,
     source: &RunProjection,
-    explicit: Option<fabro_types::WorkflowVersionId>,
-) -> Result<fabro_types::WorkflowVersionId, ApiError> {
-    if let Some(version) = explicit {
-        return Ok(version);
-    }
+    target: RunTarget,
+    successor: RunId,
+) -> Result<(fabro_types::WorkflowVersionId, RunTarget), ApiError> {
     let Some(slug) = source.spec.workflow_slug.as_deref() else {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             "the source run names no workflow slug; name a workflow_version_id explicitly",
         ));
     };
-    let summaries = state
+    // The branch selector: the source's pinned sha must not pin the
+    // materialization — the tip's content is what registers.
+    let RunTarget::Git(mut tip) = target else {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "retry-on-latest needs a git-backed source run (a Git target)",
+        ));
+    };
+    tip.sha = None;
+    let materialized = state
+        .materialize_automation_run(AutomationRunMaterializeInput {
+            // The id names the materialization's temp directory only; a
+            // retry-on-latest is not an automation.
+            automation_id:   AutomationId::new("retry-on-latest")
+                .expect("'retry-on-latest' is a valid automation id by grammar"),
+            target:          tip,
+            workflow_source: None,
+            workflow:        slug.to_string(),
+            run_id:          successor,
+            temp_root:       state.automation_temp_root(),
+        })
+        .await
+        .map_err(|err| {
+            match &err {
+                // State conflicts the caller can act on; the variant's
+                // own message is the diagnosis (the create door's
+                // convention: no internal source chain on the wire).
+                RunMaterializeError::WorkflowNotFound { .. }
+                | RunMaterializeError::InvalidTarget { .. }
+                | RunMaterializeError::InvalidWorkflowSource { .. } => {
+                    ApiError::new(StatusCode::CONFLICT, err.to_string())
+                }
+                // Infrastructure failures keep the chain in the log and
+                // serve a curated message (the error-handling
+                // strategy's public-vs-internal rule).
+                err => {
+                    error!(
+                        error = ?err,
+                        error_chain = ?error_util::collect_chain(err),
+                        "retry-on-latest workflow materialization failed"
+                    );
+                    ApiError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "workflow materialization failed",
+                    )
+                }
+            }
+        })?;
+    Ok((
+        materialized.workflow_version_id,
+        RunTarget::Git(materialized.target),
+    ))
+}
+
+/// The newest checkpoint commit's sha of a run: the tip its snapshot
+/// repository provably holds (a failed run never pushes its branch —
+/// work#1320). `None` when the run recorded no checkpoint with a sha.
+async fn latest_checkpoint_sha(state: &AppState, id: &RunId) -> Option<String> {
+    let records = state
         .stores
         .run_summaries
-        .list_all(chrono::Utc::now())
+        .platform_records()
+        .read_kind(id, PlatformRecordKind::Checkpoint)
         .await
-        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    // list_all is newest first: the first versioned run of the slug is
-    // the currency.
-    let newest = summaries.iter().find_map(|run| {
-        let run_slug = run.workflow.slug.as_deref()?;
-        if run_slug != slug {
-            return None;
-        }
-        run.workflow_version_id
-    });
-    match newest {
-        Some(version) => Ok(version),
-        None => Err(ApiError::new(
-            StatusCode::CONFLICT,
-            format!(
-                "no run of workflow {slug} names a workflow version; publish one or pass workflow_version_id"
-            ),
-        )),
-    }
+        .map_err(|err| {
+            // The origin fallback answers the degradation, but the
+            // miss itself stays diagnosable in the log.
+            warn!(run_id = %id, error = ?err, "the checkpoint records could not be read");
+            err
+        })
+        .ok()?;
+    records
+        .iter()
+        .rev()
+        .find_map(|stored| match &stored.record {
+            PlatformRecord::Checkpoint(record) => record.git_commit_sha.clone(),
+            _ => None,
+        })
 }
 
 /// Report the successor failed with the picture, the same way a fork
@@ -586,12 +744,14 @@ async fn fail_retry_latest_successor(state: &AppState, new_run_id: RunId, messag
 }
 
 /// Retry-on-latest (work#1320): re-drive a terminal run on current
-/// bases — the workflow's current version admitted fresh, the
-/// successor's worktree prepared at the target branch tip with the
-/// source run branch's checkpoint commits cherry-picked on top. The
-/// successor starts at the graph's start (its earlier stages re-run on
-/// the carried files); graph incompatibilities and carry conflicts
-/// fail it with the picture.
+/// bases — the workflow MATERIALIZED from the target branch's tip
+/// (registered fresh, work#1320 Part B), the successor's worktree
+/// prepared at the materialized tip with the source run branch's
+/// checkpoint commits cherry-picked on top. The successor starts at
+/// the graph's start (its earlier stages re-run on the carried files);
+/// graph incompatibilities and carry conflicts fail it with the
+/// picture. An explicit workflow_version_id skips the materialization
+/// and re-admits exactly that version on the source's target.
 async fn retry_latest_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
@@ -638,23 +798,81 @@ async fn retry_latest_run(
         .into_response();
     };
 
-    let version = match retry_latest_version(state.as_ref(), &source, explicit_version).await {
-        Ok(version) => version,
-        Err(err) => return err.into_response(),
+    // The successor's id mints before resolution: the materialization
+    // names its temp directory by it.
+    let new_run_id = RunId::new();
+    // Resolution (work#1320 Part B): materialize from the branch tip
+    // unless the request pins a version — the explicit fast path keeps
+    // the source's target and bypasses materialization.
+    let (version, target) = match explicit_version {
+        Some(version) => (version, target),
+        None => match retry_latest_materialize(state.as_ref(), &source, target, new_run_id).await {
+            Ok(resolved) => resolved,
+            Err(err) => return err.into_response(),
+        },
     };
     if Some(&version) == source.spec.workflow_version_id.as_ref() {
-        return ApiError::new(
-            StatusCode::CONFLICT,
-            "the newest workflow version is the one the source already ran; a plain retry replays it",
-        )
-        .into_response();
+        // The materialized arm refuses only when the tip is ALSO the
+        // commit the source started from: a moved tip re-drives on the
+        // new checkout even when the collected bundle is unchanged —
+        // the bundle carries the graph, prompts and environment, never
+        // the stage scripts (a script fix moves the sha, not the
+        // version; work#1320's 2026-11-15 lab finding). The explicit
+        // arm pins the version deliberately: equality alone is the
+        // plain-retry hint.
+        let tip_is_source_base = matches!(
+            &target,
+            RunTarget::Git(resolved) if resolved.sha.as_deref() == Some(source_base.as_str())
+        );
+        let refuse = explicit_version.is_some() || tip_is_source_base;
+        if refuse {
+            // Names both sides: the refusal self-diagnoses (work#1320's
+            // door ergonomics — the 2026-11-14 click needed code
+            // archaeology to learn the platform deploy had not moved
+            // the version).
+            let source_version = source
+                .spec
+                .workflow_version_id
+                .as_ref()
+                .map_or_else(|| "none".to_string(), ToString::to_string);
+            let head = if explicit_version.is_some() {
+                "the requested workflow version"
+            } else {
+                "the workflow at the branch tip"
+            };
+            let tail = if explicit_version.is_some() {
+                String::new()
+            } else {
+                format!(", and the tip is the commit it started from ({source_base})")
+            };
+            return ApiError::new(
+                StatusCode::CONFLICT,
+                format!(
+                    "{head} ({version}) is the one the source already ran \
+                     ({source_version}){tail}; a plain retry replays it",
+                ),
+            )
+            .into_response();
+        }
     }
 
-    // The successor: the create path compiles the CURRENT version with
-    // the source's posture (target, environment, model, labels), and
-    // prepares its worktree at the target branch's current tip.
-    let new_run_id = RunId::new();
-    let goal = (!source.spec.graph.goal.is_empty()).then(|| source.spec.graph.goal.clone());
+    // The successor: the create path compiles the resolved version with
+    // the source's posture (target, environment, model, labels). The
+    // materialized arm's target names the checked-out tip; the explicit
+    // arm keeps the source's target as the caller pinned the version.
+    // The item thread (work#1320): the goal names the source's item so
+    // the successor's planner takes the itemKey fast path instead of a
+    // fresh lane grant; the claim transfer below makes the handoff
+    // atomic.
+    let item_thread = source_item_thread(state.as_ref(), &id).await;
+    let goal = match (&item_thread, !source.spec.graph.goal.is_empty()) {
+        (Some(thread), true) => Some(format!(
+            "{} — this re-drive continues {}",
+            source.spec.graph.goal, thread.item_key
+        )),
+        (Some(thread), false) => Some(format!("This re-drive continues {}", thread.item_key)),
+        (None, has_goal) => has_goal.then(|| source.spec.graph.goal.clone()),
+    };
     let environment_id = source.spec.settings.run.environment.id.clone();
     let created = Box::pin(super::runs::create_run_from_intent(
         Arc::clone(&state),
@@ -706,21 +924,62 @@ async fn retry_latest_run(
         }
     }
 
-    // Carry the checkpoint work: the source run branch's commits since
-    // its base, cherry-picked onto the prepared worktree. A branch that
-    // was never pushed carries nothing (the re-drive starts fresh).
+    // Carry the checkpoint work: the source run's commits since its
+    // base, cherry-picked onto the prepared worktree. The SOURCE's
+    // snapshot repository comes first — a failed run never pushes its
+    // branch to the origin (work#1320); its work lives only in the
+    // snapshot, and the newest checkpoint record's sha names the tip.
+    // The origin stays the fallback (published branches of successful
+    // runs, or a reaped snapshot).
+    //
+    // The carry commits as the run's identity (the engine's own
+    // convention for checkpoint commits): a freshly prepared worktree
+    // configures none, and a bare cherry-pick dies on `Committer
+    // identity unknown` (the 2026-11-15 lab).
+    let committer =
+        run_rebase_ops::CarryCommitter::for_run(source.spec.settings.run.git.author.as_ref());
     let worktree = Storage::new(state.server_storage_dir())
         .run_scratch(&new_run_id)
         .worktree_dir();
     let source_branch = format!("fabro/run/{id}");
-    let carried = match run_rebase_ops::carry_checkpoint_work(
-        &worktree,
-        &git.origin_url,
-        &source_branch,
-        &source_base,
-    )
-    .await
-    {
+    let carry_result = if let Some(tip) = latest_checkpoint_sha(state.as_ref(), &id).await {
+        let snapshots = snapshots_dir(state.as_ref(), &id);
+        match find_snapshot_repository(&snapshots, &tip).await {
+            Some(repository) => {
+                run_rebase_ops::carry_checkpoint_work_from_snapshot(
+                    &worktree,
+                    &repository,
+                    &tip,
+                    &source_base,
+                    &committer,
+                )
+                .await
+            }
+            // No snapshot holds the tip (reaped, or a foreign checkout):
+            // the origin fallback — a branch that was never pushed
+            // carries nothing, the re-drive starts fresh.
+            None => {
+                run_rebase_ops::carry_checkpoint_work(
+                    &worktree,
+                    &git.origin_url,
+                    &source_branch,
+                    &source_base,
+                    &committer,
+                )
+                .await
+            }
+        }
+    } else {
+        run_rebase_ops::carry_checkpoint_work(
+            &worktree,
+            &git.origin_url,
+            &source_branch,
+            &source_base,
+            &committer,
+        )
+        .await
+    };
+    let carried = match carry_result {
         Ok(Ok(carried)) => carried,
         Ok(Err(RunRebaseError::NoSourceBranch { .. })) => run_rebase_ops::Rebased {
             commits:     0,
@@ -758,6 +1017,12 @@ async fn retry_latest_run(
         warn!(new_run_id = %new_run_id, error = %err, "the re-drive notice was not recorded");
     }
 
+    // The claim handoff lands before the run starts: the successor
+    // holds the item when its planner first fires.
+    if let Some(thread) = &item_thread {
+        transfer_item_thread(state.as_ref(), &id, &new_run_id, thread).await;
+    }
+
     if let Err(err) = queue_run(state.as_ref(), new_run_id, &projection, false, actor).await {
         return err.into_response();
     }
@@ -772,4 +1037,128 @@ async fn retry_latest_run(
         }),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod retry_latest_item_thread_tests {
+    use std::collections::BTreeMap;
+
+    use fabro_types::RunId;
+    use fabro_work::{ClaimState, GrantOutcome, GrantRequest, WorkProject};
+
+    use super::{source_item_thread, transfer_item_thread};
+
+    fn project() -> WorkProject {
+        WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              Some("denkhaus/fabro".to_string()),
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              BTreeMap::from([(
+                "develop".to_string(),
+                "lane:develop".to_string(),
+            )]),
+            claim_label_prefix:       "claimed".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_item_thread_resolves_live_recovers_released_and_transfers() {
+        let state = crate::test_support::test_app_state();
+        let store = state.work_store();
+        store.upsert_project(&project()).await.unwrap();
+
+        // Live claim: the source still holds the item.
+        let source = RunId::new();
+        let claim = match store
+            .grant(&GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1312".to_string(),
+                run_id:     source,
+                lane:       "develop".to_string(),
+            })
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(claim) => claim,
+            other => panic!("expected a grant, got {other:?}"),
+        };
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the live claim names the thread");
+        assert_eq!(thread.item_key, "denkhaus/work#1312");
+
+        // The parked case: the claim released, the association must
+        // recover from the ledger's history (the 2026-11-14 evidence).
+        store.release(&claim.claim_id, "parked").await.unwrap();
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the latest claim record recovers the thread");
+        assert_eq!(thread.item_key, "denkhaus/work#1312");
+        assert_eq!(thread.lane, "develop");
+
+        // The transfer: no live source claim left, so the successor
+        // simply receives the grant.
+        let successor = RunId::new();
+        transfer_item_thread(&state, &source, &successor, &thread).await;
+        let held = store
+            .active_claim_for_run(&successor)
+            .await
+            .unwrap()
+            .expect("the successor holds the item");
+        assert_eq!(held.item_key, "denkhaus/work#1312");
+        assert_eq!(held.state, ClaimState::Granted);
+    }
+
+    #[tokio::test]
+    async fn the_transfer_releases_a_live_source_claim_before_granting() {
+        let state = crate::test_support::test_app_state();
+        let store = state.work_store();
+        store.upsert_project(&project()).await.unwrap();
+
+        let source = RunId::new();
+        match store
+            .grant(&GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1313".to_string(),
+                run_id:     source,
+                lane:       "develop".to_string(),
+            })
+            .await
+            .unwrap()
+        {
+            GrantOutcome::Granted(_) => {}
+            other => panic!("expected a grant, got {other:?}"),
+        }
+        let thread = source_item_thread(&state, &source)
+            .await
+            .expect("the live claim names the thread");
+
+        let successor = RunId::new();
+        transfer_item_thread(&state, &source, &successor, &thread).await;
+
+        // The source's claim is gone, the successor's is live: the
+        // handoff is atomic from the item's point of view.
+        assert!(
+            store.active_claim_for_run(&source).await.unwrap().is_none(),
+            "the source no longer holds the item"
+        );
+        let held = store
+            .active_claim_for_run(&successor)
+            .await
+            .unwrap()
+            .expect("the successor holds the item");
+        assert_eq!(held.item_key, "denkhaus/work#1313");
+    }
+
+    #[tokio::test]
+    async fn a_source_without_any_claim_names_no_thread() {
+        let state = crate::test_support::test_app_state();
+        let stranger = RunId::new();
+        assert!(source_item_thread(&state, &stranger).await.is_none());
+    }
 }
