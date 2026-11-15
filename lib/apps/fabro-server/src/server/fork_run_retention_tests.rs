@@ -24,6 +24,10 @@ fn set_retention(state: &AppState, max_run_age_days: u64) {
 fn set_sandbox_reap(state: &AppState, floor_hours: u64) {
     let mut settings = (*state.server_settings()).clone();
     settings.server.retention.terminal_sandbox_age_hours = floor_hours;
+    // The brake reads the HOST disk: on a full build host (this sandbox's
+    // overlay ran 88%) it activates and widens the window below the floor,
+    // breaking the "without the brake" pass tests. Hermetic fix: off.
+    settings.server.retention.disk_brake_percent = 0;
     *state.server_settings.write().expect("settings lock") = Arc::new(settings);
 }
 
@@ -1001,5 +1005,61 @@ fn percent_used_rounds_down_and_saturates() {
         percent_used(100, 150),
         Some(0),
         "available above total (reserved blocks) saturates to 0% used"
+    );
+}
+
+#[test]
+fn absent_sandbox_classification_names_the_idempotent_miss() {
+    // work#1326: a prune whose chain says the sandbox `was not found` is
+    // the expected idempotency case — DEBUG, never an ERROR wall.
+    let absent =
+        anyhow::anyhow!("petri lease-ledger prune: EnvError: Sandbox \"abc\" was not found");
+    assert!(
+        fork_run_retention::is_absent_sandbox(&absent),
+        "a sandbox-not-found chain is an idempotent miss"
+    );
+    let unrelated = anyhow::anyhow!("loading provider config: secret store unavailable");
+    assert!(
+        !fork_run_retention::is_absent_sandbox(&unrelated),
+        "a config failure is a real failure, not an absent sandbox"
+    );
+    let run_missing = anyhow::anyhow!("run 01J was not found");
+    assert!(
+        !fork_run_retention::is_absent_sandbox(&run_missing),
+        "a not-found that is not about a sandbox stays a failure"
+    );
+}
+
+#[tokio::test]
+async fn reap_pass_records_its_outcome_for_the_stats_door() {
+    // work#1326 stats door: the executed pass lands in the AppState cell
+    // the /system/stats handler reads — "what did the last reap free".
+    let state = test_app_state_with_isolated_storage();
+    set_sandbox_reap(&state, 48);
+    let _run_id = seed_old_terminal_run_with(&state, 15, |projection| {
+        seed_sandbox(projection, true);
+    })
+    .await;
+
+    let stats = fork_run_retention::reap_sandboxes_pass(&state)
+        .await
+        .expect("the pass itself must not fail")
+        .expect("the enabled arm reports stats");
+    assert_eq!(stats.failed, 1, "fixture: the provider config is absent");
+
+    let last = state
+        .last_reap_pass
+        .read()
+        .expect("stats cell")
+        .clone()
+        .expect("the executed pass is recorded");
+    assert_eq!(last.reaped, stats.reaped);
+    assert_eq!(last.absent, stats.absent);
+    assert_eq!(last.failed, stats.failed);
+    assert_eq!(last.brake, stats.brake);
+    assert!(last.freed_bytes == 0, "nothing reaped freed nothing");
+    assert!(
+        last.disk_used_percent.is_some(),
+        "statvfs on the temp storage"
     );
 }

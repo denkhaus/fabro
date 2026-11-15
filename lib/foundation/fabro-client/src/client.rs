@@ -1025,6 +1025,21 @@ impl Client {
         Ok(())
     }
 
+    /// Reads one stored workflow version (work#1347): the stored
+    /// immutable package for the id, exactly as registered.
+    pub async fn get_workflow_version(&self, id: &WorkflowVersionId) -> Result<WorkflowVersion> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_workflow_version()
+                    .id(id.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
         self.create_run_from_intent_plain(intent).await
     }
@@ -1235,6 +1250,13 @@ impl Client {
             .send_api(|client| async move {
                 client.get_system_disk_usage().verbose(verbose).send().await
             })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    pub async fn get_system_stats(&self) -> Result<types::SystemStatsResponse> {
+        let response = self
+            .send_api(|client| async move { client.get_system_stats().send().await })
             .await?;
         Ok(response.into_inner())
     }
@@ -3950,14 +3972,23 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = vec![0_u8; 4096];
-            let read = stream.read(&mut request).await.unwrap();
-            let request = String::from_utf8_lossy(&request[..read]);
-            assert!(
-                request.starts_with("GET /api/v1/attach HTTP/1.1"),
-                "unexpected attach request: {request}"
-            );
+            // In a run channel (`FABRO_RUN_CHANNEL_TOKEN` present in the
+            // agent env) the one-shot floor probe rides `get_system_info`
+            // through `send_api` BEFORE `attach_events`; the probe fails
+            // open on any error, so answer non-attach requests with a
+            // bare 404 and keep accepting until the attach arrives.
+            let mut stream = loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 4096];
+                let read = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                if request.starts_with("GET /api/v1/attach HTTP/1.1") {
+                    break stream;
+                }
+                let not_found =
+                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                stream.write_all(not_found.as_bytes()).await.unwrap();
+            };
 
             let body = b"data: hello\n\n";
             let headers = format!(
