@@ -791,27 +791,48 @@ async fn retry_latest_run(
         },
     };
     if Some(&version) == source.spec.workflow_version_id.as_ref() {
-        // Names both sides: the refusal self-diagnoses (work#1320's door
-        // ergonomics — the 2026-11-14 click needed code archaeology to
-        // learn the platform deploy had not moved the version).
-        let source_version = source
-            .spec
-            .workflow_version_id
-            .as_ref()
-            .map_or_else(|| "none".to_string(), ToString::to_string);
-        let head = if explicit_version.is_some() {
-            "the requested workflow version"
-        } else {
-            "the workflow at the branch tip"
-        };
-        return ApiError::new(
-            StatusCode::CONFLICT,
-            format!(
-                "{head} ({version}) is the one the source already ran \
-                 ({source_version}); a plain retry replays it",
-            ),
-        )
-        .into_response();
+        // The materialized arm refuses only when the tip is ALSO the
+        // commit the source started from: a moved tip re-drives on the
+        // new checkout even when the collected bundle is unchanged —
+        // the bundle carries the graph, prompts and environment, never
+        // the stage scripts (a script fix moves the sha, not the
+        // version; work#1320's 2026-11-15 lab finding). The explicit
+        // arm pins the version deliberately: equality alone is the
+        // plain-retry hint.
+        let tip_is_source_base = matches!(
+            &target,
+            RunTarget::Git(resolved) if resolved.sha.as_deref() == Some(source_base.as_str())
+        );
+        let refuse = explicit_version.is_some() || tip_is_source_base;
+        if refuse {
+            // Names both sides: the refusal self-diagnoses (work#1320's
+            // door ergonomics — the 2026-11-14 click needed code
+            // archaeology to learn the platform deploy had not moved
+            // the version).
+            let source_version = source
+                .spec
+                .workflow_version_id
+                .as_ref()
+                .map_or_else(|| "none".to_string(), ToString::to_string);
+            let head = if explicit_version.is_some() {
+                "the requested workflow version"
+            } else {
+                "the workflow at the branch tip"
+            };
+            let tail = if explicit_version.is_some() {
+                String::new()
+            } else {
+                format!(", and the tip is the commit it started from ({source_base})")
+            };
+            return ApiError::new(
+                StatusCode::CONFLICT,
+                format!(
+                    "{head} ({version}) is the one the source already ran \
+                     ({source_version}){tail}; a plain retry replays it",
+                ),
+            )
+            .into_response();
+        }
     }
 
     // The successor: the create path compiles the resolved version with

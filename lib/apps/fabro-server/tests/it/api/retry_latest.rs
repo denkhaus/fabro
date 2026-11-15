@@ -232,11 +232,13 @@ async fn materializes_the_workflow_from_the_branch_tip_instead_of_scanning_runs(
 
 #[tokio::test]
 async fn a_tip_equal_to_the_source_refuses_naming_both_versions() {
+    // The materializer's tip IS the source's starting commit: the
+    // branch did not move, nothing new exists to re-drive on.
     let materializer = TestAutomationRunMaterializer::succeed(GitRunTarget {
         repo:   "denkhaus/fabro".to_string(),
         branch: "denkhaus".to_string(),
         tag:    None,
-        sha:    Some(TIP_SHA.to_string()),
+        sha:    Some(SOURCE_SHA.to_string()),
     });
     let (app, store, materializer, _temp) = retry_latest_app(materializer);
     let source = RunId::new();
@@ -256,8 +258,8 @@ async fn a_tip_equal_to_the_source_refuses_naming_both_versions() {
         .expect("workflow_version_id in response")
         .to_string();
 
-    // The source now names the tip's version: the branch tip IS what
-    // the source ran — the plain-retry refusal holds, naming both.
+    // The source now names the tip's version AND the tip is its own
+    // starting commit — the plain-retry refusal holds, naming both.
     let second = RunId::new();
     seed_failed_run(&store, second, Some("develop"), Some(tip_version.clone())).await;
     let (status, body) = retry_latest(&app, &second.to_string(), None).await;
@@ -268,10 +270,68 @@ async fn a_tip_equal_to_the_source_refuses_naming_both_versions() {
         "the refusal names the tip's version: {detail}"
     );
     assert!(
+        detail.contains(SOURCE_SHA),
+        "the refusal names the shared commit: {detail}"
+    );
+    assert!(
         detail.contains("plain retry"),
         "the refusal points at the plain retry: {detail}"
     );
     assert_eq!(materializer.captured_workflow_selections().len(), 2);
+}
+
+#[tokio::test]
+async fn an_equal_version_on_a_moved_tip_proceeds_on_the_new_checkout() {
+    // The 2026-11-15 lab finding (work#1320): the bundle carries the
+    // graph, prompts and environment, never the stage scripts — a
+    // script fix moves the TIP, not the version. An equal version on a
+    // MOVED tip re-drives: the successor re-admits the same version on
+    // the new checkout, where the fixed script lives.
+    let materializer = TestAutomationRunMaterializer::succeed(GitRunTarget {
+        repo:   "denkhaus/fabro".to_string(),
+        branch: "denkhaus".to_string(),
+        tag:    None,
+        sha:    Some(TIP_SHA.to_string()),
+    });
+    let (app, store, _materializer, _temp) = retry_latest_app(materializer);
+    let source = RunId::new();
+    seed_failed_run(
+        &store,
+        source,
+        Some("develop"),
+        Some(OLD_VERSION.to_string()),
+    )
+    .await;
+
+    // Discover the can's version, then seed a source that ALREADY ran
+    // it — with the tip moved (TIP_SHA, not the source's SOURCE_SHA).
+    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let tip_version = body["workflow_version_id"]
+        .as_str()
+        .expect("workflow_version_id in response")
+        .to_string();
+
+    let second = RunId::new();
+    seed_failed_run(&store, second, Some("develop"), Some(tip_version.clone())).await;
+    let (status, body) = retry_latest(&app, &second.to_string(), None).await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "an equal version on a moved tip proceeds: {body}"
+    );
+    assert_eq!(
+        body["workflow_version_id"].as_str(),
+        Some(tip_version.as_str()),
+        "the successor re-admits the same version"
+    );
+    let successor = body["new_run_id"].as_str().expect("new_run_id").to_string();
+    let projection = stored_projection(&store, &successor).await;
+    assert_eq!(
+        git_target(&projection).sha.as_deref(),
+        Some(TIP_SHA),
+        "the successor's checkout is the moved tip"
+    );
 }
 
 #[tokio::test]
