@@ -217,23 +217,25 @@ async fn replay_range(
 
     // Cherry-pick the range. An empty pick (the fix already carries the
     // work) skips forward via --allow-empty; a conflict stops the pick.
-    // The `-c` config outranks whatever the worktree happens to
-    // configure, and gpgsign stays off — a host's signing key never
-    // signs platform commits.
-    let user_name = format!("user.name={}", committer.name);
-    let user_email = format!("user.email={}", committer.email);
+    // The committer identity rides as `GIT_COMMITTER_*` env vars: git's
+    // environment outranks BOTH `-c` config and whatever committer env
+    // the surrounding process inherited — a Fabro run shell exports
+    // `GIT_COMMITTER_NAME/EMAIL` (the git bridge identity), and those
+    // would silently win over `-c user.*` config. The author is the
+    // original commit's (cherry-pick preserves it); gpgsign stays off —
+    // a host's signing key never signs platform commits.
     let pick_range = format!("{source_base}..{tip}");
-    let picked = run(worktree_dir, &[
-        "-c",
-        &user_name,
-        "-c",
-        &user_email,
-        "-c",
-        "commit.gpgsign=false",
-        "cherry-pick",
-        "--allow-empty",
-        &pick_range,
-    ])
+    let picked = run_with_committer(
+        worktree_dir,
+        &[
+            "-c",
+            "commit.gpgsign=false",
+            "cherry-pick",
+            "--allow-empty",
+            &pick_range,
+        ],
+        committer,
+    )
     .await?;
     if picked.status.success() {
         Ok(Ok(Rebased {
@@ -286,10 +288,36 @@ async fn git(dir: &Path, args: &[&str]) -> GitOutcome {
 }
 
 async fn run(dir: &Path, args: &[&str]) -> Result<std::process::Output, RunRebaseError> {
+    run_inner(dir, args, None).await
+}
+
+/// `run` with the carry's committer identity pinned through the
+/// environment: `GIT_COMMITTER_NAME/EMAIL` outrank any `-c user.*`
+/// config AND any committer env the parent process carries, so the pick
+/// commits as the run's identity even inside a Fabro run shell that
+/// exports the bridge identity.
+async fn run_with_committer(
+    dir: &Path,
+    args: &[&str],
+    committer: &CarryCommitter,
+) -> Result<std::process::Output, RunRebaseError> {
+    run_inner(dir, args, Some((&committer.name, &committer.email))).await
+}
+
+async fn run_inner(
+    dir: &Path,
+    args: &[&str],
+    committer: Option<(&str, &str)>,
+) -> Result<std::process::Output, RunRebaseError> {
     let command = format!("git {}", args.join(" "));
-    Command::new("git")
-        .args(args)
-        .current_dir(dir)
+    let mut process = Command::new("git");
+    process.args(args).current_dir(dir);
+    if let Some((name, email)) = committer {
+        process
+            .env("GIT_COMMITTER_NAME", name)
+            .env("GIT_COMMITTER_EMAIL", email);
+    }
+    process
         .output()
         .await
         .map_err(|source| RunRebaseError::Git {
@@ -338,6 +366,31 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    /// `run` pinned to the fixture identity: a Fabro run shell exports
+    /// `GIT_AUTHOR_*`/`GIT_COMMITTER_*` (the git bridge identity), and
+    /// git's environment outranks the repos' `user.*` config — without
+    /// the pin the fixture's "T" commits silently author as the bridge
+    /// identity inside a run sandbox (the 2026-11-15 gate-red). A local
+    /// item shadows the glob import, so every fixture git call carries
+    /// the pin.
+    async fn run(dir: &Path, args: &[&str]) -> Result<std::process::Output, RunRebaseError> {
+        let command = format!("git {}", args.join(" "));
+        tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "T")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "T")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .await
+            .map_err(|source| RunRebaseError::Git {
+                command,
+                dir: dir.to_path_buf(),
+                source,
+            })
+    }
 
     /// A scratch origin plus a prepared worktree at its tip: the test
     /// fixtures build base .. work with commits on a run branch.
@@ -595,6 +648,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(author, "T <t@example.com>");
+    }
+
+    #[tokio::test]
+    async fn the_committer_env_outranks_the_inherited_environment() {
+        // A Fabro run shell exports the git bridge identity as
+        // `GIT_COMMITTER_*`, and git's environment outranks `-c user.*`
+        // config — the carry's pick silently committed as the platform
+        // identity instead of the run's (the 2026-11-15 gate-red). The
+        // env pin must win over whatever the parent process carries.
+        let dir =
+            std::env::temp_dir().join(format!("fabro-retry-latest-env-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ident = run_with_committer(&dir, &["var", "GIT_COMMITTER_IDENT"], &CarryCommitter {
+            name:  "lab-bot".to_string(),
+            email: "lab@example.com".to_string(),
+        })
+        .await
+        .unwrap();
+        let ident = String::from_utf8_lossy(&ident.stdout).trim().to_string();
+        assert!(
+            ident.starts_with("lab-bot <lab@example.com>"),
+            "the carry's env identity wins: {ident}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
