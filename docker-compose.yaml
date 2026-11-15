@@ -10,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       ROOTPRINT_INGEST_TOKEN: ${ROOTPRINT_INGEST_TOKEN:-}
-      ROOTPRINT_INGEST_URL: ${ROOTPRINT_INGEST_URL:?set ROOTPRINT_INGEST_URL in .env}
+      ROOTPRINT_INGEST_URL: ${ROOTPRINT_INGEST_URL:?direnv environment must set ROOTPRINT_INGEST_URL}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./compose/rootprint-vector.yaml:/etc/vector/vector.yaml:ro
@@ -35,9 +35,12 @@ services:
       - /var/lib/fabro/run-channels:/var/lib/fabro/run-channels
     environment:
       FABRO_RUN_CHANNEL_DIR: /var/lib/fabro/run-channels
-    env_file:
-      - path: .env
-        required: false
+      # The .env file is RETIRED (user directive 2026-11-15): the local
+      # stack's environment comes from direnv (.envrc) — `just up` runs
+      # the whole pipeline under `direnv exec .`, and compose interpolates
+      # these pass-throughs from that environment.
+      PETRI_SANDBOX_PLUGIN_DEV: ${PETRI_SANDBOX_PLUGIN_DEV:-}
+      TZ: ${TZ:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:32276/health"]
       interval: 10s

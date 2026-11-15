@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use axum::extract::DefaultBodyLimit;
 use axum::extract::rejection::JsonRejection;
+use axum::extract::{DefaultBodyLimit, Path};
 use fabro_api::types::{CreateWorkflowVersionResponse, WorkflowVersion};
 use fabro_types::MAX_WORKFLOW_VERSION_BYTES;
 use fabro_util::error;
@@ -10,7 +10,8 @@ use fabro_workflow_version::{
 };
 
 use super::super::{
-    ApiError, AppState, IntoResponse, Json, Response, Router, State, StatusCode, post,
+    ApiError, AppState, IntoResponse, Json, RequiredUser, Response, Router, State, StatusCode, get,
+    post,
 };
 use crate::principal_middleware::RequiredRunManagementActor;
 
@@ -18,12 +19,16 @@ const INVALID_JSON_CODE: &str = "invalid_json";
 const INVALID_VERSION_CODE: &str = "workflow_version_invalid";
 const DEPENDENCY_NOT_FOUND_CODE: &str = "workflow_version_dependency_not_found";
 const VERSION_TOO_LARGE_CODE: &str = "workflow_version_too_large";
+const VERSION_NOT_FOUND_CODE: &str = "workflow_version_not_found";
+const INVALID_ID_CODE: &str = "invalid_workflow_version_id";
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
-    Router::new().route(
-        "/workflow-versions",
-        post(create_workflow_version).layer(DefaultBodyLimit::max(MAX_WORKFLOW_VERSION_BYTES)),
-    )
+    Router::new()
+        .route(
+            "/workflow-versions",
+            post(create_workflow_version).layer(DefaultBodyLimit::max(MAX_WORKFLOW_VERSION_BYTES)),
+        )
+        .route("/workflow-versions/{id}", get(get_workflow_version))
 }
 
 async fn create_workflow_version(
@@ -50,6 +55,56 @@ async fn create_workflow_version(
         }),
     )
         .into_response())
+}
+
+/// The read door (work#1347): the stored immutable package for one
+/// version id, exactly as registered — reading back a stored version
+/// answers the canonical bytes a client posted. The dependency walk
+/// re-validates the closure on read (the blob namespace is shared); a
+/// broken closure refuses with the store's dependency codes instead of
+/// serving a package that cannot run.
+async fn get_workflow_version(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Path(raw): Path<String>,
+) -> Result<Response, ApiError> {
+    let id = raw.parse().map_err(|_| {
+        ApiError::with_code(
+            StatusCode::BAD_REQUEST,
+            "workflow version id must be 64 hex chars",
+            INVALID_ID_CODE,
+        )
+    })?;
+    let store = WorkflowVersionStore::new(state.store_ref().blobs());
+    let version = store.get(&id).await.map_err(read_error)?.ok_or_else(|| {
+        ApiError::with_code(
+            StatusCode::NOT_FOUND,
+            "no stored workflow version carries this id",
+            VERSION_NOT_FOUND_CODE,
+        )
+    })?;
+    Ok((StatusCode::OK, Json(version.into_version())).into_response())
+}
+
+fn read_error(err: WorkflowVersionStoreError) -> ApiError {
+    match err {
+        // A stored package whose closure is broken names the offending
+        // dependency, the same surface the create door serves.
+        err @ (WorkflowVersionStoreError::DependencyNotFound { .. }
+        | WorkflowVersionStoreError::DependencyInvalid { .. }) => ApiError::with_code(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            err.to_string(),
+            DEPENDENCY_NOT_FOUND_CODE,
+        ),
+        err => {
+            tracing::error!(
+                error = %err,
+                error_chain = ?error::collect_chain(&err),
+                "Workflow version store read failed"
+            );
+            internal_store_error()
+        }
+    }
 }
 
 fn json_rejection(rejection: JsonRejection) -> ApiError {
@@ -353,6 +408,113 @@ mod tests {
             error_code(&response_json(response).await),
             VERSION_TOO_LARGE_CODE
         );
+    }
+
+    #[tokio::test]
+    async fn a_stored_version_reads_back_byte_for_byte() {
+        let state = TestAppStateBuilder::new().build();
+        let app = test_support::build_test_router(Arc::clone(&state));
+        let payload = json!({
+            "entrypoint": "workflow.fabro",
+            "files": {
+                "workflow.fabro": GRAPH,
+                "workflow.toml": "_version = 1\n"
+            },
+            "workflow_dependencies": {}
+        });
+        let created = fabro_test::expect_axum_json(
+            app.clone()
+                .oneshot(request(serde_json::to_vec(&payload).unwrap()))
+                .await
+                .unwrap(),
+            StatusCode::CREATED,
+            "storing the facet version",
+        )
+        .await;
+        let id = created["workflow_version_id"].as_str().unwrap().to_string();
+
+        // The read door answers the stored package exactly: the
+        // canonical bytes the store holds, parsed back as the same
+        // content (work#1347's closes-when).
+        let read = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/api/v1/workflow-versions/{id}"))
+            .body(Body::empty())
+            .unwrap();
+        let body = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::OK,
+            "reading the stored version back",
+        )
+        .await;
+        assert_eq!(body, payload);
+
+        // And byte-for-byte: the serialized read equals the store's
+        // canonical bytes for the id.
+        let stored = state
+            .store_ref()
+            .blobs()
+            .read(&id.parse::<WorkflowVersionId>().unwrap().into())
+            .await
+            .unwrap()
+            .expect("the stored blob");
+        assert_eq!(
+            serde_json::to_vec(&body).unwrap(),
+            stored.as_ref(),
+            "the read door serves the canonical bytes unchanged"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_version_id_is_not_found() {
+        let app = test_support::build_test_router(TestAppStateBuilder::new().build());
+        let missing = WorkflowVersionId::from(BlobHash::new(b"never stored"));
+        let read = Request::builder()
+            .method(Method::GET)
+            .uri(format!("/api/v1/workflow-versions/{missing}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::NOT_FOUND,
+            "reading an unknown version id",
+        )
+        .await;
+        assert_eq!(error_code(&response), super::VERSION_NOT_FOUND_CODE);
+    }
+
+    #[tokio::test]
+    async fn a_malformed_version_id_refuses_as_bad_request() {
+        let app = test_support::build_test_router(TestAppStateBuilder::new().build());
+        let read = Request::builder()
+            .method(Method::GET)
+            .uri("/api/v1/workflow-versions/not-hex")
+            .body(Body::empty())
+            .unwrap();
+        let response = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::BAD_REQUEST,
+            "reading a malformed version id",
+        )
+        .await;
+        assert_eq!(error_code(&response), super::INVALID_ID_CODE);
+    }
+
+    #[tokio::test]
+    async fn reading_requires_authenticated_user() {
+        let state = TestAppStateBuilder::new().build();
+        let app = server::build_router(state, test_support::test_auth_mode());
+        let read = Request::builder()
+            .method(Method::GET)
+            .uri("/api/v1/workflow-versions/0000000000000000000000000000000000000000000000000000000000000000")
+            .body(Body::empty())
+            .unwrap();
+        fabro_test::expect_axum_status(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::UNAUTHORIZED,
+            "reading requires an authenticated user",
+        )
+        .await;
     }
 
     #[tokio::test]

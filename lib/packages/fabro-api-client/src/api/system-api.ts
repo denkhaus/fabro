@@ -37,6 +37,8 @@ import type { SystemIntegrationsResponse } from '../models';
 import type { SystemRepairRunsResponse } from '../models';
 // @ts-ignore
 import type { SystemResourcesResponse } from '../models';
+// @ts-ignore
+import type { SystemStatsResponse } from '../models';
 /**
  * SystemApi - axios parameter creator
  */
@@ -269,6 +271,42 @@ export const SystemApiAxiosParamCreator = function (configuration?: Configuratio
             };
         },
         /**
+         * Per-filesystem usage for the paths the server cares about (the storage directory and the Docker data root beside it), plus what the last sandbox-reap pass freed — the one call that answers which filesystem is full and by what.
+         * @summary Retrieve Server Filesystem Stats
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSystemStats: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/system/stats`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Deletes completed runs matching the provided filters, or previews the deletion set when dry-run is enabled.
          * @summary Prune Runs
          * @param {PruneRunsRequest} pruneRunsRequest
@@ -393,6 +431,18 @@ export const SystemApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Per-filesystem usage for the paths the server cares about (the storage directory and the Docker data root beside it), plus what the last sandbox-reap pass freed — the one call that answers which filesystem is full and by what.
+         * @summary Retrieve Server Filesystem Stats
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getSystemStats(options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SystemStatsResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getSystemStats(options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SystemApi.getSystemStats']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Deletes completed runs matching the provided filters, or previews the deletion set when dry-run is enabled.
          * @summary Prune Runs
          * @param {PruneRunsRequest} pruneRunsRequest
@@ -471,6 +521,15 @@ export const SystemApiFactory = function (configuration?: Configuration, basePat
             return localVarFp.getSystemResources(options).then((request) => request(axios, basePath));
         },
         /**
+         * Per-filesystem usage for the paths the server cares about (the storage directory and the Docker data root beside it), plus what the last sandbox-reap pass freed — the one call that answers which filesystem is full and by what.
+         * @summary Retrieve Server Filesystem Stats
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSystemStats(options?: RawAxiosRequestConfig): AxiosPromise<SystemStatsResponse> {
+            return localVarFp.getSystemStats(options).then((request) => request(axios, basePath));
+        },
+        /**
          * Deletes completed runs matching the provided filters, or previews the deletion set when dry-run is enabled.
          * @summary Prune Runs
          * @param {PruneRunsRequest} pruneRunsRequest
@@ -547,6 +606,16 @@ export class SystemApi extends BaseAPI {
      */
     public getSystemResources(options?: RawAxiosRequestConfig) {
         return SystemApiFp(this.configuration).getSystemResources(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Per-filesystem usage for the paths the server cares about (the storage directory and the Docker data root beside it), plus what the last sandbox-reap pass freed — the one call that answers which filesystem is full and by what.
+     * @summary Retrieve Server Filesystem Stats
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getSystemStats(options?: RawAxiosRequestConfig) {
+        return SystemApiFp(this.configuration).getSystemStats(options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

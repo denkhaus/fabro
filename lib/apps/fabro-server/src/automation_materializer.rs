@@ -368,6 +368,7 @@ struct TestAutomationRunMaterializerState {
 enum TestMaterializeFailure {
     InvalidTarget(GitCoordinateValidationError),
     InvalidWorkflowSource(GitCoordinateValidationError),
+    WorkflowNotFound(PathBuf),
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -378,6 +379,9 @@ impl From<TestMaterializeFailure> for RunMaterializeError {
             TestMaterializeFailure::InvalidWorkflowSource(source) => {
                 Self::InvalidWorkflowSource { source }
             }
+            TestMaterializeFailure::WorkflowNotFound(path) => Self::WorkflowNotFound {
+                source: WorkflowVersionCollectError::WorkflowNotFound { path },
+            },
         }
     }
 }
@@ -445,6 +449,14 @@ impl TestAutomationRunMaterializer {
         )))
     }
 
+    /// The workflow selector misses at the checkout: the retry-on-latest
+    /// arm where the source's workflow no longer exists on the branch.
+    pub fn fail_workflow_not_found() -> Self {
+        Self::new(Err(TestMaterializeFailure::WorkflowNotFound(
+            PathBuf::from(".fabro/workflows"),
+        )))
+    }
+
     fn new(response: Result<Box<TestMaterializedWorkflow>, TestMaterializeFailure>) -> Self {
         Self {
             inner:         std::sync::Arc::new(std::sync::Mutex::new(
@@ -472,6 +484,19 @@ impl TestAutomationRunMaterializer {
             .captured_inputs
             .iter()
             .map(|input| input.workflow_source.clone())
+            .collect()
+    }
+
+    /// The captured (workflow selector, target) pairs — the
+    /// retry-on-latest pins assert the resolution input's shape (the
+    /// slug as the selector, the sha-stripped branch target).
+    pub fn captured_workflow_selections(&self) -> Vec<(String, GitRunTarget)> {
+        self.inner
+            .lock()
+            .expect("test automation materializer lock poisoned")
+            .captured_inputs
+            .iter()
+            .map(|input| (input.workflow.clone(), input.target.clone()))
             .collect()
     }
 

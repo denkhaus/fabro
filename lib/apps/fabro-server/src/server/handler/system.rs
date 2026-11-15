@@ -20,9 +20,9 @@ use super::super::{
     IntoResponse, Json, Path, PrunePlan, PruneRunsRequest, PruneRunsResponse, Query, RequiredUser,
     Response, Router, RunStatus, State, StatusCode, SystemInfoResponse, SystemIntegrationStatus,
     SystemIntegrationsResponse, SystemRepairRunIssue, SystemRepairRunsResponse, SystemRunCounts,
-    UsageByModel, build_disk_usage_response, build_prune_plan, counts_toward_scheduler_capacity,
-    delete_run_internal, diagnostics, get, post, resource_sampler, spawn_blocking,
-    system_sandbox_provider, to_i64,
+    SystemStatsResponse, UsageByModel, build_disk_usage_response, build_prune_plan,
+    counts_toward_scheduler_capacity, delete_run_internal, diagnostics, fork_system_stats, get,
+    post, resource_sampler, spawn_blocking, system_sandbox_provider, to_i64,
 };
 
 const SERVER_DIAGNOSTICS_TIMEOUT: Duration = Duration::from_secs(25);
@@ -37,6 +37,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/system/integrations", get(get_system_integrations))
         .route("/system/resources", get(get_system_resources))
         .route("/system/df", get(get_system_df))
+        .route("/system/stats", get(get_system_stats))
         .route("/system/repair/runs", get(get_system_repair_runs))
         .route("/system/prune/runs", post(prune_runs))
         .route("/usage", get(get_aggregate_usage))
@@ -326,6 +327,30 @@ async fn get_system_df(
     };
 
     (StatusCode::OK, Json(response)).into_response()
+}
+
+/// The stats door (denkhaus/work#1326): per-filesystem usage for the
+/// paths the server cares about — same `statvfs` math the disk brake
+/// reads — plus what the last sandbox-reap pass freed. One call answers
+/// "which filesystem is full and by what".
+async fn get_system_stats(_auth: RequiredUser, State(state): State<Arc<AppState>>) -> Response {
+    let last_reap = state
+        .last_reap_pass
+        .read()
+        .ok()
+        .and_then(|cell| cell.as_ref().map(fork_system_stats::last_reap_pass_to_api));
+    let filesystems = fork_system_stats::probed_paths(&state.server_storage_dir())
+        .iter()
+        .filter_map(|path| fork_system_stats::filesystem_usage(path))
+        .collect();
+    (
+        StatusCode::OK,
+        Json(SystemStatsResponse {
+            filesystems,
+            last_reap_pass: last_reap,
+        }),
+    )
+        .into_response()
 }
 
 async fn get_system_repair_runs(

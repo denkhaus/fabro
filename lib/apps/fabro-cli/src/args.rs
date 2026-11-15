@@ -893,6 +893,19 @@ pub(crate) struct WorkflowCreateArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct WorkflowShowArgs {
+    /// The stored workflow version id (64 hex chars)
+    pub(crate) id: String,
+
+    /// Print one file's content instead of the bundle overview
+    #[arg(short, long)]
+    pub(crate) file: Option<String>,
+
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+}
+
+#[derive(Args)]
 pub(crate) struct ProviderLoginArgs {
     #[command(flatten)]
     pub(crate) target: ServerTargetArgs,
@@ -948,6 +961,12 @@ pub(crate) struct DfArgs {
     /// Show per-run breakdown
     #[arg(short, long)]
     pub(crate) verbose: bool,
+}
+
+#[derive(Args)]
+pub(crate) struct StatsArgs {
+    #[command(flatten)]
+    pub(crate) connection: ServerConnectionArgs,
 }
 
 #[derive(Args)]
@@ -1808,6 +1827,7 @@ impl Commands {
             Self::Workflow(ns) => match &ns.command {
                 WorkflowCommand::List(_) => "workflow list",
                 WorkflowCommand::Create(_) => "workflow create",
+                WorkflowCommand::Show(_) => "workflow show",
             },
             Self::Discord => "discord",
             Self::Docs => "docs",
@@ -1821,6 +1841,7 @@ impl Commands {
                 SystemCommand::Info(_) => "system info",
                 SystemCommand::Prune(_) => "system prune",
                 SystemCommand::Df(_) => "system df",
+                SystemCommand::Stats(_) => "system stats",
                 SystemCommand::Events(_) => "system events",
                 SystemCommand::Repair(args) => match &args.command {
                     SystemRepairCommand::Runs(_) => "system repair runs",
@@ -2775,6 +2796,8 @@ pub(crate) enum SystemCommand {
     Prune(RunsPruneArgs),
     /// Show disk usage
     Df(DfArgs),
+    /// Show which server filesystem is full and what the last reap freed
+    Stats(StatsArgs),
     /// Stream run events from the server
     Events(SystemEventsArgs),
     /// Inspect and repair durable server data
@@ -2794,6 +2817,8 @@ pub(crate) enum WorkflowCommand {
     List(WorkflowListArgs),
     /// Create a new workflow
     Create(WorkflowCreateArgs),
+    /// Show a stored workflow version from the server
+    Show(WorkflowShowArgs),
 }
 
 #[derive(Args)]

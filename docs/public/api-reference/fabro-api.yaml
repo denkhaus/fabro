@@ -1156,6 +1156,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/workflow-versions/{id}:
+    get:
+      operationId: getWorkflowVersion
+      tags: [Workflow Versions]
+      summary: Get Workflow Version
+      description: >-
+        Returns the stored immutable workflow package (entrypoint, files
+        with contents, workflow dependencies) for one version id, exactly
+        as registered. Requires an authenticated user. The response is
+        the canonical stored content: reading back a stored version
+        matches what a client posted, byte for byte.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The stored workflow version id (64 hex chars).
+          schema:
+            type: string
+          example: 6b1f0a3c9d2e4f5a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a
+      responses:
+        "200":
+          description: The stored workflow version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        "400":
+          description: The id is not a valid workflow version id (`invalid_workflow_version_id`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No stored version carries the id (`workflow_version_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: >-
+            The stored version's dependency closure is broken
+            (`workflow_version_dependency_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Workflow version storage failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Runs ──────────────────────────────────────────────────────────────
 
   /api/v1/runs:
@@ -6123,6 +6188,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DiskUsageResponse"
+
+  /api/v1/system/stats:
+    get:
+      operationId: getSystemStats
+      tags: [System]
+      summary: Retrieve Server Filesystem Stats
+      description: >-
+        Per-filesystem usage for the paths the server cares about (the
+        storage directory and the Docker data root beside it), plus what
+        the last sandbox-reap pass freed — the one call that answers which
+        filesystem is full and by what.
+      responses:
+        "200":
+          description: Server filesystem stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatsResponse"
 
   /api/v1/system/repair/runs:
     get:
@@ -19285,6 +19368,85 @@ components:
         reclaimable:
           type: boolean
           description: Whether the run is inactive and reclaimable.
+
+    SystemStatsResponse:
+      description: >-
+        Per-filesystem usage for the paths the server cares about, plus the
+        last sandbox-reap pass outcome (work#1326 stats door).
+      type: object
+      required: [filesystems]
+      properties:
+        filesystems:
+          type: array
+          description: >-
+            One row per probed path — the storage directory and, when it
+            exists, the Docker data root beside it. Identical numbers on two
+            rows mean the paths share one filesystem.
+          items:
+            $ref: "#/components/schemas/SystemFilesystemUsage"
+        last_reap_pass:
+          type: ["object", "null"]
+          description: >-
+            The last executed sandbox-reap pass, null before the first pass
+            ran or while the arm is disabled.
+          properties:
+            finished_at:
+              type: string
+              format: date-time
+              description: When the pass finished.
+            reaped:
+              type: integer
+              format: int64
+              description: Sandboxes reaped by the pass.
+            absent:
+              type: integer
+              format: int64
+              description: >-
+                Candidates whose sandbox was already absent — the idempotent
+                case, logged at debug, never an error.
+            failed:
+              type: integer
+              format: int64
+              description: Candidates whose reap failed and retries next tick.
+            freed_bytes:
+              type: integer
+              format: int64
+              description: >-
+                Estimated bytes freed: the reaped runs' host workspace sizes
+                summed before the prune.
+            disk_used_percent:
+              type: ["integer", "null"]
+              format: int64
+              description: >-
+                Storage-filesystem usage percent sampled after the pass,
+                null when statvfs failed.
+            brake:
+              type: boolean
+              description: Whether the disk brake widened the pass's window.
+
+    SystemFilesystemUsage:
+      description: One probed filesystem path.
+      type: object
+      properties:
+        path:
+          type: string
+          description: The probed path.
+        total_bytes:
+          type: integer
+          format: int64
+          description: Total space on the filesystem.
+        used_bytes:
+          type: integer
+          format: int64
+          description: Used space (total minus available, saturating).
+        available_bytes:
+          type: integer
+          format: int64
+          description: Available space.
+        used_percent:
+          type: integer
+          format: int64
+          description: Used space in whole percent, rounded down.
 
     PruneRunsRequest:
       description: Filters for system run pruning.

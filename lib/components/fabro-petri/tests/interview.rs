@@ -225,8 +225,8 @@ async fn a_gate_answered_under_the_posted_id_routes_on_the_answer() {
         vec![("Y", "[Y] Yes"), ("N", "[N] No")]
     );
     assert!(
-        asked.question_id.starts_with("gate#"),
-        "Petri's id, as the projection serves it: {}",
+        asked.question_id.starts_with("gate~") && !asked.question_id.contains(['#', '/']),
+        "Petri's id, as the projection serves it (URL-safe, work#1300 fix A): {}",
         asked.question_id
     );
     assert_eq!(asked.identity.node, "gate");

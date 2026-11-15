@@ -2670,7 +2670,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
               "ev": {
                 "custom": {
                   "$question": {
-                    "id": "approve#2",
+                    "id": "approve~2",
                     "text": "Approve?",
                     "options": [
                       {
@@ -2694,7 +2694,7 @@ fn attach_json_errors_without_prompting_for_human_input() {
             "parsed": {
               "kind": "question",
               "question": {
-                "id": "approve#2",
+                "id": "approve~2",
                 "text": "Approve?",
                 "options": [
                   {
