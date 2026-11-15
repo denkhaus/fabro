@@ -96,8 +96,9 @@ pub(super) fn reap_candidates(
             // Only unambiguous finishes: HumanNeeded waits for a human
             // answer into the live sandbox, a resumable park waits for a
             // resume, and everything active is out of reach. The
-            // lifecycle.preserve flag is enforced by the executor (it
-            // reads the projection, which summaries do not carry).
+            // lifecycle.preserve flag is enforced by the pass itself (it
+            // loads each candidate's projection, which summaries do not
+            // carry — work#1324).
             if !matches!(
                 run.lifecycle.status,
                 fabro_types::RunStatus::Succeeded { .. }
@@ -242,6 +243,7 @@ async fn reap_sandboxes_pass_logged(state: &AppState) {
 pub(super) struct ReapPassStats {
     pub candidates: usize,
     pub reaped:     usize,
+    pub preserved:  usize,
     /// Candidates whose sandbox was already absent — the expected
     /// idempotency case (work#1326): logged at debug, never an error.
     pub absent:     usize,
@@ -284,8 +286,9 @@ async fn reap_workspace_bytes(state: &AppState, run_id: &RunId) -> u64 {
 /// — containers, volumes, and the sandbox's host workspace, through
 /// Petri's lease ledger — while every run record stays. The disk brake
 /// (`disk_brake_percent`, 0 = off) widens the window below the age
-/// floor, oldest-terminal-first; the candidate filter's protections
-/// (HumanNeeded, resumable park, `preserve`) hold under the brake.
+/// floor, oldest-terminal-first; the protections (HumanNeeded,
+/// resumable park in the candidate filter, `preserve` in this pass's
+/// gate) hold under the brake.
 /// `Ok(None)` = the arm is disabled (`terminal_sandbox_age_hours: 0`,
 /// which also disables the brake — the brake only widens this arm's
 /// window). Per-run failures WARN and fail open to the next tick.
@@ -342,6 +345,7 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
     );
 
     let mut reaped = 0usize;
+    let mut preserved = 0usize;
     let mut absent = 0usize;
     let mut failed = 0usize;
     let mut freed_bytes = 0u64;
@@ -349,6 +353,33 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
         let Some((instance, reason)) = instances.get(run_id) else {
             continue;
         };
+        // Preserve gate (work#1324): the summary `Run` the candidate
+        // filter reads cannot carry `environment.lifecycle.preserve`, so
+        // the pass — the executor of the reap — loads the candidate's
+        // projection (the same read the retained-mark write does) and
+        // skips preserve-flagged runs. Fail-closed: an unreadable
+        // projection blocks the reap, like the triage gate — protection
+        // must never be lost to a read error.
+        match run_preserved(state, run_id).await {
+            Ok(true) => {
+                info!(
+                    %run_id,
+                    "preserve flag set; skipping the sandbox reap (work#1324)"
+                );
+                preserved += 1;
+                continue;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                warn!(
+                    %error,
+                    %run_id,
+                    "preserve gate could not read the projection; blocking the reap"
+                );
+                failed += 1;
+                continue;
+            }
+        }
         let workspace_bytes = reap_workspace_bytes(state, run_id).await;
         match reap_run_sandbox(state, run_id, instance, *reason).await {
             Ok(()) => {
@@ -380,6 +411,7 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
     let stats = ReapPassStats {
         candidates: candidates.len(),
         reaped,
+        preserved,
         absent,
         failed,
         brake: brake_active,
@@ -390,6 +422,7 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
     if reaped > 0 || failed > 0 {
         warn!(
             reaped,
+            preserved,
             absent,
             failed,
             freed_bytes,
@@ -398,7 +431,7 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
             "sandbox reap arm pass freed bytes"
         );
     } else {
-        info!(reaped, absent, failed, "sandbox reap arm pass complete");
+        info!(reaped, preserved, absent, failed, "sandbox reap arm pass complete");
     }
     record_last_reap_pass(state, &stats, freed_bytes, disk_percent);
     Ok(Some(stats))
@@ -425,6 +458,24 @@ fn record_last_reap_pass(
             brake: stats.brake,
         });
     }
+}
+
+/// The preserve gate's read (work#1324): does the run's projection carry
+/// `environment.lifecycle.preserve`? `delete_run_internal` gates the
+/// manual delete and the retention pass on the same flag — the reap arm
+/// must not be the one path that ignores it.
+async fn run_preserved(state: &AppState, run_id: &RunId) -> anyhow::Result<bool> {
+    Ok(run_records::projection(state, *run_id)
+        .await?
+        .is_some_and(|projection| {
+            projection
+                .spec()
+                .settings
+                .run
+                .environment
+                .lifecycle
+                .preserve
+        }))
 }
 
 /// Reaps ONE run's sandbox: the lease-ledger prune (never a provider
