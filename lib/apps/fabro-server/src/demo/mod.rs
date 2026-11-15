@@ -990,6 +990,43 @@ pub(crate) async fn get_system_disk_usage(
         .into_response()
 }
 
+pub(crate) async fn get_system_stats(
+    _auth: RequiredUser,
+    State(_state): State<Arc<AppState>>,
+) -> Response {
+    (
+        StatusCode::OK,
+        Json(json!({
+            "filesystems": [
+                {
+                    "path": "/var/lib/fabro",
+                    "total_bytes": 536_870_912_000_i64,
+                    "used_bytes": 214_748_364_800_i64,
+                    "available_bytes": 322_122_547_200_i64,
+                    "used_percent": 40
+                },
+                {
+                    "path": "/var/lib/docker",
+                    "total_bytes": 536_870_912_000_i64,
+                    "used_bytes": 214_748_364_800_i64,
+                    "available_bytes": 322_122_547_200_i64,
+                    "used_percent": 40
+                }
+            ],
+            "last_reap_pass": {
+                "finished_at": "2026-04-06T15:00:00Z",
+                "reaped": 12,
+                "absent": 3,
+                "failed": 0,
+                "freed_bytes": 1_073_741_824_i64,
+                "disk_used_percent": 38,
+                "brake": false
+            }
+        })),
+    )
+        .into_response()
+}
+
 pub(crate) async fn get_system_repair_runs(
     _auth: RequiredUser,
     State(_state): State<Arc<AppState>>,

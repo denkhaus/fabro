@@ -66,7 +66,7 @@ bootstrap:
 # flock for the WHOLE pipeline; logic in scripts/up.nu) makes the second run
 # abort immediately with the holder's pid instead of corrupting the mirror.
 up:
-    nu scripts/up.nu
+    direnv exec . nu scripts/up.nu
 
 # Host-side dev-artifact prune (target/ stale GC + tmp/docker-context).
 # NEVER touches docker volumes/images/builder cache (30-min toolchain +
@@ -111,8 +111,39 @@ build-image: web-deps
 # 2026-11-09: a 90-minute pipeline vanished this way, exit 255 only on
 # the manual kill).
 host-release host port arch='amd64' sha='':
-    @scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
-    @ssh -p {{ port }} -o ServerAliveInterval=30 -o ServerAliveCountMax=6 {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scp -P {{ port }} scripts/host-release.nu {{ host }}:/opt/fabro-release/host-release.nu
+    ssh -p {{ port }} -o ServerAliveInterval=30 -o ServerAliveCountMax=6 {{ host }} "nu /opt/fabro-release/host-release.nu --arch {{ arch }} --sha '{{ sha }}'" | tee /tmp/host-release-last.log
+    # The CLI release binary (#1335): pull the packaged artifact back and
+    # attach it to the release tag — create-if-absent, clobber on upload.
+    # No gh on the host (and no host auth): the upload rides the dev
+    # machine's gh, per ADR-0041's credential posture.
+    artifact=$(grep -oP 'host-release: binary artifact \K.*' /tmp/host-release-last.log | tail -1 || true)
+    if [ -n "$artifact" ]; then
+      version=$(grep -oP 'host-release: pipeline start — denkhaus/fabro:\K[0-9a-z.\-]+' /tmp/host-release-last.log | tail -1)
+      sha_arg="{{ sha }}"
+      tmpdir=$(mktemp -d)
+      scp -P {{ port }} "{{ host }}:$artifact" "$tmpdir/" >/dev/null
+      gh release view "$version" --repo denkhaus/fabro >/dev/null 2>&1 \
+        || gh release create "$version" --repo denkhaus/fabro --target "$(git rev-parse HEAD)" --title "$version" --notes "Release $version. The CLI ships as the static musl binary attached below (work#1335)."
+      gh release upload "$version" "$tmpdir/$(basename "$artifact")" --repo denkhaus/fabro --clobber
+      echo "release binary attached: $version/$(basename "$artifact")"
+      rm -rf "$tmpdir"
+      ssh -p {{ port }} {{ host }} "rm -f '$artifact'"
+    else
+      echo "no binary artifact line in the host log — release attach skipped"
+    fi
+
+# Deploy window ceremony (ADR-0041 host-built path) — the mechanical
+# phases of a release window as repeatable steps, driven by
+# scripts/deploy-window.nu. Phases: pause | build | pins | plan | apply
+# | arm | commit. The HUMAN moments stay outside by design: the bench
+# gate before the window, the plan review between plan and apply, gopass
+# warmth, and the live proof after apply. Host identity resolves from
+# the tofu prod profile at runtime and never rides this public repo.
+deploy phase:
+    nu scripts/deploy-window.nu {{ phase }}
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
@@ -245,6 +276,12 @@ validate-workflows target="":
 lint-nu:
     nu scripts/lint-nu.nu
 
+# Report bare HTTP-status assertions in tests (the fabro_test helpers
+# are the strategy rule); --gate reddens once the migration decision
+# item lands.
+lint-test-asserts:
+    nu scripts/lint-test-asserts.nu
+
 # Vendored fork crates (fabro-eeee/work#1253, ADR-0034): vendor/petri,
 # vendor/pebble, and vendor/sandbox-driver are SNAPSHOTS of the denkhaus
 # fork branches, consumed
@@ -294,3 +331,10 @@ gates sprint="":
 # it also runs in every plain fabro-server test round.
 smoke-window-gate:
     cargo nextest run -p fabro-server window_gate
+
+# Delete LOCAL branches whose commits are already on origin/denkhaus
+# (the remote side is GitHub's delete_branch_on_merge; local clones
+# keep merged branches forever without this). -d refuses unmerged.
+branch-sweep:
+    @git fetch --prune origin
+    @git branch --merged origin/denkhaus | grep -vE '^\*?\s*denkhaus$$' | xargs -r git branch -d

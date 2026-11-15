@@ -30,10 +30,11 @@ use fabro_store::platform_records::{
 use fabro_types::{RunId, RunSandboxInstance};
 use tokio::task::JoinHandle;
 use tokio::time;
-use tracing::{Instrument as _, info, info_span, warn};
+use tracing::{Instrument as _, debug, info, info_span, warn};
 
+use super::fork_system_stats::LastReapPass;
 use super::handler::system::{execute_prune, plan_prune};
-use super::{AppState, delete_run_internal, run_records, to_i64};
+use super::{AppState, delete_run_internal, run_records, spawn_blocking, to_i64};
 
 /// First pass waits out startup reconciliation (projector startup_pass,
 /// scheduler boot) before any deletion.
@@ -243,8 +244,41 @@ pub(super) struct ReapPassStats {
     pub candidates: usize,
     pub reaped:     usize,
     pub preserved:  usize,
+    /// Candidates whose sandbox was already absent — the expected
+    /// idempotency case (work#1326): logged at debug, never an error.
+    pub absent:     usize,
     pub failed:     usize,
     pub brake:      bool,
+}
+
+/// An absent-sandbox miss on the reap path: the prune's error chain says
+/// the sandbox `was not found`. The expected idempotency case — the goal
+/// state (sandbox gone) already holds — so the pass logs it at DEBUG and
+/// counts it as `absent`, reserving WARN for reaps that actually failed
+/// (work#1326: the 2026-11-14 ERROR wall of benign "Sandbox was not
+/// found" lines around a clean pass).
+pub(super) fn is_absent_sandbox(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        let text = cause.to_string();
+        text.contains("was not found") && text.to_lowercase().contains("sandbox")
+    })
+}
+
+/// The reaped run's host-workspace size, sampled BEFORE the prune (after
+/// it the directory is gone): the pass's freed-bytes estimate. Blocking
+/// walk on the supervisor's async loop, so it rides `spawn_blocking`.
+async fn reap_workspace_bytes(state: &AppState, run_id: &RunId) -> u64 {
+    let run_dir = Storage::new(state.server_storage_dir())
+        .run_scratch(run_id)
+        .root()
+        .join("petri");
+    match spawn_blocking(move || super::dir_size(&run_dir)).await {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            debug!(%error, %run_id, "sizing a reap candidate's workspace failed");
+            0
+        }
+    }
 }
 
 /// One sandbox-reap pass (work#1299 disk clock, #168's grilled design):
@@ -312,7 +346,9 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
 
     let mut reaped = 0usize;
     let mut preserved = 0usize;
+    let mut absent = 0usize;
     let mut failed = 0usize;
+    let mut freed_bytes = 0u64;
     for run_id in &candidates {
         let Some((instance, reason)) = instances.get(run_id) else {
             continue;
@@ -344,8 +380,23 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
                 continue;
             }
         }
+        let workspace_bytes = reap_workspace_bytes(state, run_id).await;
         match reap_run_sandbox(state, run_id, instance, *reason).await {
-            Ok(()) => reaped += 1,
+            Ok(()) => {
+                reaped += 1;
+                freed_bytes += workspace_bytes;
+            }
+            // The expected idempotency case (work#1326): the sandbox was
+            // already gone, so the goal state holds — DEBUG, never WARN or
+            // ERROR, or a clean pass buries itself in a noise wall.
+            Err(error) if is_absent_sandbox(&error) => {
+                debug!(
+                    %run_id,
+                    %error,
+                    "sandbox reap found the sandbox already absent; idempotent miss"
+                );
+                absent += 1;
+            }
             Err(error) => {
                 warn!(
                     %error,
@@ -356,14 +407,57 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
             }
         }
     }
-    info!(reaped, preserved, failed, "sandbox reap arm pass complete");
-    Ok(Some(ReapPassStats {
+    let disk_percent = disk_used_percent(&state.server_storage_dir());
+    let stats = ReapPassStats {
         candidates: candidates.len(),
         reaped,
         preserved,
+        absent,
         failed,
         brake: brake_active,
-    }))
+    };
+    // The brake's visibility line (work#1326): a pass that freed or failed
+    // anything says so at WARN — named bytes, named disk percent — while a
+    // nothing-happened pass stays at INFO.
+    if reaped > 0 || failed > 0 {
+        warn!(
+            reaped,
+            preserved,
+            absent,
+            failed,
+            freed_bytes,
+            disk_used_percent = disk_percent,
+            brake = brake_active,
+            "sandbox reap arm pass freed bytes"
+        );
+    } else {
+        info!(reaped, preserved, absent, failed, "sandbox reap arm pass complete");
+    }
+    record_last_reap_pass(state, &stats, freed_bytes, disk_percent);
+    Ok(Some(stats))
+}
+
+/// Remember the executed pass for the stats door (work#1326): the
+/// `/system/stats` handler answers "what did the last reap pass free"
+/// from this cell. Poisoned-lock or arm-disabled states simply leave the
+/// previous pass visible.
+fn record_last_reap_pass(
+    state: &AppState,
+    stats: &ReapPassStats,
+    freed_bytes: u64,
+    disk_used_percent: Option<u64>,
+) {
+    if let Ok(mut cell) = state.last_reap_pass.write() {
+        *cell = Some(LastReapPass {
+            finished_at: Utc::now(),
+            reaped: stats.reaped,
+            absent: stats.absent,
+            failed: stats.failed,
+            freed_bytes,
+            disk_used_percent,
+            brake: stats.brake,
+        });
+    }
 }
 
 /// The preserve gate's read (work#1324): does the run's projection carry

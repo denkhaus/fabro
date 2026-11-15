@@ -1640,7 +1640,10 @@ async fn an_expired_question_is_pending_while_the_gate_waits_and_closes_on_the_e
         .iter()
         .next()
         .expect("one pending question");
-    assert!(id.starts_with("gate#"), "Petri's id: {id}");
+    assert!(
+        id.starts_with("gate~") && !id.contains(['#', '/']),
+        "Petri's id (URL-safe, work#1300 fix A): {id}"
+    );
     assert_eq!(&record.question.id, id);
     assert_eq!(record.question.stage, "gate@1");
     assert_eq!(record.question.text, "Go?");

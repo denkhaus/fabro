@@ -10,7 +10,8 @@
 //!
 //! # One identity
 //!
-//! A question has one id in Fabro: Petri's [`Question::id`] (`gate#2`),
+//! A question has one id in Fabro: Petri's [`Question::id`] (`gate~2`,
+//! URL-safe since work#1300 fix A),
 //! as the `question` record names it. The projection over Petri's records
 //! keys `pending_interviews` by it, `GET /runs/{id}/questions` lists it,
 //! `POST /runs/{id}/questions/{qid}/answer` validates the answer against

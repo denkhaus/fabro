@@ -583,3 +583,36 @@ async fn attach_events_returns_sse_stream() {
         .unwrap();
     assert!(content_type.contains("text/event-stream"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn get_system_stats_serves_filesystems_and_last_reap_pass() {
+    // denkhaus/work#1326 stats door: one call answers which filesystem
+    // is full (per-filesystem rows over the storage dir) and what the
+    // last reap pass freed (null before any pass ran).
+    let (_temp, settings, storage_dir) = temp_storage_settings();
+    std::fs::create_dir_all(&storage_dir).unwrap();
+    let app = test_app_with_scheduler(test_app_state_with_options(settings, 5));
+
+    let request = Request::builder()
+        .method("GET")
+        .uri(api("/system/stats"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(request).await.unwrap();
+    let body = response_json(response, StatusCode::OK, "GET /api/v1/system/stats").await;
+
+    let filesystems = body["filesystems"].as_array().expect("filesystems array");
+    let storage_row = filesystems
+        .iter()
+        .find(|row| row["path"].as_str() == Some(storage_dir.to_string_lossy().as_ref()))
+        .expect("the storage dir row is served");
+    assert!(storage_row["total_bytes"].as_i64().unwrap_or_default() > 0);
+    assert!(
+        (0..=100).contains(&storage_row["used_percent"].as_i64().unwrap_or(-1)),
+        "used_percent is a whole percent in 0..=100"
+    );
+    assert!(
+        body["last_reap_pass"].is_null(),
+        "no reap pass ran in this fresh test server"
+    );
+}

@@ -844,8 +844,8 @@ pub(super) async fn wait_for_questions(
 }
 
 /// Answer a question through the API, as the web app and the CLI do. The
-/// question id is Petri's (`gate#2`), so it travels as one percent-encoded
-/// path segment, as the generated clients send it.
+/// question id is Petri's (`gate~2`, URL-safe since work#1300 fix A), so
+/// it travels as one path segment unencoded.
 pub(super) async fn answer(
     server: &RunningServer,
     run_id: &str,
@@ -925,8 +925,8 @@ async fn a_human_gate_in_the_worker_is_answered_through_the_api() {
     assert_eq!(question["question_type"], "yes_no", "{question}");
     let question_id = question["id"].as_str().expect("an id").to_string();
     assert!(
-        question_id.starts_with("gate#"),
-        "Petri's id: {question_id}"
+        question_id.starts_with("gate~") && !question_id.contains(['#', '/']),
+        "Petri's id (URL-safe, work#1300 fix A): {question_id}"
     );
     answer(
         &server,

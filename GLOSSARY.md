@@ -203,6 +203,20 @@ the HTTP API kept answering. Not a crash (no error path fires), not a
 pause (nobody paused anything) — the discriminating signal is silence
 against an ENABLED schedule.
 
+## Workflow version
+
+The immutable package of one workflow — the entrypoint graph, its
+prompts, and every referenced file (imports, child workflows, the goal) —
+registered through the workflow-versions API and stored content-addressed.
+
+- Key: `workflow_version_id`; a run's spec names the exact version it
+  admitted (`fabro inspect` shows it).
+- Same content → same id. Any change to graph, prompts, or referenced
+  files → a new version. A platform release does NOT move a version: the
+  id addresses workflow content only.
+- Not a **checkout**: the version is the workflow's own content; the
+  checkout is the repository state the run works on.
+
 ## Environment image
 
 The image an environment names for its sandboxes — either a finished

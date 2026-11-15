@@ -151,7 +151,8 @@ async fn full_http_lifecycle_approve_and_complete() {
     assert!(question["context_display"].is_null() || question["context_display"].is_string());
 
     // 3. Submit answer selecting first option (Approve). Petri's id
-    // (`gate#3`) travels as one percent-encoded path segment.
+    // (`gate~3`, URL-safe since work#1300 fix A) travels as one path
+    // segment.
     let encoded_id =
         percent_encoding::utf8_percent_encode(&question_id, percent_encoding::NON_ALPHANUMERIC)
             .to_string();

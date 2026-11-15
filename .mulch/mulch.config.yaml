@@ -44,6 +44,8 @@ domains:
   frontend: {}
   security: {}
   openapi: {}
+  fabro-store: {}
+  api-design: {}
 governance:
   max_entries: 100
   warn_entries: 150

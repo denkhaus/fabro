@@ -10,16 +10,19 @@
 
 use std::path::{Path, PathBuf};
 
+use fabro_types::settings::run::GitAuthorSettings;
 use tokio::process::Command;
 
 /// Why the rebase could not carry the work.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RunRebaseError {
-    /// The source run branch does not exist on the origin: the source
-    /// never pushed a checkpoint. Not a failure the caller surfaces —
-    /// the re-drive simply starts from the fresh tip.
-    #[error("the source run branch {branch} does not exist on the origin")]
-    NoSourceBranch { branch: String },
+    /// The carry's source holds nothing to fetch: the run branch does
+    /// not exist on the origin, or the snapshot repository does not
+    /// hold the named tip. Not a failure the caller surfaces — the
+    /// re-drive simply starts from the fresh tip. `origin` names the
+    /// branch or repository path that came up empty.
+    #[error("the carry origin {origin} holds no checkpoint work")]
+    NoSourceBranch { origin: String },
     /// The cherry-pick stopped on a conflict. `files` names the
     /// unmerged paths; the successor parks-failed with this picture.
     #[error("the checkpoint work conflicts on {files:?}")]
@@ -54,6 +57,32 @@ pub(crate) struct Rebased {
     pub touched:     Vec<String>,
 }
 
+/// The committer identity the carry's cherry-picks commit with: the
+/// engine's checkpoint commits name the run's resolved author, and the
+/// carry re-creates those commits on the successor's worktree — a
+/// freshly prepared worktree carries no git identity of its own.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CarryCommitter {
+    pub name:  String,
+    pub email: String,
+}
+
+impl CarryCommitter {
+    /// The run's git author settings over the platform default — the
+    /// resolution fabro-checkpoint's GitAuthor performs for the
+    /// engine's own commits.
+    pub(crate) fn for_run(author: Option<&GitAuthorSettings>) -> Self {
+        Self {
+            name:  author
+                .and_then(|author| author.name.clone())
+                .unwrap_or_else(|| fabro_types::GitIdentity::DEFAULT_NAME.to_string()),
+            email: author
+                .and_then(|author| author.email.clone())
+                .unwrap_or_else(|| fabro_types::GitIdentity::DEFAULT_EMAIL.to_string()),
+        }
+    }
+}
+
 /// Cherry-pick the source run branch's commits since `source_base` onto
 /// the prepared worktree at `worktree_dir`. Fetches the branch from the
 /// origin first; a branch that does not exist is `NoSourceBranch` (the
@@ -63,6 +92,7 @@ pub(crate) async fn carry_checkpoint_work(
     origin_url: &str,
     source_branch: &str,
     source_base: &str,
+    committer: &CarryCommitter,
 ) -> Result<Result<Rebased, RunRebaseError>, RunRebaseError> {
     let fetched = git(worktree_dir, &[
         "fetch",
@@ -71,13 +101,74 @@ pub(crate) async fn carry_checkpoint_work(
         &format!("{source_branch}:refs/retry-latest/source"),
     ])
     .await;
-    if matches!(fetched, GitOutcome::Failed) {
-        return Ok(Err(RunRebaseError::NoSourceBranch {
-            branch: source_branch.to_string(),
-        }));
+    match fetched {
+        GitOutcome::Failed => {
+            return Ok(Err(RunRebaseError::NoSourceBranch {
+                origin: source_branch.to_string(),
+            }));
+        }
+        GitOutcome::Io(err) => return Err(err),
+        GitOutcome::Ran => {}
     }
 
     let tip = git_stdout(worktree_dir, &["rev-parse", "refs/retry-latest/source"]).await?;
+    replay_range(worktree_dir, source_base, &tip, committer).await
+}
+
+/// Carry the checkpoint work out of the SOURCE's server-side snapshot
+/// repository (work#1320): a failed run never pushes its run branch to
+/// the origin — the checkpoints publish into the snapshot under
+/// `refs/checkpoints/*` — so the retry fetches those refs and replays
+/// `source_base..source_tip` onto the prepared worktree. The tip is the
+/// newest checkpoint commit's sha (read from the run's checkpoint
+/// records by the caller); a tip the snapshot does not hold answers
+/// `NoSourceBranch`, keeping the origin form's "nothing to carry"
+/// semantics.
+pub(crate) async fn carry_checkpoint_work_from_snapshot(
+    worktree_dir: &Path,
+    snapshot_repository: &Path,
+    source_tip: &str,
+    source_base: &str,
+    committer: &CarryCommitter,
+) -> Result<Result<Rebased, RunRebaseError>, RunRebaseError> {
+    let repository = snapshot_repository.display().to_string();
+    let fetched = git(worktree_dir, &[
+        "fetch",
+        "--quiet",
+        &repository,
+        "+refs/checkpoints/*:refs/retry-latest/checkpoints/*",
+    ])
+    .await;
+    match fetched {
+        GitOutcome::Failed => {
+            return Ok(Err(RunRebaseError::NoSourceBranch { origin: repository }));
+        }
+        GitOutcome::Io(err) => return Err(err),
+        GitOutcome::Ran => {}
+    }
+    let present = git(worktree_dir, &[
+        "cat-file",
+        "-e",
+        &format!("{source_tip}^{{commit}}"),
+    ])
+    .await;
+    if matches!(present, GitOutcome::Failed) {
+        return Ok(Err(RunRebaseError::NoSourceBranch { origin: repository }));
+    }
+    replay_range(worktree_dir, source_base, source_tip, committer).await
+}
+
+/// Count and cherry-pick `source_base..tip` onto the prepared worktree:
+/// the shared tail of both carry sources. The picks commit as the
+/// carry's committer identity (the engine's own convention for its
+/// checkpoint commits): a freshly prepared worktree configures none,
+/// and a bare cherry-pick dies on `Committer identity unknown`.
+async fn replay_range(
+    worktree_dir: &Path,
+    source_base: &str,
+    tip: &str,
+    committer: &CarryCommitter,
+) -> Result<Result<Rebased, RunRebaseError>, RunRebaseError> {
     let listed = git_stdout(worktree_dir, &[
         "rev-list",
         "--count",
@@ -112,7 +203,7 @@ pub(crate) async fn carry_checkpoint_work(
         return Ok(Ok(Rebased {
             commits:     0,
             source_base: source_base.to_string(),
-            source_tip:  tip,
+            source_tip:  tip.to_string(),
             touched:     Vec::new(),
         }));
     }
@@ -126,25 +217,45 @@ pub(crate) async fn carry_checkpoint_work(
 
     // Cherry-pick the range. An empty pick (the fix already carries the
     // work) skips forward via --allow-empty; a conflict stops the pick.
-    let picked = git(worktree_dir, &[
+    // The `-c` config outranks whatever the worktree happens to
+    // configure, and gpgsign stays off — a host's signing key never
+    // signs platform commits.
+    let user_name = format!("user.name={}", committer.name);
+    let user_email = format!("user.email={}", committer.email);
+    let pick_range = format!("{source_base}..{tip}");
+    let picked = run(worktree_dir, &[
+        "-c",
+        &user_name,
+        "-c",
+        &user_email,
+        "-c",
+        "commit.gpgsign=false",
         "cherry-pick",
         "--allow-empty",
-        &format!("{source_base}..{tip}"),
+        &pick_range,
     ])
-    .await;
-    match picked {
-        GitOutcome::Ran => Ok(Ok(Rebased {
+    .await?;
+    if picked.status.success() {
+        Ok(Ok(Rebased {
             commits,
             source_base: source_base.to_string(),
-            source_tip: tip,
+            source_tip: tip.to_string(),
             touched,
-        })),
-        GitOutcome::Failed => {
-            let conflicted = conflicted_files(worktree_dir).await?;
-            let _ = git(worktree_dir, &["cherry-pick", "--abort"]).await;
-            Ok(Err(RunRebaseError::Conflict { files: conflicted }))
+        }))
+    } else {
+        let conflicted = conflicted_files(worktree_dir).await?;
+        let _ = git(worktree_dir, &["cherry-pick", "--abort"]).await;
+        if conflicted.is_empty() {
+            // A failed pick with NO unmerged paths is not a conflict:
+            // surface git's own verdict (the 2026-11-15 lab read
+            // "conflicts on []" from exactly this misclassification).
+            return Err(RunRebaseError::GitRefused {
+                command: format!("cherry-pick {pick_range}"),
+                dir:     worktree_dir.to_path_buf(),
+                stderr:  String::from_utf8_lossy(&picked.stderr).trim().to_string(),
+            });
         }
-        GitOutcome::Io(err) => Err(err),
+        Ok(Err(RunRebaseError::Conflict { files: conflicted }))
     }
 }
 
@@ -303,6 +414,50 @@ mod tests {
             run(&scratch, &["push", "origin", branch]).await.unwrap();
             let _ = std::fs::remove_dir_all(&scratch);
         }
+
+        /// A failed run's SNAPSHOT repository: a bare repo holding the
+        /// work commit under a checkpoint ref and nothing else — the run
+        /// branch never becomes a ref there. Returns the repository and
+        /// the checkpoint commit's sha (the tip the records would name).
+        async fn push_snapshot_checkpoint(
+            &self,
+            check_ref: &str,
+            content: &str,
+        ) -> (PathBuf, String) {
+            let root = self.origin.parent().unwrap();
+            let scratch = root.join("snapshot-scratch");
+            let snapshot = root.join("snapshot.git");
+            std::fs::create_dir_all(&scratch).unwrap();
+            run(root, &[
+                "clone",
+                self.origin.to_str().unwrap(),
+                scratch.to_str().unwrap(),
+            ])
+            .await
+            .unwrap();
+            run(&scratch, &["config", "user.email", "t@example.com"])
+                .await
+                .unwrap();
+            run(&scratch, &["config", "user.name", "T"]).await.unwrap();
+            std::fs::write(scratch.join("work.txt"), content).unwrap();
+            run(&scratch, &["add", "."]).await.unwrap();
+            run(&scratch, &["commit", "-m", "checkpoint work"])
+                .await
+                .unwrap();
+            let tip = git_stdout(&scratch, &["rev-parse", "HEAD"]).await.unwrap();
+            run(root, &["init", "--bare", snapshot.to_str().unwrap()])
+                .await
+                .unwrap();
+            run(&scratch, &[
+                "push",
+                snapshot.to_str().unwrap(),
+                &format!("HEAD:{check_ref}"),
+            ])
+            .await
+            .unwrap();
+            let _ = std::fs::remove_dir_all(&scratch);
+            (snapshot, tip)
+        }
     }
 
     #[tokio::test]
@@ -316,6 +471,7 @@ mod tests {
             fixture.origin.to_str().unwrap(),
             "fabro/run/source",
             &fixture.base,
+            &CarryCommitter::for_run(None),
         )
         .await
         .unwrap()
@@ -336,6 +492,7 @@ mod tests {
             fixture.origin.to_str().unwrap(),
             "fabro/run/absent",
             &fixture.base,
+            &CarryCommitter::for_run(None),
         )
         .await
         .unwrap();
@@ -362,6 +519,7 @@ mod tests {
             fixture.origin.to_str().unwrap(),
             "fabro/run/source",
             &fixture.base,
+            &CarryCommitter::for_run(None),
         )
         .await
         .unwrap();
@@ -374,5 +532,142 @@ mod tests {
         // The abort restored the worktree to the prepared tip.
         let content = std::fs::read_to_string(fixture.worktree.join("work.txt")).unwrap();
         assert_eq!(content, "moved tip\n");
+    }
+
+    #[tokio::test]
+    async fn carries_the_checkpoint_refs_from_a_snapshot_repository() {
+        let fixture = Fixture::build("snapshot-carry").await;
+        let (snapshot, tip) = fixture
+            .push_snapshot_checkpoint("refs/checkpoints/0/1/1", "snapshot work\n")
+            .await;
+        let committer = CarryCommitter::for_run(None);
+        let carried = carry_checkpoint_work_from_snapshot(
+            &fixture.worktree,
+            &snapshot,
+            &tip,
+            &fixture.base,
+            &committer,
+        )
+        .await
+        .unwrap()
+        .expect("the snapshot carry succeeds");
+        assert_eq!(carried.commits, 1);
+        assert_eq!(carried.source_tip, tip);
+        assert_eq!(carried.touched, vec!["work.txt".to_string()]);
+        let content = std::fs::read_to_string(fixture.worktree.join("work.txt")).unwrap();
+        assert_eq!(content, "snapshot work\n");
+    }
+
+    #[tokio::test]
+    async fn the_carry_commits_as_the_run_identity_not_the_worktrees() {
+        // The prepared worktree carries no identity of its own (the
+        // 2026-11-15 lab: a bare `git cherry-pick` died on `Committer
+        // identity unknown`, misread as an empty conflict). The carry
+        // passes the run's identity on the command line — outranking
+        // whatever config the worktree happens to hold — and the
+        // run's author settings win over the platform default.
+        let fixture = Fixture::build("carry-identity").await;
+        fixture
+            .push_run_branch("fabro/run/source", "identity work\n")
+            .await;
+        let committer =
+            CarryCommitter::for_run(Some(&fabro_types::settings::run::GitAuthorSettings {
+                name:  Some("lab-bot".to_string()),
+                email: Some("lab@example.com".to_string()),
+            }));
+        let carried = carry_checkpoint_work(
+            &fixture.worktree,
+            fixture.origin.to_str().unwrap(),
+            "fabro/run/source",
+            &fixture.base,
+            &committer,
+        )
+        .await
+        .unwrap()
+        .expect("the carry succeeds");
+        assert_eq!(carried.commits, 1);
+        let committer = git_stdout(&fixture.worktree, &["log", "-1", "--format=%cn <%ce>"])
+            .await
+            .unwrap();
+        assert_eq!(committer, "lab-bot <lab@example.com>");
+        // The ORIGINAL authorship survives the pick.
+        let author = git_stdout(&fixture.worktree, &["log", "-1", "--format=%an <%ae>"])
+            .await
+            .unwrap();
+        assert_eq!(author, "T <t@example.com>");
+    }
+
+    #[tokio::test]
+    async fn the_default_committer_is_the_platform_identity() {
+        assert_eq!(CarryCommitter::for_run(None), CarryCommitter {
+            name:  fabro_types::GitIdentity::DEFAULT_NAME.to_string(),
+            email: fabro_types::GitIdentity::DEFAULT_EMAIL.to_string(),
+        });
+        assert_eq!(
+            CarryCommitter::for_run(Some(&fabro_types::settings::run::GitAuthorSettings {
+                name:  Some("named".to_string()),
+                email: None,
+            })),
+            CarryCommitter {
+                name:  "named".to_string(),
+                email: fabro_types::GitIdentity::DEFAULT_EMAIL.to_string(),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_pick_without_unmerged_paths_is_not_a_conflict() {
+        // A dirty worktree file the pick would touch: git refuses with
+        // "your local changes would be overwritten" — no unmerged
+        // paths, no conflict picture. That failure must surface as the
+        // git stderr, never as `Conflict { files: [] }` (the 2026-11-15
+        // lab read exactly that phantom from a missing identity).
+        let fixture = Fixture::build("phantom-conflict").await;
+        fixture
+            .push_run_branch("fabro/run/source", "dirty-target work\n")
+            .await;
+        std::fs::write(fixture.worktree.join("work.txt"), "uncommitted\n").unwrap();
+        let carried = carry_checkpoint_work(
+            &fixture.worktree,
+            fixture.origin.to_str().unwrap(),
+            "fabro/run/source",
+            &fixture.base,
+            &CarryCommitter::for_run(None),
+        )
+        .await;
+        match carried {
+            Err(RunRebaseError::GitRefused { stderr, .. }) => {
+                assert!(
+                    stderr.contains("overwritten by merge"),
+                    "the refusal carries git's verdict: {stderr}"
+                );
+            }
+            Err(RunRebaseError::Conflict { files }) => {
+                panic!("a pick without unmerged paths is not a conflict: {files:?}");
+            }
+            other => panic!("expected a refused pick, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_without_the_tip_answers_nothing_to_carry() {
+        let fixture = Fixture::build("snapshot-miss").await;
+        let (snapshot, _tip) = fixture
+            .push_snapshot_checkpoint("refs/checkpoints/0/1/1", "other work\n")
+            .await;
+        let absent_tip = "0".repeat(40);
+        let carried = carry_checkpoint_work_from_snapshot(
+            &fixture.worktree,
+            &snapshot,
+            &absent_tip,
+            &fixture.base,
+            &CarryCommitter::for_run(None),
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(carried, Err(RunRebaseError::NoSourceBranch { .. })),
+            "expected no source, got {carried:?}"
+        );
     }
 }

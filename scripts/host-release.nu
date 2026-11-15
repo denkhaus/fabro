@@ -99,6 +99,29 @@ def main [
     }
     print $"host-release: local image \(($tag)) ready"
 
+    # The CLI release binary (#1335): the pipeline staged the static
+    # musl binary in the build context — package it for the GitHub
+    # release tag (the just recipe scp's it back and uploads; this
+    # script only packages and names the path + sha256, one line each,
+    # for the recipe to parse).
+    let triple = (if $arch == 'amd64' { 'x86_64-unknown-linux-musl' } else { 'aarch64-unknown-linux-musl' })
+    let bin = $"($SRC_DIR)/tmp/docker-context/($arch)/fabro"
+    if ($bin | path exists) {
+        let out_dir = '/opt/fabro-release/out'
+        mkdir $out_dir
+        let artifact = $"($out_dir)/fabro-($version)-($triple).tar.gz"
+        let tar = (do { ^tar -czf $artifact -C $"($SRC_DIR)/tmp/docker-context/($arch)" fabro } | complete)
+        if $tar.exit_code != 0 {
+            print -e $"host-release: binary packaging failed: ($tar.stderr | str trim)"
+        } else {
+            let sha = (do { ^sha256sum $artifact } | complete | get stdout | split column ' ' hash | get hash.0 | str trim)
+            print $"host-release: binary artifact ($artifact)"
+            print $"host-release: binary sha256 ($sha)"
+        }
+    } else {
+        print -e "host-release: no staged binary found in tmp/docker-context (skipping the release artifact)"
+    }
+
     if $push_mirror {
         # Manual escape hatch only — the default-on mirror is tofu's
         # post-deploy step. Needs a ghcr write login on the host.
