@@ -153,11 +153,11 @@ deploy windows, toolchain pins, fork releases, and bench landing.
   decision. The local `image-release` recipe (build here + GHCR push)
   is RETIRED (removed 2026-11-10): the line builds host-side and the
   GHCR mirror pushes from the host.
-- Toolchain pairing: `fabro env pin-toolchain --from-run-images` (from
-  the repo at the deployed tip) — the parity gate refuses a tag whose
-  sha is not the deployed server's (working as designed; the wrapper
-  `.fabro/scripts/pin-toolchain.nu` checks the registry manifest
-  first). Run it FROM THE REPO AT THAT TIP.
+- Toolchain pairing is RETIRED (ADR-0042): the toolchain environment is
+  repo-declared and cooked by the engine at run initialization from the
+  checkout itself — no registry tag, no pin step, no parity gate. (The
+  retired `fabro env pin-toolchain --from-run-images` verb is gone from
+  the CLI; the fork.37 window confirmed it 2026-11-15.)
 - Recompute the sandbox-plugin sha per deploy (same pin rev usually
   means the same sha — verify, never assume):
   `docker run --rm --entrypoint sh <image> -c 'sha256sum

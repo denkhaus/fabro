@@ -28,9 +28,11 @@
 #                        early is not warming enough, 2026-11-10), then
 #                        apply -auto-approve, then the version skew
 #                        check (server sha == the deployed tip).
-#   just deploy arm      pin-toolchain from the repo at the deployed
-#                        tip, re-enable exactly the gears `pause`
-#                        paused (never a blanket enable), verify.
+#   just deploy arm      re-enable exactly the gears `pause` paused
+#                        (never a blanket enable), verify. NO toolchain
+#                        pin: ADR-0042 retired it — the toolchain
+#                        environment is repo-declared and cooked by the
+#                        engine at run initialization from the checkout.
 #   just deploy commit   commit the fabro-tofu variables.tf pin with a
 #                        release message through a message file (git
 #                        commit -F discipline). Push policy stays the
@@ -251,11 +253,11 @@ def phase-arm [tofu_dir: string, server: string]: nothing -> nothing {
     for gear in ($state.paused | default []) {
         print (^$bin automations --server $server unpause $gear | complete | get stdout | str trim)
     }
-    # FROM THE REPO AT THE DEPLOYED TIP — the parity gate refuses a tag
-    # whose sha is not the deployed server's.
-    ^$bin env pin-toolchain --from-run-images
+    # NO toolchain pin step: ADR-0042 retired it — the toolchain
+    # environment is repo-declared and cooked by the engine at run
+    # initialization from the checkout itself.
     let on = (gears-on $server)
-    print $"deploy arm: gears on: ($on.id | str join ', '); toolchain pinned from run-images"
+    print $"deploy arm: gears on: ($on.id | str join ', ') — no toolchain pin (ADR-0042)"
 }
 
 def phase-commit [tofu_dir: string]: nothing -> nothing {
