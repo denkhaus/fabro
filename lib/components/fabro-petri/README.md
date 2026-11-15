@@ -39,7 +39,7 @@ Every adapter the integration plan describes lands here.
   provider and blob table when it has them.
 - `interview`: Petri's `Interviewer` over Fabro's questions API and the
   worker's control channel. A question has one id in Fabro, Petri's own
-  (`gate#2`): the projection lists it pending from the `question` record,
+  (`gate~2`, URL-safe since work#1300 fix A): the projection lists it pending from the `question` record,
   `GET /runs/{id}/questions` serves it, and the answer posted to
   `/questions/{qid}/answer` is validated against that pending record and
   reaches the worker's control interviewer over the control bus (or the
