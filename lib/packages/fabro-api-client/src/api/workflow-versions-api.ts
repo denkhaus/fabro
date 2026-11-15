@@ -73,6 +73,46 @@ export const WorkflowVersionsApiAxiosParamCreator = function (configuration?: Co
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * Returns the stored immutable workflow package (entrypoint, files with contents, workflow dependencies) for one version id, exactly as registered. Requires an authenticated user. The response is the canonical stored content: reading back a stored version matches what a client posted, byte for byte.
+         * @summary Get Workflow Version
+         * @param {string} id The stored workflow version id (64 hex chars).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkflowVersion: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('getWorkflowVersion', 'id', id)
+            const localVarPath = `/api/v1/workflow-versions/{id}`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -95,6 +135,19 @@ export const WorkflowVersionsApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['WorkflowVersionsApi.createWorkflowVersion']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * Returns the stored immutable workflow package (entrypoint, files with contents, workflow dependencies) for one version id, exactly as registered. Requires an authenticated user. The response is the canonical stored content: reading back a stored version matches what a client posted, byte for byte.
+         * @summary Get Workflow Version
+         * @param {string} id The stored workflow version id (64 hex chars).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getWorkflowVersion(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkflowVersion>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getWorkflowVersion(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkflowVersionsApi.getWorkflowVersion']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -114,6 +167,16 @@ export const WorkflowVersionsApiFactory = function (configuration?: Configuratio
         createWorkflowVersion(workflowVersion: WorkflowVersion, options?: RawAxiosRequestConfig): AxiosPromise<CreateWorkflowVersionResponse> {
             return localVarFp.createWorkflowVersion(workflowVersion, options).then((request) => request(axios, basePath));
         },
+        /**
+         * Returns the stored immutable workflow package (entrypoint, files with contents, workflow dependencies) for one version id, exactly as registered. Requires an authenticated user. The response is the canonical stored content: reading back a stored version matches what a client posted, byte for byte.
+         * @summary Get Workflow Version
+         * @param {string} id The stored workflow version id (64 hex chars).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getWorkflowVersion(id: string, options?: RawAxiosRequestConfig): AxiosPromise<WorkflowVersion> {
+            return localVarFp.getWorkflowVersion(id, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -130,5 +193,16 @@ export class WorkflowVersionsApi extends BaseAPI {
      */
     public createWorkflowVersion(workflowVersion: WorkflowVersion, options?: RawAxiosRequestConfig) {
         return WorkflowVersionsApiFp(this.configuration).createWorkflowVersion(workflowVersion, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Returns the stored immutable workflow package (entrypoint, files with contents, workflow dependencies) for one version id, exactly as registered. Requires an authenticated user. The response is the canonical stored content: reading back a stored version matches what a client posted, byte for byte.
+     * @summary Get Workflow Version
+     * @param {string} id The stored workflow version id (64 hex chars).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getWorkflowVersion(id: string, options?: RawAxiosRequestConfig) {
+        return WorkflowVersionsApiFp(this.configuration).getWorkflowVersion(id, options).then((request) => request(this.axios, this.basePath));
     }
 }

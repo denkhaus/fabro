@@ -1025,6 +1025,21 @@ impl Client {
         Ok(())
     }
 
+    /// Reads one stored workflow version (work#1347): the stored
+    /// immutable package for the id, exactly as registered.
+    pub async fn get_workflow_version(&self, id: &WorkflowVersionId) -> Result<WorkflowVersion> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_workflow_version()
+                    .id(id.to_string())
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     pub async fn create_run_from_intent(&self, intent: types::RunIntent) -> Result<RunId> {
         self.create_run_from_intent_plain(intent).await
     }

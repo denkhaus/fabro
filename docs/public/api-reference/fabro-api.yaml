@@ -1156,6 +1156,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/workflow-versions/{id}:
+    get:
+      operationId: getWorkflowVersion
+      tags: [Workflow Versions]
+      summary: Get Workflow Version
+      description: >-
+        Returns the stored immutable workflow package (entrypoint, files
+        with contents, workflow dependencies) for one version id, exactly
+        as registered. Requires an authenticated user. The response is
+        the canonical stored content: reading back a stored version
+        matches what a client posted, byte for byte.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The stored workflow version id (64 hex chars).
+          schema:
+            type: string
+          example: 6b1f0a3c9d2e4f5a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a
+      responses:
+        "200":
+          description: The stored workflow version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowVersion"
+        "400":
+          description: The id is not a valid workflow version id (`invalid_workflow_version_id`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No stored version carries the id (`workflow_version_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: >-
+            The stored version's dependency closure is broken
+            (`workflow_version_dependency_not_found`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Workflow version storage failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Runs ──────────────────────────────────────────────────────────────
 
   /api/v1/runs:

@@ -420,7 +420,7 @@ async fn main_inner(worker_token: Option<String>) -> (String, Result<()>) {
                 Box::pin(commands::config::execute(&args, &base_ctx)).await?;
             }
             Commands::Workflow(ns) => {
-                commands::workflow::dispatch(ns, &base_ctx)?;
+                commands::workflow::dispatch(ns, &base_ctx).await?;
             }
             Commands::Upgrade(args) => {
                 commands::upgrade::run_upgrade(args, &base_ctx).await?;

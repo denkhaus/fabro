@@ -25,5 +25,5 @@ export interface WorkItemListResponse {
     /**
      * The number of items the active filters match, independent of paging (denkhaus/work#1296) — the tracker search\'s total_count on both arms. Null only when the provider has no counting read (test fakes, the null tracker).
      */
-    'total': number;
+    'total': number | null;
 }
