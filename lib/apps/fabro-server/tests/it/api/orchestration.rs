@@ -18,8 +18,20 @@ use crate::helpers::{api, response_json};
 
 /// The scripted tracker for this file's work-item surfaces: the
 /// observations read resolves linked item states through it (#9 open,
-/// #10 closed); every other key resolves to nothing.
-struct ObservationsFakeTracker;
+/// #10 closed); every other key resolves to nothing. `get` calls are
+/// counted so the feed's batching pin (work#1362) can assert one
+/// tracker round-trip per DISTINCT item, not one per record.
+struct ObservationsFakeTracker {
+    get_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl ObservationsFakeTracker {
+    fn shared() -> Arc<Self> {
+        Arc::new(Self {
+            get_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        })
+    }
+}
 
 #[async_trait::async_trait]
 impl fabro_work::TrackerProvider for ObservationsFakeTracker {
@@ -36,6 +48,8 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
         _project: &fabro_work::WorkProject,
         item_key: &str,
     ) -> anyhow::Result<Option<fabro_work::WorkItem>> {
+        self.get_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let state = match item_key {
             "denkhaus/work#9" => "open",
             "denkhaus/work#10" => "closed",
@@ -122,18 +136,32 @@ fn orchestration_app() -> (
     Arc<fabro_server::server::AppState>,
     Arc<fabro_store::Database>,
 ) {
+    let (app, state, store, _get_calls) = orchestration_app_counting();
+    (app, state, store)
+}
+
+/// The counting form of [`orchestration_app`]: the app beside the
+/// tracker's `get`-call counter (the work#1362 batching pin reads it).
+fn orchestration_app_counting() -> (
+    axum::Router,
+    Arc<fabro_server::server::AppState>,
+    Arc<fabro_store::Database>,
+    Arc<std::sync::atomic::AtomicUsize>,
+) {
     let settings = crate::helpers::test_settings();
     let (store, artifact_store) = fabro_server::test_support::test_store_bundle();
+    let tracker = ObservationsFakeTracker::shared();
+    let get_calls = tracker.get_calls.clone();
     let state = fabro_server::test_support::test_app_state_with_store_and_tracker(
         settings.server_settings,
         settings.manifest_run_defaults,
         5,
         Arc::clone(&store),
         artifact_store,
-        Arc::new(ObservationsFakeTracker),
+        tracker,
     );
     let app = build_router_with_options(state.clone(), &test_auth_mode(), RouterOptions::default());
-    (app, state, store)
+    (app, state, store, get_calls)
 }
 
 /// Seed a run row the projector's way, with a workflow slug and a
@@ -1081,6 +1109,107 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
             "the {query:?} feed names its exact total: {body}"
         );
     }
+}
+
+/// Link one record to a work item through the user surface (the
+/// seeding route the other feed tests use).
+async fn link_record(
+    state: &Arc<fabro_server::server::AppState>,
+    item_key: &str,
+    run: &RunId,
+    seq: u64,
+) {
+    let app = fabro_server::test_support::build_test_router(Arc::clone(state));
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/projects/fabro/work-items/link"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "itemKey": item_key,
+                "runId": run.to_string(),
+                "seq": seq,
+            }))
+            .expect("link body serializes"),
+        ))
+        .expect("link request builds");
+    let response = app.oneshot(request).await.expect("link runs");
+    assert_eq!(response.status(), StatusCode::OK, "link seeds");
+}
+
+/// The batching pin (denkhaus/work#1362): a feed request resolves each
+/// DISTINCT linked item exactly once — one tracker round-trip per item,
+/// not one per record per link. Three records linking the same item
+/// walk (triage-filtered) and page (unfiltered) through ONE resolution
+/// each; the per-record N+1 that made triage-filtered pages take ~66s
+/// and burned the GitHub API budget would answer three per request.
+#[tokio::test]
+async fn the_global_observations_feed_resolves_each_distinct_item_once_per_request() {
+    let (app, state, store, get_calls) = orchestration_app_counting();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for text in [
+        "linked painpoint one",
+        "linked painpoint two",
+        "linked painpoint three",
+    ] {
+        records
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    for seq in 1..=3u64 {
+        link_record(&state, "denkhaus/work#9", &run, seq).await;
+    }
+
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=filed"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "observations feed").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(3),
+        "every linked record matches the filed filter: {body}"
+    );
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the triage walk resolves the ONE distinct item exactly once, not once per record"
+    );
+
+    // The unfiltered page shares the same per-request batching: one more
+    // resolution for the same item, not three.
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.oneshot(request).await.expect("request runs");
+    assert_eq!(response.status(), StatusCode::OK, "unfiltered feed answers");
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "the unfiltered page adds exactly one more resolution for the same item"
+    );
 }
 
 /// Seed the work project through the user surface (the run_channel
