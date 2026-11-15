@@ -149,11 +149,12 @@ async fn list_global_observations(
                 .await
                 .map_err(read_failed)?;
             let mut rows = Vec::with_capacity(entries.len());
+            let mut resolver = LinkedItemResolver::new(&state);
             for (entry_run, stored) in &entries {
                 let PlatformRecord::ObservationRecorded(record) = &stored.record else {
                     continue;
                 };
-                let links = linked_items_of_run(&state, entry_run, stored.seq).await;
+                let links = linked_items_of_run(&state, &mut resolver, entry_run, stored.seq).await;
                 let triage = derive_triage(&links);
                 rows.push(wire_global_observation(
                     entry_run, stored, record, triage, links,
@@ -169,7 +170,13 @@ async fn list_global_observations(
             // rounds whose total could only grow while paging. Links are
             // fetched once per run: a run with many records walks its
             // ledger read a single time.
+            //
+            // Item-state resolution is batched per WALK (denkhaus/work#1362):
+            // one resolver memoizes the tracker read and the claim-ledger
+            // read per distinct (project, item) — every record that links
+            // the same item pays one round-trip, not one per record.
             const WALK_BATCH: usize = 500;
+            let mut resolver = LinkedItemResolver::new(&state);
             let mut links_by_run: HashMap<RunId, Vec<fabro_work::ObservationLink>> = HashMap::new();
             let mut matched: Vec<GlobalObservation> = Vec::new();
             let mut walk_offset = 0usize;
@@ -203,7 +210,8 @@ async fn list_global_observations(
                         links_by_run.insert(*entry_run, links);
                     }
                     let links =
-                        resolve_links_of_seq(&state, &links_by_run[entry_run], stored.seq).await;
+                        resolve_links_of_seq(&mut resolver, &links_by_run[entry_run], stored.seq)
+                            .await;
                     let triage = derive_triage(&links);
                     if triage != wanted {
                         continue;
@@ -279,27 +287,29 @@ impl TriageState {
 /// A record's links, resolved with their live item states.
 async fn linked_items_of_run(
     state: &AppState,
+    resolver: &mut LinkedItemResolver<'_>,
     run_id: &RunId,
     seq: u64,
 ) -> Vec<ObservationWorkItemLink> {
     let Ok(links) = state.work_store().linked_items_for_run(run_id).await else {
         return Vec::new();
     };
-    resolve_links_of_seq(state, &links, seq).await
+    resolve_links_of_seq(resolver, &links, seq).await
 }
 
-/// The links of ONE record (`seq`) resolved with their live item
-/// states; the global feed's triage walk feeds a per-run link cache
-/// through the same read so a run with many records is fetched once
-/// (work#1296).
+/// A record's links, resolved with their live item states; the global
+/// feed's triage walk feeds a per-run link cache through the same read
+/// so a run with many records is fetched once (work#1296), and a
+/// per-request item resolver so each distinct linked item resolves once
+/// per feed page or walk (work#1362).
 async fn resolve_links_of_seq(
-    state: &AppState,
+    resolver: &mut LinkedItemResolver<'_>,
     links: &[fabro_work::ObservationLink],
     seq: u64,
 ) -> Vec<ObservationWorkItemLink> {
     let mut resolved = Vec::new();
     for link in links.iter().filter(|link| link.seq == seq) {
-        let linked = resolve_linked_item(state, &link.project_id, &link.item_key).await;
+        let linked = resolver.resolve(&link.project_id, &link.item_key).await;
         let (item_state, item_url) = linked.map_or((None, None), |item| {
             (Some(LinkedItemState::into_wire(item.state)), Some(item.url))
         });
@@ -929,14 +939,12 @@ async fn list_observations(
     // onto each record. A store failure degrades to an empty column —
     // the observations themselves still list (the radius precedent).
     let mut links_of_seq: HashMap<u64, Vec<ObservationWorkItemLink>> = HashMap::new();
-    let mut linked_pairs: Vec<(String, String)> = Vec::new();
+    let mut pairs_of_seq: HashMap<u64, Vec<(String, String)>> = HashMap::new();
     match state.work_store().linked_items_for_run(&run_id).await {
         Ok(links) => {
             for link in links {
                 let pair = (link.project_id.clone(), link.item_key.clone());
-                if !linked_pairs.contains(&pair) {
-                    linked_pairs.push(pair);
-                }
+                pairs_of_seq.entry(link.seq).or_default().push(pair);
                 links_of_seq
                     .entry(link.seq)
                     .or_default()
@@ -957,27 +965,21 @@ async fn list_observations(
         }
     }
     // The linked items' live states and tracker URLs, resolved once per
-    // distinct (project, item): closed, open with a live claim (a run is
-    // working it), or open. An unresolvable item keeps nulls — the column
-    // stays honest rather than guessing.
-    let mut resolved_of: HashMap<(String, String), Option<ResolvedLinkedItem>> = HashMap::new();
-    for (project_id, item_key) in &linked_pairs {
-        let resolved = resolve_linked_item(&state, project_id, item_key).await;
-        resolved_of.insert((project_id.clone(), item_key.clone()), resolved);
-    }
-    for links in links_of_seq.values_mut() {
-        for link in links {
-            let state_key = linked_pairs
-                .iter()
-                .find(|(_, key)| key == &link.item_key)
-                .cloned();
-            if let Some((project_id, item_key)) = state_key {
-                let resolved = resolved_of.get(&(project_id, item_key)).cloned().flatten();
-                link.item_state = resolved
-                    .as_ref()
-                    .map(|item| LinkedItemState::into_wire(item.state));
-                link.item_url = resolved.map(|item| item.url);
-            }
+    // distinct (project, item) through the per-request resolver
+    // (work#1362): closed, open with a live claim (a run is working
+    // it), or open. An unresolvable item keeps nulls — the column stays
+    // honest rather than guessing.
+    let mut resolver = LinkedItemResolver::new(&state);
+    for (seq, pairs) in &pairs_of_seq {
+        let Some(links) = links_of_seq.get_mut(seq) else {
+            continue;
+        };
+        for (link, (project_id, item_key)) in links.iter_mut().zip(pairs) {
+            let resolved = resolver.resolve(project_id, item_key).await;
+            link.item_state = resolved
+                .as_ref()
+                .map(|item| LinkedItemState::into_wire(item.state));
+            link.item_url = resolved.map(|item| item.url);
         }
     }
 
@@ -1061,6 +1063,37 @@ async fn resolve_linked_item(
         state,
         url: item.url,
     })
+}
+
+/// The per-request batch of linked item states (denkhaus/work#1362):
+/// each distinct (project, item) resolves EXACTLY ONCE per feed page or
+/// walk — the tracker read and the claim-ledger read behind
+/// [`resolve_linked_item`] are memoized here, so a page of records
+/// linking the same item costs one round-trip, not one per record per
+/// link. One resolver lives for one HTTP request and is dropped with
+/// it: no cross-request state, no invalidation, no stale columns.
+struct LinkedItemResolver<'a> {
+    state:    &'a AppState,
+    resolved: HashMap<(String, String), Option<ResolvedLinkedItem>>,
+}
+
+impl<'a> LinkedItemResolver<'a> {
+    fn new(state: &'a AppState) -> Self {
+        Self {
+            state,
+            resolved: HashMap::new(),
+        }
+    }
+
+    async fn resolve(&mut self, project_id: &str, item_key: &str) -> Option<ResolvedLinkedItem> {
+        let cache_key = (project_id.to_owned(), item_key.to_owned());
+        if let Some(hit) = self.resolved.get(&cache_key) {
+            return hit.clone();
+        }
+        let resolved = resolve_linked_item(self.state, project_id, item_key).await;
+        self.resolved.insert(cache_key, resolved.clone());
+        resolved
+    }
 }
 
 /// One stored observation record as the API serves it. The category is
