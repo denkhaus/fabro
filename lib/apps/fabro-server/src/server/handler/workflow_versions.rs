@@ -422,16 +422,16 @@ mod tests {
             },
             "workflow_dependencies": {}
         });
-        let created = app
-            .clone()
-            .oneshot(request(serde_json::to_vec(&payload).unwrap()))
-            .await
-            .unwrap();
-        assert_eq!(created.status(), StatusCode::CREATED);
-        let id = response_json(created).await["workflow_version_id"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let created = fabro_test::expect_axum_json(
+            app.clone()
+                .oneshot(request(serde_json::to_vec(&payload).unwrap()))
+                .await
+                .unwrap(),
+            StatusCode::CREATED,
+            "storing the facet version",
+        )
+        .await;
+        let id = created["workflow_version_id"].as_str().unwrap().to_string();
 
         // The read door answers the stored package exactly: the
         // canonical bytes the store holds, parsed back as the same
@@ -441,9 +441,12 @@ mod tests {
             .uri(format!("/api/v1/workflow-versions/{id}"))
             .body(Body::empty())
             .unwrap();
-        let response = app.oneshot(read).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = response_json(response).await;
+        let body = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::OK,
+            "reading the stored version back",
+        )
+        .await;
         assert_eq!(body, payload);
 
         // And byte-for-byte: the serialized read equals the store's
@@ -471,12 +474,13 @@ mod tests {
             .uri(format!("/api/v1/workflow-versions/{missing}"))
             .body(Body::empty())
             .unwrap();
-        let response = app.oneshot(read).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        assert_eq!(
-            error_code(&response_json(response).await),
-            super::VERSION_NOT_FOUND_CODE
-        );
+        let response = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::NOT_FOUND,
+            "reading an unknown version id",
+        )
+        .await;
+        assert_eq!(error_code(&response), super::VERSION_NOT_FOUND_CODE);
     }
 
     #[tokio::test]
@@ -487,12 +491,13 @@ mod tests {
             .uri("/api/v1/workflow-versions/not-hex")
             .body(Body::empty())
             .unwrap();
-        let response = app.oneshot(read).await.unwrap();
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        assert_eq!(
-            error_code(&response_json(response).await),
-            super::INVALID_ID_CODE
-        );
+        let response = fabro_test::expect_axum_json(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::BAD_REQUEST,
+            "reading a malformed version id",
+        )
+        .await;
+        assert_eq!(error_code(&response), super::INVALID_ID_CODE);
     }
 
     #[tokio::test]
@@ -504,8 +509,12 @@ mod tests {
             .uri("/api/v1/workflow-versions/0000000000000000000000000000000000000000000000000000000000000000")
             .body(Body::empty())
             .unwrap();
-        let response = app.oneshot(read).await.unwrap();
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        fabro_test::expect_axum_status(
+            app.oneshot(read).await.unwrap(),
+            StatusCode::UNAUTHORIZED,
+            "reading requires an authenticated user",
+        )
+        .await;
     }
 
     #[tokio::test]
