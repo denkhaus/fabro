@@ -178,6 +178,7 @@ pub(super) fn demo_routes() -> Router<Arc<AppState>> {
         .route("/system/integrations", get(demo::get_system_integrations))
         .route("/system/resources", get(demo::get_system_resources))
         .route("/system/df", get(demo::get_system_disk_usage))
+        .route("/system/stats", get(demo::get_system_stats))
         .route("/system/repair/runs", get(demo::get_system_repair_runs))
         .route("/system/prune/runs", post(demo::prune_runs))
         .route("/usage", get(demo::get_aggregate_usage))

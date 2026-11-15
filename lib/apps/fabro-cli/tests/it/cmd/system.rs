@@ -17,6 +17,7 @@ fn help() {
       info    Show server runtime information
       prune   Delete old workflow runs
       df      Show disk usage
+      stats   Show which server filesystem is full and what the last reap freed
       events  Stream run events from the server
       repair  Inspect and repair durable server data
       help    Print this message or the help of the given subcommand(s)
