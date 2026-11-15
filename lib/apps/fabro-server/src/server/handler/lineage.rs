@@ -910,6 +910,13 @@ async fn retry_latest_run(
     // snapshot, and the newest checkpoint record's sha names the tip.
     // The origin stays the fallback (published branches of successful
     // runs, or a reaped snapshot).
+    //
+    // The carry commits as the run's identity (the engine's own
+    // convention for checkpoint commits): a freshly prepared worktree
+    // configures none, and a bare cherry-pick dies on `Committer
+    // identity unknown` (the 2026-11-15 lab).
+    let committer =
+        run_rebase_ops::CarryCommitter::for_run(source.spec.settings.run.git.author.as_ref());
     let worktree = Storage::new(state.server_storage_dir())
         .run_scratch(&new_run_id)
         .worktree_dir();
@@ -923,6 +930,7 @@ async fn retry_latest_run(
                     &repository,
                     &tip,
                     &source_base,
+                    &committer,
                 )
                 .await
             }
@@ -935,6 +943,7 @@ async fn retry_latest_run(
                     &git.origin_url,
                     &source_branch,
                     &source_base,
+                    &committer,
                 )
                 .await
             }
@@ -945,6 +954,7 @@ async fn retry_latest_run(
             &git.origin_url,
             &source_branch,
             &source_base,
+            &committer,
         )
         .await
     };
