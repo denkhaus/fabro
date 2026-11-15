@@ -21,6 +21,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use fabro_api::types as api;
+use fabro_automation::AutomationId;
 use fabro_config::Storage;
 use fabro_petri::fork::{self as petri_fork, ForkError, ForkRequest};
 use fabro_petri::petri::RunStore;
@@ -30,7 +31,7 @@ use fabro_store::platform_records::RunNoticeRecord;
 use fabro_store::{PlatformRecordKind, RunProjection};
 use fabro_types::diagnostic::Severity;
 use fabro_types::notice::RunNoticeLevel;
-use fabro_types::{FailureReason, Principal, RunId};
+use fabro_types::{FailureReason, Principal, RunId, RunTarget};
 use fabro_util::error as error_util;
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::operations::{self, ForkTarget, ResolvedForkTarget, RunTimeline};
@@ -41,6 +42,7 @@ use super::super::{
 };
 use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_response};
 use super::runs::run_provenance;
+use crate::automation_materializer::{AutomationRunMaterializeInput, RunMaterializeError};
 use crate::petri_check;
 use crate::run_rebase::{self as run_rebase_ops, RunRebaseError};
 use crate::server::run_publish::{find_snapshot_repository, snapshots_dir};
@@ -620,48 +622,68 @@ fn workflow_operation_error(err: WorkflowError) -> ApiError {
     }
 }
 
-/// The workflow version a retry-on-latest re-admits: the explicit one,
-/// else the version the NEWEST run of the source's workflow slug used.
-/// A source without a slug, or a newest version equal to the source's
-/// own, refuses: there is nothing newer to re-drive on.
-async fn retry_latest_version(
+/// Retry-on-latest resolution (work#1320 Part B): MATERIALIZE, never
+/// resolve — the successor creation compiles the workflow from the
+/// target branch's CURRENT tip, the same path the automation
+/// materializer takes at fire time, and registers that content as the
+/// version to re-admit. The materialized target carries the
+/// checked-out tip sha: the successor's checkout is the tip, never the
+/// source's pinned starting commit. An explicit workflow_version_id in
+/// the request keeps bypassing this (the caller pins what to re-drive).
+///
+/// The source's workflow slug is the workflow selector: an
+/// extensionless selector names `.fabro/workflows/<slug>/workflow.toml`
+/// inside the tip checkout, the same resolution a gear's fire performs.
+async fn retry_latest_materialize(
     state: &AppState,
     source: &RunProjection,
-    explicit: Option<fabro_types::WorkflowVersionId>,
-) -> Result<fabro_types::WorkflowVersionId, ApiError> {
-    if let Some(version) = explicit {
-        return Ok(version);
-    }
+    target: RunTarget,
+    successor: RunId,
+) -> Result<(fabro_types::WorkflowVersionId, RunTarget), ApiError> {
     let Some(slug) = source.spec.workflow_slug.as_deref() else {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             "the source run names no workflow slug; name a workflow_version_id explicitly",
         ));
     };
-    let summaries = state
-        .stores
-        .run_summaries
-        .list_all(chrono::Utc::now())
-        .await
-        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    // list_all is newest first: the first versioned run of the slug is
-    // the currency.
-    let newest = summaries.iter().find_map(|run| {
-        let run_slug = run.workflow.slug.as_deref()?;
-        if run_slug != slug {
-            return None;
-        }
-        run.workflow_version_id
-    });
-    match newest {
-        Some(version) => Ok(version),
-        None => Err(ApiError::new(
+    // The branch selector: the source's pinned sha must not pin the
+    // materialization — the tip's content is what registers.
+    let RunTarget::Git(mut tip) = target else {
+        return Err(ApiError::new(
             StatusCode::CONFLICT,
-            format!(
-                "no run of workflow {slug} names a workflow version; publish one or pass workflow_version_id"
-            ),
-        )),
-    }
+            "retry-on-latest needs a git-backed source run (a Git target)",
+        ));
+    };
+    tip.sha = None;
+    let materialized = state
+        .materialize_automation_run(AutomationRunMaterializeInput {
+            // The id names the materialization's temp directory only; a
+            // retry-on-latest is not an automation.
+            automation_id:   AutomationId::new("retry-on-latest")
+                .expect("'retry-on-latest' is a valid automation id by grammar"),
+            target:          tip,
+            workflow_source: None,
+            workflow:        slug.to_string(),
+            run_id:          successor,
+            temp_root:       state.automation_temp_root(),
+        })
+        .await
+        .map_err(|err| {
+            let status = match &err {
+                // State conflicts the caller can see and act on: the
+                // workflow is gone from the tip, or the source's
+                // coordinate stopped validating.
+                RunMaterializeError::WorkflowNotFound { .. }
+                | RunMaterializeError::InvalidTarget { .. }
+                | RunMaterializeError::InvalidWorkflowSource { .. } => StatusCode::CONFLICT,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            ApiError::new(status, error_util::collect_chain(&err).join(": "))
+        })?;
+    Ok((
+        materialized.workflow_version_id,
+        RunTarget::Git(materialized.target),
+    ))
 }
 
 /// The newest checkpoint commit's sha of a run: the tip its snapshot
@@ -701,12 +723,14 @@ async fn fail_retry_latest_successor(state: &AppState, new_run_id: RunId, messag
 }
 
 /// Retry-on-latest (work#1320): re-drive a terminal run on current
-/// bases — the workflow's current version admitted fresh, the
-/// successor's worktree prepared at the target branch tip with the
-/// source run branch's checkpoint commits cherry-picked on top. The
-/// successor starts at the graph's start (its earlier stages re-run on
-/// the carried files); graph incompatibilities and carry conflicts
-/// fail it with the picture.
+/// bases — the workflow MATERIALIZED from the target branch's tip
+/// (registered fresh, work#1320 Part B), the successor's worktree
+/// prepared at the materialized tip with the source run branch's
+/// checkpoint commits cherry-picked on top. The successor starts at
+/// the graph's start (its earlier stages re-run on the carried files);
+/// graph incompatibilities and carry conflicts fail it with the
+/// picture. An explicit workflow_version_id skips the materialization
+/// and re-admits exactly that version on the source's target.
 async fn retry_latest_run(
     RequireRunManagementTarget(id, actor): RequireRunManagementTarget,
     State(state): State<Arc<AppState>>,
@@ -753,9 +777,18 @@ async fn retry_latest_run(
         .into_response();
     };
 
-    let version = match retry_latest_version(state.as_ref(), &source, explicit_version).await {
-        Ok(version) => version,
-        Err(err) => return err.into_response(),
+    // The successor's id mints before resolution: the materialization
+    // names its temp directory by it.
+    let new_run_id = RunId::new();
+    // Resolution (work#1320 Part B): materialize from the branch tip
+    // unless the request pins a version — the explicit fast path keeps
+    // the source's target and bypasses materialization.
+    let (version, target) = match explicit_version {
+        Some(version) => (version, target),
+        None => match retry_latest_materialize(state.as_ref(), &source, target, new_run_id).await {
+            Ok(resolved) => resolved,
+            Err(err) => return err.into_response(),
+        },
     };
     if Some(&version) == source.spec.workflow_version_id.as_ref() {
         // Names both sides: the refusal self-diagnoses (work#1320's door
@@ -766,20 +799,25 @@ async fn retry_latest_run(
             .workflow_version_id
             .as_ref()
             .map_or_else(|| "none".to_string(), ToString::to_string);
+        let head = if explicit_version.is_some() {
+            "the requested workflow version"
+        } else {
+            "the workflow at the branch tip"
+        };
         return ApiError::new(
             StatusCode::CONFLICT,
             format!(
-                "the newest workflow version ({version}) is the one the source already ran \
+                "{head} ({version}) is the one the source already ran \
                  ({source_version}); a plain retry replays it",
             ),
         )
         .into_response();
     }
 
-    // The successor: the create path compiles the CURRENT version with
-    // the source's posture (target, environment, model, labels), and
-    // prepares its worktree at the target branch's current tip.
-    let new_run_id = RunId::new();
+    // The successor: the create path compiles the resolved version with
+    // the source's posture (target, environment, model, labels). The
+    // materialized arm's target names the checked-out tip; the explicit
+    // arm keeps the source's target as the caller pinned the version.
     // The item thread (work#1320): the goal names the source's item so
     // the successor's planner takes the itemKey fast path instead of a
     // fresh lane grant; the claim transfer below makes the handoff
