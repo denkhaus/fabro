@@ -266,6 +266,12 @@ validate-workflows target="":
 lint-nu:
     nu scripts/lint-nu.nu
 
+# Report bare HTTP-status assertions in tests (the fabro_test helpers
+# are the strategy rule); --gate reddens once the migration decision
+# item lands.
+lint-test-asserts:
+    nu scripts/lint-test-asserts.nu
+
 # Vendored fork crates (fabro-eeee/work#1253, ADR-0034): vendor/petri,
 # vendor/pebble, and vendor/sandbox-driver are SNAPSHOTS of the denkhaus
 # fork branches, consumed
