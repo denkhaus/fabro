@@ -66,7 +66,7 @@ bootstrap:
 # flock for the WHOLE pipeline; logic in scripts/up.nu) makes the second run
 # abort immediately with the holder's pid instead of corrupting the mirror.
 up:
-    nu scripts/up.nu
+    direnv exec . nu scripts/up.nu
 
 # Host-side dev-artifact prune (target/ stale GC + tmp/docker-context).
 # NEVER touches docker volumes/images/builder cache (30-min toolchain +
@@ -134,6 +134,16 @@ host-release host port arch='amd64' sha='':
     else
       echo "no binary artifact line in the host log — release attach skipped"
     fi
+
+# Deploy window ceremony (ADR-0041 host-built path) — the mechanical
+# phases of a release window as repeatable steps, driven by
+# scripts/deploy-window.nu. Phases: pause | build | pins | plan | apply
+# | arm | commit. The HUMAN moments stay outside by design: the bench
+# gate before the window, the plan review between plan and apply, gopass
+# warmth, and the live proof after apply. Host identity resolves from
+# the tofu prod profile at runtime and never rides this public repo.
+deploy phase:
+    nu scripts/deploy-window.nu {{ phase }}
 
 # Build only the release binary and stage it (no docker image build)
 build-binary: web-deps
