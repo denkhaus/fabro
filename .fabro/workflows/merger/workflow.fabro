@@ -75,11 +75,22 @@ digraph Merger {
         x.preamble_stages_ignore="resolve",
         x.preamble_allow_keys="output.integration",
         x.context_allow_keys="output.integration,journal",
-        // The checkout is the work surface: read, search, and shell (the
-        // git calls a resolution needs — fetch, rebase, push to the run
-        // branch). Writes beyond the run branch have no credential.
-        x.tools="read_file,grep,glob,shell",
-        x.fs_write="",
+        // The checkout is the work surface: read, search, edit, and
+        // shell (the git calls a resolution needs — fetch, rebase —
+        // plus the file edits a conflict resolution authors). The
+        // 2026-11-15 evidence: with edit_file denied (fs_write="" is
+        // the deny-every-file-tool form, fabro-1dae) the resolve agent
+        // routed its .mulch.config.yaml resolution through shell/python
+        // heredocs — the same writes, minus the structure and audit
+        // trail of the file tools. Denying edit_file while shell is
+        // granted adds friction, not safety; the honest toolset admits
+        // the edit. fs_write stays UNSET (no write envelope): a
+        // conflict can sit in any path of the checkout, so the
+        // resolution surface is the whole worktree — its writes land
+        // only in the run branch the merge door integrates, never on
+        // the trunk, and the checkpoint envelope still judges every
+        // staged path.
+        x.tools="read_file,edit_file,grep,glob,shell",
         // The integration toolbox: the merge door, the verdict write,
         // the queue re-read, and the observation recorder (the presence
         // contract — every agent session records its observations
