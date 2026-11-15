@@ -10,16 +10,19 @@
 
 use std::path::{Path, PathBuf};
 
+use fabro_types::settings::run::GitAuthorSettings;
 use tokio::process::Command;
 
 /// Why the rebase could not carry the work.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RunRebaseError {
-    /// The source run branch does not exist on the origin: the source
-    /// never pushed a checkpoint. Not a failure the caller surfaces —
-    /// the re-drive simply starts from the fresh tip.
-    #[error("the source run branch {branch} does not exist on the origin")]
-    NoSourceBranch { branch: String },
+    /// The carry's source holds nothing to fetch: the run branch does
+    /// not exist on the origin, or the snapshot repository does not
+    /// hold the named tip. Not a failure the caller surfaces — the
+    /// re-drive simply starts from the fresh tip. `origin` names the
+    /// branch or repository path that came up empty.
+    #[error("the carry origin {origin} holds no checkpoint work")]
+    NoSourceBranch { origin: String },
     /// The cherry-pick stopped on a conflict. `files` names the
     /// unmerged paths; the successor parks-failed with this picture.
     #[error("the checkpoint work conflicts on {files:?}")]
@@ -53,8 +56,6 @@ pub(crate) struct Rebased {
     /// picture the caller records).
     pub touched:     Vec<String>,
 }
-
-use fabro_types::settings::run::GitAuthorSettings;
 
 /// The committer identity the carry's cherry-picks commit with: the
 /// engine's checkpoint commits name the run's resolved author, and the
@@ -103,7 +104,7 @@ pub(crate) async fn carry_checkpoint_work(
     match fetched {
         GitOutcome::Failed => {
             return Ok(Err(RunRebaseError::NoSourceBranch {
-                branch: source_branch.to_string(),
+                origin: source_branch.to_string(),
             }));
         }
         GitOutcome::Io(err) => return Err(err),
@@ -140,7 +141,7 @@ pub(crate) async fn carry_checkpoint_work_from_snapshot(
     .await;
     match fetched {
         GitOutcome::Failed => {
-            return Ok(Err(RunRebaseError::NoSourceBranch { branch: repository }));
+            return Ok(Err(RunRebaseError::NoSourceBranch { origin: repository }));
         }
         GitOutcome::Io(err) => return Err(err),
         GitOutcome::Ran => {}
@@ -152,7 +153,7 @@ pub(crate) async fn carry_checkpoint_work_from_snapshot(
     ])
     .await;
     if matches!(present, GitOutcome::Failed) {
-        return Ok(Err(RunRebaseError::NoSourceBranch { branch: repository }));
+        return Ok(Err(RunRebaseError::NoSourceBranch { origin: repository }));
     }
     replay_range(worktree_dir, source_base, source_tip, committer).await
 }

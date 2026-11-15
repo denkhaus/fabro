@@ -3,7 +3,7 @@
 //! list, dependencies) by default, one file's content with `--file`.
 //! The `--json` stdout is the stored `WorkflowVersion` record.
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use cli_table::format::{Border, Separator};
 use cli_table::{Cell, CellStruct, Color, Style, Table};
 use fabro_types::{WorkflowVersion, WorkflowVersionId};
@@ -50,11 +50,14 @@ pub(super) async fn show_command(args: &WorkflowShowArgs, base_ctx: &CommandCont
         return Ok(());
     }
 
-    print_overview(&version, &id, printer);
-    Ok(())
+    print_overview(&version, &id, printer)
 }
 
-fn print_overview(version: &WorkflowVersion, id: &WorkflowVersionId, printer: Printer) {
+fn print_overview(
+    version: &WorkflowVersion,
+    id: &WorkflowVersionId,
+    printer: Printer,
+) -> Result<()> {
     let styles = Styles::detect_stdout();
     let use_color = styles.use_color;
     fabro_util::printout!(
@@ -98,6 +101,7 @@ fn print_overview(version: &WorkflowVersion, id: &WorkflowVersionId, printer: Pr
         "{}",
         table
             .display()
-            .expect("rendering the workflow version table should succeed")
+            .context("rendering the workflow version table")?
     );
+    Ok(())
 }

@@ -28,11 +28,12 @@ use fabro_petri::petri::RunStore;
 use fabro_petri::platform_records::SqlitePlatformRecords;
 use fabro_petri::{SqliteRunStore, admission};
 use fabro_store::platform_records::RunNoticeRecord;
-use fabro_store::{PlatformRecordKind, RunProjection};
+use fabro_store::{PlatformRecord, PlatformRecordKind, RunProjection};
 use fabro_types::diagnostic::Severity;
 use fabro_types::notice::RunNoticeLevel;
 use fabro_types::{FailureReason, Principal, RunId, RunTarget};
 use fabro_util::error as error_util;
+use fabro_work::{GrantOutcome, GrantRequest};
 use fabro_workflow::Error as WorkflowError;
 use fabro_workflow::operations::{self, ForkTarget, ResolvedForkTarget, RunTimeline};
 use tracing::{error, warn};
@@ -305,12 +306,12 @@ async fn transfer_item_thread(
                 );
             }
             Err(err) => {
-                tracing::warn!(claim_id = %active.claim_id, error = %err, "retry-on-latest could not release the source claim");
+                tracing::warn!(claim_id = %active.claim_id, error = ?err, "retry-on-latest could not release the source claim");
             }
         }
     }
     match store
-        .grant(&fabro_work::GrantRequest {
+        .grant(&GrantRequest {
             project_id: thread.project_id.clone(),
             item_key:   thread.item_key.clone(),
             run_id:     *successor,
@@ -318,7 +319,7 @@ async fn transfer_item_thread(
         })
         .await
     {
-        Ok(fabro_work::GrantOutcome::Granted(claim)) => {
+        Ok(GrantOutcome::Granted(claim)) => {
             tracing::info!(
                 claim_id = %claim.claim_id,
                 item_key = %claim.item_key,
@@ -327,8 +328,8 @@ async fn transfer_item_thread(
             );
         }
         // This run already holds the item — nothing to move.
-        Ok(fabro_work::GrantOutcome::AlreadyHeld(_)) => {}
-        Ok(fabro_work::GrantOutcome::Conflict(claim)) => {
+        Ok(GrantOutcome::AlreadyHeld(_)) => {}
+        Ok(GrantOutcome::Conflict(claim)) => {
             tracing::warn!(
                 item_key = %thread.item_key,
                 held_by_run_id = %claim.run_id,
@@ -339,7 +340,7 @@ async fn transfer_item_thread(
         Err(err) => {
             tracing::warn!(
                 item_key = %thread.item_key,
-                error = %err,
+                error = ?err,
                 "retry-on-latest item grant failed; the planner falls back to the lane"
             );
         }
@@ -669,16 +670,30 @@ async fn retry_latest_materialize(
         })
         .await
         .map_err(|err| {
-            let status = match &err {
-                // State conflicts the caller can see and act on: the
-                // workflow is gone from the tip, or the source's
-                // coordinate stopped validating.
+            match &err {
+                // State conflicts the caller can act on; the variant's
+                // own message is the diagnosis (the create door's
+                // convention: no internal source chain on the wire).
                 RunMaterializeError::WorkflowNotFound { .. }
                 | RunMaterializeError::InvalidTarget { .. }
-                | RunMaterializeError::InvalidWorkflowSource { .. } => StatusCode::CONFLICT,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            ApiError::new(status, error_util::collect_chain(&err).join(": "))
+                | RunMaterializeError::InvalidWorkflowSource { .. } => {
+                    ApiError::new(StatusCode::CONFLICT, err.to_string())
+                }
+                // Infrastructure failures keep the chain in the log and
+                // serve a curated message (the error-handling
+                // strategy's public-vs-internal rule).
+                err => {
+                    error!(
+                        error = ?err,
+                        error_chain = ?error_util::collect_chain(err),
+                        "retry-on-latest workflow materialization failed"
+                    );
+                    ApiError::new(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "workflow materialization failed",
+                    )
+                }
+            }
         })?;
     Ok((
         materialized.workflow_version_id,
@@ -696,12 +711,18 @@ async fn latest_checkpoint_sha(state: &AppState, id: &RunId) -> Option<String> {
         .platform_records()
         .read_kind(id, PlatformRecordKind::Checkpoint)
         .await
+        .map_err(|err| {
+            // The origin fallback answers the degradation, but the
+            // miss itself stays diagnosable in the log.
+            warn!(run_id = %id, error = ?err, "the checkpoint records could not be read");
+            err
+        })
         .ok()?;
     records
         .iter()
         .rev()
         .find_map(|stored| match &stored.record {
-            fabro_store::PlatformRecord::Checkpoint(record) => record.git_commit_sha.clone(),
+            PlatformRecord::Checkpoint(record) => record.git_commit_sha.clone(),
             _ => None,
         })
 }

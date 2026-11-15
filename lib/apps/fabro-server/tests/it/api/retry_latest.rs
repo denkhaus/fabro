@@ -18,7 +18,6 @@ use fabro_types::{
     DirtyStatus, FailureReason, GitContext, GitRunTarget, RunGraph, RunId, RunProjection, RunSpec,
     RunStatus, RunTarget, WorkflowSettings,
 };
-use http_body_util::BodyExt;
 use serde_json::Value;
 use tower::ServiceExt;
 
@@ -33,7 +32,7 @@ async fn retry_latest(
     app: &axum::Router,
     run_id: &str,
     body: Option<Value>,
-) -> (StatusCode, Value) {
+) -> axum::response::Response {
     let request = match body {
         Some(body) => Request::builder()
             .method(axum::http::Method::POST)
@@ -48,21 +47,10 @@ async fn retry_latest(
             .body(axum::body::Body::empty()),
     }
     .expect("retry-latest request should build");
-    let response = app
-        .clone()
+    app.clone()
         .oneshot(request)
         .await
-        .expect("call should answer");
-    let status = response.status();
-    let bytes = response
-        .into_body()
-        .collect()
-        .await
-        .expect("body should collect")
-        .to_bytes();
-    let body = serde_json::from_slice(&bytes)
-        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).to_string()));
-    (status, body)
+        .expect("call should answer")
 }
 
 /// A terminal failed source run the projector's way: git-backed, with
@@ -188,8 +176,12 @@ async fn materializes_the_workflow_from_the_branch_tip_instead_of_scanning_runs(
     )
     .await;
 
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let body = fabro_test::expect_axum_json(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CREATED,
+        "retry-latest materialized fire",
+    )
+    .await;
 
     // The resolution input: the source's slug is the workflow selector,
     // and the target carries NO pinned sha — materialization reads the
@@ -251,8 +243,12 @@ async fn a_tip_equal_to_the_source_refuses_naming_both_versions() {
     .await;
 
     // Discover the can's version id: the first fire re-drives on it.
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let body = fabro_test::expect_axum_json(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CREATED,
+        "retry-latest materialized fire",
+    )
+    .await;
     let tip_version = body["workflow_version_id"]
         .as_str()
         .expect("workflow_version_id in response")
@@ -262,9 +258,12 @@ async fn a_tip_equal_to_the_source_refuses_naming_both_versions() {
     // starting commit — the plain-retry refusal holds, naming both.
     let second = RunId::new();
     seed_failed_run(&store, second, Some("develop"), Some(tip_version.clone())).await;
-    let (status, body) = retry_latest(&app, &second.to_string(), None).await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    let detail = body.to_string();
+    let detail = fabro_test::expect_axum_text(
+        retry_latest(&app, &second.to_string(), None).await,
+        StatusCode::CONFLICT,
+        "retry-latest equal-tip refusal",
+    )
+    .await;
     assert!(
         detail.contains(&tip_version),
         "the refusal names the tip's version: {detail}"
@@ -305,8 +304,12 @@ async fn an_equal_version_on_a_moved_tip_proceeds_on_the_new_checkout() {
 
     // Discover the can's version, then seed a source that ALREADY ran
     // it — with the tip moved (TIP_SHA, not the source's SOURCE_SHA).
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let body = fabro_test::expect_axum_json(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CREATED,
+        "retry-latest materialized fire",
+    )
+    .await;
     let tip_version = body["workflow_version_id"]
         .as_str()
         .expect("workflow_version_id in response")
@@ -314,12 +317,12 @@ async fn an_equal_version_on_a_moved_tip_proceeds_on_the_new_checkout() {
 
     let second = RunId::new();
     seed_failed_run(&store, second, Some("develop"), Some(tip_version.clone())).await;
-    let (status, body) = retry_latest(&app, &second.to_string(), None).await;
-    assert_eq!(
-        status,
+    let body = fabro_test::expect_axum_json(
+        retry_latest(&app, &second.to_string(), None).await,
         StatusCode::CREATED,
-        "an equal version on a moved tip proceeds: {body}"
-    );
+        "an equal version on a moved tip proceeds",
+    )
+    .await;
     assert_eq!(
         body["workflow_version_id"].as_str(),
         Some(tip_version.as_str()),
@@ -354,8 +357,12 @@ async fn an_explicit_version_bypasses_materialization_and_keeps_the_source_targe
 
     // Discover and store the can's version through one materialized
     // fire, then re-drive a second source on it EXPLICITLY.
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let body = fabro_test::expect_axum_json(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CREATED,
+        "retry-latest materialized fire",
+    )
+    .await;
     let stored_version = body["workflow_version_id"]
         .as_str()
         .expect("workflow_version_id in response")
@@ -369,13 +376,17 @@ async fn an_explicit_version_bypasses_materialization_and_keeps_the_source_targe
     )
     .await;
 
-    let (status, body) = retry_latest(
-        &app,
-        &explicit_source.to_string(),
-        Some(serde_json::json!({ "workflow_version_id": stored_version })),
+    let body = fabro_test::expect_axum_json(
+        retry_latest(
+            &app,
+            &explicit_source.to_string(),
+            Some(serde_json::json!({ "workflow_version_id": stored_version })),
+        )
+        .await,
+        StatusCode::CREATED,
+        "retry-latest explicit fire",
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(
         materializer.captured_workflow_selections().len(),
         1,
@@ -406,9 +417,12 @@ async fn a_workflow_missing_at_the_tip_refuses_with_the_chain() {
     )
     .await;
 
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    let detail = body.to_string();
+    let detail = fabro_test::expect_axum_text(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CONFLICT,
+        "retry-latest refusal",
+    )
+    .await;
     assert!(
         detail.contains("automation workflow was not found"),
         "the refusal carries the materialization chain: {detail}"
@@ -427,9 +441,12 @@ async fn a_source_without_a_slug_refuses_before_materialization() {
     let source = RunId::new();
     seed_failed_run(&store, source, None, None).await;
 
-    let (status, body) = retry_latest(&app, &source.to_string(), None).await;
-    assert_eq!(status, StatusCode::CONFLICT, "{body}");
-    let detail = body.to_string();
+    let detail = fabro_test::expect_axum_text(
+        retry_latest(&app, &source.to_string(), None).await,
+        StatusCode::CONFLICT,
+        "retry-latest refusal",
+    )
+    .await;
     assert!(
         detail.contains("names no workflow slug"),
         "the refusal names the missing slug: {detail}"
@@ -445,16 +462,21 @@ async fn an_unknown_run_is_not_found() {
     let app = crate::helpers::test_app_with_no_providers();
     // A valid ULID-shaped id that exists in no store (Crockford base32
     // alphabet, ULID length): the parse passes, the lookup refuses.
-    let (status, body) = retry_latest(&app, "01M7CRT3ST0000000000000000", None).await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    fabro_test::expect_axum_status(
+        retry_latest(&app, "01M7CRT3ST0000000000000000", None).await,
+        StatusCode::NOT_FOUND,
+        "retry-latest on an unknown run",
+    )
+    .await;
 }
 
 #[tokio::test]
 async fn a_store_unknown_run_refuses_without_a_successor() {
     let app = crate::helpers::test_app_with_no_providers();
-    let (status, body) = retry_latest(&app, "01M7CRT3ST0000000000000001", None).await;
-    assert!(
-        status == StatusCode::NOT_FOUND || status == StatusCode::CONFLICT,
-        "expected a refusal, got {status}: {body}"
-    );
+    fabro_test::expect_axum_status_in(
+        retry_latest(&app, "01M7CRT3ST0000000000000001", None).await,
+        &[StatusCode::NOT_FOUND, StatusCode::CONFLICT],
+        "retry-latest on a store-unknown run",
+    )
+    .await;
 }

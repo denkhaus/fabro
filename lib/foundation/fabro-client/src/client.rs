@@ -3756,6 +3756,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_workflow_version_reads_the_stored_bundle_back() {
+        // work#1347's read door, the client leg the CLI show verb rides:
+        // the stored bundle comes back exactly as registered.
+        let server = MockServer::start_async().await;
+        let version = test_workflow_version("ReadBack", BTreeMap::new());
+        let expected_id = version.id().unwrap();
+        let body = serde_json::to_value(&version).unwrap();
+        let mock = server
+            .mock_async(|when, respond| {
+                when.method(GET)
+                    .path(format!("/api/v1/workflow-versions/{expected_id}"));
+                respond
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .json_body(body);
+            })
+            .await;
+
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        let read = client.get_workflow_version(&expected_id).await.unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(
+            read.canonical_bytes().unwrap(),
+            version.canonical_bytes().unwrap(),
+            "the client's read door round-trips the stored bundle"
+        );
+    }
+
+    #[tokio::test]
     async fn create_workflow_version_rejects_returned_id_mismatch() {
         let server = MockServer::start_async().await;
         let version = test_workflow_version("Expected", BTreeMap::new());
