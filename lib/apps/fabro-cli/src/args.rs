@@ -893,6 +893,19 @@ pub(crate) struct WorkflowCreateArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct WorkflowShowArgs {
+    /// The stored workflow version id (64 hex chars)
+    pub(crate) id: String,
+
+    /// Print one file's content instead of the bundle overview
+    #[arg(short, long)]
+    pub(crate) file: Option<String>,
+
+    #[command(flatten)]
+    pub(crate) target: ServerTargetArgs,
+}
+
+#[derive(Args)]
 pub(crate) struct ProviderLoginArgs {
     #[command(flatten)]
     pub(crate) target: ServerTargetArgs,
@@ -1814,6 +1827,7 @@ impl Commands {
             Self::Workflow(ns) => match &ns.command {
                 WorkflowCommand::List(_) => "workflow list",
                 WorkflowCommand::Create(_) => "workflow create",
+                WorkflowCommand::Show(_) => "workflow show",
             },
             Self::Discord => "discord",
             Self::Docs => "docs",
@@ -2803,6 +2817,8 @@ pub(crate) enum WorkflowCommand {
     List(WorkflowListArgs),
     /// Create a new workflow
     Create(WorkflowCreateArgs),
+    /// Show a stored workflow version from the server
+    Show(WorkflowShowArgs),
 }
 
 #[derive(Args)]
