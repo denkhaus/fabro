@@ -431,7 +431,10 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
             "sandbox reap arm pass freed bytes"
         );
     } else {
-        info!(reaped, preserved, absent, failed, "sandbox reap arm pass complete");
+        info!(
+            reaped,
+            preserved, absent, failed, "sandbox reap arm pass complete"
+        );
     }
     record_last_reap_pass(state, &stats, freed_bytes, disk_percent);
     Ok(Some(stats))
