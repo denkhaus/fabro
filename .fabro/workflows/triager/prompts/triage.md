@@ -73,3 +73,14 @@ sentence.
   already keeps does not.
 - You never edit files, never run gates, never verdict, never merge,
   never close. The platform doors are your only writes.
+
+## Observations — every pass
+
+{% include "observations.md" %}
+
+For this pass: your per-painpoint dispositions already write their own
+platform records (fabro_observation_manage and fabro_work_create file
+their decisions and links); close the session with one `note`
+summarizing the batch — counts per action (filed linked /
+link_existing / no_filing), the targets, and any judgment call worth
+re-reading later.
