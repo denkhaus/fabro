@@ -79,7 +79,14 @@ friction verdict — before anything is selected.
    in-progress work items name the mid-flight work; continue it.
 6. Sprint ledger: read `iterate-state.json` at the repo ROOT. If
    `sprints_reflected < sprints_completed`, run the pending reflection
-   (Phase 6) FIRST. Compute which review gates are DUE from the three
+   (Phase 6) FIRST. STALE-LEDGER CHECK (work#1380-class, the
+   fork.37-39 gap): if origin/denkhaus carries merges newer than the
+   ledger's last update — compare the ledger commit's date
+   (`git log -1 --format=%ci -- iterate-state.json`) with the trunk
+   tip's — surface the gap LOUDLY before selecting: sessions have
+   landed days of work without records, and the gate arithmetic
+   silently rides the stale markers. Name the gap in the next sprint
+   record; do not silently backfill sprints you cannot reconstruct. Compute which review gates are DUE from the three
    markers (`%2` code-review, `%3` architecture, `%5` rust-security) —
    the full arithmetic and marker semantics: `reference/orient.md`.
 7. Rootprint: production logs are queried through the `rootprint` CLI
