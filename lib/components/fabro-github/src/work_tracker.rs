@@ -10,12 +10,55 @@
 //! stay visible. A Forgejo adapter can implement the same port beside this
 //! one; the port and the work store change nothing.
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use fabro_http::{HttpClient, Method, RequestBuilder, Response, StatusCode};
+use fabro_http::{HeaderMap, HttpClient, HttpError, Method, RequestBuilder, StatusCode, header};
 use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
+use tokio::time::sleep;
+
+/// Total attempts one API call makes while GitHub answers rate-limit
+/// 403/429 (denkhaus/work#1364): the initial try plus two backed-off
+/// retries, then the call fails as [`TrackerApiError::RateLimitExhausted`].
+const RATE_LIMIT_MAX_ATTEMPTS: u32 = 3;
+
+/// The longest single wait between rate-limit retries. A `Retry-After`
+/// above this cap fails fast instead of parking the caller for the
+/// quota window — the feed prefers an explicit stale state over a
+/// multi-minute hang.
+const RATE_LIMIT_MAX_WAIT: Duration = Duration::from_secs(20);
+
+/// Typed GitHub API failure so callers can tell an exhausted rate-limit
+/// budget from any other GitHub answer (denkhaus/work#1364): the
+/// observation feed marks such reads stale instead of silently null.
+#[derive(Debug, thiserror::Error)]
+pub enum TrackerApiError {
+    /// GitHub refused the call for rate-limit reasons and the retry
+    /// budget is spent. The installation token's API budget is
+    /// exhausted; `retry_after_secs` is the last `Retry-After` hint.
+    #[error(
+        "GitHub API rate limit exhausted (status {status}); last Retry-After hint: {retry_after_secs:?}"
+    )]
+    RateLimitExhausted {
+        status:           u16,
+        retry_after_secs: Option<u64>,
+    },
+
+    /// GitHub answered a non-success status that is not a rate limit.
+    #[error("GitHub API {status}: {body}")]
+    Status { status: u16, body: String },
+
+    /// The request never reached a GitHub answer.
+    #[error("GitHub API transport failure")]
+    Transport(#[source] HttpError),
+
+    /// GitHub answered a success status with unparseable JSON.
+    #[error("GitHub API returned invalid JSON")]
+    InvalidJson(#[source] serde_json::Error),
+}
 
 /// GitHub Issues in one repository.
 pub struct GitHubTracker {
@@ -61,17 +104,108 @@ impl GitHubTracker {
             .header("User-Agent", "fabro")
     }
 
-    async fn send_json(&self, response: Response) -> anyhow::Result<Value> {
-        let status = response.status();
-        let text = response.text().await?;
-        if !status.is_success() {
-            anyhow::bail!("GitHub API {status}: {text}");
+    /// Whether a GitHub answer is a rate-limit refusal (denkhaus/work#1364):
+    /// a 429, or a 403 whose body names the rate limit, whose headers
+    /// carry a `Retry-After`, or whose `x-ratelimit-remaining` hit zero —
+    /// the same classification the pull-request door uses
+    /// (denkhaus/work#1332).
+    fn is_rate_limited(status: StatusCode, headers: &HeaderMap, body_lower: &str) -> bool {
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            return true;
         }
-        if text.trim().is_empty() {
-            return Ok(Value::Null);
+        if status != StatusCode::FORBIDDEN {
+            return false;
         }
-        serde_json::from_str(&text)
-            .map_err(|err| anyhow::anyhow!("GitHub API returned invalid JSON: {err}"))
+        body_lower.contains("rate limit")
+            || headers.contains_key(header::RETRY_AFTER)
+            || headers
+                .get("x-ratelimit-remaining")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|remaining| remaining == "0")
+    }
+
+    fn retry_after_hint(headers: &HeaderMap) -> Option<u64> {
+        headers
+            .get(header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse().ok())
+    }
+
+    /// One GitHub API call with rate-limit hygiene (denkhaus/work#1364):
+    /// a 403/429 rate-limit answer is retried with a backoff that
+    /// honors `Retry-After` (capped at [`RATE_LIMIT_MAX_WAIT`]), and a
+    /// budget that stays exhausted fails as
+    /// [`TrackerApiError::RateLimitExhausted`] instead of a generic
+    /// 403 — callers can distinguish "cannot ask" from "asked and got
+    /// an answer".
+    async fn issue_json(
+        &self,
+        method: Method,
+        url: &str,
+        body: Option<Value>,
+    ) -> Result<Value, TrackerApiError> {
+        let mut attempt = 1;
+        loop {
+            let mut request = self.request(method.clone(), url);
+            if let Some(body) = &body {
+                request = request.json(body);
+            }
+            let response = request.send().await.map_err(TrackerApiError::Transport)?;
+            let status = response.status();
+            let headers = response.headers().clone();
+            let text = response.text().await.map_err(TrackerApiError::Transport)?;
+            if status.is_success() {
+                return if text.trim().is_empty() {
+                    Ok(Value::Null)
+                } else {
+                    serde_json::from_str(&text).map_err(TrackerApiError::InvalidJson)
+                };
+            }
+            if !Self::is_rate_limited(status, &headers, &text.to_ascii_lowercase()) {
+                return Err(TrackerApiError::Status {
+                    status: status.as_u16(),
+                    body:   text,
+                });
+            }
+            let retry_after_secs = Self::retry_after_hint(&headers);
+            if attempt >= RATE_LIMIT_MAX_ATTEMPTS {
+                return Err(TrackerApiError::RateLimitExhausted {
+                    status: status.as_u16(),
+                    retry_after_secs,
+                });
+            }
+            let backoff = Duration::from_secs(1 << (attempt - 1));
+            let wait = retry_after_secs
+                .map_or(backoff, Duration::from_secs)
+                .min(RATE_LIMIT_MAX_WAIT);
+            tracing::warn!(
+                attempt,
+                wait_secs = wait.as_secs(),
+                retry_after_secs = ?retry_after_secs,
+                "github tracker rate limited, backing off"
+            );
+            sleep(wait).await;
+            attempt += 1;
+        }
+    }
+
+    /// The failure of an `issue_json` call whose caller tolerates one
+    /// specific status (422 for an already-existing label, 404 for an
+    /// already-gone one; `None` tolerates nothing): the tolerated
+    /// status is success, every other failure keeps the
+    /// operation-specific message.
+    fn tolerate_status(
+        err: TrackerApiError,
+        tolerated: Option<u16>,
+        what: &str,
+    ) -> anyhow::Result<()> {
+        match err {
+            TrackerApiError::Status { status, .. } if Some(status) == tolerated => Ok(()),
+            TrackerApiError::Status { status, body } => {
+                anyhow::bail!("GitHub {what} {status}: {body}")
+            }
+            other => Err(other.into()),
+        }
     }
 
     async fn list_issue_json(
@@ -79,73 +213,47 @@ impl GitHubTracker {
         _project: &WorkProject,
         issue_number: u64,
     ) -> anyhow::Result<Value> {
-        let response = self
-            .request(Method::GET, &self.url(&format!("issues/{issue_number}")))
-            .send()
-            .await?;
-        self.send_json(response).await
+        let url = self.url(&format!("issues/{issue_number}"));
+        Ok(self.issue_json(Method::GET, &url, None).await?)
     }
 
     async fn ensure_label(&self, name: &str) -> anyhow::Result<()> {
-        let response = self
-            .request(Method::POST, &self.url("labels"))
-            .json(&serde_json::json!({"name": name, "color": "ededed"}))
-            .send()
-            .await?;
-        if response.status().is_success() || response.status() == StatusCode::UNPROCESSABLE_ENTITY {
-            return Ok(());
+        let url = self.url("labels");
+        let body = serde_json::json!({"name": name, "color": "ededed"});
+        match self.issue_json(Method::POST, &url, Some(body)).await {
+            Ok(_) => Ok(()),
+            // 422: the label already exists — the ensure is done.
+            Err(err) => Self::tolerate_status(err, Some(422), "label create"),
         }
-        let status = response.status();
-        let text = response.text().await?;
-        anyhow::bail!("GitHub label create {status}: {text}")
     }
 
     async fn add_label(&self, issue_number: u64, name: &str) -> anyhow::Result<()> {
-        let response = self
-            .request(
-                Method::POST,
-                &self.url(&format!("issues/{issue_number}/labels")),
-            )
-            .json(&serde_json::json!({"labels": [name]}))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await?;
-            anyhow::bail!("GitHub label attach {status}: {text}");
+        let url = self.url(&format!("issues/{issue_number}/labels"));
+        let body = serde_json::json!({"labels": [name]});
+        match self.issue_json(Method::POST, &url, Some(body)).await {
+            Ok(_) => Ok(()),
+            Err(err) => Self::tolerate_status(err, None, "label attach"),
         }
-        Ok(())
     }
 
     async fn remove_label_from_issue(&self, issue_number: u64, name: &str) -> anyhow::Result<()> {
         let encoded = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
-        let response = self
-            .request(
-                Method::DELETE,
-                &self.url(&format!("issues/{issue_number}/labels/{encoded}")),
-            )
-            .send()
-            .await?;
-        if response.status().is_success() || response.status() == StatusCode::NOT_FOUND {
-            return Ok(());
+        let url = self.url(&format!("issues/{issue_number}/labels/{encoded}"));
+        match self.issue_json(Method::DELETE, &url, None).await {
+            Ok(_) => Ok(()),
+            // 404: the label is already off the issue — the detach is done.
+            Err(err) => Self::tolerate_status(err, Some(404), "label detach"),
         }
-        let status = response.status();
-        let text = response.text().await?;
-        anyhow::bail!("GitHub label detach {status}: {text}")
     }
 
     async fn delete_label(&self, name: &str) -> anyhow::Result<()> {
         let encoded = utf8_percent_encode(name, NON_ALPHANUMERIC).to_string();
-        let response = self
-            .request(Method::DELETE, &self.url(&format!("labels/{encoded}")))
-            .send()
-            .await?;
-        if response.status().is_success() || response.status() == StatusCode::NOT_FOUND {
-            return Ok(());
+        let url = self.url(&format!("labels/{encoded}"));
+        match self.issue_json(Method::DELETE, &url, None).await {
+            Ok(_) => Ok(()),
+            // 404: the label is already gone — the delete is done.
+            Err(err) => Self::tolerate_status(err, Some(404), "label delete"),
         }
-        let status = response.status();
-        let text = response.text().await?;
-        anyhow::bail!("GitHub label delete {status}: {text}")
     }
 
     fn item_key(&self, issue_number: u64) -> String {
@@ -293,8 +401,7 @@ impl GitHubTracker {
             "{}?state=open&labels={encoded_labels}&per_page={limit}&page={page}",
             self.url("issues")
         );
-        let response = self.request(Method::GET, &url).send().await?;
-        let value = self.send_json(response).await?;
+        let value = self.issue_json(Method::GET, &url, None).await?;
         let values = value
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("GitHub issue list was not an array"))?;
@@ -366,8 +473,7 @@ impl GitHubTracker {
             "{}/search/issues?q={encoded}&per_page={limit}&page={page}",
             self.base_url
         );
-        let response = self.request(Method::GET, &url).send().await?;
-        let value = self.send_json(response).await?;
+        let value = self.issue_json(Method::GET, &url, None).await?;
         let total = value
             .get("total_count")
             .and_then(Value::as_u64)
@@ -468,16 +574,14 @@ impl TrackerProvider for GitHubTracker {
         for label in &draft.labels {
             self.ensure_label(label).await?;
         }
-        let response = self
-            .request(Method::POST, &self.url("issues"))
-            .json(&serde_json::json!({
-                "title": draft.title,
-                "body": draft.body,
-                "labels": draft.labels,
-            }))
-            .send()
+        let body = serde_json::json!({
+            "title": draft.title,
+            "body": draft.body,
+            "labels": draft.labels,
+        });
+        let value = self
+            .issue_json(Method::POST, &self.url("issues"), Some(body))
             .await?;
-        let value = self.send_json(response).await?;
         self.json_item(&value)
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
@@ -500,12 +604,13 @@ impl TrackerProvider for GitHubTracker {
         if patch.is_empty() {
             anyhow::bail!("work item update needs a title or a body");
         }
-        let response = self
-            .request(Method::PATCH, &self.url(&format!("issues/{number}")))
-            .json(&Value::Object(patch))
-            .send()
+        let value = self
+            .issue_json(
+                Method::PATCH,
+                &self.url(&format!("issues/{number}")),
+                Some(Value::Object(patch)),
+            )
             .await?;
-        let value = self.send_json(response).await?;
         self.json_item(&value)
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
@@ -560,17 +665,18 @@ impl TrackerProvider for GitHubTracker {
         if !reason.trim().is_empty() {
             self.comment(_project, item_key, reason).await?;
         }
-        let response = self
-            .request(Method::PATCH, &self.url(&format!("issues/{number}")))
-            .json(&serde_json::json!({"state": "closed", "state_reason": "completed"}))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await?;
-            anyhow::bail!("GitHub issue close {status}: {text}");
+        let body = serde_json::json!({"state": "closed", "state_reason": "completed"});
+        match self
+            .issue_json(
+                Method::PATCH,
+                &self.url(&format!("issues/{number}")),
+                Some(body),
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err) => Self::tolerate_status(err, None, "issue close"),
         }
-        Ok(())
     }
 
     async fn comment(
@@ -580,20 +686,18 @@ impl TrackerProvider for GitHubTracker {
         body: &str,
     ) -> anyhow::Result<()> {
         let number = Self::issue_number(item_key)?;
-        let response = self
-            .request(
+        let body = serde_json::json!({"body": body});
+        match self
+            .issue_json(
                 Method::POST,
                 &self.url(&format!("issues/{number}/comments")),
+                Some(body),
             )
-            .json(&serde_json::json!({"body": body}))
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await?;
-            anyhow::bail!("GitHub issue comment {status}: {text}");
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err) => Self::tolerate_status(err, None, "issue comment"),
         }
-        Ok(())
     }
 
     /// The item's comments, oldest first (ADR-0039 stage D part 2): the
@@ -610,8 +714,7 @@ impl TrackerProvider for GitHubTracker {
             "{}?per_page=100",
             self.url(&format!("issues/{number}/comments"))
         );
-        let response = self.request(Method::GET, &url).send().await?;
-        let value = self.send_json(response).await?;
+        let value = self.issue_json(Method::GET, &url, None).await?;
         let values = value
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("GitHub issue comments were not an array"))?;
@@ -685,8 +788,7 @@ impl TrackerProvider for GitHubTracker {
         let mut removed = 0;
         for page in 1..=3 {
             let url = format!("{}?per_page=100&page={page}", self.url("labels"));
-            let response = self.request(Method::GET, &url).send().await?;
-            let value = self.send_json(response).await?;
+            let value = self.issue_json(Method::GET, &url, None).await?;
             let labels = value
                 .as_array()
                 .ok_or_else(|| anyhow::anyhow!("GitHub label list was not an array"))?;
@@ -705,8 +807,7 @@ impl TrackerProvider for GitHubTracker {
                     "{}?state=all&per_page=1&labels={encoded}",
                     self.url("issues")
                 );
-                let issues = self.request(Method::GET, &issues_url).send().await?;
-                let issues = self.send_json(issues).await?;
+                let issues = self.issue_json(Method::GET, &issues_url, None).await?;
                 let empty = issues.as_array().is_some_and(Vec::is_empty);
                 if empty && self.delete_label(name).await.is_ok() {
                     removed += 1;
@@ -719,10 +820,112 @@ impl TrackerProvider for GitHubTracker {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use fabro_http::HttpClientBuilder;
     use fabro_work::{TrackerProvider as _, WorkItemFilter, WorkProject};
+    use httpmock::HttpMockResponse;
 
-    use super::GitHubTracker;
+    use super::{GitHubTracker, TrackerApiError};
+
+    fn issue(number: u64) -> serde_json::Value {
+        serde_json::json!({
+            "number": number,
+            "title": format!("Item {number}"),
+            "body": "b",
+            "state": "open",
+            "labels": [{"name": "project:fabro"}],
+            "html_url": "https://github.com/denkhaus/work/issues/1",
+            "updated_at": "2026-11-15T15:14:00Z",
+        })
+    }
+
+    /// A mock whose first `limited` calls answer the installation-budget
+    /// 403 (with `Retry-After: 0` so the backoff never sleeps) and every
+    /// later call the issue body — the retry path of denkhaus/work#1364.
+    fn rate_limited_then_issue(limited: usize) -> (httpmock::Mock<'static>, String) {
+        // Leaked on purpose: the mock outlives the helper, the server
+        // lives exactly as long as the one test using it.
+        let server = Box::leak(Box::new(httpmock::MockServer::start()));
+        let seen = AtomicUsize::new(0);
+        let base_url = server.base_url();
+        let mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.respond_with(move |_req| {
+                let calls = seen.fetch_add(1, Ordering::SeqCst);
+                if calls < limited {
+                    HttpMockResponse::builder()
+                        .status(403)
+                        .header("Retry-After", "0")
+                        .body("API rate limit exceeded for installation ID 161242007")
+                        .build()
+                } else {
+                    HttpMockResponse::builder()
+                        .status(200)
+                        .body(issue(1).to_string())
+                        .build()
+                }
+            });
+        });
+        (mock, base_url)
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_403_backs_off_and_retries_to_success() {
+        let (mock, base_url) = rate_limited_then_issue(2);
+        let item = tracker(&base_url)
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect("the retried call resolves")
+            .expect("the issue parses");
+        assert_eq!(item.item_key, "denkhaus/work#1");
+        mock.assert_calls(3);
+    }
+
+    #[tokio::test]
+    async fn an_exhausted_rate_limit_fails_as_rate_limit_exhausted() {
+        let (mock, base_url) = rate_limited_then_issue(usize::MAX);
+        let error = tracker(&base_url)
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("the budget stays exhausted");
+        mock.assert_calls(3);
+        let typed = error
+            .downcast_ref::<TrackerApiError>()
+            .expect("the failure is the typed rate-limit marker");
+        assert!(
+            matches!(typed, TrackerApiError::RateLimitExhausted {
+                status: 403,
+                ..
+            }),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_plain_403_without_a_rate_limit_signature_is_not_retried() {
+        let server = httpmock::MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.status(403)
+                .body("Resource not accessible by integration");
+        });
+
+        let error = tracker(&server.base_url())
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("the scope 403 fails");
+        mock.assert_calls(1);
+        assert!(
+            matches!(
+                error.downcast_ref::<TrackerApiError>(),
+                Some(TrackerApiError::Status { status: 403, .. })
+            ),
+            "unexpected error: {error}"
+        );
+    }
 
     fn project() -> WorkProject {
         WorkProject {

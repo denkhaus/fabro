@@ -15326,6 +15326,15 @@ components:
             server-side beside the link: open with no live claim, open
             with a live claim (a run is working it), or closed. Null when
             the tracker cannot resolve the item.
+        item_state_stale:
+          type: boolean
+          default: false
+          description: >-
+            True when the null `item_state` is a degradation, not a
+            verdict (denkhaus/work#1364): the tracker read FAILED (rate
+            limit exhausted after retries, transport, configuration), so
+            the state is stale rather than resolved. False when the
+            tracker answered — including a definitive not-found.
         item_url:
           type: ["string", "null"]
           description: >-
