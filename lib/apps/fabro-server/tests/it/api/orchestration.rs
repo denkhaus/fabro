@@ -1212,6 +1212,77 @@ async fn the_global_observations_feed_resolves_each_distinct_item_once_per_reque
     );
 }
 
+/// The presence-decidable pin (denkhaus/work#1379): the untriaged walk
+/// decides by link presence and the decision row alone — a record WITH
+/// link rows can never derive untriaged (`derive_triage`), so the walk
+/// must pay NO tracker resolution for it. The production walk used to
+/// resolve every distinct linked item BEFORE the filter rejected the
+/// record, which kept every triage-filtered read past the triager
+/// sweep's 30-second client budget even after the work#1363 batching
+/// fix (measured 2026-11-16 on fork.39: untriaged 32.6s, unfiltered
+/// 0.13s). The `get` counter is the direct witness: zero calls, or the
+/// waste came back.
+#[tokio::test]
+async fn the_untriaged_walk_resolves_no_tracker_state() {
+    let (app, state, store, get_calls) = orchestration_app_counting();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for text in ["unlinked painpoint", "linked painpoint"] {
+        records
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    link_record(&state, "denkhaus/work#9", &run, 2).await;
+
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(
+            "/observations?category=painpoint&triage=untriaged&sort=recorded",
+        ))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "observations feed").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(1),
+        "only the linkless record derives untriaged: {body}"
+    );
+    let feed = body["observations"].as_array().expect("feed array");
+    assert!(
+        feed.iter()
+            .any(|item| item["text"].as_str() == Some("unlinked painpoint")),
+        "the unlinked record is in the untriaged feed: {body}"
+    );
+    assert!(
+        !feed
+            .iter()
+            .any(|item| item["text"].as_str() == Some("linked painpoint")),
+        "the linked record never derives untriaged: {body}"
+    );
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the untriaged walk decides by link presence alone — no tracker resolution (work#1379)"
+    );
+}
+
 /// Seed the work project through the user surface (the run_channel
 /// precedent): the claims the decoration test grants need it.
 async fn seed_work_project(state: &Arc<fabro_server::server::AppState>) {

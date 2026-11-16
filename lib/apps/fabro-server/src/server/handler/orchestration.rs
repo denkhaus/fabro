@@ -65,6 +65,12 @@ pub(super) const TRIAGER_WORKFLOW: &str = "triager";
 /// has one owner beside the OpenAPI enum.
 const NO_FILING_DECISION: &str = "no_filing";
 
+/// The bounded concurrency of one record's tracker resolution joins
+/// (work#1379): a page with hundreds of distinct linked items must not
+/// fire unbounded concurrent tracker reads — the secondary-rate-limit
+/// generator the #570 stale-degradation backoff then pays for.
+const RESOLVE_CONCURRENCY: usize = 16;
+
 /// How many runs one queue read returns at most. The queue is the
 /// adjudicator's worklist, not an archive walk: a gear that needs more
 /// than this per pass has a backlog problem a bigger page will not fix.
@@ -259,9 +265,23 @@ async fn list_global_observations(
                         }
                         continue;
                     }
-                    // Link rows present: filed / in_progress / closed —
-                    // the links outrank any decision (a filing
-                    // overrides), and the states resolve deduped.
+                    // Presence-decidable filters (work#1379): a record
+                    // WITH link rows can never derive untriaged or
+                    // reviewed (`derive_triage`), so link presence alone
+                    // rejects it — the walk pays no tracker resolution
+                    // here. Resolving first used to spend every distinct
+                    // linked item's round trip on records the filter then
+                    // dropped, which kept triage-filtered reads past the
+                    // triager sweep's 30-second client budget even after
+                    // the work#1363 batching (measured 2026-11-16 on
+                    // fork.39: untriaged 32.6s, unfiltered 0.13s).
+                    if matches!(wanted, TriageState::Untriaged | TriageState::Reviewed) {
+                        continue;
+                    }
+                    // Link rows present and the filter needs live item
+                    // state (filed / in_progress / closed): the links
+                    // outrank any decision (a filing overrides), and the
+                    // states resolve deduped.
                     let links = triage_links_of_seq(
                         &state,
                         &mut resolver,
@@ -385,8 +405,10 @@ async fn triage_links_of_seq(
         return Vec::new();
     }
     // The not-yet-memoized distinct items of this record, resolved in
-    // one concurrent join; the resolver's map dedupes across the whole
-    // request.
+    // bounded concurrent joins (the RESOLVE_CONCURRENCY bound,
+    // work#1379); the resolver's map dedupes across the whole request.
+    // Chunked joins keep the result order aligned with `pending` for
+    // the zip below.
     let mut pending: Vec<(String, String)> = Vec::new();
     for link in &seq_links {
         let key = (link.project_id.clone(), link.item_key.clone());
@@ -394,12 +416,16 @@ async fn triage_links_of_seq(
             pending.push(key);
         }
     }
-    let resolutions = join_all(
-        pending
-            .iter()
-            .map(|(project_id, item_key)| resolve_linked_item(state, project_id, item_key)),
-    )
-    .await;
+    let mut resolutions = Vec::with_capacity(pending.len());
+    for chunk in pending.chunks(RESOLVE_CONCURRENCY) {
+        let part = join_all(
+            chunk
+                .iter()
+                .map(|(project_id, item_key)| resolve_linked_item(state, project_id, item_key)),
+        )
+        .await;
+        resolutions.extend(part);
+    }
     for (key, resolved) in pending.into_iter().zip(resolutions) {
         resolver.resolved.insert(key, resolved);
     }
