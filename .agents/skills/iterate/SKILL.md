@@ -330,7 +330,14 @@ reality.
    report compactly in German. SALVAGE SWEEP is mechanical first:
    `nu .fabro/scripts/salvage-sweep.nu` and route its verdicts — the
    SESSION owns this call (it holds the server login; a run sandbox has
-   none).
+   none). STRANDED-PUSH SWEEP is mechanical too (work#1358, the
+   2026-11-15 fork.37 near-deploy): after each pass run
+   `nu .fabro/scripts/stranded-push-check.nu` and route a
+   `stranded:<branch>` verdict as a p1 finding — a merged PR's branch
+   carrying commits outside origin/denkhaus is stranded work; repair
+   through a NEW PR citing the branch, never more pushes to the merged
+   branch. PR merge state is never the evidence; the commit-level
+   ancestor assertion is.
 
 ## Standing rules
 
