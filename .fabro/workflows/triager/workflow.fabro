@@ -1,0 +1,106 @@
+digraph Triager {
+    graph [
+        goal="Triage the line's painpoints globally: sweep the observation feed's untriaged records, judge each one — file linked, link existing, or no-filing — until untriaged means never-reviewed",
+        rankdir=LR,
+        // The sweep is one feed read (the untriaged short-circuit makes
+        // it link-presence only, no tracker I/O); the agent pass works
+        // packets serially. The 31m ceiling mirrors the adjudicator: a
+        // full batch without tripping the watchdog mid-pass.
+        stall_timeout="31m",
+        max_node_visits=40,
+        x.preamble_budget_kb=24,
+    ]
+
+    start [shape=Mdiamond, label="Start"]
+    // Exit kinds: soft exits classify the terminal event; a failed pass
+    // changes nothing (the feed's untriaged set is the worklist — the
+    // next pass re-reads it cleanly, no cleanup path exists).
+    exit  [shape=Msquare, label="Exit"]
+
+    // Toolchain-placement guard (the develop lane's pattern): a manual
+    // fire WITHOUT --environment falls to the server default and dies
+    // cryptically at the first nu stage. POSIX sh, NOT nu: the failure
+    // mode it guards is a sandbox without nu. Fail-closed with a
+    // teaching error naming the correct fire command.
+    env_guard [
+        label="Toolchain guard: fail-closed placement check",
+        shape=parallelogram,
+        script="sh .fabro/scripts/toolchain-guard.sh triager",
+        timeout="30s",
+        max_retries=0,
+        on_failure="exit"
+    ]
+
+    // The sweep (ADR-0044): ONE LLM-free command stage reads the global
+    // feed's untriaged painpoints, oldest first, deduped on the fact
+    // head (engine retries re-record the first fact; the consumer
+    // collapses), capped at the batch size, and emits them as packets
+    // through output.triage. An empty feed is natural completion — the
+    // convergence metric's steady state. Every door call is HARD (a
+    // failed read fails the stage; the engine retries).
+    sweep [
+        label="Sweep: read the untriaged painpoints",
+        shape=parallelogram,
+        script="nu .fabro/workflows/triager/scripts/sweep.nu",
+        output_schema="routing",
+        x.context_allow_keys="output.triage",
+        timeout="10m",
+        max_retries=1
+    ]
+
+    // The judgment pass: works the packets one per visit, serially —
+    // the sweep's packets land in ## Context, and the tool twins
+    // (fabro_observation_feed, fabro_observation_list, fabro_work_list)
+    // verify whatever the packets summarize. For every painpoint:
+    // file a linked work item (fabro_work_create with the observation
+    // ref — filing IS linking), link an existing item
+    // (fabro_observation_manage link_existing — dedupe at the link), or
+    // record no_filing (fabro_observation_manage — the record derives
+    // reviewed). The pass NEVER verdicts, NEVER merges, NEVER closes:
+    // triage is its whole jurisdiction (ADR-0044's separation).
+    triage [
+        label="Triage: file, link, or no-filing",
+        prompt="@prompts/triage.md",
+        output_schema="routing",
+        output_retries=2,
+        max_visits=25,
+        retry_policy="standard",
+        reasoning_effort="low",
+        fidelity="summary:high",
+        x.preamble_stages_ignore="triage",
+        x.preamble_allow_keys="output.triage",
+        x.context_allow_keys="output.triage,journal",
+        // Read-only over the tree: the triager judges records, it never
+        // edits the repository. Every write goes through the platform
+        // doors.
+        x.tools="read_file,grep,glob",
+        x.fs_write="",
+        // The triage toolbox: the manage door (no_filing /
+        // link_existing — the triager's own door), the filings with
+        // their observation refs, the feed and list reads (door
+        // symmetry), the dedupe read, and the observation recorder (the
+        // presence contract).
+        x.fabro_tools="fabro_observation_manage,fabro_observation_feed,fabro_observation_list,fabro_observation_record,fabro_work_create,fabro_work_list,fabro_work_show",
+        x.observations="required"
+    ]
+
+    start -> env_guard
+    env_guard -> sweep
+
+    // The empty feed is natural completion: every painpoint carries a
+    // link or a decision — the convergence metric's steady state.
+    sweep -> exit [label="Feed empty", condition="preferred_label=\"Feed empty\""]
+    sweep -> triage [label="Painpoints pending triage"]
+
+    // The pass works packets serially; one disposition routes the next
+    // visit. The self-edge is bounded by max_visits and the batch cap.
+    triage -> triage [label="Next painpoint", condition="preferred_label=\"Next painpoint\""]
+    triage -> exit [label="Feed settled", condition="preferred_label=\"Feed settled\""]
+    // Structural guards: a failed pass changes nothing — the feed's
+    // untriaged set stays the worklist, the next pass re-reads it.
+    triage -> exit [x.kind="soft", label="Triage failed (feed stays, next pass re-enters)", condition="outcome=failed"]
+    // Unconditional safety net (the engine requires one): an unrouted
+    // outcome exits softly — no disposition happens silently.
+    triage -> exit [x.kind="soft", label="Unrouted triage outcome (feed stays)"]
+    sweep -> exit [x.kind="soft", label="Sweep failed (feed stays, next pass re-enters)", condition="outcome=failed"]
+}

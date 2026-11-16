@@ -227,8 +227,49 @@ pub trait FabroToolBackend: Send + Sync {
         _title: &str,
         _body: &str,
         _labels: Vec<String>,
+        _observations: Vec<fabro_types::ObservationRef>,
     ) -> anyhow::Result<types::WorkItem> {
         Err(work_tool_unavailable_error(FABRO_WORK_CREATE_TOOL_NAME))
+    }
+
+    /// `fabro_observation_manage` (ADR-0044): the triager's decision
+    /// door — record one triage decision on one observation record,
+    /// keyed to its (run, seq) identity. `no_filing` and
+    /// `link_existing` are the two actions.
+    async fn observation_manage(
+        &self,
+        _run_id: &RunId,
+        _seq: u64,
+        _action: &str,
+        _reason: &str,
+        _project: Option<&str>,
+        _item_key: Option<&str>,
+    ) -> anyhow::Result<types::ObservationManageResponse> {
+        Err(work_tool_unavailable_error(
+            FABRO_OBSERVATION_MANAGE_TOOL_NAME,
+        ))
+    }
+
+    /// `fabro_observation_feed` (ADR-0044): the global observations
+    /// feed with the derived triage state — the triager's worklist
+    /// read, door-symmetric with `fabro observation feed`.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the feed filters compose server-side; one backend call carries them all"
+    )]
+    async fn observation_feed(
+        &self,
+        _category: Option<&str>,
+        _triage: Option<&str>,
+        _run_id: Option<&str>,
+        _query: Option<&str>,
+        _sort: Option<&str>,
+        _limit: u32,
+        _page: u32,
+    ) -> anyhow::Result<types::GlobalObservationList> {
+        Err(work_tool_unavailable_error(
+            FABRO_OBSERVATION_FEED_TOOL_NAME,
+        ))
     }
 
     async fn work_close(
@@ -518,6 +559,8 @@ pub const FABRO_RUN_MERGE_TOOL_NAME: &str = "fabro_run_merge";
 pub const FABRO_OBSERVATION_LIST_TOOL_NAME: &str = "fabro_observation_list";
 pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
 pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
+pub const FABRO_OBSERVATION_MANAGE_TOOL_NAME: &str = "fabro_observation_manage";
+pub const FABRO_OBSERVATION_FEED_TOOL_NAME: &str = "fabro_observation_feed";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -588,6 +631,14 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroObservationRecordParams>(
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
             "Record one durable observation from THIS stage: a painpoint (friction worth acting on — what slowed this stage or will slow the next one) or a note (context worth keeping, including the explicit \"nothing durable to record\" entry). One call per entry; nodes declaring x.observations=\"required\" MUST call this at least once before finishing.",
+        ),
+        tool_definition::<crate::FabroObservationManageParams>(
+            FABRO_OBSERVATION_MANAGE_TOOL_NAME,
+            "Record one triage decision on one observation record (ADR-0044), keyed to its (runId, seq) identity: action `no_filing` with a durable reason means no work item is warranted — the record then reads `reviewed` in the feed, never `untriaged`. A later filing overrides the decision. This is the triager's door; a filing decision always wants its reason.",
+        ),
+        tool_definition::<crate::FabroObservationFeedParams>(
+            FABRO_OBSERVATION_FEED_TOOL_NAME,
+            "Read the global observations feed (ADR-0044): every run's observation records in one server-paged listing, newest first, with the DERIVED triage state (untriaged, filed, in_progress, closed, reviewed) and linked work items. Filters compose: category (painpoint|note), triage, one exact run, text query `q`. The triager's worklist is triage=untriaged.",
         ),
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,
@@ -781,6 +832,8 @@ mod tests {
             FABRO_WORK_RADIUS_TOOL_NAME,
             FABRO_WORK_COMMENTS_TOOL_NAME,
             FABRO_OBSERVATION_RECORD_TOOL_NAME,
+            FABRO_OBSERVATION_MANAGE_TOOL_NAME,
+            FABRO_OBSERVATION_FEED_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,
             FABRO_WORK_NEXT_TOOL_NAME,

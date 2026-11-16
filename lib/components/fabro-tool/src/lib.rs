@@ -37,7 +37,8 @@ pub use blob::{
     BlobResult, FabroBlobParams, ValidatedBlob, blob_page, blob_page_text, count_lines,
 };
 pub use common::{
-    FABRO_ASK_TOOL_NAME, FABRO_BLOB_TOOL_NAME, FABRO_OBSERVATION_LIST_TOOL_NAME,
+    FABRO_ASK_TOOL_NAME, FABRO_BLOB_TOOL_NAME, FABRO_OBSERVATION_FEED_TOOL_NAME,
+    FABRO_OBSERVATION_LIST_TOOL_NAME, FABRO_OBSERVATION_MANAGE_TOOL_NAME,
     FABRO_OBSERVATION_RECORD_TOOL_NAME, FABRO_RUN_CREATE_TOOL_NAME, FABRO_RUN_EVENTS_TOOL_NAME,
     FABRO_RUN_GATHER_TOOL_NAME, FABRO_RUN_GET_TOOL_NAME, FABRO_RUN_INTERACT_TOOL_NAME,
     FABRO_RUN_MARK_TOOL_NAME, FABRO_RUN_MERGE_TOOL_NAME, FABRO_RUN_PAIR_TOOL_NAME,
@@ -67,9 +68,11 @@ pub use interact::{
 };
 pub use manifest::json_to_toml_value;
 pub use observation::{
-    FabroObservationCategory, FabroObservationListParams, FabroObservationRecordParams,
+    FabroObservationCategory, FabroObservationFeedParams, FabroObservationListParams,
+    FabroObservationManageAction, FabroObservationManageParams, FabroObservationRecordParams,
     MAX_OBSERVATION_CHARS, ObservationListResult, ObservationRecordResult, ValidatedObservation,
-    list_observations, list_observations_text, record_observation, record_observation_text,
+    list_observations, list_observations_text, manage_observation, manage_observation_text,
+    observation_feed, observation_feed_text, record_observation, record_observation_text,
 };
 pub use pair::{
     FabroRunPairParams, PairRunResult, RunPairAction, ValidatedPairAction, ValidatedPairRun,

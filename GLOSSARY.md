@@ -93,6 +93,25 @@ run-end hook files them, deduping at the link. [The filing sentence is
 superseded by ADR-0039: the adjudicator workflow files and closes; the
 run-end hook strips.]
 
+## Triage state
+
+The derived lifecycle of an observation record over its work-item
+links and triage decisions: `untriaged` (no linked item, no decision),
+`filed` (at least one linked item open, none with a live claim),
+`in_progress` (a linked item open with a live claim), `closed` (EVERY
+linked item closed), `reviewed` (a no-filing decision exists and no
+link — the triager judged no item needed; a later filing overrides).
+Never stored — every reader re-derives it from the links, the
+decisions, and the linked items' live states.
+
+- Not a **decision recorded on the observation**: the states project
+  the linked items' tracker states and the decision row; `closed`
+  means the chain ran to its end (a wontfix close closes the painpoint
+  too), never that the friction was verified resolved.
+- Not the **followup marker** (`unfinished | exempt | minor`): the
+  marker is a data field on the record naming what survives the run;
+  the triage state says what the platform did about it.
+
 ## Orchestration fields
 
 The two coupling fields on the run record (ADR-0039), one writer
@@ -126,18 +145,41 @@ fire-drift view and the watchdog exist to cover.
 ## Adjudicator
 
 The scheduler-driven serial workflow (ADR-0039) that reviews the
-observations of all runs one after another, files follow-up work
-items, watches the closure radius, asks the operator for policy
-decisions (park + resume), marks `merge` on the run record, and — in
-its second pass, once the merger marked `closable` — closes the work
-item. The ONLY closer; a mechanical fast path handles the trivial
-case without an LLM call.
+observations of all runs one after another, watches the closure
+radius, asks the operator for policy decisions (park + resume), marks
+`merge` on the run record, and — in its second pass, once the merger
+marked `closable` — closes the work item. The ONLY closer; a mechanical
+fast path handles the trivial case without an LLM call. Painpoint
+filings are NOT its work (ADR-0044): the triager owns every painpoint's
+disposition globally; the adjudicator reads painpoints as VERDICT
+input (the lane-drained tranche-demand filing is the one routed
+exception).
 
 - Not the **revisor** (retired, ADR-0038): the revisor filed from
   journal prose; the adjudicator reads observation records and
   orchestration fields.
 - Not the **reviewer** (a stage inside the develop run judging the
   diff): the adjudicator judges the RUN and its aftermath.
+- Not the **triager** (ADR-0044): the triager judges RECORDS (every
+  painpoint's disposition, any workflow); the adjudicator judges RUNS
+  (the merge verdict, the close).
+
+## Triager
+
+The scheduler-driven workflow (ADR-0044) that owns GLOBAL painpoint
+triage: its sweep reads the observation feed's `untriaged` painpoints
+(feed-driven, workflow-agnostic — no verdict semantics needed), and its
+agent pass disposes each one — files a linked work item (filing IS
+linking), links an already-filed item (dedupe at the link), or records
+a `no_filing` decision (the record then reads `reviewed`). Never
+verdicts, never merges, never closes: triage is its whole jurisdiction.
+The manage door's allowlist keys on its workflow slug.
+
+- Not the **adjudicator**: the triager judges records; the adjudicator
+  judges runs (and closes).
+- Not the **revisor** (retired, ADR-0038): the revisor read journal
+  prose; the triager reads observation records and writes keyed
+  decisions through the manage door.
 
 ## Merger
 

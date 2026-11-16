@@ -40,8 +40,28 @@ pub(super) async fn create_command(args: &WorkCreateArgs, ctx: &CommandContext) 
     }
     labels.extend(args.labels.iter().cloned());
 
+    // The observation refs (ADR-0044: filing IS linking): `<runId>:<seq>`
+    // parses to the canonical type; a malformed ref refuses the WHOLE
+    // create — never an unlinked item.
+    let mut observations = Vec::with_capacity(args.observations.len());
+    for reference in &args.observations {
+        let (run_raw, seq_raw) = reference.rsplit_once(':').ok_or_else(|| {
+            anyhow::anyhow!(
+                "`{reference}` is not an observation ref — pass `<runId>:<seq>` (e.g. \
+                 01M7DSR5FS6WXSEGT1JZRNHR3K:13)"
+            )
+        })?;
+        let run_id = run_raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("`{run_raw}` is not a run id"))?;
+        let seq: u64 = seq_raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("`{seq_raw}` is not a record seq"))?;
+        observations.push(fabro_types::ObservationRef { run_id, seq });
+    }
+
     let item = client
-        .create_work_item(&args.project, title, &body, labels)
+        .create_work_item(&args.project, title, &body, labels, observations)
         .await?;
 
     let printer = ctx.printer();
@@ -86,14 +106,15 @@ mod tests {
 
     fn create_args(body: Option<&str>, body_file: Option<&str>) -> WorkCreateArgs {
         WorkCreateArgs {
-            project:   "fabro".to_string(),
-            title:     "a title".to_string(),
-            body:      body.map(str::to_string),
-            body_file: body_file.map(Into::into),
-            lane:      None,
-            item_type: None,
-            priority:  None,
-            labels:    Vec::new(),
+            project:      "fabro".to_string(),
+            title:        "a title".to_string(),
+            body:         body.map(str::to_string),
+            body_file:    body_file.map(Into::into),
+            lane:         None,
+            item_type:    None,
+            priority:     None,
+            labels:       Vec::new(),
+            observations: Vec::new(),
         }
     }
 

@@ -60,7 +60,7 @@ let healthy = (drive ($SCRIPTS_DIR | path join "stall-check.nu") $healthy_state 
 if $healthy.exit_code != 0 {
     fail $"fresh passes must stay healthy: ($healthy.stderr | str substring 0..300)"
 }
-for gear in [adjudicator merger develop] {
+for gear in [adjudicator triager merger develop] {
     if not ($healthy.stdout | str contains $gear) {
         fail $"the healthy line must name ($gear): ($healthy.stdout | str substring 0..300)"
     }

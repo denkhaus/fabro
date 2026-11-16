@@ -370,6 +370,22 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::work_create_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_OBSERVATION_MANAGE_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroObservationManageParams>(name, args)?;
+            let result =
+                fabro_tool::manage_observation(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::manage_observation_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_OBSERVATION_FEED_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroObservationFeedParams>(name, args)?;
+            let result =
+                fabro_tool::observation_feed(Arc::clone(&services.backend), params).await?;
+            let summary = fabro_tool::observation_feed_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_WORK_CLOSE_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroWorkCloseParams>(name, args)?;
             let result = fabro_tool::work_close(Arc::clone(&services.backend), params).await?;

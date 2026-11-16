@@ -2142,12 +2142,17 @@ impl Client {
     }
 
     /// File a work item in the project's tracker.
+    /// File a work item (ADR-0032) — and, when observation references
+    /// ride the call, link the item to them in the same request
+    /// (ADR-0044: filing IS linking; the server writes the link rows
+    /// beside the tracker create, idempotently).
     pub async fn create_work_item(
         &self,
         project_id: &str,
         title: &str,
         body: &str,
         labels: Vec<String>,
+        observations: Vec<types::ObservationRef>,
     ) -> Result<types::WorkItem> {
         let response = self
             .send_api(|client| async move {
@@ -2158,9 +2163,95 @@ impl Client {
                         body: body.to_string(),
                         labels,
                         title: title.to_string(),
+                        observations,
                     })
                     .send()
                     .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The triager's decision door (ADR-0044): record one triage
+    /// decision on one observation record, keyed to its (run, seq)
+    /// identity. `no_filing` — no work item is warranted; the feed
+    /// derives `reviewed`. `link_existing` — an already-filed item
+    /// carries the finding; the link row is written beside the decision.
+    pub async fn manage_observation(
+        &self,
+        run_id: &str,
+        seq: u64,
+        action: &str,
+        reason: &str,
+        project: Option<&str>,
+        item_key: Option<&str>,
+    ) -> Result<types::ObservationManageResponse> {
+        let action = action
+            .parse::<types::ObservationManageRequestAction>()
+            .map_err(|err| anyhow::anyhow!("unknown triage action '{action}': {err}"))?;
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .manage_observation()
+                    .body(types::ObservationManageRequest {
+                        run_id: run_id.to_string(),
+                        seq: seq.cast_signed(),
+                        action,
+                        reason: reason.to_string(),
+                        project_id: project.filter(|id| !id.is_empty()).map(str::to_string),
+                        item_key: item_key.filter(|key| !key.is_empty()).map(str::to_string),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The global observations feed (ADR-0039 stage D): every run's
+    /// observation records in one server-paged listing with the derived
+    /// triage state — the triager's worklist read (ADR-0044).
+    pub async fn list_global_observations(
+        &self,
+        category: Option<&str>,
+        triage: Option<&str>,
+        run_id: Option<&str>,
+        query: Option<&str>,
+        sort: Option<&str>,
+        limit: u32,
+        page: u32,
+    ) -> Result<types::GlobalObservationList> {
+        let category = category
+            .map(str::parse::<types::ListObservationsCategory>)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("unknown observation category: {err}"))?;
+        let triage = triage
+            .map(str::parse::<types::ListObservationsTriage>)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("unknown triage state: {err}"))?;
+        let sort = sort
+            .map(str::parse::<types::ListObservationsSort>)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("unknown sort key: {err}"))?;
+        let response = self
+            .send_api(|client| async move {
+                let mut builder = client.list_observations().limit(limit).page(page);
+                if let Some(category) = category {
+                    builder = builder.category(category);
+                }
+                if let Some(triage) = triage {
+                    builder = builder.triage(triage);
+                }
+                if let Some(run_id) = run_id {
+                    builder = builder.run(run_id.to_string());
+                }
+                if let Some(query) = query {
+                    builder = builder.q(query.to_string());
+                }
+                if let Some(sort) = sort {
+                    builder = builder.sort(sort);
+                }
+                builder.send().await
             })
             .await?;
         Ok(response.into_inner())

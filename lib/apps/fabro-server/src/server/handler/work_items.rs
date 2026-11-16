@@ -581,6 +581,10 @@ async fn create_work_item(
     if request.body.trim().is_empty() {
         return Err(ApiError::bad_request("body must not be empty"));
     }
+    // The observation refs arrive as the canonical type (with_replacement)
+    // — no parsing, only the u64→seq identity (ADR-0044: filing IS
+    // linking; the links land beside the tracker create below).
+    let observations = request.observations;
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
@@ -596,6 +600,41 @@ async fn create_work_item(
         })
         .await
         .map_err(tracker_failed)?;
+    // The link half (ADR-0044): the create door is the worker's only
+    // link write — the rows land beside the tracker create, idempotently
+    // (an already-linked pair stays one link; dedupe at the link). A
+    // link failure fails the REQUEST (the item exists; the caller
+    // retries with the same refs and the dedupe keeps the chain whole)
+    // — never a silently unlinked filing, the break this door exists to
+    // close.
+    for reference in observations {
+        state
+            .work_store()
+            .link_observation(
+                &project.project_id,
+                &item.item_key,
+                &reference.run_id,
+                reference.seq,
+            )
+            .await
+            .map_err(|err| {
+                tracing::error!(
+                    error = ?err,
+                    item_key = %item.item_key,
+                    run_id = %reference.run_id,
+                    seq = reference.seq,
+                    "observation link write failed at create"
+                );
+                ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!(
+                        "The work item was created ({}), but linking its observation failed — \
+                         retry the same create; the link dedupe keeps the chain whole.",
+                        item.item_key
+                    ),
+                )
+            })?;
+    }
     Ok((StatusCode::CREATED, Json(api_item(item))).into_response())
 }
 

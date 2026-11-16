@@ -22,17 +22,23 @@ import { DUMMY_BASE_URL, assertParamExists, setApiKeyToObject, setBasicAuthToObj
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError, operationServerMap } from '../base';
 // @ts-ignore
+import type { ErrorResponse } from '../models';
+// @ts-ignore
 import type { GlobalObservationList } from '../models';
+// @ts-ignore
+import type { ObservationManageRequest } from '../models';
+// @ts-ignore
+import type { ObservationManageResponse } from '../models';
 /**
  * ObservationsApi - axios parameter creator
  */
 export const ObservationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -99,6 +105,47 @@ export const ObservationsApiAxiosParamCreator = function (configuration?: Config
                 options: localVarRequestOptions,
             };
         },
+        /**
+         * The triager\'s decision door (ADR-0044): records a triage decision keyed to the observation\'s append-only (runId, seq) identity — `no_filing` means the triager judged the friction needs no work item, and the feed derives `reviewed` for the record. A later filing overrides the decision: link rows beat the decision row. Upsert: the latest decision on a record wins. Door symmetry: the agent tool `fabro_observation_manage` and the CLI facade `fabro observation manage` ride this endpoint. Writers: user principals always; a workflow run only when its workflow is the triager (the mark door\'s allowlist posture).
+         * @summary Record a triage decision on an observation record
+         * @param {ObservationManageRequest} observationManageRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        manageObservation: async (observationManageRequest: ObservationManageRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'observationManageRequest' is not null or undefined
+            assertParamExists('manageObservation', 'observationManageRequest', observationManageRequest)
+            const localVarPath = `/api/v1/observations/manage`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(observationManageRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
     }
 };
 
@@ -109,10 +156,10 @@ export const ObservationsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = ObservationsApiAxiosParamCreator(configuration)
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -127,6 +174,19 @@ export const ObservationsApiFp = function(configuration?: Configuration) {
             const localVarOperationServerBasePath = operationServerMap['ObservationsApi.listObservations']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
+        /**
+         * The triager\'s decision door (ADR-0044): records a triage decision keyed to the observation\'s append-only (runId, seq) identity — `no_filing` means the triager judged the friction needs no work item, and the feed derives `reviewed` for the record. A later filing overrides the decision: link rows beat the decision row. Upsert: the latest decision on a record wins. Door symmetry: the agent tool `fabro_observation_manage` and the CLI facade `fabro observation manage` ride this endpoint. Writers: user principals always; a workflow run only when its workflow is the triager (the mark door\'s allowlist posture).
+         * @summary Record a triage decision on an observation record
+         * @param {ObservationManageRequest} observationManageRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async manageObservation(observationManageRequest: ObservationManageRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ObservationManageResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.manageObservation(observationManageRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['ObservationsApi.manageObservation']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
     }
 };
 
@@ -137,10 +197,10 @@ export const ObservationsApiFactory = function (configuration?: Configuration, b
     const localVarFp = ObservationsApiFp(configuration)
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -152,6 +212,16 @@ export const ObservationsApiFactory = function (configuration?: Configuration, b
         listObservations(category?: ListObservationsCategoryEnum, triage?: ListObservationsTriageEnum, run?: string, q?: string, sort?: ListObservationsSortEnum, limit?: number, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<GlobalObservationList> {
             return localVarFp.listObservations(category, triage, run, q, sort, limit, page, options).then((request) => request(axios, basePath));
         },
+        /**
+         * The triager\'s decision door (ADR-0044): records a triage decision keyed to the observation\'s append-only (runId, seq) identity — `no_filing` means the triager judged the friction needs no work item, and the feed derives `reviewed` for the record. A later filing overrides the decision: link rows beat the decision row. Upsert: the latest decision on a record wins. Door symmetry: the agent tool `fabro_observation_manage` and the CLI facade `fabro observation manage` ride this endpoint. Writers: user principals always; a workflow run only when its workflow is the triager (the mark door\'s allowlist posture).
+         * @summary Record a triage decision on an observation record
+         * @param {ObservationManageRequest} observationManageRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        manageObservation(observationManageRequest: ObservationManageRequest, options?: RawAxiosRequestConfig): AxiosPromise<ObservationManageResponse> {
+            return localVarFp.manageObservation(observationManageRequest, options).then((request) => request(axios, basePath));
+        },
     };
 };
 
@@ -160,10 +230,10 @@ export const ObservationsApiFactory = function (configuration?: Configuration, b
  */
 export class ObservationsApi extends BaseAPI {
     /**
-     * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+     * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
      * @summary List Observations across Runs (the global feed)
      * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-     * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed).
+     * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
      * @param {string} [run] Exact run id; narrows the feed to one run.
      * @param {string} [q] Case-insensitive text containment over the record body.
      * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -174,6 +244,17 @@ export class ObservationsApi extends BaseAPI {
      */
     public listObservations(category?: ListObservationsCategoryEnum, triage?: ListObservationsTriageEnum, run?: string, q?: string, sort?: ListObservationsSortEnum, limit?: number, page?: number, options?: RawAxiosRequestConfig) {
         return ObservationsApiFp(this.configuration).listObservations(category, triage, run, q, sort, limit, page, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The triager\'s decision door (ADR-0044): records a triage decision keyed to the observation\'s append-only (runId, seq) identity — `no_filing` means the triager judged the friction needs no work item, and the feed derives `reviewed` for the record. A later filing overrides the decision: link rows beat the decision row. Upsert: the latest decision on a record wins. Door symmetry: the agent tool `fabro_observation_manage` and the CLI facade `fabro observation manage` ride this endpoint. Writers: user principals always; a workflow run only when its workflow is the triager (the mark door\'s allowlist posture).
+     * @summary Record a triage decision on an observation record
+     * @param {ObservationManageRequest} observationManageRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public manageObservation(observationManageRequest: ObservationManageRequest, options?: RawAxiosRequestConfig) {
+        return ObservationsApiFp(this.configuration).manageObservation(observationManageRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 
@@ -186,7 +267,8 @@ export const ListObservationsTriageEnum = {
     UNTRIAGED: 'untriaged',
     FILED: 'filed',
     IN_PROGRESS: 'in_progress',
-    CLOSED: 'closed'
+    CLOSED: 'closed',
+    REVIEWED: 'reviewed'
 } as const;
 export type ListObservationsTriageEnum = typeof ListObservationsTriageEnum[keyof typeof ListObservationsTriageEnum];
 export const ListObservationsSortEnum = {

@@ -179,6 +179,20 @@ pub struct ObservationLink {
     pub linked_at:  DateTime<Utc>,
 }
 
+/// One triage decision on one observation record (ADR-0044): what the
+/// triager judged (`no_filing` today) and the durable reason, keyed to
+/// the record's append-only (run, seq) identity. A work-item link
+/// outranks it wherever both exist — a later filing overrides.
+#[derive(Debug, Clone)]
+pub struct ObservationDecision {
+    pub run_id:     RunId,
+    pub seq:        u64,
+    pub decision:   String,
+    pub reason:     String,
+    pub decided_at: DateTime<Utc>,
+    pub by_run:     Option<RunId>,
+}
+
 /// The outcome of linking an observation to a work item: filing dedupes
 /// at the link — an already-linked pair is reported, never re-linked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -728,6 +742,83 @@ ORDER BY first_ms
         .await?;
         rows.iter()
             .map(|row| parse_run_id(&row.try_get::<String, _>("run_id")?))
+            .collect()
+    }
+
+    /// Record one triage decision on an observation record (ADR-0044):
+    /// the keyed row the feed's derivation reads beside the links.
+    /// Upsert — the latest decision on a record wins (a re-triage
+    /// replaces the earlier call); a work-item link outranks the
+    /// decision wherever both exist. Returns the row as stored.
+    pub async fn decide_observation(
+        &self,
+        run_id: &RunId,
+        seq: u64,
+        decision: &str,
+        reason: &str,
+        by_run: Option<&RunId>,
+    ) -> Result<ObservationDecision> {
+        let decided_at = Utc::now();
+        sqlx::query(
+            r"
+INSERT INTO observation_triage_decisions (run_id, seq, decision, reason, decided_at_ms, by_run)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (run_id, seq) DO UPDATE SET
+    decision = excluded.decision,
+    reason = excluded.reason,
+    decided_at_ms = excluded.decided_at_ms,
+    by_run = excluded.by_run
+",
+        )
+        .bind(run_id.to_string())
+        .bind(seq_to_i64(seq)?)
+        .bind(decision)
+        .bind(reason)
+        .bind(decided_at.timestamp_millis())
+        .bind(by_run.map(RunId::to_string))
+        .execute(&self.pool)
+        .await?;
+        Ok(ObservationDecision {
+            run_id: *run_id,
+            seq,
+            decision: decision.to_string(),
+            reason: reason.to_string(),
+            decided_at,
+            by_run: by_run.copied(),
+        })
+    }
+
+    /// One run's triage decisions, beside its link rows — the feed
+    /// derivation's decision half. `run_id` is globally unique, so no
+    /// project scoping is needed. Ordered deterministically (seq).
+    pub async fn decisions_for_run(&self, run_id: &RunId) -> Result<Vec<ObservationDecision>> {
+        let rows = sqlx::query(
+            r"
+SELECT run_id, seq, decision, reason, decided_at_ms, by_run
+FROM observation_triage_decisions
+WHERE run_id = ?
+ORDER BY seq
+",
+        )
+        .bind(run_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| {
+                let decided_at = timestamp_from_row(row, "observation decision", "decided_at_ms")?;
+                Ok(ObservationDecision {
+                    run_id: parse_run_id(&row.try_get::<String, _>("run_id")?)?,
+                    seq: u64::try_from(row.try_get::<i64, _>("seq")?)
+                        .map_err(|err| Error::InvalidStoredObservationSeq(err.to_string()))?,
+                    decision: row.try_get::<String, _>("decision")?,
+                    reason: row.try_get::<String, _>("reason")?,
+                    decided_at,
+                    by_run: row
+                        .try_get::<Option<String>, _>("by_run")?
+                        .map(|raw| parse_run_id(&raw))
+                        .transpose()?,
+                })
+            })
             .collect()
     }
 

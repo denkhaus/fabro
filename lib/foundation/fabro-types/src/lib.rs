@@ -146,7 +146,7 @@ pub use run_intent::{
     TargetValidationError, ValidatedGitRunTarget, ValidatedRunTarget,
 };
 pub use run_projection::{
-    CURRENT_SEED_ID_CONTEXT_KEY, CheckpointRecord, ForkOrigin, ObservationCategory,
+    CURRENT_SEED_ID_CONTEXT_KEY, CheckpointRecord, ForkOrigin, ObservationCategory, ObservationRef,
     OrchestrationField, OrchestrationVerdict, PendingInterviewRecord, RunArtifact, RunProjection,
     StageContextWindow, StageContextWindowUnavailableReason, StageInferenceProjection,
     StageModelUsage, StageObservation, StageProjection, StageToolBatchProjection, first_event_seq,

@@ -172,6 +172,20 @@ pub struct StageObservation {
     pub text:     String,
 }
 
+/// One observation record by its append-only identity (ADR-0038): the
+/// run that recorded it and the record's per-run seq — exactly what the
+/// work-item link seam and the triage decision door key on. Shared
+/// vocabulary: fabro-api reuses it for the wire `ObservationRef`
+/// (ADR-0044 — filing IS linking).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationRef {
+    /// The run that recorded the observation.
+    pub run_id: RunId,
+    /// The record's per-run seq — its identity beside the run id.
+    pub seq:    u64,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PendingInterviewRecord {
     pub question:   InterviewQuestionRecord,

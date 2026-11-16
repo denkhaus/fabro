@@ -5,7 +5,9 @@
 //! deterministic nu scripts through this verb, over the run channel
 //! with the run's worker principal.
 
+mod feed;
 mod list;
+mod manage;
 mod record;
 
 use anyhow::Result;
@@ -18,5 +20,7 @@ pub(crate) async fn dispatch(ns: ObservationNamespace, base_ctx: &CommandContext
     match ns.command {
         ObservationCommand::Record(args) => record::record_command(&args, &ctx).await,
         ObservationCommand::List(args) => list::list_command(&args, &ctx).await,
+        ObservationCommand::Feed(args) => feed::feed_command(&args, &ctx).await,
+        ObservationCommand::Manage(args) => manage::manage_command(&args, &ctx).await,
     }
 }

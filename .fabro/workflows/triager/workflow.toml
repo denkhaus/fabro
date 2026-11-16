@@ -1,0 +1,52 @@
+_version = 1
+
+[workflow]
+graph = "workflow.fabro"
+
+# The line's toolchain environment, repo-declared (ADR-0042): the engine
+# builds this image at run initialization FROM THE REPOSITORY (the
+# checkout is the build context; the fabro CLI is cooked inside from the
+# same sha) — no version pin, no registry, no parity to the deployed
+# server (the run channel's compatibility floor guards the seam).
+[environments.toolchain]
+provider = "docker"
+
+[environments.toolchain.image]
+dockerfile = { path = "../../Dockerfile.toolchain" }
+
+# triager (ADR-0044, denkhaus/work#1365): the global painpoint triage
+# gear. One pass = one run: the sweep reads the observation feed's
+# untriaged painpoints (feed-driven, workflow-agnostic — no verdict
+# semantics needed), and the agent pass judges each one — file a linked
+# work item, link an existing one, or record a no_filing decision. The
+# workflow directory name is a CONTRACT: the manage door's allowlist
+# keys on the workflow slug `triager`.
+[run.agent]
+# The run-level switch for node-level x.fabro_tools grants: inert
+# without it.
+fabro_tools = true
+
+[run.model]
+provider = "zai"
+name = "glm-5.3"
+
+# The triager's WRITES are door-only (no repo edits, no PR, no merge, no
+# verdicts — every write goes through the platform doors over the run
+# channel). The automation carrier requires a Git target, and Git
+# targets require a clone-enabled run: the run carries a depth-1
+# shallow checkout it never writes to (the adjudicator's precedent).
+[run.clone]
+depth = 1
+
+# No [run.integrations.github.permissions] (ADR-0019): agent shells get
+# NO forge token; every tracker interaction is engine-mediated through
+# the work tools.
+
+# The terminal notification is the operator's signal: the pass output
+# names what was filed/decided, the run title carries the pass shape.
+[run.notifications.terminal]
+enabled = true
+provider = "slack"
+
+[run.notifications.terminal.slack]
+channel = "#dev-fabro"
