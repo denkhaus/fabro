@@ -510,6 +510,35 @@ WHERE claim_id = ?
         row.as_ref().map(claim_from_row).transpose()
     }
 
+    /// The item's latest landed claim that carries a pull-request URL —
+    /// the merged signal (denkhaus/work#1298): an item whose closure
+    /// rode a merged PR (the ADR-0040 happy path: the PR merged, then
+    /// the closing pass closed the item) colors `merged`, distinct
+    /// from a plain close.
+    pub async fn landed_claim_with_pr_for_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<Option<WorkClaim>> {
+        let row = sqlx::query(
+            r"
+SELECT claim_id, project_id, item_key, run_id, lane, state,
+       granted_at_ms, updated_at_ms, released_at_ms, release_reason, pr_url
+FROM work_claims
+WHERE project_id = ? AND item_key = ?
+  AND state = 'landed'
+  AND pr_url IS NOT NULL
+ORDER BY updated_at_ms DESC
+LIMIT 1
+",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .fetch_optional(&self.pool)
+        .await?;
+        row.as_ref().map(claim_from_row).transpose()
+    }
+
     /// The live claim for one item, if any.
     pub async fn active_claim_for_item(
         &self,
@@ -1672,6 +1701,108 @@ mod tests {
         assert!(
             verdicts["denkhaus/work#1"] > first_verdict,
             "the latest stale release is the verdict"
+        );
+    }
+
+    /// The merged signal's read (denkhaus/work#1298): the item's LATEST
+    /// landed claim carrying a pull-request URL is the merged verdict.
+    /// A landed claim without a PR URL and a released claim never match
+    /// — a plain close stays a plain close.
+    #[tokio::test]
+    async fn landed_claim_with_pr_keeps_the_latest_and_skips_prless_and_released() {
+        async fn grant_activate_await_and_land(
+            store: &WorkStore,
+            item: &str,
+            pr_url: Option<&str>,
+        ) -> crate::WorkClaim {
+            let run = fabro_types::RunId::new();
+            let GrantOutcome::Granted(claim) = store.grant(&request(item, run)).await.unwrap()
+            else {
+                panic!("grant must win");
+            };
+            store.activate(&claim.claim_id).await.unwrap();
+            if let Some(pr_url) = pr_url {
+                store.await_merge(&claim.claim_id, pr_url).await.unwrap();
+            }
+            store.land(&claim.claim_id, pr_url).await.unwrap()
+        }
+
+        let (_directory, store) = store().await;
+
+        // A landed claim WITHOUT a PR URL is no merged signal.
+        grant_activate_await_and_land(&store, "denkhaus/work#1", None).await;
+        assert_eq!(
+            store
+                .landed_claim_with_pr_for_item("fabro", "denkhaus/work#1")
+                .await
+                .unwrap(),
+            None,
+            "a landed claim without a PR URL is a plain close, never merged"
+        );
+
+        // A released claim is no merged signal — even one that carried a
+        // PR URL before the release took the item back (the transition
+        // keeps the pr_url column; the landed-state filter excludes it).
+        let released = {
+            let run = fabro_types::RunId::new();
+            let GrantOutcome::Granted(claim) =
+                store.grant(&request("denkhaus/work#2", run)).await.unwrap()
+            else {
+                panic!("grant must win");
+            };
+            store.activate(&claim.claim_id).await.unwrap();
+            store
+                .await_merge(&claim.claim_id, "https://github.com/denkhaus/fabro/pull/7")
+                .await
+                .unwrap();
+            store.release(&claim.claim_id, "stale basis").await.unwrap()
+        };
+        assert!(
+            released.pr_url.is_some(),
+            "fixture check: the release keeps the pr_url column"
+        );
+        assert_eq!(
+            store
+                .landed_claim_with_pr_for_item("fabro", "denkhaus/work#2")
+                .await
+                .unwrap(),
+            None,
+            "a released claim is no merged signal, whatever its PR column says"
+        );
+
+        // A landed claim WITH a PR URL is the merged signal, and the
+        // LATEST landed claim wins when an item lands more than once.
+        grant_activate_await_and_land(
+            &store,
+            "denkhaus/work#2",
+            Some("https://github.com/denkhaus/fabro/pull/8"),
+        )
+        .await;
+        let latest = store
+            .landed_claim_with_pr_for_item("fabro", "denkhaus/work#2")
+            .await
+            .unwrap()
+            .expect("the landed PR claim is the merged signal");
+        assert_eq!(
+            latest.pr_url.as_deref(),
+            Some("https://github.com/denkhaus/fabro/pull/8"),
+            "the landed claim's PR URL is the merged signal"
+        );
+        grant_activate_await_and_land(
+            &store,
+            "denkhaus/work#2",
+            Some("https://github.com/denkhaus/fabro/pull/9"),
+        )
+        .await;
+        let latest = store
+            .landed_claim_with_pr_for_item("fabro", "denkhaus/work#2")
+            .await
+            .unwrap()
+            .expect("the latest landed PR claim wins");
+        assert_eq!(
+            latest.pr_url.as_deref(),
+            Some("https://github.com/denkhaus/fabro/pull/9"),
+            "the latest landed claim is the merged signal"
         );
     }
 

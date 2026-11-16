@@ -1418,11 +1418,13 @@ async fn list_observations(
 }
 
 /// A linked work item's live state as the observations column shows it:
-/// open, open with a live claim (a run is working it), or closed.
+/// open, open with a live claim (a run is working it), closed, or merged
+/// (denkhaus/work#1298: the closure rode a merged PR).
 #[derive(Clone, Copy, Debug)]
 enum LinkedItemState {
     Open,
     InProgress,
+    Merged,
     Closed,
 }
 
@@ -1431,6 +1433,7 @@ impl LinkedItemState {
         match self {
             Self::Open => ObservationWorkItemLinkItemState::Open,
             Self::InProgress => ObservationWorkItemLinkItemState::InProgress,
+            Self::Merged => ObservationWorkItemLinkItemState::Merged,
             Self::Closed => ObservationWorkItemLinkItemState::Closed,
         }
     }
@@ -1498,7 +1501,31 @@ async fn resolve_linked_item(
         LinkedItemState::InProgress
     } else {
         match item.state.as_str() {
-            "closed" => LinkedItemState::Closed,
+            // The tracker's closed verdict colors `merged` when the
+            // item's closure rode a merged PR (denkhaus/work#1298): its
+            // latest landed claim carries the pull-request URL. One
+            // memoized read per distinct item — the resolver's cache
+            // dedupes.
+            // The tracker's closed verdict colors `merged` when the
+            // item's closure rode a merged PR (denkhaus/work#1298): its
+            // latest landed claim carries the pull-request URL. One
+            // memoized read per distinct item — the resolver's cache
+            // dedupes. A failed ledger read degrades to the tracker's
+            // verdict — plain closed, not a stale column: the tracker
+            // answered; only the merged refinement is lost.
+            "closed" => {
+                if matches!(
+                    state
+                        .work_store()
+                        .landed_claim_with_pr_for_item(project_id, item_key)
+                        .await,
+                    Ok(Some(_))
+                ) {
+                    LinkedItemState::Merged
+                } else {
+                    LinkedItemState::Closed
+                }
+            }
             _ => LinkedItemState::Open,
         }
     };

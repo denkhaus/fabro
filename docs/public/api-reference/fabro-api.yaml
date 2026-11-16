@@ -15335,12 +15335,14 @@ components:
           description: When the link was written.
         item_state:
           type: ["string", "null"]
-          enum: [open, in_progress, closed]
+          enum: [open, in_progress, merged, closed]
           description: >-
             The linked item's live state at read time, resolved
             server-side beside the link: open with no live claim, open
-            with a live claim (a run is working it), or closed. Null when
-            the tracker cannot resolve the item.
+            with a live claim (a run is working it), closed, or merged
+            (the closure rode a merged PR — the item's landed claim
+            carries the pull-request URL). Null when the tracker cannot
+            resolve the item.
         item_state_stale:
           type: boolean
           default: false

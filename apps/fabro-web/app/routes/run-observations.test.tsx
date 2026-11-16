@@ -42,6 +42,42 @@ function textFromNode(node: ReturnType<TestRenderer.ReactTestRenderer["toJSON"]>
   return (node.children ?? []).map(textFromNode).join(" ");
 }
 
+/// Collects every anchor in the rendered tree with its className, title
+/// and text — the work-item link pins read their state color off it.
+function workItemAnchors(node: unknown): Array<{ className?: string; title?: string; text: string }> {
+  const found: Array<{ className?: string; title?: string; text: string }> = [];
+  function walk(node: unknown): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const element = node as {
+      type?: unknown;
+      props?: { className?: string; title?: string };
+      children?: unknown;
+    };
+    if (element.type === "a") {
+      found.push({
+        className: element.props?.className,
+        title: element.props?.title,
+        text: textFromNode(node as ReturnType<TestRenderer.ReactTestRenderer["toJSON"]>),
+      });
+    }
+    // react-test-renderer JSON nodes keep children at the node level,
+    // beside props — not inside them.
+    walk(element.children);
+  }
+  walk(node);
+  return found;
+}
+
+function anchorFor(renderer: TestRenderer.ReactTestRenderer, key: string): { className?: string; title?: string; text: string } {
+  const anchor = workItemAnchors(renderer.toJSON()).find((a) => a.text === key);
+  expect(anchor).toBeDefined();
+  return anchor!;
+}
+
 describe("RunObservations", () => {
   afterEach(() => {
     currentObservations = undefined;
@@ -190,5 +226,85 @@ describe("RunObservations", () => {
     expect(anchored.has("https://tracker.example/issues/12")).toBe(true);
     expect(anchored.has("denkhaus/work#12")).toBe(true);
     expect(anchored.has("denkhaus/work#13")).toBe(false);
+  });
+});
+
+// denkhaus/work#1298: the run tab's linked items color by their LIVE
+// state (the same palette the global feed and the work view share) —
+// open amber, in_progress teal-500, merged mint (the violet stand-in),
+// closed fg-muted, null plain fg-3; a stale null state (the tracker
+// read failed) adds a dotted underline and the degradation tooltip.
+describe("RunObservations work-item link state colors", () => {
+  afterEach(() => {
+    currentObservations = undefined;
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  function observationWithLink(itemState: unknown, stale?: boolean) {
+    return {
+      seq: 5,
+      category: "painpoint",
+      text: "the state colors pin",
+      execution: 1,
+      firing: 1,
+      recorded_at: "2026-11-08T00:00:00Z",
+      stage: null,
+      linked_work_items: [
+        {
+          item_key: "denkhaus/work#31",
+          item_state: itemState,
+          item_state_stale: stale,
+          item_url: "https://tracker.example/issues/31",
+        },
+      ],
+    };
+  }
+
+  test("open colors the link amber", () => {
+    const renderer = renderObservations([observationWithLink("open")]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-amber");
+    expect(anchor.className).not.toContain("text-teal-500");
+    expect(anchor.title).toBeUndefined();
+  });
+
+  test("in_progress keeps the active teal", () => {
+    const renderer = renderObservations([observationWithLink("in_progress")]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-teal-500");
+    expect(anchor.title).toBeUndefined();
+  });
+
+  test("merged colors the link the violet stand-in accent", () => {
+    const renderer = renderObservations([observationWithLink("merged")]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-mint");
+    expect(anchor.className).not.toContain("text-teal-500");
+    expect(anchor.title).toBeUndefined();
+  });
+
+  test("closed settles the link to the muted foreground", () => {
+    const renderer = renderObservations([observationWithLink("closed")]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-fg-muted");
+    expect(anchor.className).not.toContain("text-teal-500");
+    expect(anchor.title).toBeUndefined();
+  });
+
+  test("a stale null state underlines dotted and names the degradation", () => {
+    const renderer = renderObservations([observationWithLink(null, true)]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-fg-3");
+    expect(anchor.className).toContain("decoration-dotted");
+    expect(anchor.title).toBe("live state stale — tracker read failed");
+    expect(anchor.className).not.toContain("text-teal-500");
+  });
+
+  test("a null state without staleness stays plain — no false color, no underline", () => {
+    const renderer = renderObservations([observationWithLink(null)]);
+    const anchor = anchorFor(renderer, "denkhaus/work#31");
+    expect(anchor.className).toContain("text-fg-3");
+    expect(anchor.className).not.toContain("decoration-dotted");
+    expect(anchor.title).toBeUndefined();
   });
 });

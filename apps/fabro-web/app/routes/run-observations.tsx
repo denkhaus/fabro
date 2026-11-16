@@ -10,7 +10,7 @@ type StatusFilter = "all" | "open" | "untriaged" | "filed" | "in_progress" | "cl
 
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { useRunObservations } from "../lib/queries";
-import { categoryBadgeClass } from "../components/badges";
+import { categoryBadgeClass, workItemLinkClass, WORK_ITEM_LINK_STALE_TITLE } from "../components/badges";
 
 const EMPTY_VALUE = "—";
 
@@ -49,6 +49,7 @@ const TRIAGE_LABEL: Record<TriageState, string> = {
 const ITEM_STATE_LABEL: Record<string, string> = {
   open: "open",
   in_progress: "in progress",
+  merged: "merged",
   closed: "closed",
 };
 
@@ -188,12 +189,18 @@ export default function RunObservations() {
                                 href={link.item_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-teal-500 hover:underline"
+                                title={link.item_state_stale ? WORK_ITEM_LINK_STALE_TITLE : undefined}
+                                className={`${workItemLinkClass(link.item_state ?? null, link.item_state_stale)} hover:underline`}
                               >
                                 {link.item_key}
                               </a>
                             ) : (
-                              link.item_key
+                              <span
+                                title={link.item_state_stale ? WORK_ITEM_LINK_STALE_TITLE : undefined}
+                                className={workItemLinkClass(link.item_state ?? null, link.item_state_stale)}
+                              >
+                                {link.item_key}
+                              </span>
                             )}
                             {link.item_state && (
                               <span className="ml-1 text-fg-muted">

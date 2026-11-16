@@ -27,7 +27,7 @@ export interface ObservationWorkItemLink {
      */
     'linked_at'?: string | null;
     /**
-     * The linked item\'s live state at read time, resolved server-side beside the link: open with no live claim, open with a live claim (a run is working it), or closed. Null when the tracker cannot resolve the item.
+     * The linked item\'s live state at read time, resolved server-side beside the link: open with no live claim, open with a live claim (a run is working it), closed, or merged (the closure rode a merged PR — the item\'s landed claim carries the pull-request URL). Null when the tracker cannot resolve the item.
      */
     'item_state'?: ObservationWorkItemLinkItemStateEnum | null;
     /**
@@ -43,6 +43,7 @@ export interface ObservationWorkItemLink {
 export const ObservationWorkItemLinkItemStateEnum = {
     OPEN: 'open',
     IN_PROGRESS: 'in_progress',
+    MERGED: 'merged',
     CLOSED: 'closed'
 } as const;
 

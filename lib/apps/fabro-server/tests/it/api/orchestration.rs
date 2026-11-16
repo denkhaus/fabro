@@ -1212,6 +1212,84 @@ async fn the_global_observations_feed_resolves_each_distinct_item_once_per_reque
     );
 }
 
+/// The merged pin (denkhaus/work#1298): a linked item whose closure rode
+/// a merged PR colors `merged`, distinct from a plain close. The fake
+/// tracker answers "closed" for denkhaus/work#10 — the merged signal is
+/// the claim ledger's, not the tracker's: the item's latest landed
+/// claim carries the pull-request URL (the ADR-0040 happy path — the
+/// PR merged, then the closing pass closed the item). The claim drives
+/// grant → active → await_merge → land through the store over the test
+/// app's shared pool (the same seam test_support seeds projects
+/// through).
+#[tokio::test]
+async fn the_feed_colors_a_closed_item_merged_when_its_landed_claim_carries_the_pr_url() {
+    let (app, state, store, _get_calls) = orchestration_app_counting();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    records
+        .append(
+            &run,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "linked painpoint that landed".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+    link_record(&state, "denkhaus/work#10", &run, 1).await;
+
+    let work_store =
+        fabro_work::WorkStore::new(fabro_server::test_support::test_app_db_pool(&state));
+    let claim = match work_store
+        .grant(&fabro_work::GrantRequest {
+            project_id: "fabro".to_owned(),
+            item_key:   "denkhaus/work#10".to_owned(),
+            run_id:     run,
+            lane:       "loop".to_owned(),
+        })
+        .await
+        .expect("claim granted")
+    {
+        fabro_work::GrantOutcome::Granted(claim) => claim,
+        other => panic!("the seeded grant must create the claim, got: {other:?}"),
+    };
+    work_store
+        .activate(&claim.claim_id)
+        .await
+        .expect("claim active");
+    let pr_url = "https://github.com/denkhaus/fabro/pull/42";
+    work_store
+        .await_merge(&claim.claim_id, pr_url)
+        .await
+        .expect("claim awaiting merge");
+    work_store
+        .land(&claim.claim_id, Some(pr_url))
+        .await
+        .expect("claim landed");
+
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "observations feed").await;
+    assert_eq!(
+        body["observations"][0]["linked_work_items"][0]["item_state"].as_str(),
+        Some("merged"),
+        "the closure rode a merged PR: the feed colors merged, not closed: {body}"
+    );
+}
+
 /// The presence-decidable pin (denkhaus/work#1379): the untriaged walk
 /// decides by link presence and the decision row alone — a record WITH
 /// link rows can never derive untriaged (`derive_triage`), so the walk
