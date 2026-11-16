@@ -179,20 +179,33 @@ Fork-only pin files (`lib/**/tests/fork_*.rs`, `lib/**/src/**/fork_*.rs`) are or
 Fabro is an AI-powered workflow orchestration platform. Workflows are defined as Graphviz graphs, where each node is a stage (agent, prompt, command, conditional, human, parallel, etc.). Petri, the workflow engine, admits a workflow at create and executes every run. Two crates import it: `fabro-petri` (the engine adapters) and `fabro-dot` (Petri's DOT parser, for reading a graph's shape and file references).
 
 ### Rust crates (`lib/apps/`, `lib/components/`, and `lib/foundation/`)
-- **fabro-cli** — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`. Reading a run's timeline (the diagnosis entry point): `fabro events <run> --pretty [--tail N] [--since 42m]`
-- **fabro-workflow** — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
-- **fabro-dot** — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
-- **fabro-graphviz** — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
-- **fabro-petri** — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (tracking Petri `main`; see the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
-- **fabro-server** — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
-- **fabro-llm** — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
-- **fabro-api** — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
-- **fabro-github** — GitHub App auth (JWT signing, installation tokens, PR creation)
-- **fabro-mcp-server** — Fabro's own MCP server (`fabro mcp`): the run tools for external agents
-- **fabro-slack** — Slack integration (socket mode, blocks API)
-- **fabro-checkpoint** — Git checkpoint author identity and commit trailers
-- **fabro-telemetry** — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery
-- **fabro-util** — Shared utilities (redaction, terminal formatting)
+
+The workspace members globs in the root `Cargo.toml` (`lib/apps/*`,
+`lib/components/*`, `lib/foundation/*`) are the authoritative listing —
+`ls lib/components/` beats this map whenever they disagree. The map
+below seats the crates an agent names most (the big platform crates
+live under `lib/components/`, the foundational ones under
+`lib/foundation/`):
+
+- **fabro-cli** (`lib/apps/`) — CLI entry point. Commands: `run`, `exec`, `serve`, `validate`, `parse`, `cp`, `model`, `doctor`, `install`, `ps`, `system prune`. Reading a run's timeline (the diagnosis entry point): `fabro events <run> --pretty [--tail N] [--since 42m]`
+- **fabro-server** (`lib/apps/`) — Axum HTTP server. Routes for runs, sessions, models, completions, usage. SSE event streaming. Demo mode via header
+- **fabro-mcp-server** (`lib/apps/`) — Fabro's own MCP server (`fabro mcp`): the run tools for external agents
+- **fabro-spa** (`lib/apps/`) — the SPA bundle the server embeds
+- **fabro-workflow** (`lib/components/`) — Fabro's platform half of a run: creates a run around Petri's admission (the run's display graph is read off the admitted graph), archives, forks and retries runs, and holds the run tools and the pull request pipeline. Compilation and execution are Petri's, through `fabro-petri`
+- **fabro-dot** (`lib/components/`) — The workflow graph as written, read through Petri's DOT parser: its name, goal, node and edge counts, and the files it references (`import`, `stack.child_workflow`, `@file` prompts, the goal). The bundler and the workflow-version store walk references through it; `fabro-graphviz` re-emits Fabro DOT for Graphviz through it
+- **fabro-petri** (`lib/components/`) — Fabro's adapters over Petri, the workflow engine: the one crate that imports the Petri packages (tracking Petri `main`; see the workspace `Cargo.toml`), holding the run store over SQLite and the platform adapters
+- **fabro-work** (`lib/components/`) — the tracker abstraction: the `TrackerProvider` seam, the claim ledger store, work projects (ADR-0032)
+- **fabro-store** (`lib/components/`) — the platform-records store over SQLite (observations, projections)
+- **fabro-tool** (`lib/components/`) — the run tools (`fabro_work_next` &c.) the engine grants to agent sandboxes
+- **fabro-llm** (`lib/components/`) — Unified LLM client with providers: Anthropic, OpenAI, Gemini, OpenAI-compatible, plus retry/middleware/streaming
+- **fabro-github** (`lib/components/`) — GitHub App auth (JWT signing, installation tokens, PR creation)
+- **fabro-slack** (`lib/components/`) — Slack integration (socket mode, blocks API)
+- **fabro-checkpoint** (`lib/components/`) — Git checkpoint author identity and commit trailers
+- **fabro-graphviz** (`lib/components/`) — SVG rendering of workflow graphs through the vendored Graphviz (`graphviz-sys`)
+- **fabro-types** (`lib/foundation/`) — the shared product vocabulary (types both server and API reuse; the with_replacement seam)
+- **fabro-api** (`lib/foundation/`) — Auto-generated Rust types and reqwest HTTP client from OpenAPI spec (build.rs + progenitor)
+- **fabro-telemetry** (`lib/foundation/`) — CLI analytics (Segment) and crash reporting (Sentry), with anonymous IDs, command sanitization, and detached subprocess delivery
+- **fabro-util** (`lib/foundation/`) — Shared utilities (redaction, terminal formatting)
 
 ### TypeScript (`apps/` and `lib/packages/`)
 - **apps/fabro-web** — React 19 + React Router + Tailwind CSS frontend, bundled by a custom Bun script (`apps/fabro-web/scripts/build.ts`), not Vite
