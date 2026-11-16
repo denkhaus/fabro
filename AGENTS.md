@@ -121,7 +121,7 @@ understand a door — drive it through the verb.
 
 The OpenAPI spec at `docs/public/api-reference/fabro-api.yaml` is the source of truth for the fabro-api HTTP interface.
 
-`--server` is NOT global — each facade seats it differently: `work`/`observation` at the facade level (`fabro work --server X radius …`), the `run` verbs on the verb segment (`fabro run queue --server X`). Never append it blindly; `.fabro/scripts/lib/work_channel.nu`'s argv builders own the shapes.
+`--server` is NOT global — each facade seats it differently: `work`/`observation` at the facade level (`fabro work --server X radius …`), `automations` at the facade level (`fabro automations --server X list`), the `run` verbs and `model` at the verb segment (`fabro run queue --server X`, `fabro model list --server X`). Never append it blindly; `.fabro/scripts/lib/work_channel.nu`'s argv builders own the shapes.
 
 1. Edit `docs/public/api-reference/fabro-api.yaml`
 2. `cargo build -p fabro-api` — build.rs regenerates Rust types and client via progenitor

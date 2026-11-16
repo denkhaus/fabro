@@ -607,8 +607,15 @@ fn session_marker_path(root: &Path, pid: u32) -> PathBuf {
 
 fn ensure_parent_dir(path: &Path) {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .unwrap_or_else(|err| panic!("failed to create {}: {err}", parent.display()));
+        std::fs::create_dir_all(parent).unwrap_or_else(|err| {
+            panic!(
+                "failed to create {}: {err} — a non-writable fixture root is usually a \
+                 root-owned leftover; repair with `sudo chown -R $(id -un) {}` or point \
+                 TMPDIR at a user-owned directory",
+                parent.display(),
+                std::env::temp_dir().join("fx").display()
+            )
+        });
     }
 }
 
@@ -625,8 +632,11 @@ fn with_session_lock<T>(root: &Path, f: impl FnOnce() -> T) -> T {
         if let Err(err) = std::fs::create_dir_all(root) {
             assert!(
                 std::time::Instant::now() < deadline,
-                "failed to create {} after retries: {err}",
-                root.display()
+                "failed to create {} after retries: {err} — a non-writable fixture root is \
+                 usually a root-owned leftover; repair with `sudo chown -R $(id -un) {}` or \
+                 point TMPDIR at a user-owned directory",
+                root.display(),
+                short_session_base_dir().display()
             );
             std::thread::sleep(Duration::from_millis(10));
             continue;
