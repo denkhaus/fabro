@@ -72,15 +72,41 @@ def interpolated-regex-check [file: string] {
 # workbench seed-ensure success print and the known-red yellow print; nu
 # --ide-check cannot catch this class). A paren group containing a comma is
 # list syntax and never a useful interpolation — flag it.
+def interpolated-spans [line: string] {
+    # Quote-aware LAZY spans: each interpolated string ends at its own
+    # unescaped closing quote, so strings carrying embedded quotes
+    # (`str join ', '`) no longer truncate the span before a prose paren
+    # (the 2026-11-16 gap: `$"... (str join ', ') ... (ADR-0042)"` — the
+    # old `[^"']*` span died at the join quote and (ADR-0042) escaped
+    # both paren checks while the line exploded at runtime).
+    # The dollar is spelled as a class ([$]) so this line never carries
+    # the literal $-quote sequence the interpolated-regex scan keys on —
+    # self-scan hygiene (the 2026-11-16 self-flag).
+    $line | parse --regex `(?P<s>[$]"(?:[^"]|\\")*?"|[$]'(?:[^']|\\')*?')` | get s
+}
+
+def strip-quoted [s: string] {
+    # quoted segments are DATA, never syntax — but ONLY the other quote
+    # kind: the span carries its own delimiter pair, and stripping that
+    # collapses the whole span to `$Q` (the 2026-11-16 second bug: every
+    # group vanished and the lint stood green over the crash class). In
+    # a $" span the embedded data quotes are single; in a $' span double.
+    if ($s | str starts-with '$"') {
+        $s | str replace -ar `'[^']*?'` 'Q'
+    } else {
+        $s | str replace -ar `"[^"]*?"` 'Q'
+    }
+}
+
 def paren-comma-bare [line: string] {
     # examine ONLY the interpolated-string spans themselves ($'...' / $"..."):
     # record literals on the same line carry legitimate commas in braces, and
     # `str join ', '` carries its comma inside quotes inside a legitimate
     # subexpression — neither is bare text-paren list syntax
-    let spans = ($line | parse --regex `(?P<s>\$["'][^"']*["'])`)
+    let spans = (interpolated-spans $line)
     if ($spans | is-empty) { false } else {
         # escaped parens \(...\) are the CORRECT literal-paren idiom — neutralize them first
-        ($spans | get s | any {|s| ($s | str replace -ar `\\[()]` 'X' | parse --regex `\([^()]*,[^()]*\)` | is-not-empty) })
+        ($spans | any {|s| (strip-quoted $s | str replace -ar `\\[()]` 'X' | parse --regex `\([^()]*,[^()]*\)` | is-not-empty) })
     }
 }
 
@@ -106,16 +132,14 @@ def paren-comma-bare [line: string] {
 # are not visible to it — assign an imported call to a variable before
 # interpolating it.
 def paren-prose-bare [line: string, defined: list<string>] {
-    let spans = ($line | parse --regex `(?P<s>\$["'][^"']*["'])`)
+    let spans = (interpolated-spans $line)
     if ($spans | is-empty) { false } else {
-        ($spans | get s | any {|s|
-            # two passes OR'd: the FLAT pass sees prose groups with no
-            # nesting; the STRIPPED pass reduces inner complete groups to a
-            # marker first so a nested shape (prose shell around a real
-            # interpolation) leaves its outer group testable. Stripping
-            # alone would destroy flat groups before they match — hence
-            # both.
-            let neutral = ($s | str replace -ar `\\[()]` 'X')
+        ($spans | any {|s|
+            # quoted segments are DATA (the `', '` of a str join) — strip
+            # before the group scan so embedded quotes neither hide a
+            # later prose paren nor fabricate one inside a legitimate
+            # subexpression (the 2026-11-16 gap)
+            let neutral = (strip-quoted $s | str replace -ar `\\[()]` 'X')
             let flat_groups = ($neutral | parse --regex `\(([^()]*)\)`)
             let stripped = ($neutral | str replace -ar `\([^()]*\)` 'X')
             let outer_groups = ($stripped | parse --regex `\(([^()]*)\)`)
@@ -136,12 +160,22 @@ def paren-prose-bare [line: string, defined: list<string>] {
                 # prose shells carry none. The X marker from stripping is
                 # NOT in the class — it must not exempt the shell.
                 let no_sigil = (($no_embedded | parse --regex "[$\"'|^=+*/%<>!-]" | is-not-empty) == false)
-                ($no_sigil and $prose_hyphen) or (
-                    $no_sigil and (
+                # DEF-AWARENESS, the multi-hyphen fix (2026-11-16): a group
+                # whose head names a file-defined command is a CALL with
+                # arguments, whatever the token count — (diff-sort-key
+                # 'lib/main.rs') was false-positived by the sub-capture
+                # ("diff-sort" never equals the defined "diff-sort-key").
+                # The name must be followed by a boundary (space or end),
+                # else sort-key-ish would inherit sort-key's def.
+                let starts_defined = ($defined | any {|d|
+                    ($d != '') and (($inner == $d) or ($inner | str starts-with $"($d) "))
+                })
+                ($no_sigil and (not $starts_defined) and (
+                    $prose_hyphen or (
                         # three or more whitespace-separated bare tokens
                         ($inner | split row ' ' | where {|t| ($t | str trim) != ''} | length) >= 3
                     )
-                )
+                ))
             })
         })
     }

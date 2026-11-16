@@ -277,7 +277,7 @@ def stage-implementer [] {
             | where {|p| (($p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/') | get -o crate.0) == $c })
         let tm = (test-mode-for $t.base $files)
         if $tm.mode == 'names' {
-            print $"== nextest -p ($c) (added tests by name filter: ($tm.names | str join ', ')) =="
+            print $"== nextest -p ($c) \(added tests by name filter: ($tm.names | str join ', '))=="
             let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 ...$tm.names } | complete)
             # Zero-selection guard (fabro-bdff): a filter matching zero tests
             # must never look green. Each extracted name is a distinct test
@@ -287,7 +287,7 @@ def stage-implementer [] {
             let ran = (nextest-tests-run $res.stdout)
             if $res.exit_code != 0 or $ran == null or $ran < ($tm.names | length) {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
-                print $"verify: FAIL nextest ($c) (name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length))"
+                print $"verify: FAIL nextest ($c) \(name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length)\)"
                 exit 1
             }
             print $"verify: PASS nextest ($c)"

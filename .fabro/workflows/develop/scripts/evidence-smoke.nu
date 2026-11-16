@@ -70,10 +70,12 @@ if $passthrough != $"see blob://sha256/($missing) end" {
 # diff-sort-key: source files sort before docs (a:/z: prefixes) — the
 # reviewer sees the complete source diff first.
 if (diff-sort-key "lib/main.rs") != "a:lib/main.rs" {
-    fail $"diff-sort-key source prefix: (diff-sort-key 'lib/main.rs')"
+    let source_key = (diff-sort-key 'lib/main.rs')
+    fail $"diff-sort-key source prefix: ($source_key)"
 }
 if (diff-sort-key "docs/x.md") != "z:docs/x.md" {
-    fail $"diff-sort-key doc prefix: (diff-sort-key 'docs/x.md')"
+    let doc_key = (diff-sort-key 'docs/x.md')
+    fail $"diff-sort-key doc prefix: ($doc_key)"
 }
 if ((diff-sort-key "lib/main.rs") > (diff-sort-key "docs/x.md")) {
     fail "diff-sort-key must order source before docs"
@@ -126,7 +128,8 @@ if not ((stat-map-section [] []) | str contains "(no changed files since run bas
 # checks-transcript-path: pure builder — run id lands in the file name
 # under the shared transcript dir (check-transcript.nu writes it).
 if (checks-transcript-path "abc123") != "/tmp/fabro-check-transcript/abc123.md" {
-    fail $"checks-transcript-path: (checks-transcript-path 'abc123')"
+    let transcript = (checks-transcript-path 'abc123')
+    fail $"checks-transcript-path: ($transcript)"
 }
 
 # checks-section: absent file -> "" (no noise for runs without checks);
