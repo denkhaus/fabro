@@ -70,6 +70,42 @@ const ITEM: WorkItem = {
   updatedAt: "2026-11-10T09:00:00Z",
 };
 
+/// Collects every anchor in the rendered tree with its className, title
+/// and text — the work-item link pins read their state color off it.
+function workItemAnchors(node: unknown): Array<{ className?: string; title?: string; text: string }> {
+  const found: Array<{ className?: string; title?: string; text: string }> = [];
+  function walk(node: unknown): void {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const element = node as {
+      type?: unknown;
+      props?: { className?: string; title?: string };
+      children?: unknown;
+    };
+    if (element.type === "a") {
+      found.push({
+        className: element.props?.className,
+        title: element.props?.title,
+        text: textFromNode(node as ReturnType<TestRenderer.ReactTestRenderer["toJSON"]>),
+      });
+    }
+    // react-test-renderer JSON nodes keep children at the node level,
+    // beside props — not inside them.
+    walk(element.children);
+  }
+  walk(node);
+  return found;
+}
+
+function anchorFor(renderer: TestRenderer.ReactTestRenderer, key: string): { className?: string; title?: string; text: string } {
+  const anchor = workItemAnchors(renderer.toJSON()).find((a) => a.text === key);
+  expect(anchor).toBeDefined();
+  return anchor!;
+}
+
 /// The detail reads through SWR; flush its fetch promise before
 /// assertions.
 async function flushDetail(renderer: TestRenderer.ReactTestRenderer) {
@@ -147,5 +183,72 @@ describe("WorkItemsView", () => {
     const text = textFromNode(renderer!.toJSON());
     expect(text).toMatch(/12\s+item/);
     expect(text).toMatch(/page\s+1\s+\/\s+2/);
+  });
+});
+
+// denkhaus/work#1298: the work view's item table colors the key link
+// by the item's own live state — the same palette the observation
+// surfaces share (open amber, in_progress teal-500, merged mint as the
+// violet stand-in, closed fg-muted; anything unresolved stays plain
+// fg-3 — never a false color). Each test rides a distinct `?page=` so
+// SWR's two-second key dedupe can't replay another test's rows.
+describe("WorkItemsView key link state colors", () => {
+  afterEach(() => {
+    listResult = undefined;
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  async function renderListWithState(state: WorkItem["state"], page: number): Promise<TestRenderer.ReactTestRenderer> {
+    listResult = { data: [{ ...ITEM, itemKey: "denkhaus/work#41", state }], total: 1 };
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const router = createMemoryRouter([
+      { path: "/work", element: <WorkItemsView /> },
+      { path: "/work/item", element: <div>detail</div> },
+    ], { initialEntries: [`/work?page=${page}`] });
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    TestRenderer.act(() => {
+      renderer = TestRenderer.create(<RouterProvider router={router} />);
+    });
+    await TestRenderer.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    return renderer!;
+  }
+
+  test("open colors the key link amber", async () => {
+    const renderer = await renderListWithState("open", 2);
+    const anchor = anchorFor(renderer, "denkhaus/work#41");
+    expect(anchor.className).toContain("text-amber");
+    expect(anchor.className).not.toContain("text-teal-500");
+  });
+
+  test("in_progress keeps the active teal", async () => {
+    const renderer = await renderListWithState("in_progress", 3);
+    const anchor = anchorFor(renderer, "denkhaus/work#41");
+    expect(anchor.className).toContain("text-teal-500");
+  });
+
+  test("merged colors the key link the violet stand-in accent", async () => {
+    const renderer = await renderListWithState("merged", 4);
+    const anchor = anchorFor(renderer, "denkhaus/work#41");
+    expect(anchor.className).toContain("text-mint");
+    expect(anchor.className).not.toContain("text-teal-500");
+  });
+
+  test("closed settles the key link to the muted foreground", async () => {
+    const renderer = await renderListWithState("closed", 5);
+    const anchor = anchorFor(renderer, "denkhaus/work#41");
+    expect(anchor.className).toContain("text-fg-muted");
+    expect(anchor.className).not.toContain("text-teal-500");
+  });
+
+  test("an unresolved state stays plain — no false color", async () => {
+    // A value outside the live-state palette (a missing field lands on
+    // the same plain fallback through the route's `?? null` seam).
+    const renderer = await renderListWithState("blocked", 6);
+    const anchor = anchorFor(renderer, "denkhaus/work#41");
+    expect(anchor.className).toContain("text-fg-3");
+    expect(anchor.className).not.toContain("text-teal-500");
+    expect(anchor.className).not.toContain("decoration-dotted");
   });
 });

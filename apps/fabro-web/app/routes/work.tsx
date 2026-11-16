@@ -6,13 +6,15 @@ import type { ListWorkItemsSortEnum } from "@qltysh/fabro-api-client";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { Markdown } from "../components/stage-renderers/primitives";
-import { labelBadgeClass, prioBadgeClass, typeBadgeClass } from "../components/badges";
+import { labelBadgeClass, prioBadgeClass, typeBadgeClass, workItemLinkClass } from "../components/badges";
 
 /**
  * The work items view (denkhaus/work#1199): the tracker's read surface
  * in the web app — read-only (mutations stay on the CLI in v1), paged
  * and filtered through the shared data table control (#1201), with the
- * lane/priority/type filters the tracker's labels carry.
+ * lane/priority/type filters the tracker's labels carry. The key link
+ * colors by the item's own live state (#1298 — the same palette the
+ * observation surfaces share).
  */
 
 export const handle = { wide: true };
@@ -38,6 +40,7 @@ interface WorkItemRow {
   priority: string;
   lane: string;
   type: string;
+  state: string | null;
   url: string;
   updatedAt: string;
 }
@@ -58,7 +61,7 @@ const COLUMNS: Array<DataTableColumn<WorkItemRow>> = [
       // list, 2026-11-10).
       <Link
         to={`/work/item?key=${encodeURIComponent(row.key)}`}
-        className="font-mono text-teal-500 hover:underline"
+        className={`font-mono ${workItemLinkClass(row.state)} hover:underline`}
       >
         {row.key}
       </Link>
@@ -131,6 +134,7 @@ export default function WorkItemsView() {
           priority: labelValue(item.labels ?? [], "prio:"),
           lane: labelValue(item.labels ?? [], "lane:"),
           type: labelValue(item.labels ?? [], "type:"),
+          state: item.state ?? null,
           url: item.url ?? "",
           updatedAt: item.updatedAt ?? "",
         }));

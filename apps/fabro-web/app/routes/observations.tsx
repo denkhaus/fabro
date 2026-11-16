@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { observationsApi } from "../lib/api-client";
 import { formatAbsoluteDateTime } from "../lib/format";
-import { categoryBadgeClass } from "../components/badges";
+import { categoryBadgeClass, workItemLinkClass, WORK_ITEM_LINK_STALE_TITLE } from "../components/badges";
 
 /**
  * The global observations view (denkhaus/work#1200): every run's
@@ -14,7 +14,7 @@ import { categoryBadgeClass } from "../components/badges";
  * server-resolved tracker URLs on linked items. The pager's total is
  * the server's EXACT count under the active filters (denkhaus/work#1296)
  * — the page-window estimate is only the skew fallback for an older
- * server.
+ * server. The linked items color by their LIVE state (#1298).
  */
 
 export const handle = { wide: true };
@@ -28,7 +28,7 @@ interface FeedRow {
   triage: string;
   text: string;
   recordedAt: string;
-  items: Array<{ key: string; url: string | null }>;
+  items: Array<{ key: string; url: string | null; state: string | null; stale: boolean }>;
 }
 
 const TRIAGE_STYLE: Record<string, string> = {
@@ -94,12 +94,18 @@ const COLUMNS: Array<DataTableColumn<FeedRow>> = [
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-teal-500 hover:underline"
+                  title={item.stale ? WORK_ITEM_LINK_STALE_TITLE : undefined}
+                  className={`${workItemLinkClass(item.state, item.stale)} hover:underline`}
                 >
                   {item.key}
                 </a>
               ) : (
-                item.key
+                <span
+                  title={item.stale ? WORK_ITEM_LINK_STALE_TITLE : undefined}
+                  className={workItemLinkClass(item.state, item.stale)}
+                >
+                  {item.key}
+                </span>
               )}
             </span>
           ))}
@@ -165,6 +171,8 @@ export default function ObservationsFeedView() {
             .map((link) => ({
               key: link.item_key ?? "",
               url: link.item_url ?? null,
+              state: link.item_state ?? null,
+              stale: link.item_state_stale ?? false,
             }))
             .filter((linked) => linked.key),
         }));
