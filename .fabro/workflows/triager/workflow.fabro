@@ -12,9 +12,11 @@ digraph Triager {
     ]
 
     start [shape=Mdiamond, label="Start"]
-    // Exit kinds: soft exits classify the terminal event; a failed pass
-    // changes nothing (the feed's untriaged set is the worklist — the
-    // next pass re-reads it cleanly, no cleanup path exists).
+    // Exit kinds: soft exits classify non-failure terminal events (an
+    // unrouted successful outcome exits softly — nothing happened, the
+    // lap is honestly green). A failed sweep or triage ends the run
+    // FAILED at the stage (on_failure, the work#1277 class) — a broken
+    // lap is never painted green.
     exit  [shape=Msquare, label="Exit"]
 
     // Toolchain-placement guard (the develop lane's pattern): a manual
@@ -45,7 +47,14 @@ digraph Triager {
         output_schema="routing",
         x.context_allow_keys="output.triage",
         timeout="10m",
-        max_retries=1
+        max_retries=1,
+        // work#1374 follow-up (user directive 2026-11-16): a sweep
+        // failure (the #1364 feed timeouts) ends the run FAILED — the
+        // soft-exit pattern painted broken laps green and the
+        // fire-drift/health accounting read no-ops as healthy laps.
+        // The feed stays the worklist; the next lap re-enters the
+        // same way a failed status does.
+        on_failure="exit"
     ]
 
     // The judgment pass: works the packets one per visit, serially —
@@ -61,6 +70,20 @@ digraph Triager {
     triage [
         label="Triage: file, link, or no-filing",
         prompt="@prompts/triage.md",
+        // glm-5.3-flash (1/3 of the main model's price): the highest-
+        // volume LLM consumer of the line disposes reversible, auditable
+        // classifications — a later filing overrides a no_filing (ADR-
+        // 0044), link rows are human-reviewable, and the tool-verified
+        // pattern (work_show/work_list before every disposition) keeps
+        // the model honest. Lap-cost basis at glm-5.3: $0.47 (run
+        // 01M7HYG61AAD2SZX5J3X2K816T). Rollback: delete this attribute —
+        // the node falls back to [run.model] (glm-5.3).
+        model="zai:glm-5.3-flash",
+        // work#1374 follow-up (user directive 2026-11-16): a triage
+        // failure ends the run FAILED at the stage — a lap that didn't
+        // finish its batch is not a healthy lap. Partial dispositions
+        // survive in the feed; the next lap re-enters.
+        on_failure="exit",
         output_schema="routing",
         output_retries=2,
         max_visits=25,
@@ -95,12 +118,12 @@ digraph Triager {
     // The pass works packets serially; one disposition routes the next
     // visit. The self-edge is bounded by max_visits and the batch cap.
     triage -> triage [label="Next painpoint", condition="preferred_label=\"Next painpoint\""]
+    // Structural guards: a triage failure ends the run FAILED at the
+    // stage (on_failure, the work#1277 class) — a lap that didn't
+    // finish its batch is not a healthy lap. The feed's untriaged set
+    // stays the worklist; the next pass re-reads it.
     triage -> exit [label="Feed settled", condition="preferred_label=\"Feed settled\""]
-    // Structural guards: a failed pass changes nothing — the feed's
-    // untriaged set stays the worklist, the next pass re-reads it.
-    triage -> exit [x.kind="soft", label="Triage failed (feed stays, next pass re-enters)", condition="outcome=failed"]
     // Unconditional safety net (the engine requires one): an unrouted
     // outcome exits softly — no disposition happens silently.
     triage -> exit [x.kind="soft", label="Unrouted triage outcome (feed stays)"]
-    sweep -> exit [x.kind="soft", label="Sweep failed (feed stays, next pass re-enters)", condition="outcome=failed"]
 }

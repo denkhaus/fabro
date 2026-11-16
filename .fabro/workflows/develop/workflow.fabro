@@ -208,9 +208,23 @@ digraph Develop {
     // implementer executes a checkable bullet list — low effort keeps the
     // PASS/FAIL report quality (proven across runs) at a fraction of the
     // cost. glm-5.3 does not reliably honor medium on this call path.
+    //
+    // model-class TRIAL (user decision 2026-11-16, work#1374): the
+    // implementer is the line's largest consumer — real runs measured
+    // $0.80-$4.72 each (baseline: 01M7DSR5FS6WXSEGT1JZRNHR3K at $4.72,
+    // 257k input, 44.2k reasoning, 15.7M cache_read). glm-5.3-flash
+    // costs 1/3 per token; the bet is decided by LOOP RATE, not price:
+    // gate-bounce count, loops-to-green, and reviewer verdicts over
+    // 5-8 landed seeds vs the glm-5.3 baseline. Two re-reads of the
+    // 2x-loops case: 2 x 1/3 > 1. Evaluation work#1374 reviews the
+    // numbers 2026-12-16. Rollback: delete this attribute — the node
+    // falls back to [run.model]. The reviewer STAYS glm-5.3 (the net
+    // under a cheaper implementer), the planner stays glm-5.3 (a bad
+    // plan wastes the run), PR text stays glm-4.7.
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
+        model="zai:glm-5.3-flash",
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.

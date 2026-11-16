@@ -32,6 +32,26 @@ protocol_options = { reasoning_effort_levels = true }
 pricing = { input_usd_micros_per_million = 1400000, output_usd_micros_per_million = 4400000, cached_input_usd_micros_per_million = 260000 }
 family = "glm-5"
 
+[providers.zai.models."glm-5.3-flash"]
+# The cost-tier trial model (work#1374): triage + implementer run on it.
+# Standard API pricing per Z.ai's own table (2026-08-26): $0.15 in /
+# $0.50 out / $0.03 cached per 1M tokens — ~1/9 of glm-5.3's list price;
+# on the GLM Coding Plan the saving reads as 3x usable quota. Effort
+# levels per operator directive 2026-11-16 and the HF model card:
+# low/high/max, and flash DEFAULTS TO MAX when unset — every flash node
+# must pin reasoning_effort explicitly or it runs the expensive mode.
+# No response_format claim (the glm-5.3 posture — claiming it without a
+# probe is exactly what fabro-d5b1 forbids); images stay false too: the
+# model card says multimodal, but the coding endpoint is unprobed.
+display_name = "GLM 5.3 Flash"
+aliases = ["glm53flash", "glm-5-3-flash"]
+api_model = "glm-5.3-flash"
+limits = { context_tokens = 1048576, max_output_tokens = 131072 }
+capabilities = { text = true, images = false, tools = true, reasoning = true, caching = true, sampling = true, reasoning_effort = { low = true, medium = false, high = true, xhigh = false, max = true } }
+protocol_options = { reasoning_effort_levels = true }
+pricing = { input_usd_micros_per_million = 150000, output_usd_micros_per_million = 500000, cached_input_usd_micros_per_million = 30000 }
+family = "glm-5"
+
 [providers.zai.models."glm-5.2"]
 aliases = ["glm52", "glm5.2"]
 
