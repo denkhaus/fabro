@@ -210,6 +210,12 @@ def phase-plan [tofu_dir: string]: nothing -> nothing {
 }
 
 def phase-apply [tofu_dir: string, server: string]: nothing -> nothing {
+    # Capture the deployed tip BEFORE the cd: after `cd $tofu_dir`, a bare
+    # `git rev-parse HEAD` resolves the TOFU repo's tip and the skew check
+    # compares against the wrong repository (live 2026-11-16: the fork.38
+    # apply "failed" with the tofu pin sha while the server was already
+    # live at the right tip).
+    let head = (git rev-parse HEAD | str trim)
     # Probe AGAIN immediately before the apply: the store relocks on its
     # ~30 min TTL — warming early is not warming enough (2026-11-10).
     $env.TF_VAR_state_passphrase = (tofu-env $tofu_dir)
@@ -236,7 +242,8 @@ def phase-apply [tofu_dir: string, server: string]: nothing -> nothing {
         }
         sleep 5sec
     }
-    let head = (git rev-parse HEAD | str trim)
+    # $head was captured before the cd (top of this phase) — resolving it
+    # here would read the TOFU repo after `cd $tofu_dir`.
     let head12 = ($head | str substring 0..11)
     if ($deployed | str substring 0..11) != $head12 {
         error make {msg: $"deploy-window: server reports sha ($deployed) — expected the deployed tip ($head12)"}
@@ -257,7 +264,7 @@ def phase-arm [tofu_dir: string, server: string]: nothing -> nothing {
     # environment is repo-declared and cooked by the engine at run
     # initialization from the checkout itself.
     let on = (gears-on $server)
-    print $"deploy arm: gears on: ($on.id | str join ', ') — no toolchain pin (ADR-0042)"
+    print $"deploy arm: gears on: ($on.id | str join ', ') — no toolchain pin, ADR-0042"
 }
 
 def phase-commit [tofu_dir: string]: nothing -> nothing {
