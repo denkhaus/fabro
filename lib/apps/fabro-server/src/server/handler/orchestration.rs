@@ -406,18 +406,28 @@ async fn triage_links_of_seq(
     seq_links
         .into_iter()
         .map(|link| {
-            let resolved = resolver
+            let (item_state, item_url, item_state_stale) = match resolver
                 .resolved
                 .get(&(link.project_id.clone(), link.item_key.clone()))
-                .cloned()
-                .flatten();
+            {
+                Some(LinkedItemResolution::Resolved(item)) => (
+                    Some(LinkedItemState::into_wire(item.state)),
+                    Some(item.url.clone()),
+                    false,
+                ),
+                // The read failed — the null state is a degradation the
+                // wire must name (denkhaus/work#1364).
+                Some(LinkedItemResolution::Stale) => (None, None, true),
+                // The tracker answered (not-found), or the record
+                // resolved nothing: honest nulls, no staleness.
+                _ => (None, None, false),
+            };
             ObservationWorkItemLink {
-                item_key:   link.item_key.clone(),
-                linked_at:  Some(link.linked_at),
-                item_state: resolved
-                    .as_ref()
-                    .map(|item| LinkedItemState::into_wire(item.state)),
-                item_url:   resolved.map(|item| item.url),
+                item_key: link.item_key.clone(),
+                linked_at: Some(link.linked_at),
+                item_state,
+                item_state_stale,
+                item_url,
             }
         })
         .collect()
@@ -1318,10 +1328,11 @@ async fn list_observations(
                     .entry(link.seq)
                     .or_default()
                     .push(ObservationWorkItemLink {
-                        item_key:   link.item_key,
-                        linked_at:  Some(link.linked_at),
-                        item_state: None,
-                        item_url:   None,
+                        item_key:         link.item_key,
+                        linked_at:        Some(link.linked_at),
+                        item_state:       None,
+                        item_state_stale: false,
+                        item_url:         None,
                     });
             }
         }
@@ -1336,19 +1347,31 @@ async fn list_observations(
     // The linked items' live states and tracker URLs, resolved once per
     // distinct (project, item) through the per-request resolver
     // (work#1362): closed, open with a live claim (a run is working
-    // it), or open. An unresolvable item keeps nulls — the column stays
-    // honest rather than guessing.
+    // it), or open. A FAILED read keeps nulls but marks them stale
+    // (denkhaus/work#1364); a not-found keeps honest nulls.
     let mut resolver = LinkedItemResolver::new(&state);
     for (seq, pairs) in &pairs_of_seq {
         let Some(links) = links_of_seq.get_mut(seq) else {
             continue;
         };
         for (link, (project_id, item_key)) in links.iter_mut().zip(pairs) {
-            let resolved = resolver.resolve(project_id, item_key).await;
-            link.item_state = resolved
-                .as_ref()
-                .map(|item| LinkedItemState::into_wire(item.state));
-            link.item_url = resolved.map(|item| item.url);
+            match resolver.resolve(project_id, item_key).await {
+                LinkedItemResolution::Resolved(item) => {
+                    link.item_state = Some(LinkedItemState::into_wire(item.state));
+                    link.item_url = Some(item.url);
+                    link.item_state_stale = false;
+                }
+                LinkedItemResolution::Stale => {
+                    link.item_state = None;
+                    link.item_url = None;
+                    link.item_state_stale = true;
+                }
+                LinkedItemResolution::NotFound => {
+                    link.item_state = None;
+                    link.item_url = None;
+                    link.item_state_stale = false;
+                }
+            }
         }
     }
 
@@ -1370,7 +1393,7 @@ async fn list_observations(
 
 /// A linked work item's live state as the observations column shows it:
 /// open, open with a live claim (a run is working it), or closed.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum LinkedItemState {
     Open,
     InProgress,
@@ -1389,13 +1412,32 @@ impl LinkedItemState {
 
 /// Resolve one linked item's state. The claim ledger outranks the
 /// tracker read: a live claim means the item is open and being worked,
-/// whatever the provider's indexing lag says. An unresolvable item
-/// (project gone, tracker failure) returns None — the column stays
-/// honest rather than guessing.
-/// A linked item's live state and tracker URL, resolved together in one
+/// whatever the provider's indexing lag says.
+///
+/// The answer says WHY a state is missing (denkhaus/work#1364):
+/// [`LinkedItemResolution::NotFound`] is the tracker's verdict that the
+/// item is gone, [`LinkedItemResolution::Stale`] is a degradation — the
+/// tracker could not be asked (project gone, credentials) or failed the
+/// read (installation budget exhausted even after the client's
+/// rate-limit retries). The feed surfaces stale as
+/// `item_state_stale` instead of silently null.
+#[derive(Clone, Debug)]
+enum LinkedItemResolution {
+    /// The tracker answered with the item's live state and URL.
+    Resolved(ResolvedLinkedItem),
+
+    /// The tracker answered: no such item — a verdict, not a failure.
+    NotFound,
+
+    /// The read FAILED (rate limit, transport, configuration) — the
+    /// null state is a degradation, not a verdict.
+    Stale,
+}
+
+/// A linked work item's live state and tracker URL, resolved together in one
 /// tracker round-trip (denkhaus/work#1235: the client never builds forge
 /// URLs — the work item is an abstract interface).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ResolvedLinkedItem {
     state: LinkedItemState,
     url:   String,
@@ -1405,15 +1447,21 @@ async fn resolve_linked_item(
     state: &AppState,
     project_id: &str,
     item_key: &str,
-) -> Option<ResolvedLinkedItem> {
-    let project = state
-        .work_store()
-        .project(project_id)
-        .await
-        .ok()
-        .flatten()?;
-    let tracker = state.work_tracker_for_project(&project).await.ok()?;
-    let item = tracker.get(&project, item_key).await.ok().flatten()?;
+) -> LinkedItemResolution {
+    let Some(project) = state.work_store().project(project_id).await.ok().flatten() else {
+        return LinkedItemResolution::Stale;
+    };
+    let Ok(tracker) = state.work_tracker_for_project(&project).await else {
+        return LinkedItemResolution::Stale;
+    };
+    let item = match tracker.get(&project, item_key).await {
+        Ok(Some(item)) => item,
+        // The tracker answered: the item is gone — a verdict.
+        Ok(None) => return LinkedItemResolution::NotFound,
+        // The read failed (rate-limit budget exhausted, transport) — a
+        // degradation the feed must mark, not hide (denkhaus/work#1364).
+        Err(_) => return LinkedItemResolution::Stale,
+    };
     let state = if matches!(
         state
             .work_store()
@@ -1428,7 +1476,7 @@ async fn resolve_linked_item(
             _ => LinkedItemState::Open,
         }
     };
-    Some(ResolvedLinkedItem {
+    LinkedItemResolution::Resolved(ResolvedLinkedItem {
         state,
         url: item.url,
     })
@@ -1443,7 +1491,7 @@ async fn resolve_linked_item(
 /// it: no cross-request state, no invalidation, no stale columns.
 struct LinkedItemResolver<'a> {
     state:    &'a AppState,
-    resolved: HashMap<(String, String), Option<ResolvedLinkedItem>>,
+    resolved: HashMap<(String, String), LinkedItemResolution>,
 }
 
 impl<'a> LinkedItemResolver<'a> {
@@ -1454,7 +1502,7 @@ impl<'a> LinkedItemResolver<'a> {
         }
     }
 
-    async fn resolve(&mut self, project_id: &str, item_key: &str) -> Option<ResolvedLinkedItem> {
+    async fn resolve(&mut self, project_id: &str, item_key: &str) -> LinkedItemResolution {
         let cache_key = (project_id.to_owned(), item_key.to_owned());
         if let Some(hit) = self.resolved.get(&cache_key) {
             return hit.clone();
@@ -1494,16 +1542,19 @@ mod link_resolution_tests {
     use async_trait::async_trait;
     use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
 
-    use super::LinkedItemState;
+    use super::{LinkedItemResolution, LinkedItemState};
     use crate::server::AppState;
     use crate::test_support::TestAppStateBuilder;
 
     /// A tracker whose `get` answers one scripted item — the seam the
     /// observation tables' link resolution reads through
     /// (denkhaus/work#1235: state and URL resolve together, one
-    /// round-trip).
+    /// round-trip). `get_fails` scripts the degraded read of
+    /// denkhaus/work#1364: the installation budget is exhausted and the
+    /// client's retries are spent.
     struct UrlScriptedTracker {
-        item: Option<WorkItem>,
+        item:      Option<WorkItem>,
+        get_fails: bool,
     }
 
     #[async_trait]
@@ -1521,6 +1572,9 @@ mod link_resolution_tests {
             _project: &WorkProject,
             _item_key: &str,
         ) -> anyhow::Result<Option<WorkItem>> {
+            if self.get_fails {
+                anyhow::bail!("API rate limit exceeded for installation ID 161242007");
+            }
             Ok(self.item.clone())
         }
 
@@ -1620,17 +1674,19 @@ mod link_resolution_tests {
     #[tokio::test]
     async fn a_resolved_link_carries_its_state_and_tracker_url_together() {
         let state = state_with(UrlScriptedTracker {
-            item: Some(scripted_item(
+            item:      Some(scripted_item(
                 "open",
                 "https://tracker.example/denkhaus/work/issues/12",
             )),
+            get_fails: false,
         })
         .await;
 
-        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12")
-            .await
-            .expect("the scripted item resolves");
+        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await;
 
+        let LinkedItemResolution::Resolved(resolved) = resolved else {
+            panic!("the scripted item resolves: {resolved:?}");
+        };
         assert!(
             matches!(resolved.state, LinkedItemState::Open),
             "the live state rides the resolution"
@@ -1644,17 +1700,19 @@ mod link_resolution_tests {
     #[tokio::test]
     async fn a_closed_item_resolves_closed_with_its_url() {
         let state = state_with(UrlScriptedTracker {
-            item: Some(scripted_item(
+            item:      Some(scripted_item(
                 "closed",
                 "https://tracker.example/denkhaus/work/issues/12",
             )),
+            get_fails: false,
         })
         .await;
 
-        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12")
-            .await
-            .expect("the scripted item resolves");
+        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await;
 
+        let LinkedItemResolution::Resolved(resolved) = resolved else {
+            panic!("the scripted item resolves: {resolved:?}");
+        };
         assert!(matches!(resolved.state, LinkedItemState::Closed));
         assert_eq!(
             resolved.url,
@@ -1663,14 +1721,36 @@ mod link_resolution_tests {
     }
 
     #[tokio::test]
-    async fn an_unresolvable_item_stays_absent_rather_than_guessed() {
-        let state = state_with(UrlScriptedTracker { item: None }).await;
+    async fn an_absent_item_is_the_trackers_verdict_not_a_stale_read() {
+        let state = state_with(UrlScriptedTracker {
+            item:      None,
+            get_fails: false,
+        })
+        .await;
 
         assert!(
-            super::resolve_linked_item(&state, "fabro", "denkhaus/work#13")
-                .await
-                .is_none(),
-            "no item, no resolution — the column stays honest with nulls"
+            matches!(
+                super::resolve_linked_item(&state, "fabro", "denkhaus/work#13").await,
+                LinkedItemResolution::NotFound
+            ),
+            "the tracker answered — honest nulls, no staleness"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_tracker_read_is_stale_not_silently_null() {
+        let state = state_with(UrlScriptedTracker {
+            item:      None,
+            get_fails: true,
+        })
+        .await;
+
+        assert!(
+            matches!(
+                super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await,
+                LinkedItemResolution::Stale
+            ),
+            "the failed read is the explicit degradation denkhaus/work#1364 names"
         );
     }
 }
