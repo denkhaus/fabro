@@ -978,11 +978,20 @@ impl Client {
     }
 
     /// Fires an automation's enabled API trigger, creating a new run.
-    pub async fn create_automation_run(&self, id: &str) -> Result<Run> {
+    /// `force` overrides the automation's `on_overlap=skip` refusal
+    /// while a previous run of it is still non-terminal (work#1374).
+    pub async fn create_automation_run(&self, id: &str, force: bool) -> Result<Run> {
         let response = self
             .send_api(|client| {
                 let id = id.to_string();
-                async move { client.create_automation_run().id(id).send().await }
+                async move {
+                    client
+                        .create_automation_run()
+                        .id(id)
+                        .force(force)
+                        .send()
+                        .await
+                }
             })
             .await?;
         Ok(response.into_inner())
@@ -3795,7 +3804,52 @@ mod tests {
             .await;
         let client = Client::new_no_proxy(&server.url("")).unwrap();
 
-        let run = client.create_automation_run("nightly-deps").await.unwrap();
+        let run = client
+            .create_automation_run("nightly-deps", false)
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert_eq!(run.id.to_string(), "01M2ZSYQR4ZM8N6HD67TT3AT3X");
+    }
+
+    #[tokio::test]
+    async fn create_automation_run_force_pins_the_query() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/v1/automations/nightly-deps/runs")
+                    .query_param("force", "true");
+                then.status(201)
+                    .header("content-type", "application/json")
+                    .json_body(json!({
+                        "id": "01M2ZSYQR4ZM8N6HD67TT3AT3X",
+                        "title": "forced fire",
+                        "goal": "forced fire",
+                        "workflow": { "slug": "dependency-update" },
+                        "created_by": { "kind": "user", "identity": {
+                            "issuer": "https://github.com", "subject": "123"
+                        }, "login": "octocat", "auth_method": "github" },
+                        "origin": { "kind": "api" },
+                        "labels": {},
+                        "lifecycle": {
+                            "status": { "kind": "pending", "reason": "approval_required" },
+                            "error": null,
+                            "archived": false
+                        },
+                        "models": [],
+                        "timestamps": { "created_at": "2026-09-20T12:00:00Z" },
+                        "links": { "web": null }
+                    }));
+            })
+            .await;
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+
+        let run = client
+            .create_automation_run("nightly-deps", true)
+            .await
+            .unwrap();
 
         mock.assert_async().await;
         assert_eq!(run.id.to_string(), "01M2ZSYQR4ZM8N6HD67TT3AT3X");

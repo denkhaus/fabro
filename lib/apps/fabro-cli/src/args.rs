@@ -2743,7 +2743,11 @@ pub(crate) struct AutomationsBreakerResetArgs {
 #[derive(Args)]
 pub(crate) struct AutomationsFireArgs {
     /// Automation id
-    pub(crate) id: String,
+    pub(crate) id:    String,
+    /// Fire despite an overlapping non-terminal run of this automation
+    /// (overrides the automation's on_overlap=skip refusal)
+    #[arg(long)]
+    pub(crate) force: bool,
 }
 
 #[derive(Args)]

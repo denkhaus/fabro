@@ -132,9 +132,21 @@ impl Automation {
     /// untagged (`None`) policy resolves to `Skip`, so an untagged
     /// automation can never fire overlapping scheduled passes; an
     /// explicit `Fire` is honored as user intent. Manual/API-triggered
-    /// runs are unconditional and do not consult this policy.
+    /// fires consult the same policy since work#1374 (the 2026-11-16
+    /// double-merger: a manual fire landed next to a still-cooking
+    /// scheduled lap) — the fire door's `force` parameter is the
+    /// explicit override there.
     #[must_use]
     pub fn effective_scheduled_overlap_policy(&self) -> AutomationOverlapPolicy {
+        self.effective_overlap_policy()
+    }
+
+    /// The effective overlap policy for ANY fire path: an untagged
+    /// policy resolves to `Skip` (unattended runs never pile up behind
+    /// a gate that is waiting for a human). The manual fire door
+    /// carries `force` as the explicit escape hatch.
+    #[must_use]
+    pub fn effective_overlap_policy(&self) -> AutomationOverlapPolicy {
         self.on_overlap.unwrap_or(AutomationOverlapPolicy::Skip)
     }
 

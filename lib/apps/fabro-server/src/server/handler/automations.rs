@@ -32,6 +32,16 @@ struct AutomationListMeta {
     total: usize,
 }
 
+/// The manual fire's query surface (work#1374): `force=true` overrides
+/// the automation's `on_overlap=skip` refusal while a previous run is
+/// still non-terminal. The check is server-side — a client-side check
+/// would race the active-run lookup (TOCTOU).
+#[derive(serde::Deserialize, Default)]
+struct AutomationRunFireQuery {
+    #[serde(default)]
+    force: Option<bool>,
+}
+
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route(
@@ -104,6 +114,7 @@ async fn create_automation_run(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    ExtraQuery(params): ExtraQuery<AutomationRunFireQuery>,
 ) -> Response {
     let id = match parse_path_id(id) {
         Ok(id) => id,
@@ -124,6 +135,43 @@ async fn create_automation_run(
         )
         .into_response();
     };
+    // on_overlap=skip gates manual fires too (work#1374, the
+    // 2026-11-16 double-merger): the API trigger is not a bypass — a
+    // still-non-terminal sibling lap refuses the fire unless the
+    // caller forces it. The scheduler's scheduled fires already skip
+    // through the same policy.
+    if automation.effective_overlap_policy() == fabro_automation::AutomationOverlapPolicy::Skip
+        && !params.force.unwrap_or(false)
+    {
+        match state
+            .stores
+            .run_summaries
+            .active_run_for_automation(id.as_str())
+            .await
+        {
+            Ok(Some(active)) => {
+                return ApiError::with_code(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "an active run ({active}) of this automation is still non-terminal \
+                         (on_overlap=skip) — pass force=true to fire anyway"
+                    ),
+                    "automation_overlap_skip",
+                )
+                .into_response();
+            }
+            Ok(None) => {}
+            Err(err) => {
+                // Fail-safe (the fabro-fb16 arm): an undecidable overlap
+                // state must not silently become a fire — refuse.
+                return ApiError::new(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    format!("the overlap check failed; refusing to fire: {err}"),
+                )
+                .into_response();
+            }
+        }
+    }
     let api_trigger_id = api_trigger.id.to_string();
     let environment_id = match resolve_automation_environment(
         state.as_ref(),

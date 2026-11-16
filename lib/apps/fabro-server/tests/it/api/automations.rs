@@ -165,12 +165,23 @@ async fn create_automation_run(
     automation_id: &str,
     expected: StatusCode,
 ) -> Value {
+    create_automation_run_with_query(app, automation_id, "", expected).await
+}
+
+async fn create_automation_run_with_query(
+    app: &axum::Router,
+    automation_id: &str,
+    query: &str,
+    expected: StatusCode,
+) -> Value {
+    let path = if query.is_empty() {
+        format!("/automations/{automation_id}/runs")
+    } else {
+        format!("/automations/{automation_id}/runs?{query}")
+    };
     let response = app
         .clone()
-        .oneshot(empty_request(
-            Method::POST,
-            &format!("/automations/{automation_id}/runs"),
-        ))
+        .oneshot(empty_request(Method::POST, &path))
         .await
         .expect("create automation run should respond");
     response_json(
@@ -1026,6 +1037,44 @@ async fn successful_api_triggered_automation_run_persists_automation_metadata() 
     let retrieved = run_json(&app, run_id).await;
     assert_eq!(retrieved["id"], run_id);
     assert_eq!(retrieved["automation"], created["automation"]);
+}
+
+#[tokio::test]
+async fn on_overlap_skip_refuses_a_second_fire_while_the_first_run_is_active() {
+    let (app, _temp_dir, _automation_dir) = automation_app_with_fake_materializer();
+    create_automation(&app, "nightly", "Nightly").await;
+
+    create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+
+    let error = create_automation_run(&app, "nightly", StatusCode::CONFLICT).await;
+
+    assert_eq!(
+        error["errors"][0]["code"], "automation_overlap_skip",
+        "the second fire while the first run is non-terminal must refuse \
+         with the named code (work#1374: the manual fire path honours \
+         on_overlap=skip like the scheduler does)"
+    );
+    assert!(
+        error["errors"][0]["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("force=true"),
+        "the refusal teaches the escape hatch: {}",
+        error["errors"][0]["detail"]
+    );
+}
+
+#[tokio::test]
+async fn force_overrides_the_skip_refusal() {
+    let (app, _temp_dir, _automation_dir) = automation_app_with_fake_materializer();
+    create_automation(&app, "nightly", "Nightly").await;
+
+    create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+
+    let forced =
+        create_automation_run_with_query(&app, "nightly", "force=true", StatusCode::CREATED).await;
+
+    assert_eq!(forced["automation"]["id"], "nightly");
 }
 
 #[tokio::test]
