@@ -1269,8 +1269,14 @@ async fn automation_run_listing_is_newest_first_and_paginates() {
     let (app, _temp_dir, _automation_dir) = automation_app_with_fake_materializer();
     create_automation(&app, "nightly", "Nightly").await;
     let oldest = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
-    let middle = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
-    let newest = create_automation_run(&app, "nightly", StatusCode::CREATED).await;
+    // The overlap gate (work#1374) refuses a second fire while the
+    // automation's first run is non-terminal; this fixture exercises
+    // listing/pagination, not the gate — the door's own override is
+    // the documented shape (force_overrides_the_skip_refusal).
+    let middle =
+        create_automation_run_with_query(&app, "nightly", "force=true", StatusCode::CREATED).await;
+    let newest =
+        create_automation_run_with_query(&app, "nightly", "force=true", StatusCode::CREATED).await;
 
     let first_page = list_automation_runs(&app, "/automations/nightly/runs?page[limit]=2").await;
     assert_eq!(first_page["meta"]["total"], 3);
