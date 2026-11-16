@@ -96,6 +96,17 @@ depth = 0
 [run.run_branch]
 push = true
 
+# Checkpoint tool-state exclusion (work#1360, the 2026-11-15 evidence: two
+# production retry-on-latest carries died on .mulch/mulch.config.yaml —
+# both sides had added a domain key, the file is a regenerable registry,
+# never work product; the cherry-pick cannot resolve adjacent-key adds).
+# The CONFIG ONLY, deliberately: the .mulch/expertise/*.jsonl entries are
+# real knowledge riding run branches into the trunk through the PRs —
+# they stay checkpointed (adjacent-line conflicts remain possible but are
+# trivial keep-both resolutions, proven by the #544 rebase).
+[run.checkpoint]
+exclude_globs = [".mulch/mulch.config.yaml"]
+
 [run.meta_branch]
 push = true
 

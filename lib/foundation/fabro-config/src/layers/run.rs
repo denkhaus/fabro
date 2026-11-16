@@ -18,50 +18,56 @@ use super::splice_array::SPLICE_MARKER;
 #[serde(deny_unknown_fields)]
 pub struct RunLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub goal:          Option<RunGoalLayer>,
+    pub goal:                Option<RunGoalLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub working_dir:   Option<String>,
+    pub working_dir:         Option<String>,
     /// Flat string-to-string map. Replaces wholesale across layers.
     #[serde(default, skip_serializing_if = "ReplaceMap::is_empty")]
-    pub metadata:      ReplaceMap<String>,
+    pub metadata:            ReplaceMap<String>,
     /// Run inputs: typed scalar values. Replaces wholesale across layers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inputs:        Option<HashMap<String, toml::Value>>,
+    pub inputs:              Option<HashMap<String, toml::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model:         Option<RunModelLayer>,
+    pub model:               Option<RunModelLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub git:           Option<RunGitLayer>,
+    pub git:                 Option<RunGitLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prepare:       Option<RunPrepareLayer>,
+    pub prepare:             Option<RunPrepareLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execution:     Option<RunExecutionLayer>,
+    pub execution:           Option<RunExecutionLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checkpoint:    Option<RunCheckpointLayer>,
+    pub checkpoint:          Option<RunCheckpointLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clone:         Option<RunCloneLayer>,
+    pub clone:               Option<RunCloneLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub run_branch:    Option<RunRunBranchLayer>,
+    pub run_branch:          Option<RunRunBranchLayer>,
     /// Legacy input only. Metadata branches are no longer written.
     #[serde(default, skip_serializing)]
-    pub meta_branch:   Option<RunMetaBranchLayer>,
+    pub meta_branch:         Option<RunMetaBranchLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub environment:   Option<RunEnvironmentLayer>,
+    pub environment:         Option<RunEnvironmentLayer>,
+    /// Workflow-level default environment selection: names one of the
+    /// declared `[environments]` used when no explicit `run.environment.id`
+    /// selection rides the create request. An explicit selection (request
+    /// override or `run.environment.id`) always wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_environment: Option<String>,
     #[serde(default, skip_serializing_if = "MergeMap::is_empty")]
-    pub notifications: MergeMap<NotificationRouteLayer>,
+    pub notifications:       MergeMap<NotificationRouteLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub interviews:    Option<InterviewsLayer>,
+    pub interviews:          Option<InterviewsLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub agent:         Option<RunAgentLayer>,
+    pub agent:               Option<RunAgentLayer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub hooks:         Vec<HookEntry>,
+    pub hooks:               Vec<HookEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub scm:           Option<RunScmLayer>,
+    pub scm:                 Option<RunScmLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pull_request:  Option<RunPullRequestLayer>,
+    pub pull_request:        Option<RunPullRequestLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifacts:     Option<RunArtifactsLayer>,
+    pub artifacts:           Option<RunArtifactsLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub integrations:  Option<RunIntegrationsLayer>,
+    pub integrations:        Option<RunIntegrationsLayer>,
 }
 
 impl RunLayer {

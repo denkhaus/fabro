@@ -17,7 +17,7 @@ use fabro_api::types::{
     BoardColumn, RunIntent, RunManifest, SubmitAnswerRequest, UpdateRunParentRequest,
     UpdateRunRequest,
 };
-use fabro_config::{Storage, project};
+use fabro_config::{SettingsLayer, Storage, project};
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, EnvironmentId};
 use fabro_interview::AnswerSubmission;
 use fabro_llm::Client as LlmClient;
@@ -571,15 +571,15 @@ pub(crate) async fn create_run_from_intent(
         Ok(validated) => validated,
         Err(error) => return run_intent_admission_error(error.into()),
     };
-    let environment_id = match select_intent_environment_id(
-        &state,
-        intent
-            .environment_id
-            .as_deref()
-            .unwrap_or(DEFAULT_ENVIRONMENT_ID),
-    ) {
-        Ok(id) => id,
-        Err(error) => return run_intent_admission_error(error.into()),
+    // An explicit environment on the request is validated eagerly; an
+    // omitted one is resolved against the workflow's declared defaults
+    // after the closure is lowered (denkhaus/work#1319).
+    let explicit_environment_id = match intent.environment_id.as_deref() {
+        Some(requested) => match select_intent_environment_id(&state, requested) {
+            Ok(id) => Some(id),
+            Err(error) => return run_intent_admission_error(error.into()),
+        },
+        None => None,
     };
     if let Err(error) = validate_intent_actor_target(&state, &actor, &target).await {
         return run_intent_admission_error(error);
@@ -601,6 +601,14 @@ pub(crate) async fn create_run_from_intent(
     };
     let mut lowered = match lower_workflow_closure(&closure) {
         Ok(lowered) => lowered,
+        Err(error) => return run_intent_admission_error(error.into()),
+    };
+    let environment_id = match resolve_workflow_default_environment(
+        &state,
+        explicit_environment_id,
+        lowered.workflow_layer.as_ref(),
+    ) {
+        Ok(id) => id,
         Err(error) => return run_intent_admission_error(error.into()),
     };
     if let Some(layer) = lowered.workflow_layer.as_mut() {
@@ -1156,6 +1164,76 @@ fn select_intent_environment_id(
         return Err(EnvironmentSelectionError::NotFound { id });
     }
     Ok(id)
+}
+
+/// Resolve which environment an intent runs on when the request carries an
+/// omitted environment (denkhaus/work#1319).
+///
+/// An explicit request selection always wins. Without one, the workflow's
+/// own selection applies — `[run.environment] id` or the
+/// `run.default_environment` reference from `workflow.toml` — and a workflow
+/// that declares exactly one environment gets that environment, so UI- and
+/// bare-created runs no longer silently fall to the default sandbox. A
+/// workflow selecting an unknown environment fails loudly (it asked for it);
+/// an auto-selected sole environment missing from the server's store only
+/// warns and falls back, because declaring is not selecting.
+fn resolve_workflow_default_environment(
+    state: &AppState,
+    explicit_environment_id: Option<EnvironmentId>,
+    workflow_layer: Option<&SettingsLayer>,
+) -> Result<EnvironmentId, EnvironmentSelectionError> {
+    if let Some(explicit) = explicit_environment_id {
+        return Ok(explicit);
+    }
+    let workflow_selection = workflow_layer
+        .and_then(|layer| layer.run.as_ref())
+        .and_then(|run| {
+            run.environment
+                .as_ref()
+                .and_then(|environment| environment.id.as_deref())
+                .or(run.default_environment.as_deref())
+        });
+    if let Some(selected) = workflow_selection {
+        return select_intent_environment_id(state, selected);
+    }
+    let declared: Vec<&str> = workflow_layer
+        .map(|layer| {
+            layer
+                .environments
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    match declared.as_slice() {
+        [only] => {
+            if let Ok(id) = select_intent_environment_id(state, only) {
+                info!(
+                    environment = %only,
+                    "workflow declares exactly one environment and the request selects none; \
+                     selecting it as the run environment"
+                );
+                return Ok(id);
+            }
+            warn!(
+                environment = %only,
+                "workflow's sole declared environment is not configured on the server; \
+                 the run falls to the default environment"
+            );
+            select_intent_environment_id(state, DEFAULT_ENVIRONMENT_ID)
+        }
+        [] => select_intent_environment_id(state, DEFAULT_ENVIRONMENT_ID),
+        many => {
+            let names = many.join(", ");
+            warn!(
+                environments = %names,
+                "workflow declares multiple environments and the request selects none; \
+                 the run falls to the default environment — select one with --environment \
+                 or run.default_environment"
+            );
+            select_intent_environment_id(state, DEFAULT_ENVIRONMENT_ID)
+        }
+    }
 }
 
 async fn validate_intent_environment(
@@ -1810,5 +1888,159 @@ mod admission_refusal_tests {
             detail.contains("persist-time inlining"),
             "the detail names the diagnostic message: {detail}"
         );
+    }
+}
+
+#[cfg(test)]
+mod environment_default_tests {
+    use fabro_environment::EnvironmentId;
+
+    use super::resolve_workflow_default_environment;
+    use crate::test_support::test_app_state;
+
+    fn workflow_layer(source: &str) -> fabro_config::SettingsLayer {
+        toml::from_str(source).expect("workflow layer should parse")
+    }
+
+    fn environment(id: &str) -> EnvironmentId {
+        id.parse().expect("environment id should parse")
+    }
+
+    #[test]
+    fn sole_declared_environment_is_selected_when_request_selects_none() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[environments.local]
+provider = "local"
+"#,
+        );
+
+        let id = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "local");
+    }
+
+    #[test]
+    fn workflow_selection_beats_sole_declaration() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[run]
+default_environment = "local"
+
+[environments.docker]
+provider = "docker"
+"#,
+        );
+
+        let id = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "local");
+    }
+
+    #[test]
+    fn explicit_request_selection_beats_every_workflow_default() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[run]
+default_environment = "local"
+
+[environments.docker]
+provider = "docker"
+"#,
+        );
+
+        let id = resolve_workflow_default_environment(
+            &state,
+            Some(environment("daytona")),
+            Some(&layer),
+        )
+        .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "daytona");
+    }
+
+    #[test]
+    fn sole_declared_environment_missing_from_store_falls_back_to_default() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[environments.toolchain]
+provider = "docker"
+"#,
+        );
+
+        let id = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "default");
+    }
+
+    #[test]
+    fn multiple_declared_environments_fall_back_to_default() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[environments.docker]
+provider = "docker"
+
+[environments.local]
+provider = "local"
+"#,
+        );
+
+        let id = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "default");
+    }
+
+    #[test]
+    fn workflow_selecting_an_unknown_environment_fails_loudly() {
+        let state = test_app_state();
+        let layer = workflow_layer(
+            r#"
+_version = 1
+
+[run]
+default_environment = "toolchain"
+"#,
+        );
+
+        let error = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect_err("unknown workflow-selected environment should fail");
+
+        assert!(
+            matches!(
+                error,
+                super::EnvironmentSelectionError::NotFound { ref id } if id.as_str() == "toolchain"
+            ),
+            "error should name the unknown environment: {error:?}"
+        );
+    }
+
+    #[test]
+    fn no_declaration_resolves_the_default_environment() {
+        let state = test_app_state();
+        let layer = workflow_layer("_version = 1\n");
+
+        let id = resolve_workflow_default_environment(&state, None, Some(&layer))
+            .expect("environment should resolve");
+
+        assert_eq!(id.as_str(), "default");
     }
 }

@@ -99,6 +99,80 @@ include = ["/tmp/*.md", "../reports/*.md", "src/[abc"]
 }
 
 #[test]
+fn default_environment_reference_selects_declared_environment() {
+    let settings = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run]
+default_environment = "toolchain"
+"#,
+        r#"
+[environments.toolchain]
+provider = "docker"
+"#,
+    )
+    .expect("default_environment reference should resolve");
+
+    assert_eq!(settings.run.environment.id, "toolchain");
+    assert_eq!(
+        settings.run.environment.provider,
+        SandboxProviderKind::DOCKER
+    );
+}
+
+#[test]
+fn explicit_environment_id_beats_default_environment_reference() {
+    let settings = workflow_settings_from_toml_with_catalog(
+        r#"
+_version = 1
+
+[run]
+default_environment = "toolchain"
+
+[run.environment]
+id = "fabro-dev"
+"#,
+        r#"
+[environments.toolchain]
+provider = "docker"
+
+[environments.fabro-dev]
+provider = "daytona"
+"#,
+    )
+    .expect("explicit environment id should resolve");
+
+    assert_eq!(settings.run.environment.id, "fabro-dev");
+    assert_eq!(
+        settings.run.environment.provider,
+        SandboxProviderKind::DAYTONA
+    );
+}
+
+#[test]
+fn unknown_default_environment_is_a_resolve_error() {
+    let error = workflow_settings_from_toml(
+        r#"
+_version = 1
+
+[run]
+default_environment = "missing"
+"#,
+    )
+    .expect_err("unknown default_environment should fail to resolve");
+
+    assert!(
+        error.to_string().contains("run.default_environment"),
+        "error should name the default_environment path: {error}"
+    );
+    assert!(
+        error.to_string().contains("unknown environment: missing"),
+        "error should name the unknown environment: {error}"
+    );
+}
+
+#[test]
 fn resolves_run_defaults_from_empty_settings() {
     let settings = super::workflow_settings_from_layer(SettingsLayer::default())
         .expect("empty settings should resolve")

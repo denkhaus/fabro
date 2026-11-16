@@ -151,10 +151,12 @@ async fn list_global_observations(
         )
     };
     // The derivation's tracker half resolves once per DISTINCT item for
-    // the whole request (work#1363): the walk used to resolve per link
-    // row — the same item linked from N records cost N tracker round
-    // trips, which is what made triage-filtered reads take a minute.
-    let mut resolved_of: HashMap<(String, String), Option<ResolvedLinkedItem>> = HashMap::new();
+    // the whole request (work#1362/#1363): the walk used to resolve per
+    // link row — the same item linked from N records cost N tracker
+    // round trips, which is what made triage-filtered reads take a
+    // minute. The resolver memoizes both the tracker read and the
+    // claim-ledger read per distinct (project, item).
+    let mut resolver = LinkedItemResolver::new(&state);
     let mut links_by_run: HashMap<RunId, Vec<fabro_work::ObservationLink>> = HashMap::new();
     // The decision half (ADR-0044): one store read per run, beside the
     // link rows. A store failure degrades to empty — the feed keeps
@@ -181,7 +183,7 @@ async fn list_global_observations(
                 };
                 let links = triage_links_of_seq(
                     &state,
-                    &mut resolved_of,
+                    &mut resolver,
                     &mut links_by_run,
                     entry_run,
                     stored.seq,
@@ -199,9 +201,12 @@ async fn list_global_observations(
         Some(wanted) => {
             // EXACT total under a post-SQL filter (work#1296): walk
             // every matching record once, derive its triage, count the
-            // matches, and slice the page from the walked matches.
-            // Links are fetched once per run (work#1296), item states
-            // once per distinct item (work#1363), and the linkless
+            // matches, and slice the page from the walked matches —
+            // replacing the over-fetch rounds whose total could only
+            // grow while paging. Links are fetched once per run
+            // (work#1296), item states resolve once per distinct item
+            // through the per-request resolver (work#1362), the missing
+            // ones join concurrently (work#1363), and the linkless
             // short-circuits need no tracker I/O at all: a record with
             // link rows can never be untriaged or reviewed, and one
             // without derives those two states from link presence and
@@ -259,7 +264,7 @@ async fn list_global_observations(
                     // overrides), and the states resolve deduped.
                     let links = triage_links_of_seq(
                         &state,
-                        &mut resolved_of,
+                        &mut resolver,
                         &mut links_by_run,
                         entry_run,
                         stored.seq,
@@ -361,13 +366,14 @@ async fn run_link_rows<'a>(
 
 /// One record's wire links with resolved live item states: the link rows
 /// of `seq` (store half, cheap) beside the tracker resolution (the
-/// expensive half), resolved once per DISTINCT item for the whole
-/// request and joined concurrently — never one round trip per link row
-/// (work#1363). A record without link rows resolves nothing: it derives
-/// `untriaged` from link presence alone.
+/// expensive half), memoized once per DISTINCT item for the whole
+/// request through the resolver and joined concurrently — never one
+/// round trip per link row (work#1362/#1363). A record without link
+/// rows resolves nothing: it derives `untriaged` from link presence
+/// alone.
 async fn triage_links_of_seq(
     state: &AppState,
-    resolved_of: &mut HashMap<(String, String), Option<ResolvedLinkedItem>>,
+    resolver: &mut LinkedItemResolver<'_>,
     links_by_run: &mut HashMap<RunId, Vec<fabro_work::ObservationLink>>,
     run_id: &RunId,
     seq: u64,
@@ -378,12 +384,13 @@ async fn triage_links_of_seq(
     if seq_links.is_empty() {
         return Vec::new();
     }
-    // The not-yet-resolved distinct items of this record, resolved in
-    // one concurrent join; the map dedupes across the whole request.
+    // The not-yet-memoized distinct items of this record, resolved in
+    // one concurrent join; the resolver's map dedupes across the whole
+    // request.
     let mut pending: Vec<(String, String)> = Vec::new();
     for link in &seq_links {
         let key = (link.project_id.clone(), link.item_key.clone());
-        if !resolved_of.contains_key(&key) && !pending.contains(&key) {
+        if !resolver.resolved.contains_key(&key) && !pending.contains(&key) {
             pending.push(key);
         }
     }
@@ -394,12 +401,13 @@ async fn triage_links_of_seq(
     )
     .await;
     for (key, resolved) in pending.into_iter().zip(resolutions) {
-        resolved_of.insert(key, resolved);
+        resolver.resolved.insert(key, resolved);
     }
     seq_links
         .into_iter()
         .map(|link| {
-            let resolved = resolved_of
+            let resolved = resolver
+                .resolved
                 .get(&(link.project_id.clone(), link.item_key.clone()))
                 .cloned()
                 .flatten();
@@ -1300,14 +1308,12 @@ async fn list_observations(
     // onto each record. A store failure degrades to an empty column —
     // the observations themselves still list (the radius precedent).
     let mut links_of_seq: HashMap<u64, Vec<ObservationWorkItemLink>> = HashMap::new();
-    let mut linked_pairs: Vec<(String, String)> = Vec::new();
+    let mut pairs_of_seq: HashMap<u64, Vec<(String, String)>> = HashMap::new();
     match state.work_store().linked_items_for_run(&run_id).await {
         Ok(links) => {
             for link in links {
                 let pair = (link.project_id.clone(), link.item_key.clone());
-                if !linked_pairs.contains(&pair) {
-                    linked_pairs.push(pair);
-                }
+                pairs_of_seq.entry(link.seq).or_default().push(pair);
                 links_of_seq
                     .entry(link.seq)
                     .or_default()
@@ -1328,27 +1334,21 @@ async fn list_observations(
         }
     }
     // The linked items' live states and tracker URLs, resolved once per
-    // distinct (project, item): closed, open with a live claim (a run is
-    // working it), or open. An unresolvable item keeps nulls — the column
-    // stays honest rather than guessing.
-    let mut resolved_of: HashMap<(String, String), Option<ResolvedLinkedItem>> = HashMap::new();
-    for (project_id, item_key) in &linked_pairs {
-        let resolved = resolve_linked_item(&state, project_id, item_key).await;
-        resolved_of.insert((project_id.clone(), item_key.clone()), resolved);
-    }
-    for links in links_of_seq.values_mut() {
-        for link in links {
-            let state_key = linked_pairs
-                .iter()
-                .find(|(_, key)| key == &link.item_key)
-                .cloned();
-            if let Some((project_id, item_key)) = state_key {
-                let resolved = resolved_of.get(&(project_id, item_key)).cloned().flatten();
-                link.item_state = resolved
-                    .as_ref()
-                    .map(|item| LinkedItemState::into_wire(item.state));
-                link.item_url = resolved.map(|item| item.url);
-            }
+    // distinct (project, item) through the per-request resolver
+    // (work#1362): closed, open with a live claim (a run is working
+    // it), or open. An unresolvable item keeps nulls — the column stays
+    // honest rather than guessing.
+    let mut resolver = LinkedItemResolver::new(&state);
+    for (seq, pairs) in &pairs_of_seq {
+        let Some(links) = links_of_seq.get_mut(seq) else {
+            continue;
+        };
+        for (link, (project_id, item_key)) in links.iter_mut().zip(pairs) {
+            let resolved = resolver.resolve(project_id, item_key).await;
+            link.item_state = resolved
+                .as_ref()
+                .map(|item| LinkedItemState::into_wire(item.state));
+            link.item_url = resolved.map(|item| item.url);
         }
     }
 
@@ -1432,6 +1432,37 @@ async fn resolve_linked_item(
         state,
         url: item.url,
     })
+}
+
+/// The per-request batch of linked item states (denkhaus/work#1362):
+/// each distinct (project, item) resolves EXACTLY ONCE per feed page or
+/// walk — the tracker read and the claim-ledger read behind
+/// [`resolve_linked_item`] are memoized here, so a page of records
+/// linking the same item costs one round-trip, not one per record per
+/// link. One resolver lives for one HTTP request and is dropped with
+/// it: no cross-request state, no invalidation, no stale columns.
+struct LinkedItemResolver<'a> {
+    state:    &'a AppState,
+    resolved: HashMap<(String, String), Option<ResolvedLinkedItem>>,
+}
+
+impl<'a> LinkedItemResolver<'a> {
+    fn new(state: &'a AppState) -> Self {
+        Self {
+            state,
+            resolved: HashMap::new(),
+        }
+    }
+
+    async fn resolve(&mut self, project_id: &str, item_key: &str) -> Option<ResolvedLinkedItem> {
+        let cache_key = (project_id.to_owned(), item_key.to_owned());
+        if let Some(hit) = self.resolved.get(&cache_key) {
+            return hit.clone();
+        }
+        let resolved = resolve_linked_item(self.state, project_id, item_key).await;
+        self.resolved.insert(cache_key, resolved.clone());
+        resolved
+    }
 }
 
 /// One stored observation record as the API serves it. The category is

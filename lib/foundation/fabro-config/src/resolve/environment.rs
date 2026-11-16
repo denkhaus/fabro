@@ -16,20 +16,29 @@ use crate::{
 
 pub(crate) fn resolve_run_environment(
     layer: Option<&RunEnvironmentLayer>,
+    default_environment: Option<&str>,
     catalog: &MergeMap<EnvironmentLayer>,
     errors: &mut Vec<ResolveError>,
 ) -> RunEnvironmentSettings {
     let layer = layer.expect("defaults.toml should provide run.environment defaults");
-    let id = layer.id.clone().unwrap_or_else(|| {
-        errors.push(ResolveError::Missing {
-            path: "run.environment.id".to_string(),
-        });
-        "default".to_string()
-    });
+    // `defaults.toml` pins `run.environment.id = "default"`, so a merged
+    // "default" id is the no-selection marker rather than an explicit
+    // choice. Selection precedence: an explicit `run.environment.id`
+    // (request override or workflow `[run.environment]`), then the
+    // workflow-level `run.default_environment` reference, then the default
+    // environment. A workflow explicitly selecting `id = "default"` while
+    // also naming `run.default_environment` is pathological and resolves to
+    // the reference.
+    let explicit = layer.id.clone().filter(|id| id != "default");
+    let (id, path) = match (explicit, default_environment) {
+        (Some(id), _) => (id, "run.environment.id"),
+        (None, Some(id)) => (id.to_string(), "run.default_environment"),
+        (None, None) => ("default".to_string(), "run.environment.id"),
+    };
 
     let Some(base) = catalog.get(&id) else {
         errors.push(ResolveError::Invalid {
-            path:   "run.environment.id".to_string(),
+            path:   path.to_string(),
             reason: format!("unknown environment: {id}"),
         });
         return RunEnvironmentSettings::from_environment(id, EnvironmentSettings::default());

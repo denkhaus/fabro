@@ -56,7 +56,12 @@ pub fn resolve_run(
         checkpoint: resolve_checkpoint(layer.checkpoint.as_ref()),
         clone,
         run_branch,
-        environment: resolve_run_environment(layer.environment.as_ref(), environments, errors),
+        environment: resolve_run_environment(
+            layer.environment.as_ref(),
+            layer.default_environment.as_deref(),
+            environments,
+            errors,
+        ),
         notifications: layer
             .notifications
             .iter()

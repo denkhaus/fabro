@@ -5,6 +5,7 @@ use fabro_config::project;
 use fabro_environment::{DEFAULT_ENVIRONMENT_ID, Environment};
 use fabro_types::{RunId, RunIntent};
 use fabro_util::terminal::Styles;
+use tokio::fs;
 
 use super::overrides::prepare_intent_overrides;
 use super::remote_workflow::Interruption;
@@ -124,6 +125,17 @@ pub(crate) async fn create_run(
         );
     }
     let workflow_version_id = package.closure().root_id();
+    // denkhaus/work#1319: a workflow declaring environments that the request
+    // selects none of falls to the default sandbox. A sole declared
+    // environment is auto-selected server-side; several declared and none
+    // selected is the miss worth naming client-side.
+    if args.environment.is_none() {
+        if let ResolvedWorkflow::Local(local) = &package {
+            if let Some(workflow_toml) = local.workflow_location().toml.as_deref() {
+                warn_unselected_environments(ctx, styles, workflow_toml).await;
+            }
+        }
+    }
     client
         .register_workflow_versions(
             package
@@ -138,7 +150,7 @@ pub(crate) async fn create_run(
             workflow_version_id,
             target,
             args: prepared.intent_args,
-            environment_id: Some(environment.id.to_string()),
+            environment_id: args.environment.clone(),
             parent_id,
             title: None,
             goal: prepared.goal,
@@ -152,9 +164,12 @@ pub(crate) async fn create_run(
     })
 }
 
-/// Retrieves the run environment, defaulting to `default` when `--environment`
-/// is omitted. A missing `default` is reported with the catalog so the user
-/// can pick an explicit environment or create the missing one.
+/// Retrieves the run environment used for target inference, defaulting to
+/// `default` when `--environment` is omitted. The created intent carries the
+/// environment id only when `--environment` was explicit, so the server can
+/// apply the workflow's own environment selection (denkhaus/work#1319). A
+/// missing `default` is reported with the catalog so the user can pick an
+/// explicit environment or create the missing one.
 async fn resolve_run_environment(
     client: &fabro_client::Client,
     explicit_id: Option<&str>,
@@ -167,6 +182,40 @@ async fn resolve_run_environment(
         }
         Err(error) => Err(error).with_context(|| format!("could not retrieve environment `{id}`")),
     }
+}
+
+async fn warn_unselected_environments(ctx: &CommandContext, styles: &Styles, workflow_toml: &Path) {
+    let declared = declared_workflow_environments(workflow_toml).await;
+    if declared.len() < 2 {
+        return;
+    }
+    let names = declared
+        .iter()
+        .map(|id| format!("`{id}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    fabro_util::printerr!(
+        ctx.printer(),
+        "{} {} declares environments ({names}) and this run selects none; it falls to the default environment. Pass --environment or set run.default_environment in workflow.toml.",
+        styles.yellow.apply_to("Warning:"),
+        workflow_toml.display(),
+    );
+}
+
+/// Environment ids declared under `[environments]` in a `workflow.toml`.
+/// Read-only and best-effort: a missing or unparseable file declares nothing.
+async fn declared_workflow_environments(workflow_toml: &Path) -> Vec<String> {
+    let Ok(source) = fs::read_to_string(workflow_toml).await else {
+        return Vec::new();
+    };
+    let Ok(document) = source.parse::<toml::Table>() else {
+        return Vec::new();
+    };
+    document
+        .get("environments")
+        .and_then(|environments| environments.as_table())
+        .map(|environments| environments.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 async fn missing_default_environment_error(client: &fabro_client::Client) -> anyhow::Error {
@@ -206,4 +255,69 @@ fn warn_untransmitted_settings(
         path.display(),
         keys.join(", "),
     );
+}
+
+#[cfg(test)]
+mod environment_warning_tests {
+    use std::path::PathBuf;
+
+    use tokio::fs;
+
+    use super::declared_workflow_environments;
+
+    async fn temp_workflow_toml(content: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("fabro-create-env-warning-{}", std::process::id()));
+        fs::create_dir_all(&dir)
+            .await
+            .expect("temp dir should create");
+        let path = dir.join("workflow.toml");
+        fs::write(&path, content)
+            .await
+            .expect("workflow.toml should write");
+        path
+    }
+
+    #[tokio::test]
+    async fn reads_declared_environment_ids() {
+        let path = temp_workflow_toml(
+            r#"
+_version = 1
+
+[run]
+default_environment = "toolchain"
+
+[environments.toolchain]
+provider = "docker"
+
+[environments.local]
+provider = "local"
+"#,
+        )
+        .await;
+
+        let mut declared = declared_workflow_environments(&path).await;
+        declared.sort();
+
+        assert_eq!(declared, vec!["local".to_string(), "toolchain".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn missing_or_unparseable_file_declares_nothing() {
+        assert!(
+            declared_workflow_environments(&PathBuf::from("/nonexistent/workflow.toml"))
+                .await
+                .is_empty()
+        );
+
+        let path = temp_workflow_toml("not = = toml").await;
+        assert!(declared_workflow_environments(&path).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn file_without_environments_declares_nothing() {
+        let path = temp_workflow_toml("_version = 1\n\n[run]\ngoal = \"ship\"\n").await;
+
+        assert!(declared_workflow_environments(&path).await.is_empty());
+    }
 }
