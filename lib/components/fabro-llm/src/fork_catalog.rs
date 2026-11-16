@@ -79,4 +79,28 @@ mod tests {
              overlay that claims it must come with a probe"
         );
     }
+
+    /// Presence pin for the cost-tier trial model (work#1374): the
+    /// triage and implementer nodes name `zai:glm-5.3-flash` — without
+    /// this overlay row the attribute silently falls back to the run
+    /// model (the fabro-6a5a class) and the trial would run at main
+    /// prices looking configured. Also pins the operator's effort
+    /// levels (2026-11-16: glm carries low/high/max, nothing between).
+    #[test]
+    fn zai_flash_trial_model_exists_with_low_high_max() {
+        let catalog = build_catalog(&LlmLayer::default(), &|_| None)
+            .expect("builtin + fork overlay catalog builds");
+        let flash = catalog
+            .model("zai", "glm-5.3-flash")
+            .expect("glm-5.3-flash exists: the work#1374 trial routes to it");
+        let schema = ResponseFormat::JsonSchema {
+            name:   "routing".to_string(),
+            schema: serde_json::json!({"type": "object"}),
+        };
+        assert!(
+            !flash.capabilities().response_format(&schema).is_supported(),
+            "flash keeps the glm-5.3 posture: no structured-output claim \
+             without a probe"
+        );
+    }
 }
