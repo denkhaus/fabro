@@ -82,13 +82,14 @@ export const AutomationsApiAxiosParamCreator = function (configuration?: Configu
             };
         },
         /**
-         * Creates a new run by firing the automation\'s enabled API trigger.
+         * Creates a new run by firing the automation\'s enabled API trigger. An automation with `on_overlap: skip` (the default) refuses to fire while a previous run of it is still non-terminal; pass `force=true` to fire anyway (the operator\'s explicit override).
          * @summary Create automation run
          * @param {string} id Unique automation identifier.
+         * @param {boolean} [force] Fire despite an overlapping non-terminal run of this automation (overrides &#x60;on_overlap: skip&#x60;). Defaults to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createAutomationRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        createAutomationRun: async (id: string, force?: boolean, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'id' is not null or undefined
             assertParamExists('createAutomationRun', 'id', id)
             const localVarPath = `/api/v1/automations/{id}/runs`
@@ -109,6 +110,10 @@ export const AutomationsApiAxiosParamCreator = function (configuration?: Configu
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (force !== undefined) {
+                localVarQueryParameter['force'] = force;
+            }
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -367,14 +372,15 @@ export const AutomationsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Creates a new run by firing the automation\'s enabled API trigger.
+         * Creates a new run by firing the automation\'s enabled API trigger. An automation with `on_overlap: skip` (the default) refuses to fire while a previous run of it is still non-terminal; pass `force=true` to fire anyway (the operator\'s explicit override).
          * @summary Create automation run
          * @param {string} id Unique automation identifier.
+         * @param {boolean} [force] Fire despite an overlapping non-terminal run of this automation (overrides &#x60;on_overlap: skip&#x60;). Defaults to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async createAutomationRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.createAutomationRun(id, options);
+        async createAutomationRun(id: string, force?: boolean, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createAutomationRun(id, force, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['AutomationsApi.createAutomationRun']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -468,14 +474,15 @@ export const AutomationsApiFactory = function (configuration?: Configuration, ba
             return localVarFp.createAutomation(createAutomationRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Creates a new run by firing the automation\'s enabled API trigger.
+         * Creates a new run by firing the automation\'s enabled API trigger. An automation with `on_overlap: skip` (the default) refuses to fire while a previous run of it is still non-terminal; pass `force=true` to fire anyway (the operator\'s explicit override).
          * @summary Create automation run
          * @param {string} id Unique automation identifier.
+         * @param {boolean} [force] Fire despite an overlapping non-terminal run of this automation (overrides &#x60;on_overlap: skip&#x60;). Defaults to false.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        createAutomationRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
-            return localVarFp.createAutomationRun(id, options).then((request) => request(axios, basePath));
+        createAutomationRun(id: string, force?: boolean, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.createAutomationRun(id, force, options).then((request) => request(axios, basePath));
         },
         /**
          * Deletes an automation definition when `If-Match` matches the current automation revision.
@@ -550,14 +557,15 @@ export class AutomationsApi extends BaseAPI {
     }
 
     /**
-     * Creates a new run by firing the automation\'s enabled API trigger.
+     * Creates a new run by firing the automation\'s enabled API trigger. An automation with `on_overlap: skip` (the default) refuses to fire while a previous run of it is still non-terminal; pass `force=true` to fire anyway (the operator\'s explicit override).
      * @summary Create automation run
      * @param {string} id Unique automation identifier.
+     * @param {boolean} [force] Fire despite an overlapping non-terminal run of this automation (overrides &#x60;on_overlap: skip&#x60;). Defaults to false.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public createAutomationRun(id: string, options?: RawAxiosRequestConfig) {
-        return AutomationsApiFp(this.configuration).createAutomationRun(id, options).then((request) => request(this.axios, this.basePath));
+    public createAutomationRun(id: string, force?: boolean, options?: RawAxiosRequestConfig) {
+        return AutomationsApiFp(this.configuration).createAutomationRun(id, force, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -31,6 +31,10 @@ export interface ObservationWorkItemLink {
      */
     'item_state'?: ObservationWorkItemLinkItemStateEnum | null;
     /**
+     * True when the null `item_state` is a degradation, not a verdict (denkhaus/work#1364): the tracker read FAILED (rate limit exhausted after retries, transport, configuration), so the state is stale rather than resolved. False when the tracker answered — including a definitive not-found.
+     */
+    'item_state_stale'?: boolean;
+    /**
      * The linked item\'s tracker URL, resolved server-side beside the state (denkhaus/work#1235): the work item is an abstract interface — forgejo, gitea, gitlab possible, only github implemented — so clients never build forge URLs. Null when the tracker cannot resolve the item.
      */
     'item_url'?: string | null;

@@ -9,7 +9,7 @@ use crate::shared::print_json_pretty;
 pub(super) async fn fire_command(args: &AutomationsFireArgs, ctx: &CommandContext) -> Result<()> {
     let client = ctx.server().await?;
     let printer = ctx.printer();
-    let run = client.create_automation_run(&args.id).await?;
+    let run = client.create_automation_run(&args.id, args.force).await?;
 
     fabro_util::printerr!(
         printer,

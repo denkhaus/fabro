@@ -20,6 +20,7 @@ fn help() {
       <ID>  Automation id
 
     Options:
+          --force             Fire despite an overlapping non-terminal run of this automation (overrides the automation's on_overlap=skip refusal)
           --json              Output as JSON [env: FABRO_JSON=]
           --debug             Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
           --no-upgrade-check  Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
