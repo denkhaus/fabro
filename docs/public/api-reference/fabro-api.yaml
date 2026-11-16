@@ -7082,8 +7082,9 @@ paths:
         The global observations feed: every run's observation records in
         one server-paged listing, newest first. Each item carries the
         run id, the workflow name, the record's category and text, and
-        the derived triage state (untriaged, filed, in_progress, closed)
-        with the linked work items and their live item states. Filters
+        the derived triage state (untriaged, filed, in_progress,
+        closed, reviewed) with the linked work items and their live
+        item states. Filters
         compose; the triage filter applies after derivation.
       parameters:
         - name: category
@@ -7097,12 +7098,14 @@ paths:
           in: query
           required: false
           description: >-
-            The derived triage state: untriaged (no linked item), filed
-            (linked, open), in_progress (linked, open with a live
-            claim), closed (every linked item closed).
+            The derived triage state: untriaged (no linked item, no
+            triage decision), filed (linked, open), in_progress
+            (linked, open with a live claim), closed (every linked item
+            closed), reviewed (a no-filing decision exists; a later
+            filing overrides it).
           schema:
             type: string
-            enum: [untriaged, filed, in_progress, closed]
+            enum: [untriaged, filed, in_progress, closed, reviewed]
         - name: run
           in: query
           required: false
@@ -7148,6 +7151,54 @@ paths:
                 $ref: "#/components/schemas/GlobalObservationList"
         "403":
           description: Not a run-management actor
+
+  /api/v1/observations/manage:
+    post:
+      operationId: manageObservation
+      tags: [Observations]
+      summary: Record a triage decision on an observation record
+      description: >-
+        The triager's decision door (ADR-0044): records a triage
+        decision keyed to the observation's append-only (runId, seq)
+        identity — `no_filing` means the triager judged the friction
+        needs no work item, and the feed derives `reviewed` for the
+        record. A later filing overrides the decision: link rows beat
+        the decision row. Upsert: the latest decision on a record wins.
+        Door symmetry: the agent tool `fabro_observation_manage` and
+        the CLI facade `fabro observation manage` ride this endpoint.
+        Writers: user principals always; a workflow run only when its
+        workflow is the triager (the mark door's allowlist posture).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObservationManageRequest"
+      responses:
+        "200":
+          description: The recorded decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObservationManageResponse"
+        "400":
+          description: Malformed body, invalid run id, or unknown action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is neither a user nor a triager run
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: The observation record does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/projects/{projectId}/work-items/update:
     parameters:
@@ -15322,11 +15373,14 @@ components:
           description: When the record was appended.
         triage_state:
           type: string
-          enum: [untriaged, filed, in_progress, closed]
+          enum: [untriaged, filed, in_progress, closed, reviewed]
           description: >-
-            The derived triage state: untriaged (no linked item), filed
-            (linked, open), in_progress (linked, open with a live
-            claim), closed (every linked item closed).
+            The derived triage state: untriaged (no linked item, no
+            triage decision), filed (linked, open), in_progress
+            (linked, open with a live claim), closed (every linked item
+            closed), reviewed (a triage decision exists and no link —
+            the triager judged no item needed; a later filing overrides
+            it).
         linked_work_items:
           type: array
           items:
@@ -20280,6 +20334,104 @@ components:
           items:
             type: string
           description: Additional labels beyond the project label.
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObservationRef"
+          description: >-
+            Observation records this item files from (ADR-0044: filing
+            IS linking). The server writes the work-item links in the
+            same request — idempotent, dedupe at the link. Optional:
+            an item may be filed without observations.
+
+    ObservationRef:
+      description: >-
+        One observation record by its append-only identity: the run and
+        the per-run seq (ADR-0038).
+      type: object
+      required:
+        - runId
+        - seq
+      properties:
+        runId:
+          type: string
+        seq:
+          type: integer
+
+    ObservationManageRequest:
+      description: >-
+        One triage decision on one observation record (ADR-0044): the
+        action names what the triager judged, the reason is the durable
+        rationale — a decision without a reason teaches nothing.
+      type: object
+      required:
+        - runId
+        - seq
+        - action
+        - reason
+      properties:
+        runId:
+          type: string
+        seq:
+          type: integer
+        action:
+          type: string
+          enum: [no_filing, link_existing]
+          description: >-
+            The triage action. `no_filing`: no work item is warranted;
+            the record derives `reviewed`. `link_existing`: an already
+            filed work item carries this finding — the link is written
+            (dedupe at the link, ADR-0038 decision 5), never a second
+            item; requires `projectId` and `itemKey`.
+        reason:
+          type: string
+          description: >-
+            Why — the durable rationale the operator and the next pass
+            read.
+        projectId:
+          type: string
+          description: >-
+            The work item's project id. Required with `link_existing`
+            (link rows are project-scoped); ignored otherwise.
+        itemKey:
+          type: string
+          description: >-
+            The already-filed item's provider-stable key (e.g.
+            `denkhaus/work#12`). Required with `link_existing`.
+
+    ObservationManageResponse:
+      description: The recorded decision as stored.
+      type: object
+      required:
+        - runId
+        - seq
+        - action
+        - reason
+        - decidedAt
+        - byRun
+      properties:
+        runId:
+          type: string
+        seq:
+          type: integer
+        action:
+          type: string
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        byRun:
+          type: ["string", "null"]
+          description: >-
+            The workflow run that decided (the triager pass); null when
+            a user principal wrote the decision.
+        itemKey:
+          type: ["string", "null"]
+          description: >-
+            The linked item on `link_existing`; null on `no_filing`. An
+            already-linked pair reports `already_linked` in the reason,
+            never a second row.
 
     WorkItemCloseRequest:
       description: >-

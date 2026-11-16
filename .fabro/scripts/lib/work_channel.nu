@@ -141,6 +141,28 @@ export def observation-list-argv [srv: string, run_id: string]: nothing -> list<
     ['observation' '--server' $srv 'list' '--run-id' $run_id '--json']
 }
 
+# Pure: the argv for one global observation-feed read (ADR-0044: the
+# triager's worklist — every run's records with the derived triage
+# state). Filters compose server-side; `--json` prints the
+# GlobalObservationList record (`.observations` + `.total`), never a
+# bare array.
+export def observation-feed-argv [
+    srv: string,
+    --category: string,
+    --triage: string,
+    --run-id: string,
+    --sort-by: string,
+    --limit: int = 25,
+    --page: int = 1,
+]: nothing -> list<string> {
+    mut argv = ['observation' '--server' $srv 'feed' '--json' '--limit' ($limit | into string) '--page' ($page | into string)]
+    if not ($category | is-empty) { $argv = ($argv | append ['--category' $category]) }
+    if not ($triage | is-empty) { $argv = ($argv | append ['--triage' $triage]) }
+    if not ($run_id | is-empty) { $argv = ($argv | append ['--run-id' $run_id]) }
+    if not ($sort_by | is-empty) { $argv = ($argv | append ['--sort' $sort_by]) }
+    $argv
+}
+
 # Pure: the argv for one work-radius read (the closure radius of a
 # work item; the CLI URL-encodes the item key's `#`).
 export def work-radius-argv [srv: string, project: string, work_item: string]: nothing -> list<string> {

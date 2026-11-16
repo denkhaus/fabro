@@ -13,6 +13,9 @@
  */
 
 
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ObservationRef } from './observation-ref';
 
 /**
  * File a work item in the project\'s tracker.
@@ -24,4 +27,8 @@ export interface WorkItemCreateRequest {
      * Additional labels beyond the project label.
      */
     'labels'?: Array<string>;
+    /**
+     * Observation records this item files from (ADR-0044: filing IS linking). The server writes the work-item links in the same request — idempotent, dedupe at the link. Optional: an item may be filed without observations.
+     */
+    'observations'?: Array<ObservationRef>;
 }

@@ -375,9 +375,41 @@ impl FabroToolBackend for ClientBackend {
         title: &str,
         body: &str,
         labels: Vec<String>,
+        observations: Vec<fabro_types::ObservationRef>,
     ) -> anyhow::Result<types::WorkItem> {
+        // `types::ObservationRef` IS the canonical type (with_replacement
+        // in fabro-api's build.rs) — the refs pass through unchanged.
         self.client
-            .create_work_item(project, title, body, labels)
+            .create_work_item(project, title, body, labels, observations)
+            .await
+    }
+
+    async fn observation_manage(
+        &self,
+        run_id: &RunId,
+        seq: u64,
+        action: &str,
+        reason: &str,
+        project: Option<&str>,
+        item_key: Option<&str>,
+    ) -> anyhow::Result<types::ObservationManageResponse> {
+        self.client
+            .manage_observation(&run_id.to_string(), seq, action, reason, project, item_key)
+            .await
+    }
+
+    async fn observation_feed(
+        &self,
+        category: Option<&str>,
+        triage: Option<&str>,
+        run_id: Option<&str>,
+        query: Option<&str>,
+        sort: Option<&str>,
+        limit: u32,
+        page: u32,
+    ) -> anyhow::Result<types::GlobalObservationList> {
+        self.client
+            .list_global_observations(category, triage, run_id, query, sort, limit, page)
             .await
     }
 

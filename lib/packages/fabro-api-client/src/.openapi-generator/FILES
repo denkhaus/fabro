@@ -272,6 +272,9 @@ models/notification-route-settings.ts
 models/object-store-local-settings.ts
 models/object-store-s3-settings.ts
 models/object-store-settings.ts
+models/observation-manage-request.ts
+models/observation-manage-response.ts
+models/observation-ref.ts
 models/observation-work-item-link.ts
 models/orchestration-field.ts
 models/orchestration-verdict.ts

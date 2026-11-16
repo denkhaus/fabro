@@ -38,6 +38,7 @@ def set-title [title: string]: nothing -> nothing {
 const GEARS = [
     [workflow interval_minutes window_minutes];
     [adjudicator 15 45]
+    [triager 15 45]
     [merger 30 90]
     [develop 30 90]
 ]

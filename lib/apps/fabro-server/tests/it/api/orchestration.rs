@@ -1241,3 +1241,257 @@ async fn the_queue_decorates_work_items_keeps_parked_and_filters_by_workflow() {
         "the develop worklist holds both develop runs: {develop_ids:?}"
     );
 }
+
+/// The manage door (ADR-0044): the triage decision's keyed home. A
+/// develop worker is refused (the allowlist keys on the triager
+/// workflow), the triager worker and user principals write `no_filing`
+/// (the record derives `reviewed`, never `untriaged`), `link_existing`
+/// writes the link row beside the decision (dedupe at the link), a
+/// decision without the item half refuses, and a nonexistent record
+/// answers 404 — the door keys on the record's append-only identity.
+#[tokio::test]
+async fn the_manage_door_decides_reviews_and_links_existing() {
+    let (app, state, store) = orchestration_app();
+    let recording = RunId::new();
+    let triager = RunId::new();
+    let develop = RunId::new();
+    seed_run(&store, recording, "develop", true).await;
+    seed_run(&store, triager, "triager", true).await;
+    seed_run(&store, develop, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for text in ["decided painpoint", "linked painpoint"] {
+        records
+            .append(
+                &recording,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    let decided_seq = 1u64;
+    let linked_seq = 2u64;
+
+    // A develop worker is NOT the triager: the allowlist refuses it.
+    let develop_token = state.test_issue_worker_token_with_run_tools(&develop);
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {develop_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": decided_seq,
+                "action": "no_filing",
+                "reason": "not the triager's to write",
+            }))
+            .expect("refused body serializes"),
+        ))
+        .expect("refused request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::FORBIDDEN, "develop worker refused").await;
+    assert_eq!(body["errors"][0]["code"], "triage_manage_not_allowed");
+
+    // The triager worker records no_filing: the record derives reviewed.
+    let triager_token = state.test_issue_worker_token_with_run_tools(&triager);
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": decided_seq,
+                "action": "no_filing",
+                "reason": "one-off already explained in the run's journal",
+            }))
+            .expect("decision body serializes"),
+        ))
+        .expect("decision request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "triager decides").await;
+    assert_eq!(body["action"], "no_filing");
+    assert_eq!(body["byRun"], triager.to_string());
+    assert_eq!(body["itemKey"], Value::Null);
+
+    // link_existing without the item half refuses at the boundary.
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": linked_seq,
+                "action": "link_existing",
+                "reason": "item half missing",
+            }))
+            .expect("half body serializes"),
+        ))
+        .expect("half request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    response_json(
+        response,
+        StatusCode::BAD_REQUEST,
+        "link_existing needs the item half",
+    )
+    .await;
+
+    // link_existing writes the link beside the decision (the fake
+    // tracker knows denkhaus/work#9 as OPEN — the record derives filed).
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": linked_seq,
+                "action": "link_existing",
+                "reason": "denkhaus/work#9 carries this finding",
+                "projectId": "fabro",
+                "itemKey": "denkhaus/work#9",
+            }))
+            .expect("link body serializes"),
+        ))
+        .expect("link request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "triager links existing").await;
+    assert_eq!(body["itemKey"], "denkhaus/work#9");
+
+    // A decision for a nonexistent record answers 404 — the door keys
+    // on the record's append-only identity.
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": 99,
+                "action": "no_filing",
+                "reason": "no such record",
+            }))
+            .expect("missing body serializes"),
+        ))
+        .expect("missing request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::NOT_FOUND, "missing record").await;
+    assert_eq!(body["errors"][0]["code"], "observation_not_found");
+
+    // The feed derives the dispositions: seq 1 reviewed, seq 2 filed —
+    // and nothing untriaged remains on the recording run.
+    let reviewed =
+        triage_feed_page(&app, &triager_token, "triage=reviewed&category=painpoint").await;
+    assert_eq!(
+        reviewed["total"], 1,
+        "the decided record reads reviewed: {reviewed}"
+    );
+    assert_eq!(reviewed["observations"][0]["text"], "decided painpoint");
+    let filed = triage_feed_page(&app, &triager_token, "triage=filed&category=painpoint").await;
+    assert_eq!(filed["total"], 1, "the linked record reads filed: {filed}");
+    let untriaged =
+        triage_feed_page(&app, &triager_token, "triage=untriaged&category=painpoint").await;
+    assert_eq!(
+        untriaged["total"], 0,
+        "both records carry a disposition — none untriaged: {untriaged}"
+    );
+}
+
+/// One triage-filtered feed page as an authenticated triager reads it.
+async fn triage_feed_page(app: &axum::Router, token: &str, query: &str) -> Value {
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(&format!("/observations?{query}")))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.clone().oneshot(request).await.expect("feed runs");
+    response_json(response, StatusCode::OK, "observations feed").await
+}
+
+/// Create-with-refs (ADR-0044: filing IS linking): the create door
+/// writes the link rows in the same request, and the feed derives
+/// `filed` for the referenced record with the new item linked.
+#[tokio::test]
+async fn create_work_item_links_its_observation_refs() {
+    let (_app, state, store) = orchestration_app();
+    let recording = RunId::new();
+    seed_run(&store, recording, "develop", true).await;
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &recording,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "filed-through-create painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+
+    // The create rides the user surface (the seed precedent: a second
+    // router over the shared state carries the test user); the fake
+    // tracker's create answers itemKey = title — the link's target is
+    // predictable for the assertion.
+    let user_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/projects/fabro/work-items"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "title": "create-linked fixture item",
+                "body": "the finding, the run it came from, what closes it",
+                "observations": [{"runId": recording.to_string(), "seq": 1}],
+            }))
+            .expect("create body serializes"),
+        ))
+        .expect("create request builds");
+    let response = user_app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("create runs");
+    let body = response_json(response, StatusCode::CREATED, "create with refs").await;
+    assert_eq!(body["itemKey"], "create-linked fixture item");
+
+    // The referenced record derives filed with the created item linked.
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=filed&category=painpoint"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = user_app.oneshot(request).await.expect("feed runs");
+    let body = response_json(response, StatusCode::OK, "observations feed").await;
+    assert_eq!(
+        body["total"], 1,
+        "the filed record is the feed's match: {body}"
+    );
+    let record = &body["observations"][0];
+    assert_eq!(record["text"], "filed-through-create painpoint");
+    assert_eq!(
+        record["linked_work_items"][0]["item_key"], "create-linked fixture item",
+        "the link row landed with the create: {record}"
+    );
+}

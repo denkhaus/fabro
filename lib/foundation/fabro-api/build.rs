@@ -908,6 +908,7 @@ fn main() {
         ("BlobHash", "fabro_types::BlobHash", &[]),
         ("CostSource", "lithos_llm::types::CostSource", &[]),
         ("WorkItemComment", "fabro_types::WorkItemComment", &[]),
+        ("ObservationRef", "fabro_types::ObservationRef", &[]),
     ];
     for (name, path, impls) in replacements {
         settings.with_replacement(*name, *path, impls.iter().copied());

@@ -43,7 +43,7 @@ export interface GlobalObservation {
      */
     'recorded_at'?: string | null;
     /**
-     * The derived triage state: untriaged (no linked item), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed).
+     * The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a triage decision exists and no link — the triager judged no item needed; a later filing overrides it).
      */
     'triage_state': GlobalObservationTriageStateEnum;
     /**
@@ -56,7 +56,8 @@ export const GlobalObservationTriageStateEnum = {
     UNTRIAGED: 'untriaged',
     FILED: 'filed',
     IN_PROGRESS: 'in_progress',
-    CLOSED: 'closed'
+    CLOSED: 'closed',
+    REVIEWED: 'reviewed'
 } as const;
 
 export type GlobalObservationTriageStateEnum = typeof GlobalObservationTriageStateEnum[keyof typeof GlobalObservationTriageStateEnum];

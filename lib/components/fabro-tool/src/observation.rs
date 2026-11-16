@@ -23,7 +23,7 @@
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use fabro_api::types::RunObservation;
+use fabro_api::types::{GlobalObservationList, ObservationManageResponse, RunObservation};
 use fabro_store::platform_records::{MAX_OBSERVATION_TEXT_CHARS, StagePosition};
 use fabro_types::ObservationCategory;
 use schemars::JsonSchema;
@@ -206,6 +206,161 @@ pub fn list_observations_text(result: &ObservationListResult) -> String {
             listed,
             "\nseq {} ({}): {head}",
             observation.seq, observation.category
+        );
+    }
+    listed
+}
+
+/// `fabro_observation_manage` (ADR-0044): the triager's decision door.
+/// One triage decision on one observation record, keyed to its (run,
+/// seq) identity — the keyed row the feed's derivation reads beside the
+/// links (a decision note on the caller's own run has no address
+/// connection to the target; ADR-0044 rejected the textmatch).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroObservationManageParams {
+    /// The run that recorded the observation: a FULL run id.
+    #[serde(rename = "runId")]
+    pub run_id:   String,
+    /// The record's per-run seq — its identity beside the run id.
+    pub seq:      u64,
+    /// The triage action. `no_filing`: no work item is warranted.
+    /// `link_existing`: an already-filed item carries the finding — the
+    /// link is written, never a second item.
+    pub action:   FabroObservationManageAction,
+    /// Why — the durable rationale the operator and the next pass
+    /// read.
+    pub reason:   String,
+    /// The work item's project id. Required with `link_existing`;
+    /// ignored otherwise.
+    pub project:  Option<String>,
+    /// The already-filed item's provider-stable key. Required with
+    /// `link_existing`.
+    #[serde(rename = "itemKey")]
+    pub item_key: Option<String>,
+}
+
+/// The action as the tool's schema offers it to the model. The wire
+/// vocabulary is snake_case (the OpenAPI enum) — `strum::Display`
+/// owns the variant→string map (the repo's strum rule), so
+/// `to_string()` yields `no_filing` / `link_existing` directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::Display, Deserialize, JsonSchema)]
+#[strum(serialize_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum FabroObservationManageAction {
+    /// No work item is warranted; the record derives `reviewed`.
+    NoFiling,
+    /// An already-filed item carries the finding; the link is written
+    /// (dedupe at the link, ADR-0038 decision 5).
+    LinkExisting,
+}
+
+/// Record one triage decision through the backend. The target run must
+/// be a run id — the same rule every observation surface enforces.
+pub async fn manage_observation(
+    backend: Arc<dyn FabroToolBackend>,
+    params: FabroObservationManageParams,
+) -> ToolResult<ObservationManageResponse> {
+    let run_id = parse_target_run(&params.run_id)?;
+    let reason = params.reason.trim();
+    if reason.is_empty() {
+        return Err(ToolError::message(
+            "the decision reason must not be blank — a decision without a rationale teaches \
+             nothing",
+        ));
+    }
+    if params.action == FabroObservationManageAction::LinkExisting
+        && (params.project.as_deref().unwrap_or("").trim().is_empty()
+            || params.item_key.as_deref().unwrap_or("").trim().is_empty())
+    {
+        return Err(ToolError::message(
+            "link_existing needs the item half beside the observation half — pass project and \
+             itemKey",
+        ));
+    }
+    backend
+        .observation_manage(
+            &run_id,
+            params.seq,
+            &params.action.to_string(),
+            reason,
+            params.project.as_deref().map(str::trim),
+            params.item_key.as_deref().map(str::trim),
+        )
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))
+}
+
+/// The manage rendering: the decision, the record, the reason.
+pub fn manage_observation_text(result: &ObservationManageResponse) -> String {
+    format!(
+        "{} decided on {} seq {}: {} — {}",
+        result.action, result.run_id, result.seq, result.reason, result.decided_at
+    )
+}
+
+/// `fabro_observation_feed` (ADR-0044): the global observations feed —
+/// the triager's worklist read, door-symmetric with
+/// `fabro observation feed`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FabroObservationFeedParams {
+    /// The record category; absent lists both.
+    pub category: Option<FabroObservationCategory>,
+    /// The derived triage state; absent lists all. The triager's
+    /// worklist is `untriaged`.
+    pub triage:   Option<String>,
+    /// Exact run id; narrows the feed to one run.
+    pub run:      Option<String>,
+    /// Case-insensitive text containment over the record body.
+    pub q:        Option<String>,
+    /// Sort key: `recorded` (oldest first) or `-recorded` (newest
+    /// first, the default).
+    pub sort:     Option<String>,
+    /// Maximum items to return (1-100); also the page size.
+    pub limit:    Option<u32>,
+    /// 1-based results page (default 1).
+    pub page:     Option<u32>,
+}
+
+/// Read the global feed through the backend.
+pub async fn observation_feed(
+    backend: Arc<dyn FabroToolBackend>,
+    params: FabroObservationFeedParams,
+) -> ToolResult<GlobalObservationList> {
+    let category = params
+        .category
+        .map(|category| ObservationCategory::from(category).to_string());
+    backend
+        .observation_feed(
+            category.as_deref(),
+            params.triage.as_deref(),
+            params.run.as_deref(),
+            params.q.as_deref(),
+            params.sort.as_deref(),
+            params.limit.unwrap_or(25).clamp(1, 100),
+            params.page.unwrap_or(1).max(1),
+        )
+        .await
+        .map_err(|err| ToolError::from_anyhow(&err))
+}
+
+/// The feed rendering: count and total, then one line per record with
+/// its run, seq, triage state and fact head — the full text rides the
+/// JSON payload.
+pub fn observation_feed_text(result: &GlobalObservationList) -> String {
+    if result.observations.is_empty() {
+        return "the observation feed page is empty".to_string();
+    }
+    let mut listed = format!(
+        "{} observation record(s) on this page ({} total):",
+        result.observations.len(),
+        result.total
+    );
+    for observation in &result.observations {
+        let head = super::common::first_line_capped(&observation.text, 120);
+        let _ = write!(
+            listed,
+            "\n{} seq {} [{}]: {head}",
+            observation.run_id, observation.seq, observation.triage_state
         );
     }
     listed

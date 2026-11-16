@@ -1803,6 +1803,8 @@ impl Commands {
             Self::Observation(ns) => match &ns.command {
                 ObservationCommand::Record(_) => "observation record",
                 ObservationCommand::List(_) => "observation list",
+                ObservationCommand::Feed(_) => "observation feed",
+                ObservationCommand::Manage(_) => "observation manage",
             },
             Self::Automations(ns) => match &ns.command {
                 AutomationsCommand::List(_) => "automations list",
@@ -2340,6 +2342,13 @@ pub(crate) enum ObservationCommand {
     Record(ObservationRecordArgs),
     /// List a run's observation records (the read door, ADR-0039 stage D)
     List(ObservationListArgs),
+    /// Read the global observations feed with the derived triage state —
+    /// the triager's worklist read (ADR-0044)
+    Feed(ObservationFeedArgs),
+    /// Record one triage decision on an observation record (ADR-0044):
+    /// `no_filing` — no work item is warranted; the record reads
+    /// `reviewed`
+    Manage(ObservationManageArgs),
 }
 
 #[derive(Args)]
@@ -2347,6 +2356,67 @@ pub(crate) struct ObservationListArgs {
     /// The run whose observation records list
     #[arg(long)]
     pub(crate) run_id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct ObservationFeedArgs {
+    /// The record category; absent lists both
+    #[arg(long)]
+    pub(crate) category: Option<ObservationCategoryArg>,
+    /// The derived triage state; absent lists all (untriaged | filed |
+    /// in_progress | closed | reviewed)
+    #[arg(long)]
+    pub(crate) triage:   Option<String>,
+    /// Exact run id; narrows the feed to one run
+    #[arg(long)]
+    pub(crate) run_id:   Option<String>,
+    /// Case-insensitive text containment over the record body
+    #[arg(long)]
+    pub(crate) query:    Option<String>,
+    /// Sort key: `recorded` (oldest first) or `-recorded` (newest first,
+    /// the default)
+    #[arg(long)]
+    pub(crate) sort:     Option<String>,
+    /// Maximum items to return (1-100); also the page size
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+    pub(crate) limit:    Option<u32>,
+    /// 1-based results page (default 1)
+    #[arg(long)]
+    pub(crate) page:     Option<u32>,
+}
+
+#[derive(Args)]
+pub(crate) struct ObservationManageArgs {
+    /// The run that recorded the observation (a full run id)
+    #[arg(long)]
+    pub(crate) run_id:   String,
+    /// The record's per-run seq — its identity beside the run id
+    #[arg(long)]
+    pub(crate) seq:      u64,
+    /// The triage action: `no-filing` (no work item is warranted) or
+    /// `link-existing` (an already-filed item carries the finding)
+    #[arg(long = "action", value_enum)]
+    pub(crate) action:   ObservationManageActionArg,
+    /// Why — the durable rationale the operator and the next pass read
+    #[arg(long)]
+    pub(crate) reason:   String,
+    /// The work item's project id (required with --action link-existing)
+    #[arg(long)]
+    pub(crate) project:  Option<String>,
+    /// The already-filed item's key (required with --action
+    /// link-existing)
+    #[arg(long = "item-key")]
+    pub(crate) item_key: Option<String>,
+}
+
+/// The triage action vocabulary as a clap enum, so `--action` refuses
+/// typos at the boundary. Kebab-case mirrors the wire's snake_case
+/// (`no-filing` → `no_filing`).
+#[derive(Clone, Copy, Debug, strum::Display, clap::ValueEnum)]
+#[strum(serialize_all = "kebab-case")]
+pub(crate) enum ObservationManageActionArg {
+    NoFiling,
+    LinkExisting,
 }
 
 #[derive(Args)]
@@ -2471,29 +2541,34 @@ pub(crate) struct WorkShowArgs {
 pub(crate) struct WorkCreateArgs {
     /// Work project id
     #[arg(long)]
-    pub(crate) project:   String,
+    pub(crate) project:      String,
     /// Item title
     #[arg(long)]
-    pub(crate) title:     String,
+    pub(crate) title:        String,
     /// Item body
     #[arg(long, conflicts_with = "body_file")]
-    pub(crate) body:      Option<String>,
+    pub(crate) body:         Option<String>,
     /// Read the item body from a file (`-` reads stdin)
     #[arg(long, value_name = "PATH", conflicts_with = "body")]
-    pub(crate) body_file: Option<PathBuf>,
+    pub(crate) body_file:    Option<PathBuf>,
     /// Lane to file the item in (translated through the project's lane labels)
     #[arg(long)]
-    pub(crate) lane:      Option<String>,
+    pub(crate) lane:         Option<String>,
     /// Item type (files the `type:<t>` label)
     #[arg(long = "type", value_enum)]
-    pub(crate) item_type: Option<WorkItemTypeArg>,
+    pub(crate) item_type:    Option<WorkItemTypeArg>,
     /// Item priority 0-4 (files the `prio:pN` label; default stays the
     /// tracker's p2)
     #[arg(long, value_parser = clap::value_parser!(u8).range(0..=4))]
-    pub(crate) priority:  Option<u8>,
+    pub(crate) priority:     Option<u8>,
     /// Raw tracker label; repeatable or comma-separated
     #[arg(long = "label", value_delimiter = ',')]
-    pub(crate) labels:    Vec<String>,
+    pub(crate) labels:       Vec<String>,
+    /// Observation record this item files from, as `<runId>:<seq>`;
+    /// repeatable (ADR-0044: filing IS linking — the server writes the
+    /// work-item links in the same request)
+    #[arg(long = "link-observation", value_name = "RUN:SEQ")]
+    pub(crate) observations: Vec<String>,
 }
 
 /// The item-type vocabulary as a clap enum, so `--type` refuses typos at

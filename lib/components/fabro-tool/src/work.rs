@@ -179,18 +179,36 @@ impl TryFrom<FabroWorkListParams> for ValidatedWorkList {
     }
 }
 
+/// One observation record by its append-only identity (ADR-0038): the
+/// run and the record's per-run seq. Filing carries these refs so the
+/// server writes the link rows in the same request (ADR-0044: filing
+/// IS linking).
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct FabroObservationRef {
+    /// The run that recorded the observation.
+    #[serde(rename = "runId")]
+    pub run_id: String,
+    /// The record's per-run seq — its identity beside the run id.
+    pub seq:    u64,
+}
+
 /// `fabro_work_create`: file a work item in the project's tracker.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FabroWorkCreateParams {
     /// The project id; omit it to use THIS run's project.
-    pub project: Option<String>,
+    pub project:      Option<String>,
     /// Short English title (repo rule).
-    pub title:   String,
+    pub title:        String,
     /// The spec body.
-    pub body:    String,
+    pub body:         String,
     /// Additional labels beyond the project label.
     #[serde(default)]
-    pub labels:  Vec<String>,
+    pub labels:       Vec<String>,
+    /// Observation records this item files from (ADR-0044: filing IS
+    /// linking — the server writes the work-item links in the same
+    /// request). Every painpoint you file MUST carry its ref here.
+    #[serde(default)]
+    pub observations: Vec<FabroObservationRef>,
 }
 
 /// `fabro_work_update`: edit a work item's title and/or body in place
@@ -384,8 +402,26 @@ pub async fn work_create(
     let project = resolve_project(params.project.as_deref())?;
     let title = non_blank(&params.title, "title")?;
     let body = non_blank(&params.body, "body")?;
+    // The observation refs validate before the tracker call: a malformed
+    // run id must fail the TOOL call, not the create's link half.
+    let mut observations = Vec::with_capacity(params.observations.len());
+    for reference in &params.observations {
+        let run_id = reference
+            .run_id
+            .parse::<fabro_types::RunId>()
+            .map_err(|err| {
+                ToolError::message(format!(
+                    "invalid runId '{}' in observations: {err}",
+                    reference.run_id
+                ))
+            })?;
+        observations.push(fabro_types::ObservationRef {
+            run_id,
+            seq: reference.seq,
+        });
+    }
     backend
-        .work_create(&project, &title, &body, params.labels)
+        .work_create(&project, &title, &body, params.labels, observations)
         .await
         .map_err(|err| ToolError::from_anyhow(&err))
 }

@@ -104,20 +104,21 @@ fn create_help() {
     Usage: fabro work create [OPTIONS] --project <PROJECT> --title <TITLE>
 
     Options:
-          --json                 Output as JSON [env: FABRO_JSON=]
-          --project <PROJECT>    Work project id
-          --debug                Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
-          --title <TITLE>        Item title
-          --body <BODY>          Item body
-          --no-upgrade-check     Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
-          --body-file <PATH>     Read the item body from a file (`-` reads stdin)
-          --quiet                Suppress non-essential output [env: FABRO_QUIET=]
-          --lane <LANE>          Lane to file the item in (translated through the project's lane labels)
-          --verbose              Enable verbose output [env: FABRO_VERBOSE=]
-          --type <ITEM_TYPE>     Item type (files the `type:<t>` label) [possible values: task, bug, feature, epic]
-          --priority <PRIORITY>  Item priority 0-4 (files the `prio:pN` label; default stays the tracker's p2)
-          --label <LABELS>       Raw tracker label; repeatable or comma-separated
-      -h, --help                 Print help
+          --json                        Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>           Work project id
+          --debug                       Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --title <TITLE>               Item title
+          --body <BODY>                 Item body
+          --no-upgrade-check            Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --body-file <PATH>            Read the item body from a file (`-` reads stdin)
+          --quiet                       Suppress non-essential output [env: FABRO_QUIET=]
+          --lane <LANE>                 Lane to file the item in (translated through the project's lane labels)
+          --verbose                     Enable verbose output [env: FABRO_VERBOSE=]
+          --type <ITEM_TYPE>            Item type (files the `type:<t>` label) [possible values: task, bug, feature, epic]
+          --priority <PRIORITY>         Item priority 0-4 (files the `prio:pN` label; default stays the tracker's p2)
+          --label <LABELS>              Raw tracker label; repeatable or comma-separated
+          --link-observation <RUN:SEQ>  Observation record this item files from, as `<runId>:<seq>`; repeatable (ADR-0044: filing IS linking — the server writes the work-item links in the same request)
+      -h, --help                        Print help
     ----- stderr -----
     ");
 }
