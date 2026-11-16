@@ -79,8 +79,8 @@ friction verdict — before anything is selected.
    in-progress work items name the mid-flight work; continue it.
 6. Sprint ledger: read `iterate-state.json` at the repo ROOT. If
    `sprints_reflected < sprints_completed`, run the pending reflection
-   (Phase 6) FIRST. STALE-LEDGER CHECK (work#1380-class, the
-   fork.37-39 gap): if origin/denkhaus carries merges newer than the
+   (Phase 6) FIRST. STALE-LEDGER CHECK (the fork.37-39 gap, hit for
+   real at the sprint-90 orient): if origin/denkhaus carries merges newer than the
    ledger's last update — compare the ledger commit's date
    (`git log -1 --format=%ci -- iterate-state.json`) with the trunk
    tip's — surface the gap LOUDLY before selecting: sessions have
