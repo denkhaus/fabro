@@ -1115,6 +1115,23 @@ async fn claim_next(
         .map_err(store_error)?;
     claimed.extend(released_by_run.into_iter().map(|claim| claim.item_key));
 
+    // Durable stale-basis skip (denkhaus/work#1377): an item whose
+    // LATEST release is a stale-basis verdict stays out of the pool —
+    // the per-run skip above deliberately does not protect other runs
+    // (#1186), so the next lap would otherwise re-offer, re-verify, and
+    // re-burn a full run on a landed-but-open item until the human
+    // triage closes it. The verdict expires when the ITEM moves past it
+    // (any touch bumps `updated_at`; an unknown timestamp counts as
+    // unmoved — suppressing a possibly actionable item is the cheap
+    // error, re-burning a run is the expensive one) and dies with the
+    // item's closure. The human triage close stays the only way the
+    // item leaves the tracker.
+    let stale_basis = state
+        .work_store()
+        .stale_basis_verdicts(&project.project_id)
+        .await
+        .map_err(store_error)?;
+
     // Lane backpressure (fabro-4580, ADR-0032): a lane grants only when its
     // open run PRs are drained. Cap 0 = refuse while ANY claim of the lane
     // awaits merge; the scheduler cannot fire a second overlapping run past
@@ -1150,6 +1167,14 @@ async fn claim_next(
     for item in items {
         if claimed.contains(&item.item_key) {
             continue;
+        }
+        if let Some(released_at) = stale_basis.get(&item.item_key) {
+            let moved_past = item
+                .updated_at
+                .is_some_and(|updated| updated > *released_at);
+            if !moved_past {
+                continue;
+            }
         }
         match state
             .work_store()
@@ -1745,9 +1770,13 @@ mod resolve_self_tests {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
+    use axum::extract::{Path, State};
     use axum::http::{HeaderMap, StatusCode};
+    use chrono::Utc;
+    use fabro_api::types::WorkClaimNextRequest;
     use fabro_static::EnvVars;
     use fabro_types::{GitRunTarget, Principal, RunId, RunTarget, SystemActorKind, WorkflowPath};
+    use fabro_work::{TrackerProvider, WorkItem, WorkItemFilter};
 
     use super::{
         WorkCaller, bind_claim_to_caller, bind_granted_run_id, require_claim_held_by_run,
@@ -1892,88 +1921,10 @@ mod resolve_self_tests {
 
     #[tokio::test]
     async fn self_flows_through_next_and_lands_in_the_bound_projects_ledger() {
-        use axum::extract::{Path, State};
-        use chrono::Utc;
         use fabro_api::types::WorkClaimNextRequest;
-        use fabro_work::{TrackerProvider, WorkItem, WorkItemFilter};
+        use fabro_work::TrackerProvider;
 
         use super::claim_next;
-
-        struct OneItemTracker;
-        #[async_trait::async_trait]
-        impl TrackerProvider for OneItemTracker {
-            async fn list(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _filter: WorkItemFilter,
-            ) -> anyhow::Result<Vec<WorkItem>> {
-                Ok(vec![WorkItem {
-                    item_key:   "denkhaus/work#1".to_string(),
-                    title:      "Item 1".to_string(),
-                    body:       "the spec".to_string(),
-                    state:      "open".to_string(),
-                    labels:     vec!["lane:loop".to_string()],
-                    priority:   1,
-                    url:        "https://github.com/denkhaus/work/issues/1".to_string(),
-                    updated_at: Some(Utc::now()),
-                }])
-            }
-            async fn get(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-            ) -> anyhow::Result<Option<WorkItem>> {
-                Ok(None)
-            }
-            async fn create(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _draft: fabro_work::WorkItemDraft,
-            ) -> anyhow::Result<WorkItem> {
-                anyhow::bail!("not needed")
-            }
-            async fn update(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-                _title: Option<&str>,
-                _body: Option<&str>,
-            ) -> anyhow::Result<WorkItem> {
-                anyhow::bail!("not needed")
-            }
-            async fn close(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-                _reason: &str,
-            ) -> anyhow::Result<()> {
-                Ok(())
-            }
-            async fn comment(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-                _body: &str,
-            ) -> anyhow::Result<()> {
-                Ok(())
-            }
-            async fn project_claim(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-                _run_id: &str,
-            ) -> anyhow::Result<()> {
-                Ok(())
-            }
-            async fn clear_claim(
-                &self,
-                _project: &fabro_work::WorkProject,
-                _item_key: &str,
-                _run_id: &str,
-            ) -> anyhow::Result<()> {
-                Ok(())
-            }
-        }
 
         let state = TestAppStateBuilder::new()
             .env_lookup(|_| None)
@@ -2030,13 +1981,305 @@ mod resolve_self_tests {
         );
     }
 
+    /// One open candidate item, static fixture — the shape the original
+    /// `claim_next` grant test drives.
+    struct OneItemTracker;
+    #[async_trait::async_trait]
+    impl TrackerProvider for OneItemTracker {
+        async fn list(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            Ok(vec![WorkItem {
+                item_key:   "denkhaus/work#1".to_string(),
+                title:      "Item 1".to_string(),
+                body:       "the spec".to_string(),
+                state:      "open".to_string(),
+                labels:     vec!["lane:loop".to_string()],
+                priority:   1,
+                url:        "https://github.com/denkhaus/work/issues/1".to_string(),
+                updated_at: Some(Utc::now()),
+            }])
+        }
+        async fn get(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok(None)
+        }
+        async fn create(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _draft: fabro_work::WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn update(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn close(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn comment(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn project_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn clear_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// One candidate item whose `updated_at` the test can move — the
+    /// seam the stale-basis skip's expiry arm (work#1377) reads.
+    struct MoveableItemTracker {
+        updated_at: std::sync::Mutex<chrono::DateTime<Utc>>,
+    }
+    #[async_trait::async_trait]
+    impl TrackerProvider for MoveableItemTracker {
+        async fn list(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            Ok(vec![WorkItem {
+                item_key:   "denkhaus/work#1".to_string(),
+                title:      "Item 1".to_string(),
+                body:       "the spec".to_string(),
+                state:      "open".to_string(),
+                labels:     vec!["lane:loop".to_string()],
+                priority:   1,
+                url:        "https://github.com/denkhaus/work/issues/1".to_string(),
+                updated_at: Some(*self.updated_at.lock().unwrap()),
+            }])
+        }
+        async fn get(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok(None)
+        }
+        async fn create(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _draft: fabro_work::WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn update(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn close(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn comment(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn project_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn clear_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    async fn claim_next_for_run(
+        state: &Arc<crate::server::AppState>,
+        run_id: RunId,
+    ) -> serde_json::Value {
+        let response = super::claim_next(
+            RequiredRunManagementActor(Principal::Worker { run_id }),
+            State(Arc::clone(state)),
+            Path("self".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    /// The durable stale-basis skip (denkhaus/work#1377): a released
+    /// stale-basis verdict keeps the item out of the NEXT run's claim
+    /// pool. The per-run released-claims skip (#1186) deliberately does
+    /// not protect other runs, so without this set every
+    /// landed-but-open item burned one full run per lap until the human
+    /// triage closed it (observed on work#1363, 2026-11-16). The
+    /// verdict expires when the item moves past it — and a misroute
+    /// release never suppresses (its own test below).
+    #[tokio::test]
+    async fn a_stale_basis_release_keeps_the_item_out_of_the_next_runs_pool() {
+        let tracker = Arc::new(MoveableItemTracker {
+            updated_at: std::sync::Mutex::new(Utc::now() - chrono::Duration::hours(1)),
+        });
+        let bumpable = Arc::clone(&tracker);
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(tracker as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+
+        let git_target = || {
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            })
+        };
+
+        let first_run = create_run_with_target(&state, git_target()).await;
+        let first = claim_next_for_run(&state, first_run).await;
+        assert_eq!(
+            first["outcome"], "granted",
+            "the pool grants the fresh item"
+        );
+        let claim_id = first["claim"]["claimId"]
+            .as_str()
+            .expect("the granted claim id")
+            .to_string();
+        // The planner's stale-basis exit: release with the verdict
+        // (the planner prompt's exact words).
+        state
+            .work_store()
+            .release(&claim_id, "stale basis")
+            .await
+            .unwrap();
+
+        let second_run = create_run_with_target(&state, git_target()).await;
+        let second = claim_next_for_run(&state, second_run).await;
+        assert_eq!(
+            second["outcome"], "empty",
+            "the stale-basis verdict suppresses the item for the NEXT run (work#1377): {second}"
+        );
+
+        // The item moves past the verdict (any human or system touch
+        // bumps updated_at): the pool offers it again.
+        *bumpable.updated_at.lock().unwrap() = Utc::now() + chrono::Duration::hours(1);
+        let third_run = create_run_with_target(&state, git_target()).await;
+        let third = claim_next_for_run(&state, third_run).await;
+        assert_eq!(
+            third["outcome"], "granted",
+            "a touch after the verdict re-offers the item: {third}"
+        );
+    }
+
+    /// The misroute release is per-run scope only (#1186): it never
+    /// suppresses the item for other runs — only the stale-basis
+    /// verdict does (work#1377).
+    #[tokio::test]
+    async fn a_misroute_release_never_suppresses_the_item_for_other_runs() {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(OneItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+
+        let git_target = || {
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            })
+        };
+        let first_run = create_run_with_target(&state, git_target()).await;
+        let first = claim_next_for_run(&state, first_run).await;
+        assert_eq!(first["outcome"], "granted");
+        let claim_id = first["claim"]["claimId"]
+            .as_str()
+            .expect("the granted claim id")
+            .to_string();
+        state
+            .work_store()
+            .release(&claim_id, "misroute")
+            .await
+            .unwrap();
+
+        let second_run = create_run_with_target(&state, git_target()).await;
+        let second = claim_next_for_run(&state, second_run).await;
+        assert_eq!(
+            second["outcome"], "granted",
+            "a misroute release stays per-run — other runs are offered the item: {second}"
+        );
+    }
+
     async fn claim_next_ask(
         state: &Arc<crate::server::AppState>,
         principal: &Principal,
         run_id: RunId,
     ) -> serde_json::Value {
-        use axum::extract::{Path, State};
-
         let response = super::claim_next(
             RequiredRunManagementActor(principal.clone()),
             State(Arc::clone(state)),
