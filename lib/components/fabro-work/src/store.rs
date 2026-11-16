@@ -10,7 +10,7 @@
 //! commits first; the tracker projection is a durable outbox job that
 //! retries.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, Utc};
 use fabro_types::RunId;
@@ -632,6 +632,46 @@ ORDER BY released_at_ms
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(claim_from_row).collect()
+    }
+
+    /// The durable stale-basis verdicts of a project (denkhaus/work#1377):
+    /// per item, the LATEST release whose reason names a stale basis. A
+    /// run that verified an item's basis already landed exits stale-basis
+    /// and releases with that verdict; the claim pool must not re-offer
+    /// the item to the NEXT run — the per-run skip (#1186) deliberately
+    /// does not protect other runs, so without this set every
+    /// landed-but-open item burns one full run per lap until the human
+    /// triage closes it (observed on work#1363, 2026-11-16). The reason
+    // vocabulary is matched case/space tolerant ("stale basis", the
+    // planner prompt's words); the pin holds it.
+    pub async fn stale_basis_verdicts(
+        &self,
+        project_id: &str,
+    ) -> Result<HashMap<String, DateTime<Utc>>> {
+        let rows = sqlx::query(
+            r"
+SELECT item_key, MAX(released_at_ms) AS released_at_ms
+FROM work_claims
+WHERE project_id = ?
+  AND state = 'released'
+  AND release_reason IS NOT NULL
+  AND LOWER(REPLACE(release_reason, ' ', '')) = 'stalebasis'
+GROUP BY item_key
+",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+        let mut verdicts = HashMap::new();
+        for row in rows {
+            let item_key: String = row.try_get("item_key")?;
+            let released_at_ms: i64 = row.try_get("released_at_ms")?;
+            let Some(released_at) = DateTime::from_timestamp_millis(released_at_ms) else {
+                continue;
+            };
+            verdicts.insert(item_key, released_at);
+        }
+        Ok(verdicts)
     }
 
     /// The transition history of one claim, oldest first.
@@ -1578,6 +1618,60 @@ mod tests {
             keys,
             vec!["denkhaus/work#1".to_string()],
             "an aged release still names its item in the skip set"
+        );
+    }
+
+    /// The stale-basis verdict query's vocabulary (denkhaus/work#1377):
+    /// "stale basis" matches case- and space-tolerantly — the planner
+    /// prompt's exact words; misroute and planner-skip releases are
+    /// never verdicts, and the LATEST stale release per item wins.
+    #[tokio::test]
+    async fn stale_basis_verdicts_match_the_vocabulary_and_keep_the_latest() {
+        async fn grant_and_release(
+            store: &WorkStore,
+            item: &str,
+            reason: &str,
+        ) -> crate::WorkClaim {
+            let run = fabro_types::RunId::new();
+            let GrantOutcome::Granted(claim) = store.grant(&request(item, run)).await.unwrap()
+            else {
+                panic!("grant must win");
+            };
+            store.release(&claim.claim_id, reason).await.unwrap()
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let database = fabro_db::Database::connect(directory.path().join("fabro.sqlite3"))
+            .await
+            .unwrap();
+        database.migrate().await.unwrap();
+        let store = WorkStore::new(database.clone_pool());
+        store.upsert_project(&project()).await.unwrap();
+
+        // A misroute and a planner-skip release are never verdicts.
+        grant_and_release(&store, "denkhaus/work#1", "misroute").await;
+        grant_and_release(&store, "denkhaus/work#2", "planner skipped").await;
+        let verdicts = store.stale_basis_verdicts("fabro").await.unwrap();
+        assert!(
+            verdicts.is_empty(),
+            "non-stale releases file no verdict: {verdicts:?}"
+        );
+
+        // The vocabulary, case- and space-tolerant.
+        grant_and_release(&store, "denkhaus/work#1", "stale basis").await;
+        grant_and_release(&store, "denkhaus/work#2", "Stale  Basis").await;
+        let verdicts = store.stale_basis_verdicts("fabro").await.unwrap();
+        assert_eq!(verdicts.len(), 2, "both verdicts filed: {verdicts:?}");
+        assert!(verdicts.contains_key("denkhaus/work#1"));
+        assert!(verdicts.contains_key("denkhaus/work#2"));
+
+        // A second stale release of the SAME item: the latest wins.
+        let first_verdict = verdicts["denkhaus/work#1"];
+        grant_and_release(&store, "denkhaus/work#1", "stale basis").await;
+        let verdicts = store.stale_basis_verdicts("fabro").await.unwrap();
+        assert!(
+            verdicts["denkhaus/work#1"] > first_verdict,
+            "the latest stale release is the verdict"
         );
     }
 
