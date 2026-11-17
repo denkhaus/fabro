@@ -19,6 +19,7 @@ pub(crate) mod lineage;
 mod llm_sse;
 mod mcp_servers;
 mod models;
+mod observation_triage;
 mod orchestration;
 mod pair;
 mod petri;

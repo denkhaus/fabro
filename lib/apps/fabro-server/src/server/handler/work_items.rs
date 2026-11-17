@@ -606,7 +606,9 @@ async fn create_work_item(
     // link failure fails the REQUEST (the item exists; the caller
     // retries with the same refs and the dedupe keeps the chain whole)
     // — never a silently unlinked filing, the break this door exists to
-    // close.
+    // close. Each landed link is a write door of the triage read model
+    // (work#1385): the referenced record's derived state re-derives
+    // once and materializes beside the record.
     for reference in observations {
         state
             .work_store()
@@ -634,6 +636,12 @@ async fn create_work_item(
                     ),
                 )
             })?;
+        super::observation_triage::rederive_and_materialize(
+            &state,
+            &reference.run_id,
+            reference.seq,
+        )
+        .await;
     }
     Ok((StatusCode::CREATED, Json(api_item(item))).into_response())
 }
@@ -921,6 +929,13 @@ async fn link_observation(
         .link_observation(&project.project_id, &request.item_key, &run_id, seq)
         .await
         .map_err(store_error)?;
+    // The write door's materialization (work#1385): a NEW link changes
+    // the record's derived state — re-derive it once and store it beside
+    // the record. An already-linked pair changed nothing; the state the
+    // first write materialized stands.
+    if outcome == fabro_work::LinkOutcome::Linked {
+        super::observation_triage::rederive_and_materialize(&state, &run_id, seq).await;
+    }
     Ok(Json(WorkObservationLinkResponse {
         outcome:  match outcome {
             fabro_work::LinkOutcome::Linked => WorkObservationLinkOutcome::Linked,
@@ -954,6 +969,18 @@ async fn unlink_observation(
         )
         .await
         .map_err(store_error)?;
+    // The write door's materialization (work#1385): the record may have
+    // lost its last link — its derived state re-derives from whatever
+    // links and decision remain. Removing an absent pair changed
+    // nothing.
+    if removed {
+        super::observation_triage::rederive_and_materialize(
+            &state,
+            &run_id,
+            u64::from(request.seq),
+        )
+        .await;
+    }
     Ok(Json(WorkObservationUnlinkResponse { removed }).into_response())
 }
 

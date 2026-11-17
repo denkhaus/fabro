@@ -24,6 +24,12 @@ pub enum Error {
     },
     #[error("stored platform record has an invalid run id: {value}")]
     InvalidStoredRunId { value: String },
+    #[error("stored {record} has an invalid {field}: {value}")]
+    InvalidStoredRecord {
+        record: &'static str,
+        field:  &'static str,
+        value:  String,
+    },
     #[error("stored blob {blob_hash} has bytes that conflict with its hash")]
     BlobHashConflict { blob_hash: BlobHash },
     #[error("stored blob data does not match requested hash {blob_hash}")]
