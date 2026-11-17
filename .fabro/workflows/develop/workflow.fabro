@@ -224,7 +224,18 @@ digraph Develop {
     implementer [
         label="Implementer",
         prompt="@prompts/implementer.md",
-        model="zai:glm-5.3-flash",
+        // work#1374's flash arm is PAUSED (2026-11-17): the node carries
+        // output_schema=routing, and the engine's structured request for
+        // the flash row (which declares no structured-output capability)
+        // reached zai as an unknown model code (1211) — the first
+        // fork.40 develop lap reproduced the triage-stage failure
+        // exactly (run 01M7MMHZ8C39ZAGW2KCZ257GB4, Implementer@3 died in
+        // 1s). The rollback is the trial's own documented path — the
+        // node runs on [run.model] (glm-5.3) until the flash row lands a
+        // structured-output capability backed by the 2026-11-17 probe
+        // (flash + strict json_schema answered {"ok":true} on the coding
+        // endpoint; the declaration rides the next fork window). The
+        // 2026-12-16 trial review (work#1374) decides the arm's return.
         // fabro-f84f: opt into vendored-skill discovery — the
         // session loads `.fabro/skills` (rust-style-guide and
         // friends) through the UseSkill tool.
