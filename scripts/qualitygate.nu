@@ -284,6 +284,62 @@ def check-dot-snapshot [base: record]: nothing -> bool {
     true
 }
 
+# ── Web tier (work#1304 + work#1336) ───────────────────────────────────
+# The verify.nu web lane's gate twin: a diff touching apps/fabro-web/** or
+# lib/packages/** (the bun workspace members) runs the web surface's
+# typecheck + tests. Cold-start arm: the install runs first when
+# node_modules is absent, bounded and with a progress line — a fresh
+# checkout's first `bun test` used to die on a missing module until a
+# manual `bun install`. A Rust-only diff skips the tier in one path check
+# — the gate stays fast for lib/-only changes. Install runs at the
+# workspace ROOT (root bun.lock, bunfig.toml pins the isolated linker,
+# Bun >= 1.3); app scripts resolve through `bun run --cwd apps/fabro-web`.
+const WEB_DIR = "apps/fabro-web"
+const WEB_INSTALL_TIMEOUT_SECS = 600
+
+def web-diff? [base: record]: nothing -> bool {
+    (run-diff-paths $base | where {|p|
+        ($p | str starts-with 'apps/fabro-web/') or ($p | str starts-with 'lib/packages/')
+    } | is-not-empty)
+}
+
+def check-web [base: record]: nothing -> bool {
+    if (not (web-diff? $base)) {
+        print '== web tier skipped — no fabro-web/lib-packages files in the diff =='
+        return true
+    }
+    print $"== bun web tier — typecheck + tests \(($WEB_DIR)\) =="
+    if (not ($"($WEB_DIR)/node_modules" | path exists)) {
+        print $"web tier: no node_modules in ($WEB_DIR) — installing \(bun install --frozen-lockfile, bounded at ($WEB_INSTALL_TIMEOUT_SECS)s\)"
+        let res = (if (which timeout | is-empty) {
+            do { ^bun install --frozen-lockfile } | complete
+        } else {
+            do { ^timeout $WEB_INSTALL_TIMEOUT_SECS bun install --frozen-lockfile } | complete
+        })
+        if $res.exit_code != 0 {
+            print ($res.stdout | str trim -r -c "\n" | lines | last 30)
+            print ($res.stderr | str trim -r -c "\n" | lines | last 30)
+            return false
+        }
+        print 'web deps installed'
+    }
+    let res = (do { ^bun run --cwd $WEB_DIR typecheck } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stdout | str trim -r -c "\n" | lines | last 30)
+        print ($res.stderr | str trim -r -c "\n" | lines | last 30)
+        return false
+    }
+    print 'typecheck clean'
+    let res = (do { ^bun run --cwd $WEB_DIR test } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stdout | str trim -r -c "\n" | lines | last 30)
+        print ($res.stderr | str trim -r -c "\n" | lines | last 30)
+        return false
+    }
+    print 'web tests green'
+    true
+}
+
 # Deterministic run-scope verdict for one lane (product|loop). Prints the
 # violations and exits 1 on any; exit 0 when the diff is in lane. An
 # empty diff is green (a bookkeeping-only run diff is legitimate).
@@ -499,6 +555,13 @@ def main [] {
     # workflow-graph shape change must be snapshot-accepted even in a
     # crates-touched run. First red stops (qualitygate style).
     if not (check-dot-snapshot $base) {
+        print "GATE RED"
+        exit 1
+    }
+    # Web tier (work#1304): before the crates branches — a fabro-web diff
+    # must run the TS checks even when no lib/ crate is touched. First red
+    # stops (qualitygate style).
+    if not (check-web $base) {
         print "GATE RED"
         exit 1
     }

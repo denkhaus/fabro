@@ -12,6 +12,13 @@
 #                 (or name extraction comes up empty — fail-safe); a compile
 #                 check for code-touched-only crates. Never the gate, never
 #                 the workspace suite (the deterministic tester owns both).
+#                 Plus the fabro-web lane (work#1304): when the diff touches
+#                 apps/fabro-web/** or lib/packages/** (the bun workspace
+#                 members), the web surface runs typecheck + tests. Its
+#                 cold-start arm (work#1336) installs web deps first when
+#                 node_modules is absent — a fresh checkout's first `bun
+#                 test` used to die on a missing module until a manual
+#                 `bun install`.
 # Exit 0 = all checks green. First red stops (qualitygate style:
 # `do { ^cmd } | complete`).
 #
@@ -21,6 +28,26 @@
 # as a manual override.
 
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
+
+# fabro-web lane (work#1304 + work#1336): a diff touching apps/fabro-web/**
+# or lib/packages/** gets the web surface's typecheck + tests, the Rust
+# lanes' tier shape. The repo root is the bun workspace ROOT (root
+# bun.lock, bunfig.toml pins the isolated linker, Bun >= 1.3) — the
+# cold-start install runs there; app scripts resolve through
+# `bun run --cwd apps/fabro-web`.
+const WEB_DIR = "apps/fabro-web"
+const WEB_INSTALL_TIMEOUT_SECS = 600
+
+# Bounded cold-start install (work#1336): `timeout` bounds a hung install;
+# when the binary is absent (minimal image) the install runs unbounded —
+# a missing guard is better than a broken lane.
+def web-install-bounded [] {
+    if (which timeout | is-empty) {
+        do { ^bun install --frozen-lockfile } | complete
+    } else {
+        do { ^timeout $WEB_INSTALL_TIMEOUT_SECS bun install --frozen-lockfile } | complete
+    }
+}
 
 # fabro-f750: FAIL paths print a bounded TAIL of the captured output.
 # Cargo emits the actual diagnostics AFTER the warning preamble, so a
@@ -164,7 +191,13 @@ def touched [] {
         | get -o crate
         | uniq
         | compact)
-    {base: $base, code: $crates, tests: $test_crates, test_files: $test_files}
+    # The web surface (work#1304): the bun workspace members. lib/packages
+    # counts — fabro-api-client is workspace:*-consumed by the web app, so
+    # its diffs verify through the web suite too.
+    let web_paths = ($paths | where {|p|
+        ($p | str starts-with 'apps/fabro-web/') or ($p | str starts-with 'lib/packages/')
+    })
+    {base: $base, code: $crates, tests: $test_crates, test_files: $test_files, web: ($web_paths | is-not-empty)}
 }
 
 # Test function names declared under a test attribute in a file's Rust
@@ -228,13 +261,51 @@ def test-mode-for [base: string, files: list<string>] {
     {mode: 'names', names: $flat}
 }
 
+# The TS lane itself (work#1304): cold-start install when node_modules is
+# absent, then typecheck and the package test script (`bun run test` =
+# `bun test --parallel`). First red exits — the Rust lanes' FAIL shape
+# (captured-output tail, tier label, exit 1), never a `return`.
+def stage-web [] {
+    if (not ($"($WEB_DIR)/node_modules" | path exists)) {
+        print $"verify: no node_modules in ($WEB_DIR) — installing web deps \(bun install --frozen-lockfile, bounded at ($WEB_INSTALL_TIMEOUT_SECS)s\) ..."
+        let t0 = (date now)
+        let res = (web-install-bounded)
+        let dur = ((date now) - $t0)
+        if $res.exit_code != 0 {
+            print (output-tail ($res.stdout + $res.stderr) 3000)
+            print "verify: FAIL bun-install fabro-web"
+            exit 1
+        }
+        print $"verify: PASS bun-install fabro-web \(install took ($dur)\)"
+    }
+    print $"== bun run typecheck — ($WEB_DIR) =="
+    let res = (do { ^bun run --cwd $WEB_DIR typecheck } | complete)
+    if $res.exit_code != 0 {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print "verify: FAIL typecheck fabro-web"
+        exit 1
+    }
+    print $"verify: PASS typecheck fabro-web"
+    print $"== bun run test — ($WEB_DIR) =="
+    let res = (do { ^bun run --cwd $WEB_DIR test } | complete)
+    if $res.exit_code != 0 {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print "verify: FAIL test fabro-web"
+        exit 1
+    }
+    print $"verify: PASS test fabro-web"
+}
+
 def stage-implementer [] {
     let t = (touched)
-    if ($t.code | is-empty) {
-        print "verify: no lib/ crates touched — nothing to verify (parse-level checks belong to the brief)"
+    if (($t.code | is-empty) and (not $t.web)) {
+        print "verify: no lib/ crates and no web surface touched — nothing to verify (parse-level checks belong to the brief)"
         return
     }
     print $"verify: code-touched=($t.code | str join ', ') test-file-touched=($t.tests | str join ', ')"
+    if $t.web {
+        print $"verify: web surface touched \(($WEB_DIR), lib/packages\)"
+    }
     # A FAIL path must EXIT, never `return`: `return` leaves the def and
     # main ends green — a red tier reads as exit 0 for every caller (the
     # just recipe, the run gate). Observed live 2026-11-01: three
@@ -304,6 +375,11 @@ def stage-implementer [] {
             }
             print $"verify: PASS nextest ($c)"
         }
+    }
+    # The web lane (work#1304) runs AFTER the Rust lanes, same first-red-
+    # stops discipline — a mixed diff verifies both surfaces in one call.
+    if $t.web {
+        stage-web
     }
     print "verify: implementer stage green"
 }
