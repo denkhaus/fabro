@@ -24,6 +24,13 @@ services:
     restart: unless-stopped
     ports:
       - "${FABRO_PORT:-32276}:32276"
+    command:
+      - sh
+      - -c
+      - >-
+        exec fabro server start --foreground
+        --bind 0.0.0.0:32276
+        --config /config/settings.toml
     volumes:
       - fabro-storage:/storage
       - /var/run/docker.sock:/var/run/docker.sock
@@ -33,6 +40,14 @@ services:
       # volume default (<storage>/run-channels) is container-internal
       # and the daemon would bind an empty auto-created dir instead.
       - /var/lib/fabro/run-channels:/var/lib/fabro/run-channels
+      # Local stack settings (gitignored — environment-specific, carries
+      # the integration config: auth, GitHub App, Slack, artifacts,
+      # sandbox providers, and the work#168 retention table). Origin: the
+      # settings file the server kept at /storage/.home/settings.toml,
+      # moved to the host and mounted read-only (split-web pattern). If
+      # missing on a fresh clone, recreate from defaults.toml plus the
+      # [server.retention] table (7 days / 48 hours / 85 percent brake).
+      - ./docker/local/settings.toml:/config/settings.toml:ro
     environment:
       FABRO_RUN_CHANNEL_DIR: /var/lib/fabro/run-channels
       # The .env file is RETIRED (user directive 2026-11-15): the local
