@@ -4088,14 +4088,26 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = vec![0_u8; 4096];
-            let read = stream.read(&mut request).await.unwrap();
-            let request = String::from_utf8_lossy(&request[..read]);
-            assert!(
-                request.starts_with("POST /auth/cli/refresh HTTP/1.1"),
-                "unexpected refresh request: {request}"
-            );
+            // Run-channel probe tolerance (work#1354): in a run channel
+            // (`FABRO_RUN_CHANNEL_TOKEN` present) a send_api call fires
+            // the one-shot floor probe (`GET /api/v1/system/info`)
+            // before the test's own request. The refresh POST itself
+            // does not ride send_api today, but the first-request
+            // assertion must not panic if that ever changes — answer
+            // non-refresh requests with a bare 404 (the probe fails
+            // open) and keep accepting until the refresh arrives.
+            let mut stream = loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 4096];
+                let read = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                if request.starts_with("POST /auth/cli/refresh HTTP/1.1") {
+                    break stream;
+                }
+                let not_found =
+                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                stream.write_all(not_found.as_bytes()).await.unwrap();
+            };
             let body = serde_json::json!({
                 "access_token": "access-refreshed",
                 "access_token_expires_at": (chrono::Utc::now() + ChronoDuration::minutes(10)).to_rfc3339(),
@@ -4192,6 +4204,67 @@ mod tests {
 
         assert_eq!(chunk, Bytes::from_static(b"data: hello\n\n"));
         server.await.unwrap();
+    }
+
+    // Regression pin for work#1354: with the run-channel token present
+    // (the in-run sandbox env), the first send_api call fires the
+    // one-shot floor probe as `GET /api/v1/system/info` BEFORE the
+    // test's own request. A raw-TCP fake server that asserts on the
+    // first request line panics in-run; the fails-open pattern (404 the
+    // probe, keep accepting until the expected request) must hold.
+    #[tokio::test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the pin must reproduce the in-run channel env exactly; nextest runs one \
+                  test per process, so the mutation cannot leak into siblings"
+    )]
+    async fn attach_events_tolerates_floor_probe_in_run_channel() {
+        // nextest runs one test per process, so the process-global
+        // floor-check flag and this env var cannot leak into siblings.
+        // Safety of the pattern under the run-channel handshake is the
+        // point of the pin; the var is removed on the way out anyway.
+        std::env::set_var(
+            fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN,
+            "test-channel",
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut stream = loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = vec![0_u8; 4096];
+                let read = stream.read(&mut request).await.unwrap();
+                let request = String::from_utf8_lossy(&request[..read]);
+                if request.starts_with("GET /api/v1/attach HTTP/1.1") {
+                    break stream;
+                }
+                let not_found =
+                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+                stream.write_all(not_found.as_bytes()).await.unwrap();
+            };
+
+            let body = b"data: probed\n\n";
+            let headers = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(headers.as_bytes()).await.unwrap();
+            stream.write_all(body).await.unwrap();
+        });
+
+        let target = ServerTarget::http_url(format!("http://{addr}")).unwrap();
+        let client = Client::builder().target(target).connect().await.unwrap();
+
+        let mut stream = client.attach_events(&[]).await.unwrap();
+        let chunk = time::timeout(Duration::from_millis(500), stream.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(chunk, Bytes::from_static(b"data: probed\n\n"));
+        server.await.unwrap();
+        std::env::remove_var(fabro_static::EnvVars::FABRO_RUN_CHANNEL_TOKEN);
     }
 
     #[tokio::test]
