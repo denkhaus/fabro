@@ -54,7 +54,7 @@ async fn create_run(app: &axum::Router, workspace: &Path) -> String {
         .body(Body::from(
             serde_json::to_vec(&intent).expect("intent fixture should serialize"),
         ))
-        .unwrap();
+        .expect("create run request should build");
     let response = app.clone().oneshot(request).await.unwrap();
     let body = response_json(response, StatusCode::CREATED, "POST /api/v1/runs").await;
     body["id"]
@@ -113,7 +113,7 @@ async fn get_snapshot(app: &axum::Router, run_id: &str) -> axum::http::Response<
         .method("GET")
         .uri(snapshot_url(run_id))
         .body(Body::empty())
-        .unwrap();
+        .expect("snapshot request should build");
     app.clone().oneshot(request).await.unwrap()
 }
 
