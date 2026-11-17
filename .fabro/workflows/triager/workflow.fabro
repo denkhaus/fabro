@@ -70,19 +70,19 @@ digraph Triager {
     triage [
         label="Triage: file, link, or no-filing",
         prompt="@prompts/triage.md",
-        // work#1374's flash arm is PAUSED (2026-11-17, the work#1385-era
-        // 1211): the stage needs structured output, the flash catalog row
-        // declares none, and the engine's structured request for a
-        // non-capable model reached zai as an unknown model code (1211)
-        // once the untriaged backlog was non-empty. The rollback is the
-        // trial's own documented path — the node runs on [run.model]
-        // (glm-5.3) until the flash row lands a structured-output
-        // capability backed by the probe (2026-11-17: flash + strict
-        // json_schema answered {"ok":true} on the coding endpoint — the
-        // capability declaration rides the next fork window).
-        // Cost basis while on flash: $0.47/lap at glm-5.3 (run
-        // 01M7HYG61AAD2SZX5J3X2K816T). Rollback of THIS rollback:
-        // restore model="zai:glm-5.3-flash" after the capability lands.
+        // work#1374's flash arm, BARE-ID experiment (work#1407,
+        // 2026-11-17): the rootprint rows of the failed lap carry
+        // model=zai:glm-5.3-flash — the provider-prefixed string reached
+        // zai verbatim and died as unknown model code (1211), while the
+        // prefixed glm-4.7 attribute resolves fine in agent sessions
+        // (the bench mini loop) and the BARE id works with and without
+        // response_format on the coding endpoint (the work#1407 probe
+        // set). This experiment drops the prefix: the bare id rides the
+        // same resolution path as the [run.model] fallback (glm-5.3,
+        // working). If the 1211 returns: delete this attribute (the
+        // documented rollback) and the engine-side resolution question
+        // goes to work#1407/fork.41.
+        model="glm-5.3-flash",
         on_failure="exit",
         output_schema="routing",
         output_retries=2,
