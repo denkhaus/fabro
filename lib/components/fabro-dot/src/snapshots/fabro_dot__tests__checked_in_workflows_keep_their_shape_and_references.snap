@@ -5,7 +5,7 @@ expression: report
 .fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=6 edges=13
   goal-inline
   file:prompt:prompts/adjudicate.md@adjudicate
-.fabro/workflows/develop/workflow.fabro: Develop nodes=10 edges=26
+.fabro/workflows/develop/workflow.fabro: Develop nodes=11 edges=27
   goal-inline
   file:output_schema:schemas/planner-output.schema.json@planner
   file:prompt:prompts/planner.md@planner
@@ -17,6 +17,9 @@ expression: report
 .fabro/workflows/merger/workflow.fabro: Merger nodes=5 edges=10
   goal-inline
   file:prompt:prompts/resolve.md@resolve
+.fabro/workflows/triager/workflow.fabro: Triager nodes=5 edges=7
+  goal-inline
+  file:prompt:prompts/triage.md@triage
 .fabro/workflows/watchdog/workflow.fabro: Watchdog nodes=4 edges=5
   goal-inline
 test/dot-compatibility/acp-agent-chain.fabro: AcpAgentChain nodes=4 edges=3

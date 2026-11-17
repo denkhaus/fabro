@@ -33,9 +33,12 @@
 #      (stdin_source="current_item_json", script line carries
 #      --work-item), preflight -> implementer ("Preflight done"), and the
 #      outcome=failed bounce back to the planner (fabro-c42f class).
-#   6. planner -> exit ("Tracker empty") and ("Already landed") edges
+#   6. planner -> exit ("Tracker empty") and ("Stale basis") edges
 #      EXIST — the drained-queue and superseded-close exits are the
-#      planner's own since the tracker guard retired.
+#      planner's own since the tracker guard retired. The already-landed
+#      verdict PARKS instead (work#1419): planner -> already_landed_park
+#      ("Already landed"), and the park node's sole unconditional
+#      x.kind="deadlock" exit — see 6b.
 #   7. The work-item tool grants: the planner's x.fabro_tools names
 #      fabro_work_next (the atomic claim), the reporter node names
 #      fabro_work_close, and the evidence node runs --work-item with the
@@ -148,11 +151,35 @@ def main [] {
     if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Tracker empty')}) {
         fail 'planner -> exit ("Tracker empty") edge missing: the drained-queue exit belongs to the planner since the tracker guard retired'
     }
-    if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Already landed')}) {
-        fail 'planner -> exit ("Already landed") edge missing: the planner decision exit lost'
-    }
     if not ($lines | any {|l| ($l | str contains 'planner -> exit') and ($l | str contains 'Stale basis')}) {
         fail 'planner -> exit ("Stale basis") edge missing: the stale-basis note exit (ADR-0039 stage G, #1115) lost'
+    }
+    # 6b. the already-landed park (work#1419, operator decision
+    # 2026-11-17): the verdict parks the run needs-human with the claim
+    # pinned. The planner routes "Already landed" to the park node — NOT
+    # to exit: a x.kind on a planner edge can never fire, because the
+    # classifier (fabro-843d sole_exit_route) skips a kind edge beside
+    # the planner's plain exit siblings ("Tracker empty", "Stale basis",
+    # "Planner failed"), and the old plain edge concluded green PR-less,
+    # the adjudicator refused it, and the claim released every lap (a p1
+    # item re-claimed each lap at the queue head). The park node's exit
+    # contracts mirror the tester fallback's (work#1057): EXACTLY one
+    # exit edge (a second plain route breaks the sole-exit-route
+    # classification), it carries x.kind="deadlock", and it stays
+    # UNCONDITIONAL (the park stage always succeeds).
+    if not ($lines | any {|l| ($l | str contains 'planner -> already_landed_park') and ($l | str contains 'Already landed') and ($l | str contains 'preferred_label=\"Already landed\"')}) {
+        fail 'planner -> already_landed_park ("Already landed") edge missing: the already-landed verdict must reach the park node (work#1419)'
+    }
+    let park_exits = ($lines | where {|l| ($l | str contains 'already_landed_park -> exit')})
+    if (($park_exits | length) != 1) {
+        fail $"the park node must have exactly ONE edge to exit, found ($park_exits | length) — a second plain route breaks the sole-exit-route classification \(fabro-843d\) and the already-landed park would not fire \(work#1419\)"
+    }
+    let park_exit_line = ($park_exits | first)
+    if not ($park_exit_line | str contains 'x.kind="deadlock"') {
+        fail 'the park -> exit edge must carry x.kind="deadlock" — without it the already-landed finish exits unclassified, the claim releases, and the item re-enters the queue every lap (work#1419)'
+    }
+    if ($park_exit_line | str contains 'condition=') {
+        fail 'the park -> exit edge must stay UNCONDITIONAL — the park stage always succeeds, and a plain fallback beside the kind edge would break the sole-exit-route classification (fabro-843d)'
     }
 
     # 7. the reporter records facts through the capability channel; the
