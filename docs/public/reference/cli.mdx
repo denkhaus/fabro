@@ -98,6 +98,7 @@ fabro [OPTIONS] [COMMAND]
 | `fabro secret` | Manage server-owned secrets |
 | `fabro server` | Server operations |
 | `fabro settings` | Inspect effective settings |
+| `fabro snapshot` | Export a run's snapshot repository as a git bundle |
 | `fabro start` | Start a created workflow run on the server |
 | `fabro steer` | Steer a running agent mid-execution |
 | `fabro system` | System maintenance commands |
@@ -1385,6 +1386,27 @@ fabro settings [OPTIONS]
 
 | Option | Description |
 | --- | --- |
+| `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
+
+### `fabro snapshot`
+
+Export a run's snapshot repository as a git bundle
+
+```bash
+fabro snapshot [OPTIONS] <RUN>
+```
+
+#### Arguments
+
+| Name | Description |
+| --- | --- |
+| `RUN` | Run ID prefix or workflow name |
+
+#### Options
+
+| Option | Description |
+| --- | --- |
+| `-o, --output <output>` | Output file for the git bundle (default: fabro-snapshot-<run>.bundle in the current directory) |
 | `--server <server>` | Fabro server target: http(s) URL or absolute Unix socket path |
 
 ### `fabro start`

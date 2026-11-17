@@ -24,6 +24,7 @@ mod orchestration;
 mod pair;
 mod petri;
 pub(in crate::server) mod pull_requests;
+mod run_snapshot;
 pub(crate) mod runs;
 mod sandbox;
 mod sandboxes;
@@ -211,6 +212,7 @@ pub(super) fn real_routes() -> Router<Arc<AppState>> {
         .route("/insights/execute", post(not_implemented))
         .route("/insights/history", get(not_implemented))
         .merge(runs::routes())
+        .merge(run_snapshot::routes())
         .merge(events::routes())
         .merge(usage::routes())
         .merge(wait::routes())
