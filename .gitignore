@@ -30,3 +30,7 @@ docs/internal/agent
 
 .fabro/bin/
 .fabro/cook/
+
+# local fabro stack settings (mounted read-only into the fabro container;
+# carries environment-specific integration config — never committed)
+docker/local/settings.toml
