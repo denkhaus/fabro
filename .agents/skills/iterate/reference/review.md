@@ -122,6 +122,11 @@ classes, and the architecture gate.
   landing does not fit. Never let stranded work vanish silently; never
   let a failed run close or lose an item (closure follows the publish
   path — failed runs publish nothing).
+  Mechanical patch pull: `nu .fabro/scripts/salvage-pull.nu <run-id>`
+  produces `salvage.patch` from the sandbox (.git + declared worktree
+  paths). BLOCKED until work#1416 (recursive sandbox cp is per-file
+  round trips — source-tree copies exceed minutes); it serves
+  work#1415's salvage pointer once the copy path lands.
 
 ## Truth-checking
 

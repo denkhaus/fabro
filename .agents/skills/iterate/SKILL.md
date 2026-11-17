@@ -210,7 +210,11 @@ filed), the language gate is clean, and every battery named in
   battery named in `scripts/qualitygate.nu`, read each exit code.
 - Salvage: a failed (or green-lie succeeded) run with noteworthy stage
   work is SALVAGED — dump, apply, verify, land citing the run, or file
-  a salvage-pointer item. Never let stranded work vanish silently.
+  a salvage-pointer item. The mechanical executor is
+  `nu .fabro/scripts/salvage-pull.nu <run-id>` (pulls the sandbox .git
+  + declared worktree paths, emits salvage.patch — see the script
+  header; UNUSABLE until work#1416 fixes the sandbox copy throughput).
+  Never let stranded work vanish silently.
 - Environment artifacts vs regressions: compile errors on untouched
   deps, expect-panics across sandbox suites, and default-profile
   timeouts under dev-host conditions are repair-the-environment-first
