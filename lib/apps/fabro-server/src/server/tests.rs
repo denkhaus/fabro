@@ -9878,6 +9878,182 @@ async fn a_human_needed_run_archives_and_unarchives() {
     }
 }
 
+/// work#1345: the owner-park channel end to end — a failed run parks
+/// owner-pending through the door (a non-parkable run is refused), and
+/// the archive disposition clears the park.
+#[tokio::test]
+async fn a_failed_run_owner_parks_and_the_archive_disposition_clears_it() {
+    async fn seed_to(state: &Arc<crate::server::AppState>, run_id: RunId, terminal: RunStatus) {
+        let created = PlatformRecord::RunCreated(RunCreatedRecord {
+            spec:         fabro_types::test_support::test_run_spec(),
+            title:        None,
+            parent_id:    None,
+            retried_from: None,
+            web_url:      None,
+        });
+        super::run_records::append(state, run_id, created)
+            .await
+            .expect("the created record appends");
+        let step = |kind, status| {
+            super::run_records::lifecycle(
+                state,
+                run_id,
+                super::run_records::transition(kind, status),
+            )
+        };
+        step(RunLifecycleKind::Runnable, RunStatus::Runnable)
+            .await
+            .expect("runnable");
+        step(RunLifecycleKind::Starting, RunStatus::Starting)
+            .await
+            .expect("starting");
+        step(RunLifecycleKind::Running, RunStatus::Running)
+            .await
+            .expect("running");
+        let kind = match terminal {
+            RunStatus::Failed { .. } => RunLifecycleKind::Failed,
+            _ => RunLifecycleKind::Succeeded,
+        };
+        step(kind, terminal).await.expect("terminal step");
+    }
+
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let failed_run = RunId::new();
+    seed_to(&state, failed_run, RunStatus::Failed {
+        reason: FailureReason::WorkflowError,
+    })
+    .await;
+    let succeeded_run = RunId::new();
+    seed_to(&state, succeeded_run, RunStatus::Succeeded {
+        reason: SuccessReason::Completed,
+    })
+    .await;
+
+    // The park gesture: only the retry-intent terminals park.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{succeeded_run}/owner-park")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::CONFLICT).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{failed_run}/owner-park")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(api(&format!("/runs/{failed_run}")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_json(response.into_body()).await;
+    assert_eq!(body["lifecycle"]["status"]["kind"], "blocked", "{body}");
+    assert_eq!(
+        body["lifecycle"]["status"]["blocked_reason"], "owner_pending",
+        "the park took: {body}"
+    );
+
+    // The reverse gesture restores the deferred terminal verdict.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{failed_run}/owner-unpark")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(api(&format!("/runs/{failed_run}")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = body_json(response.into_body()).await;
+    assert_eq!(
+        body["lifecycle"]["status"]["kind"], "failed",
+        "the unpark restored the terminal verdict: {body}"
+    );
+    assert_eq!(
+        body["lifecycle"]["status"]["reason"], "workflow_error",
+        "the restored failure carries its recorded reason: {body}"
+    );
+
+    // Park again for the disposition arm below.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{failed_run}/owner-park")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    // The disposition clears the park: archive accepts the owner-parked
+    // run (the restore record runs first) and archives it.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{failed_run}/archive")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::OK).await;
+
+    // The reverse gesture: unpark refuses a run that is not parked.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{failed_run}/owner-unpark")))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_status!(response, StatusCode::CONFLICT).await;
+}
+
 #[tokio::test]
 async fn delete_run_removes_durable_run() {
     let state = test_app_state();

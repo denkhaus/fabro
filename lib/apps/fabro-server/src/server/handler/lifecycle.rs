@@ -4,6 +4,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use fabro_store::platform_records::{PlatformRecord, RunLifecycleKind, RunLifecycleRecord};
 use fabro_types::settings::run::ApprovalMode;
+use fabro_workflow::operations;
 use tokio::time::{Instant, sleep_until};
 
 use super::super::{
@@ -34,6 +35,8 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/unarchive", post(batch_unarchive_runs))
         .route("/runs/{id}/archive", post(archive_run))
         .route("/runs/{id}/unarchive", post(unarchive_run))
+        .route("/runs/{id}/owner-park", post(owner_park_run))
+        .route("/runs/{id}/owner-unpark", post(owner_unpark_run))
 }
 
 pub(super) async fn run_response(state: &AppState, id: RunId, status: StatusCode) -> Response {
@@ -772,6 +775,85 @@ async fn unarchive_run(
     run_archive_action(state, actor, id, ArchiveAction::Unarchive).await
 }
 
+async fn owner_park_run(
+    RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    if let Some(response) = reject_if_archived(state.as_ref(), &id).await {
+        return response;
+    }
+    match owner_park_operation(state.as_ref(), &id, OwnerParkAction::Park).await {
+        Ok(()) => run_response(state.as_ref(), id, StatusCode::OK).await,
+        Err(err) => archive_workflow_error_to_api_error(err).into_response(),
+    }
+}
+
+async fn owner_unpark_run(
+    RequireRunManagementTarget(id, _actor): RequireRunManagementTarget,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    match owner_park_operation(state.as_ref(), &id, OwnerParkAction::Unpark).await {
+        Ok(()) => run_response(state.as_ref(), id, StatusCode::OK).await,
+        Err(err) => archive_workflow_error_to_api_error(err).into_response(),
+    }
+}
+
+/// Which way the owner-park channel moves (work#1345).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum OwnerParkAction {
+    Park,
+    Unpark,
+}
+
+/// The owner-park transition: the drag gesture parks a failed or
+/// human-needed run as `Blocked { owner_pending }` (its work-item claim
+/// holds while parked), and the reverse gesture restores the deferred
+/// terminal verdict. Both records are folded by the projector against
+/// the transition matrix, so an impossible park is refused before any
+/// record exists.
+pub(super) async fn owner_park_operation(
+    state: &AppState,
+    id: &RunId,
+    action: OwnerParkAction,
+) -> Result<(), WorkflowError> {
+    let projection = run_records::projection(state, *id)
+        .await
+        .map_err(|err| WorkflowError::engine(err.to_string()))?
+        .ok_or_else(|| WorkflowError::RunNotFound(id.to_string()))?;
+    let record = match action {
+        OwnerParkAction::Park => {
+            operations::ensure_parkable(&projection, id)?;
+            operations::park_record()
+        }
+        OwnerParkAction::Unpark => operations::unpark_record(&projection).ok_or_else(|| {
+            WorkflowError::Precondition(format!(
+                "run {id} is not owner-parked (or has no conclusion to restore); current \
+                 status is {}",
+                projection.status
+            ))
+        })?,
+    };
+    run_records::append(state, *id, PlatformRecord::RunLifecycle(record))
+        .await
+        .map_err(|err| WorkflowError::engine(err.to_string()))?;
+    Ok(())
+}
+
+/// The disposition hook (work#1345): a verdict-bar disposition — retry,
+/// retry-on-latest, archive — clears an owner park before the
+/// disposition's own preconditions run, restoring the terminal verdict
+/// the park deferred and handing the run back to the normal terminal
+/// flow. Not parked: a no-op.
+pub(super) async fn clear_owner_park(state: &AppState, id: &RunId) -> Result<(), WorkflowError> {
+    owner_park_operation(state, id, OwnerParkAction::Unpark)
+        .await
+        .or_else(|err| match err {
+            // Not parked: nothing to clear.
+            WorkflowError::Precondition(_) => Ok(()),
+            err => Err(err),
+        })
+}
+
 async fn batch_archive_runs(
     RequiredUser(user): RequiredUser,
     State(state): State<Arc<AppState>>,
@@ -1016,6 +1098,10 @@ pub(super) async fn run_archive_operation(
     action: ArchiveAction,
 ) -> Result<BatchRunLifecycleResultOutcome, WorkflowError> {
     let _ = actor;
+    // A verdict-bar disposition clears an owner park first (work#1345):
+    // the restore record puts the run back on its terminal verdict, so
+    // the terminal precondition below judges the deferred verdict.
+    clear_owner_park(state, id).await?;
     let projection = run_records::projection(state, *id)
         .await
         .map_err(|err| WorkflowError::engine(err.to_string()))?

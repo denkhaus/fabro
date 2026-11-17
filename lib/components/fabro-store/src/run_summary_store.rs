@@ -292,6 +292,44 @@ impl RunSummaryStore {
         ids.into_iter().map(parse_stored_run_id).collect()
     }
 
+    /// Owner-parked runs (work#1345) whose park age sits in the crossing
+    /// window `[older_than, younger_than)`: the owner-park watchdog arm's
+    /// candidates, aged parks surfacing once as they cross the threshold.
+    /// The `runs` row's status column carries only the kind (`blocked`),
+    /// so the owner-pending reason and its `status_updated_at` age are
+    /// read from the stored projection JSON; the RFC 3339 timestamp is
+    /// compared in Rust, not SQL.
+    pub async fn owner_parked_run_ids_aged_between(
+        &self,
+        older_than: DateTime<Utc>,
+        younger_than: DateTime<Utc>,
+    ) -> Result<Vec<RunId>> {
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT run_id, json_extract(projection_json, '$.status_updated_at') \
+             FROM petri_projection \
+             WHERE json_extract(projection_json, '$.status.kind') = 'blocked' \
+             AND json_extract(projection_json, '$.status.blocked_reason') = 'owner_pending'",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let mut ids = Vec::new();
+        for (run_id, parked_at) in rows {
+            let Some(parked_at) = parked_at
+                .as_deref()
+                .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                .map(|at| at.with_timezone(&Utc))
+            else {
+                continue;
+            };
+            if parked_at >= older_than && parked_at < younger_than {
+                if let Ok(id) = parse_stored_run_id(run_id) {
+                    ids.push(id);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
     pub async fn get(&self, run_id: &RunId, now: DateTime<Utc>) -> Result<Option<Run>> {
         let mut query = QueryBuilder::<Sqlite>::new(SELECT_RUN_SUMMARIES_SQL);
         query
