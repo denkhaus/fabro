@@ -102,6 +102,10 @@ adjudicated: the run, the verdict, and the reason in a sentence.
 ## Discipline
 
 - One run per response. Never batch verdicts.
+- The page boundary (work#1409): when the re-served packet is a run you
+  already noted the verdict for, the mark page is full — write NOTHING
+  more and route `preferred_next_label: "Queue settled"`. Never re-note
+  a run you already noted: the duplicates pollute the observations feed.
 - The pull-request state in the packet is the fast path's read; trust
   it for routing, verify with reads when the verdict hinges on it.
 - A parked run that reappears in a later pass: read the work item's
