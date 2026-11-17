@@ -188,6 +188,11 @@ filed), the language gate is clean, and every battery named in
   first): the code-review skill, two axes (standards = rust-style-guide
   + strategy docs; spec = the tracker's design bodies). Fixpoint
   derivation and the execution shape: `reference/review.md`.
+- GATE FINDINGS ARE PRESENTED, NOT ONLY FILED: every gate run's
+  findings (code-review, architecture, rust-security) are surfaced to
+  the user in the chat when the gate runs — a summary with severities —
+  before the sprint closes. Filing alone is a finding (sprint-90:
+  "you never showed me the architect's results").
 - Language gate (ADR-0033): every reviewed artifact is English. A
   German paragraph or mixed-language file in the diff is a FINDING —
   fix in the same cycle, translating the whole file at once.
@@ -304,7 +309,10 @@ reality.
 4. Cycle report: outcome, verification evidence (commands run), items
    filed/closed — each with a ONE-LINE description, never a bare id —
    and ALWAYS an ASSIGNMENT PENDING section: every unassigned item with
-   a one-line recommendation.
+   a one-line recommendation. ALWAYS a DEPLOY-NEEDS section too: which
+   landed changes need the next deploy window (server binary, tofu,
+   toolchain) and which ride the run checkout as loop assets — the user
+   asked three times in sprint 90 whether a deploy was due.
 5. Sprint ledger update: a sprint counts ONCE when it closes at least
    one item this session worked LOCALLY with a substantive diff; line
    closures never count; docs-only and verify-only closures never

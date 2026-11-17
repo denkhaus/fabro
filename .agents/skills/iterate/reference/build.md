@@ -21,6 +21,11 @@ directives, and verification recipes. Edit mechanics also live in
   the end of the batch: three self-inflicted scanner bugs (two byte
   offsets, chain legs) each cost a hung 120s/20s test round; the unit
   test catches them in 0.02s.
+- VERIFY ROUNDS RERUN THE FAILED SLICE ONLY: after a fix, rerun the
+  failed tests plus their direct dependents — a full-suite or
+  full-gate rerun where only one slice failed is a finding (sprint-90,
+  user correction: "why 6 rounds — we agreed only failed tests get
+  retested; test smarter").
 - Slice arithmetic is the recurring trap: never pass an index computed
   against the FULL text into a walk that slices a SUFFIX — carry the
   absolute cursor beside the relative offset.

@@ -14,8 +14,18 @@ index (`incidents.md`) carries the full stories.
 - `git pull --ff-only origin denkhaus` BEFORE reading tracker state when
   another machine may have run the line — the tracker view is
   branch-local.
+- A HANDOFF'S STATE SECTION IS A CLAIM, NEVER EVIDENCE: handoffs are
+  transport (ADR-0036) and their state goes stale between writing and
+  reading — the sprint-90→91 handoff said "all 5 gears paused" while
+  the merger was already enabled and integrating PRs. Re-probe gear
+  state, PR state, and line state LIVE before acting on a handoff's
+  state claims; its task list and history stay authoritative.
 - Never checkout/reset the tree while a background cargo runs (the
   builder reads live sources; a mixed build invalidates the whole run).
+  The same discipline binds SUBAGENT dispatches: two agents compiling
+  in one tree at once invalidate both runs (sprint-90: the user stopped
+  a subagent that kept compiling while a second instance worked the
+  same checkout) — serialize dispatches that build.
 
 ## Sibling sessions (the roster protocol)
 
@@ -54,6 +64,10 @@ index (`incidents.md`) carries the full stories.
   BEFORE selecting: snapshot drift -> accept the snapshot ON THE RUN
   BRANCH and push (auto-merge then lands it); deeper breakage ->
   salvage-or-close decision.
+- A run PR with ZERO reported checks is its own state — not green, not
+  red (work PR #587 sat check-less for hours and the queue walk could
+  not see it). Flag it in the sweep: the gate may never have triggered,
+  and "no checks" is invisible to the red-gate rule above.
 - A PR merged on another machine means the local view is stale: pull
   again. Green-but-waiting PRs: note them, do not touch.
 
@@ -127,12 +141,16 @@ index (`incidents.md`) carries the full stories.
   unrelated services ride along (e.g. `brightctl`) — always carry the
   service filter, or discover names first with
   `rootprint values --fields service_name --since 1h`.
-- FIRST PROBE `rootprint health` (auth + backend alive; a 401 is a
-  key/config problem to fix, not a query to retry). `hist` gives the
-  volume shape (`--interval 30m`), `search` the rows; search output is
-  JSONL — redirect to a FILE and post-process (python/jq), never parse
-  in the head of a shell call. Give search a generous timeout
-  (minutes, not seconds).
+- FIRST PROBE `rootprint health` (backend alive; a 401 is a key/config
+  problem to fix, not a query to retry) — but health does NOT exercise
+  the search token path: a locked gopass store fails `search` loudly on
+  stderr with an EMPTY stdout, which reads as "no hits" if only the row
+  count is read (2026-11-17: a "0 ERRORs" verdict had to be retracted).
+  Read exit code and stderr before counting; `rootprint auth status` is
+  the safe probe. `hist` gives the volume shape (`--interval 30m`),
+  `search` the rows; search output is JSONL — redirect to a FILE and
+  post-process (python/jq), never parse in the head of a shell call.
+  Give search a generous timeout (minutes, not seconds).
 - `severity_text` values are unreliable for catch-alls — filter on body
   text for those. INFO is not ingested, so run timelines come from
   `fabro ps`/events.
