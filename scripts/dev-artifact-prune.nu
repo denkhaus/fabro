@@ -2,7 +2,8 @@
 # Dev-artifact prune (thin target of `just dev-prune`; wired into
 # `just image-release` since the mirtuell remote flow replaced `just up`
 # as the main path — the old `just up` pipeline ran `just clean` at its
-# start and end). Scope: HOST-side temp artifacts only.
+# start and end; `just clean` chains this script too). Scope: HOST-side
+# temp artifacts only.
 #
 #   1. target/ GC — delegates to clean-target.nu 'stale' (drops
 #      incremental/ dirs unused >= 6h; cargo never GCs, measured 52 GB/day).
@@ -11,6 +12,15 @@
 #      the release-build cache.
 #   2. tmp/docker-context/ — staging dirs from `cargo dev docker-build`
 #      (regenerated per build; safe to drop).
+#   3. tmp/vendor/*/target — build caches inside the managed fork clones.
+#      The clones are history archives, never build environments; 2026-11-17
+#      finding: 59 GB petri + 3.9 GB sandbox-driver of target/ waste.
+#      Always dropped (not age-gated — a target/ inside the archive is
+#      garbage at any age).
+#   4. stale top-level tmp/ artifacts (>= 7 days) — run dumps, review dirs,
+#      db snapshots; regenerable via `fabro dump` / session reruns. Keep
+#      set: vendor (clone sources), just-up.lock (the up pipeline lock),
+#      rig-tools (workbench tools).
 #
 # HARD NON-GOALS (never prune here — each costs ~30 min to rebuild):
 #   - docker volumes fabro-docker-cargo-{registry,target,tools,rustup,zig}-*
@@ -56,6 +66,50 @@ def main [--dry-run] {
         }
     } else {
         print "dev-artifact-prune: no tmp/docker-context present"
+    }
+
+    # 3. build caches inside the managed fork clones (tmp/vendor/*/target):
+    #    the clones are history archives — building inside them leaves
+    #    target/ waste that no GC sweeps (2026-11-17 finding: 59 GB petri
+    #    + 3.9 GB sandbox-driver). Always dropped, not age-gated: a target/
+    #    inside the archive is garbage at any age.
+    let vend = 'tmp/vendor'
+    if ($vend | path exists) {
+        let targets = (glob $"($vend)/*/target")
+        if ($targets | is-empty) {
+            print "dev-artifact-prune: no tmp/vendor/*/target build caches present"
+        }
+        for t in $targets {
+            let size = (dir-size $t)
+            if $dry_run {
+                print $"dev-artifact-prune: would remove ($t) \(($size)\)"
+            } else {
+                rm -rf $t
+                print $"dev-artifact-prune: removed ($t) \(($size) freed\)"
+            }
+        }
+    }
+
+    # 4. stale top-level tmp/ artifacts (>= 7 days): run dumps, review
+    #    dirs, db snapshots — regenerable via `fabro dump` / session
+    #    reruns. Keep set: vendor (clone sources), just-up.lock (the up
+    #    pipeline lock), rig-tools (workbench tools).
+    let keep = ['vendor' 'just-up.lock' 'rig-tools']
+    let cutoff = ((date now) - 7day)
+    let stale_tmp = (ls tmp
+        | where modified < $cutoff
+        | where {|e| ($e.name | path basename) not-in $keep })
+    if ($stale_tmp | is-empty) {
+        print "dev-artifact-prune: no stale tmp artifacts (>= 7 days)"
+    }
+    for e in $stale_tmp {
+        let size = (dir-size $e.name)
+        if $dry_run {
+            print $"dev-artifact-prune: would remove ($e.name) \(($size)\)"
+        } else {
+            rm -rf $e.name
+            print $"dev-artifact-prune: removed ($e.name) \(($size) freed\)"
+        }
     }
 
     # Guard rail: surface (never touch) the protected docker caches so an

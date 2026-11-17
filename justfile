@@ -214,6 +214,10 @@ smoke: wait-healthy
 # Script flags: `nu scripts/clean-target.nu <mode> --dry-run` to preview.
 clean mode="stale":
     nu scripts/clean-target.nu "{{ mode }}"
+    # tmp janitor: fork-clone build caches + stale tmp artifacts (work#168-
+    # adjacent disk hygiene; 63 GB of vendor/target + old dumps found and
+    # cleared 2026-11-17 — the recipes live in dev-artifact-prune.nu).
+    nu scripts/dev-artifact-prune.nu
 
 # Touched-crates quality gate (fabro-5453): derives changed crates from the
 # run diff and gates exactly those (fmt full, clippy+nextest per touched
