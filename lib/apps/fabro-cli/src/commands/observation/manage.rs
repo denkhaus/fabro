@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 
-use crate::args::{ObservationManageActionArg, ObservationManageArgs};
+use crate::args::ObservationManageArgs;
 use crate::command_context::CommandContext;
 use crate::shared::print_json_pretty;
 
@@ -24,10 +24,7 @@ pub(super) async fn manage_command(
         !reason.is_empty(),
         "the decision reason must not be blank — a decision without a rationale teaches nothing"
     );
-    let action = match args.action {
-        ObservationManageActionArg::NoFiling => "no_filing",
-        ObservationManageActionArg::LinkExisting => "link_existing",
-    };
+    let action = args.action.to_string();
     let project = args
         .project
         .as_deref()
@@ -49,7 +46,7 @@ pub(super) async fn manage_command(
         .manage_observation(
             &run_id.to_string(),
             args.seq,
-            action,
+            &action,
             reason,
             project,
             item_key,

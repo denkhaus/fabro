@@ -416,10 +416,11 @@ pub(super) async fn reap_sandboxes_pass(state: &AppState) -> anyhow::Result<Opti
         failed,
         brake: brake_active,
     };
-    // The brake's visibility line (work#1326): a pass that freed or failed
-    // anything says so at WARN — named bytes, named disk percent — while a
-    // nothing-happened pass stays at INFO.
-    if reaped > 0 || failed > 0 {
+    // The reap arm's visibility (work#1326, split per the logging
+    // strategy at the work#1386 review): the DEGRADED shapes — a brake
+    // pass or failed deletions — warn; the routine free-bytes audit
+    // stays INFO with the same structured fields.
+    if failed > 0 || brake_active {
         warn!(
             reaped,
             preserved,

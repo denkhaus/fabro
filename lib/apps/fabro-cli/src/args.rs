@@ -2410,12 +2410,16 @@ pub(crate) struct ObservationManageArgs {
 }
 
 /// The triage action vocabulary as a clap enum, so `--action` refuses
-/// typos at the boundary. Kebab-case mirrors the wire's snake_case
-/// (`no-filing` → `no_filing`).
+/// typos at the boundary. The clap values stay kebab-case
+/// (`no-filing`); the strum Display is the wire's snake_case
+/// (`no_filing`) — one vocabulary, one derivation, no hand-written
+/// variant→string map (work#1386).
 #[derive(Clone, Copy, Debug, strum::Display, clap::ValueEnum)]
-#[strum(serialize_all = "kebab-case")]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum ObservationManageActionArg {
+    #[value(name = "no-filing")]
     NoFiling,
+    #[value(name = "link-existing")]
     LinkExisting,
 }
 
