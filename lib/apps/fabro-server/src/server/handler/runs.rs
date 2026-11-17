@@ -952,7 +952,16 @@ async fn finalize_created_run(
             }
         }
     }
-    info!(run_id = %created.run_id, "Run created from intent");
+    info!(
+        run_id = %created.run_id,
+        workflow_slug = summary.workflow.slug.as_deref().unwrap_or(""),
+        workflow_version_id = %summary
+            .workflow_version_id
+            .as_ref()
+            .map(std::string::ToString::to_string)
+            .unwrap_or_default(),
+        "Run created from intent"
+    );
     (
         StatusCode::CREATED,
         Json(state.decorate_run_summary(summary).await),
