@@ -2,6 +2,7 @@ use anyhow::Result;
 use cli_table::format::{Border, Justify, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
+use fabro_util::printer::Printer;
 
 use crate::args::StatsArgs;
 use crate::command_context::CommandContext;
@@ -15,14 +16,14 @@ pub(super) async fn stats_command(args: &StatsArgs, base_ctx: &CommandContext) -
     let ctx = base_ctx.with_connection(&args.connection)?;
     let server = ctx.server().await?;
     let output = server.get_system_stats().await?;
-    stats_from(&output, ctx.json_output())
+    stats_from(&output, ctx.json_output(), base_ctx.printer())
 }
 
-#[allow(
-    clippy::print_stdout,
-    reason = "The stats report belongs on stdout for piping."
-)]
-fn stats_from(output: &types::SystemStatsResponse, json_output: bool) -> Result<()> {
+fn stats_from(
+    output: &types::SystemStatsResponse,
+    json_output: bool,
+    printer: Printer,
+) -> Result<()> {
     if json_output {
         print_json_pretty(output)?;
         return Ok(());
@@ -70,13 +71,14 @@ fn stats_from(output: &types::SystemStatsResponse, json_output: bool) -> Result<
         .color_choice(color_choice)
         .border(Border::builder().build())
         .separator(Separator::builder().build());
-    println!("{}", table.display()?);
-    println!();
-    println!("Rows with identical numbers share one filesystem.");
+    fabro_util::printout!(printer, "{}", table.display()?);
+    fabro_util::printout!(printer, "");
+    fabro_util::printout!(printer, "Rows with identical numbers share one filesystem.");
 
     if let Some(last_reap) = output.last_reap_pass.as_ref() {
-        println!();
-        println!(
+        fabro_util::printout!(printer, "");
+        fabro_util::printout!(
+            printer,
             "Last reap pass: {} reaped, {} already absent, {} failed; freed {}; disk {}%",
             last_reap.reaped.unwrap_or_default(),
             last_reap.absent.unwrap_or_default(),
@@ -87,11 +89,14 @@ fn stats_from(output: &types::SystemStatsResponse, json_output: bool) -> Result<
                 .map_or("-".to_string(), |percent| format!("{percent}%")),
         );
         if let Some(finished_at) = last_reap.finished_at {
-            println!("  finished at {finished_at}");
+            fabro_util::printout!(printer, "  finished at {finished_at}");
         }
     } else {
-        println!();
-        println!("Last reap pass: none recorded yet (arm disabled or no pass ran)");
+        fabro_util::printout!(printer, "");
+        fabro_util::printout!(
+            printer,
+            "Last reap pass: none recorded yet (arm disabled or no pass ran)"
+        );
     }
 
     Ok(())
