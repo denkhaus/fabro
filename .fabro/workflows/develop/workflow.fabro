@@ -500,6 +500,30 @@ digraph Develop {
         max_retries=1
     ]
 
+    // Already-landed park (work#1419, operator decision 2026-11-17): a
+    // pass-through command node whose ONLY exit edge carries
+    // x.kind="deadlock" — the tester-guard shape. The exit-kind
+    // classifier (fork_exit_kinds::classify, fabro-843d) fires a
+    // deadlock exit on a green finish only when that edge is the routing
+    // node's SOLE route to exit, and the planner keeps plain exit
+    // siblings ("Tracker empty", "Stale basis", "Planner failed") — a
+    // deadlock kind on a planner edge could never fire (the planner's
+    // "Blocked" edge is inert the same way). One extra hop is the whole
+    // mechanism: the already-landed route concludes through this node
+    // and the projection folds the run needs-human; the adjudicator
+    // parks a human_needed run LLM-free (no refused verdict), so the
+    // claim holds until the operator dispositions.
+    already_landed_park [
+        label="Already landed park (needs a human)",
+        shape=parallelogram,
+        // Pure topology: the stage's only job is to be the run's last
+        // stage, so the classifier reads the deadlock exit off its edge.
+        // `true` is the POSIX no-op.
+        script="true",
+        timeout="30s",
+        max_retries=0
+    ]
+
     // Claim-contract gate (fabro-c42f stopgap + fabro-4c81 path gate):
     // RETIRED as a node (ADR-0032 phase 3) — both arms folded into the
     // post-claim preflight: the id-presence contract is the stdin packet
@@ -530,24 +554,39 @@ digraph Develop {
     // implementation with no seed claimed (GRAPH-03, gate red since
     // the journal-contract prompt). Plain edge: natural completion.
     planner -> exit [label="Tracker empty", condition="preferred_label=\"Tracker empty\""]
-    // Already landed (fabro-d183; ADR-0039 stage G re-shape #1115): the
-    // planner's claim-time check found a fix commit referencing the work
-    // item already in base history with its acceptance criteria
-    // satisfied — it records an already-landed NOTE (the evidence for
-    // the human triage that closes the superseded item) and exits here
-    // PR-less instead of burning a full verification cycle. Plain edge,
-    // natural completion, same family as "Tracker empty" above. The
-    // superseded-CLOSE retired with the closeout authority: the chain
-    // refuses a PR-less run (merge:refused), the claim releases, the
-    // item stays open for the user.
-    planner -> exit [label="Already landed", condition="preferred_label=\"Already landed\""]
+    // Already landed (fabro-d183; work#1419, operator decision
+    // 2026-11-17): the planner's claim-time check found a fix commit
+    // referencing the work item already in base history with its
+    // acceptance criteria satisfied — it records an already-landed NOTE
+    // (the operator's verdict text: item key, fix sha, per-criterion
+    // status, the residual) and routes here instead of burning a full
+    // verification cycle. The verdict PARKS the run needs-human with the
+    // work-item claim PINNED — no release, no skip: the claim mutex
+    // alone prevents re-work, so the next lap does NOT re-claim the
+    // item, and the operator dispositions from the note (closes the
+    // item citing it, or releases it with new info). The park fires
+    // through the already_landed_park node (see its declaration above);
+    // the old shape was a PLAIN edge — natural completion — whose
+    // green PR-less finish the adjudicator refused, releasing the claim
+    // every lap: a p1 item at the queue head re-claimed and re-verified
+    // each lap while blocking all lower-priority work.
+    planner -> already_landed_park [label="Already landed", condition="preferred_label=\"Already landed\""]
+    // The park hop is UNCONDITIONAL and the node's ONLY exit edge: the
+    // classifier (fork_exit_kinds::classify) fires a deadlock kind on a
+    // green finish only as the routing node's sole exit route
+    // (fabro-843d), the same contract the tester's fallback pins below
+    // (work#1057). The label stays "Already landed" for the terminal
+    // transition display; routing never reads it (the park is a command
+    // node and routes by outcome).
+    already_landed_park -> exit [x.kind="deadlock", label="Already landed"]
     // Stale basis (ADR-0015 arm; ADR-0039 stage G re-shape #1115): the
     // granted item's Basis no longer resolves against the current tree —
     // the planner records a stale-basis NOTE with what changed and ends
-    // the run PR-less (the same chain shape as "Already landed": the
-    // adjudicator's fast path marks merge:refused, the claim releases,
-    // the item waits for the user's triage close). Plain edge, natural
-    // completion.
+    // the run PR-less: the adjudicator's fast path marks merge:refused,
+    // the claim releases, the item waits for the user's triage close.
+    // Plain edge, natural completion — deliberately NOT the
+    // already-landed park (work#1419): a stale basis is not a finished
+    // work verdict, it is a misroute the claim release undoes.
     planner -> exit [label="Stale basis", condition="preferred_label=\"Stale basis\""]
     // Cycle-guard exit (run 01M0SS23MJ): the planner prompt routes Blocked
     // after the third review/gate cycle on one seed, but the graph had no

@@ -200,6 +200,57 @@ digraph Develop {
         assert_eq!(kinds.classify("success", Some("tester"), "exit"), None);
     }
 
+    /// work#1419 bench row (operator decision 2026-11-17): the develop
+    /// graph's already-landed route parks needs-human. The planner routes
+    /// "Already landed" to the `already_landed_park` pass-through node,
+    /// whose SOLE exit edge carries `x.kind="deadlock"` — the tester
+    /// fallback shape — so the classifier folds that route's green finish
+    /// as `HumanNeeded`. It also pins the finding that forced the park
+    /// node: a kind edge on a PLANNER exit can never fire, because
+    /// `sole_exit_route` (fabro-843d) refuses to classify when plain exit
+    /// siblings exist — the planner keeps "Tracker empty", "Stale basis"
+    /// and "Planner failed", so its "Blocked" kind edge is inert.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the regression test reads the checked-in develop graph synchronously"
+    )]
+    #[test]
+    fn the_develop_already_landed_route_parks_human_needed() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../.fabro/workflows/develop/workflow.fabro");
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        let kinds = ExitKinds::parse(&source);
+        // The park node's exit edge: the sole route, deadlock-kind.
+        assert_eq!(
+            kinds.kind_of("already_landed_park", "exit"),
+            Some("deadlock"),
+            "the park hop must carry the deadlock kind (work#1419)"
+        );
+        assert!(
+            !kinds.has_plain_edge("already_landed_park", "exit"),
+            "the park node must keep its exit edge the SOLE route (fabro-843d)"
+        );
+        assert_eq!(
+            kinds.classify("success", Some("already_landed_park"), "exit"),
+            Some(RunStatus::HumanNeeded),
+            "the already-landed route parks a green finish as a decision request (work#1419)"
+        );
+        // The finding that forced the pass-through shape: the planner's
+        // own exit pair keeps plain siblings, so a kind edge there — the
+        // "Blocked" edge — never fires, and the planner's routes stay
+        // natural completions.
+        assert!(
+            kinds.has_plain_edge("planner", "exit"),
+            "the planner's plain exit siblings are the reason a planner-edge kind cannot fire"
+        );
+        assert_eq!(
+            kinds.classify("success", Some("planner"), "exit"),
+            None,
+            "a kind edge beside plain siblings stays inert (fabro-843d): the planner-edge park was impossible, the park node is the fix (work#1419)"
+        );
+    }
+
     /// The regression pin for fabro-8615, originally on the revisor
     /// graph that exposed it, ported to the conductor graph when the
     /// revisor retired (ADR-0038 stage 4), and re-pointed to the
