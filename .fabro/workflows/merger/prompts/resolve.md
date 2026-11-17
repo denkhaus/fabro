@@ -29,12 +29,21 @@ and the run branches you resolve — nothing else.
    `fabro/run/<number>` is the convention). Inspect what conflicts:
    `git merge-tree` between the line branch and the run branch names
    the files.
-2. **Resolve on the RUN branch — never the line branch.** Check out the
-   run's branch, merge or rebase the line branch into it, resolve the
-   conflicts file by file (read both sides; the resolution keeps both
-   intents when they are compatible, and prefers the line's newer state
-   when the run's side is stale), and push the run branch. The push
-   rides the engine's own clone credentials — no forge token exists.
+2. **Resolve on the RUN branch — never the line branch.** Materialize
+   the run's branch as ONE gated step: `git fetch origin <branch> &&
+   git checkout -B <branch> FETCH_HEAD` (work#1405). A bare `git
+   checkout <branch>` fails when the branch exists only on the remote,
+   and a merge chained past that failed checkout merges into whatever
+   HEAD the session still holds — the wrong-branch merge. `-B` creates
+   or resets the local branch at FETCH_HEAD, so no stale local ref
+   survives the step. GATE on the landing: `git branch --show-current`
+   must name the run's branch before anything else runs; a failed or
+   unverified checkout is a hard stop — never a `git merge` past it.
+   Then merge or rebase the line branch into it, resolve the conflicts
+   file by file (read both sides; the resolution keeps both intents
+   when they are compatible, and prefers the line's newer state when
+   the run's side is stale), and push the run branch. The push rides
+   the engine's own clone credentials — no forge token exists.
 3. **Retry the door.** `fabro_run_merge` for the run. A clean merge now
    succeeds; re-run the smoke discipline: `git fetch origin denkhaus`,
    check out `FETCH_HEAD`, `cargo check --workspace`, restore your
@@ -49,12 +58,24 @@ and the run branches you resolve — nothing else.
    note with `fabro_observation_record` whose text starts with
    `parked-conflict:` followed by what clashes and what the operator
    must decide, naming the run. Never wait for an answer: park, then
-   continue with the next packet.
-5. **The observation duty.** Every response records at least one
+   continue with the next packet. (The one exception — a run the
+   operator already archived — does not park again: step 5 settles it.)
+5. **Settle what the operator archived.** A packet whose run — or whose
+   underlying demand — the operator archived carries the
+   final-resolution reason `archived-superseded` ("archived by
+   operator", work#1369): the archive is the operator's answer to the
+   escalation, so the packet resolves instead of re-entering every
+   pass. Never merge such a run, and never park it again — a park is
+   an open escalation, and this one is closed. Write the FINAL verdict
+   `fabro_run_mark` `closable=refused`, and record the observation note
+   `resolved: <run> archived-superseded — archived by the operator;
+   settled refused` so the settlement is auditable. A refused verdict
+   is settled: the run leaves the queue for good.
+6. **The observation duty.** Every response records at least one
    observation with `fabro_observation_record`: your resolution
    rationale as a note (`resolved: <run> <what clashed and how you
-   resolved it>`), or the parked-conflict note. A session that records
-   nothing is invalid.
+   resolved it>`), the `archived-superseded` settlement note, or the
+   parked-conflict note. A session that records nothing is invalid.
 
 ## Reads
 
@@ -76,8 +97,8 @@ and the run branches you resolve — nothing else.
 
 One run per response; the preferred label routes the next visit:
 
-- `Next run` — the current run's verdict is written (enabled or
-  parked); the worklist continues.
+- `Next run` — the current run's verdict is written (enabled, refused,
+  or parked); the worklist continues.
 - `Queue settled` — every packet carries a written verdict.
 - `outcome=failed` — a tool call failed on transport; the queue keeps
   every unmerged run for the next pass.
