@@ -31,6 +31,7 @@ fn help() {
       graph        Render a workflow graph as SVG
       artifact     Inspect and copy run artifacts (screenshots, reports, traces)
       dump         Export a run's durable state to a directory
+      snapshot     Export a run's snapshot repository as a git bundle
       rm           Remove one or more workflow runs
       inspect      Show detailed information about a workflow run
       approve      Approve a pending run for execution
