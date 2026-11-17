@@ -29,8 +29,10 @@ export function RunVerdict({ runId }: { runId: string }) {
   const failed = status.kind === "failed" || status.kind === "dead";
   if (!humanNeeded && !failed) return null;
 
-  const conclusion = (run.lifecycle as { conclusionFailure?: { reason?: string; detail?: { message?: string } } }).conclusionFailure;
-  const why = conclusion?.detail?.message ?? conclusion?.reason ?? null;
+  // Schema shape (RunLifecycle): the recorded stop reason is
+  // `lifecycle.error.message` — denkhaus/work#1337; the old
+  // `conclusionFailure` key was a ghost field that never rendered.
+  const why = run.lifecycle.error?.message ?? null;
   const question = (run as { current_question?: { text?: string } | null }).current_question ?? null;
   const context = humanNeeded
     ? "The workflow stopped here and waits for a human decision. Read the recorded reason, then retry on the current line tip, continue from the checkpoint as a fork, or archive it off the board."
