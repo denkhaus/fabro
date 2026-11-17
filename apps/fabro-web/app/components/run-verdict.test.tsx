@@ -41,7 +41,7 @@ function guardParkedRun(): Record<string, unknown> {
     id: "run-1",
     lifecycle: {
       status: { kind: "human_needed" },
-      conclusionFailure: null,
+      error: null,
     },
     current_question: null,
   };
@@ -90,6 +90,30 @@ describe("RunVerdict", () => {
 
     expect(rendered).toContain("needs a human decision");
     expect(rendered).toContain("No reason was recorded.");
+    for (const action of ["Retry", "Retry on latest", "Fork", "Archive"]) {
+      expect(rendered).toContain(action);
+    }
+  });
+
+  // denkhaus/work#1337: a guard-parked run WITH a recorded stop reason
+  // (`lifecycle.error.message` — the schema shape) must render that
+  // reason string AND the full four-action steering. The old fixture
+  // only pinned the null-reason fallback, so the ghost
+  // `conclusionFailure` read never failed a test.
+  test("a guard-parked run with a recorded lifecycle.error.message renders the reason and all four actions", () => {
+    currentRun = {
+      ...guardParkedRun(),
+      lifecycle: {
+        status: { kind: "human_needed" },
+        error: { message: "parked by guard: budget exhausted" },
+      },
+    };
+    const renderer = renderVerdict();
+    const rendered = textOf(renderer);
+
+    expect(rendered).toContain("needs a human decision");
+    expect(rendered).toContain("parked by guard: budget exhausted");
+    expect(rendered).not.toContain("No reason was recorded.");
     for (const action of ["Retry", "Retry on latest", "Fork", "Archive"]) {
       expect(rendered).toContain(action);
     }
