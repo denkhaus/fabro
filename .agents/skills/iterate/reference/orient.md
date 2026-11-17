@@ -25,7 +25,10 @@ index (`incidents.md`) carries the full stories.
   The same discipline binds SUBAGENT dispatches: two agents compiling
   in one tree at once invalidate both runs (sprint-90: the user stopped
   a subagent that kept compiling while a second instance worked the
-  same checkout) — serialize dispatches that build.
+  same checkout) — serialize dispatches that build, or give each
+  building subagent its OWN worktree via worktrunk (`wt switch --create
+  <branch> --no-cd`, operator directive 2026-11-17) so the trees are
+  isolated by construction.
 
 ## Sibling sessions (the roster protocol)
 
