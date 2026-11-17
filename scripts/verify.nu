@@ -321,16 +321,23 @@ def stage-implementer [] {
         }
         print $"verify: PASS fmt ($c)"
     }
+    # Per-crate progress with elapsed time (work#1410): a tool-ceiling
+    # timeout (600s) kills verify mid-phase, and the captured output tail
+    # is all a rerun sees — one duration-bearing line per completed phase
+    # per crate keeps the surviving crate list (and each slice's cost)
+    # visible instead of discarding it with the dead process.
     for c in $t.code {
         let label = ("== clippy -p " + $c + " (default features, deny warnings) ==")
         print $label
+        let t0 = (date now)
         let res = (do { ^cargo $'+($PINNED_TOOLCHAIN)' clippy -p $c --all-targets -- -D warnings } | complete)
+        let secs = (((date now) - $t0) / 1sec | math round)
         if $res.exit_code != 0 {
             print (output-tail $res.stderr 2000)
             print $"verify: FAIL clippy ($c)"
             exit 1
         }
-        print $"verify: PASS clippy ($c)"
+        print $"verify: PASS clippy ($c) \(($secs)s\)"
     }
     let code_only = ($t.code | where {|c| $c not-in $t.tests })
     for c in $code_only {
@@ -349,7 +356,9 @@ def stage-implementer [] {
         let tm = (test-mode-for $t.base $files)
         if $tm.mode == 'names' {
             print $"== nextest -p ($c) \(added tests by name filter: ($tm.names | str join ', '))=="
+            let t0 = (date now)
             let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 ...$tm.names } | complete)
+            let secs = (((date now) - $t0) / 1sec | math round)
             # Zero-selection guard (fabro-bdff): a filter matching zero tests
             # must never look green. Each extracted name is a distinct test
             # fn and nextest matches filters by substring, so a correct
@@ -361,19 +370,21 @@ def stage-implementer [] {
                 print $"verify: FAIL nextest ($c) \(name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length)\)"
                 exit 1
             }
-            print $"verify: PASS nextest ($c)"
+            print $"verify: PASS nextest ($c) \(($secs)s\)"
         } else {
             print $"== nextest -p ($c) — full crate suite: ($tm.reason) =="
             # --retries 2: a load-bound host (a sibling build, a bench)
             # must not kill a sound tier — the qualitygate's discipline,
             # applied to the same command here.
+            let t0 = (date now)
             let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 } | complete)
+            let secs = (((date now) - $t0) / 1sec | math round)
             if $res.exit_code != 0 {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
                 print $"verify: FAIL nextest ($c)"
                 exit 1
             }
-            print $"verify: PASS nextest ($c)"
+            print $"verify: PASS nextest ($c) \(($secs)s\)"
         }
     }
     # The web lane (work#1304) runs AFTER the Rust lanes, same first-red-
