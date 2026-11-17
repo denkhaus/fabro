@@ -24,15 +24,15 @@ use axum::{Json, Router};
 use axum_extra::extract::Query as ExtraQuery;
 use chrono::Utc;
 use fabro_api::types::{
-    GlobalObservation, GlobalObservationList, GlobalObservationTriageState,
-    ObservationManageRequest, ObservationManageRequestAction, ObservationManageResponse,
-    ObservationWorkItemLink, ObservationWorkItemLinkItemState, PaginationMeta, RunMergeResponse,
-    RunObservation, RunObservationList, RunOrchestrationMarkRequest, RunOrchestrationMarkResponse,
-    RunQueueEntry, RunQueueEntryVerdict, RunQueueList,
+    GlobalObservation, GlobalObservationList, ObservationManageRequest,
+    ObservationManageRequestAction, ObservationManageResponse, ObservationWorkItemLink,
+    PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
+    RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict,
+    RunQueueList,
 };
 use fabro_store::platform_records::{
-    ObservationRecordedRecord, PlatformRecord, PlatformRecordKind, RunOrchestrationRecord,
-    StoredPlatformRecord,
+    ObservationRecordedRecord, ObservationTriageState, PlatformRecord, PlatformRecordKind,
+    RunOrchestrationRecord, StoredPlatformRecord,
 };
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
@@ -42,6 +42,10 @@ use futures_util::future::join_all;
 use tracing::info;
 
 use super::super::{AppState, run_records};
+use super::observation_triage;
+use super::observation_triage::{
+    LinkedItemResolution, LinkedItemResolver, LinkedItemState, RESOLVE_CONCURRENCY,
+};
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
 
@@ -59,17 +63,6 @@ pub(super) const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
 /// the mark door's posture. The triager owns global painpoint triage;
 /// user principals write through the same door unconditionally.
 pub(super) const TRIAGER_WORKFLOW: &str = "triager";
-
-/// The wire name of the `no_filing` decision — the one value the
-/// derivation's linkless branch keys on; a const so the wire vocabulary
-/// has one owner beside the OpenAPI enum.
-const NO_FILING_DECISION: &str = "no_filing";
-
-/// The bounded concurrency of one record's tracker resolution joins
-/// (work#1379): a page with hundreds of distinct linked items must not
-/// fire unbounded concurrent tracker reads — the secondary-rate-limit
-/// generator the #570 stale-degradation backoff then pays for.
-const RESOLVE_CONCURRENCY: usize = 16;
 
 /// How many runs one queue read returns at most. The queue is the
 /// adjudicator's worklist, not an archive walk: a gear that needs more
@@ -98,11 +91,17 @@ struct ObservationFeedQuery {
 }
 
 /// The global observations feed: every run's observation records in one
-/// server-paged listing, newest first by default. The triage state is
-/// DERIVED per row (links + live item states + the claim ledger), so a
-/// triage filter pages by over-fetching and filtering — SQL cannot see
-/// the derivation. The total counts the SQL filters; a triage-filtered
-/// page may therefore be shorter than the pager hopes.
+/// server-paged listing, newest first by default. Matching rides the
+/// MATERIALIZED triage state (work#1385): the write doors keep the
+/// side table current, so the triage filter — page and exact total
+/// alike — is SQL (the same shape the category filter rides). The
+/// RETURNED page re-resolves LIVE: links, item states and the
+/// decision rows re-derive per row through the memoized resolver, a
+/// filtered page drops rows whose live-derived state no longer matches,
+/// and the link colors (denkhaus/work#1298) ride those live states. A
+/// filtered total counts the materialized membership — a tracker-side
+/// change outside the write doors stays counted until a write touches
+/// the record again (the corner the API description names).
 async fn list_global_observations(
     _auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
@@ -130,11 +129,11 @@ async fn list_global_observations(
     };
     let triage_filter = match params.triage.as_deref() {
         None => None,
-        Some("untriaged") => Some(TriageState::Untriaged),
-        Some("filed") => Some(TriageState::Filed),
-        Some("in_progress") => Some(TriageState::InProgress),
-        Some("closed") => Some(TriageState::Closed),
-        Some("reviewed") => Some(TriageState::Reviewed),
+        Some("untriaged") => Some(ObservationTriageState::Untriaged),
+        Some("filed") => Some(ObservationTriageState::Filed),
+        Some("in_progress") => Some(ObservationTriageState::InProgress),
+        Some("closed") => Some(ObservationTriageState::Closed),
+        Some("reviewed") => Some(ObservationTriageState::Reviewed),
         Some(other) => {
             return Err(ApiError::bad_request(format!(
                 "unknown triage state '{other}' (untriaged | filed | in_progress | closed | \
@@ -145,9 +144,9 @@ async fn list_global_observations(
 
     let store = state.stores.run_summaries.platform_records();
     let offset = (page - 1) * page_size;
-    // The category filter rides the SQL WHERE (the serde fragment of
-    // the record's category), so the page fetch and its COUNT agree
-    // exactly; only the triage filter derives past SQL (work#1296).
+    // Page and COUNT share one WHERE: kind, run, text, the category
+    // serde fragment AND the materialized triage state — the pager's
+    // exact total is SQL semantics (work#1296, work#1385).
     let category_sql = category.map(|category| category.to_string());
     let read_failed = |error| {
         tracing::error!(error = ?error, "global observations read failed");
@@ -156,162 +155,54 @@ async fn list_global_observations(
             "Reading the observations feed failed.",
         )
     };
-    // The derivation's tracker half resolves once per DISTINCT item for
-    // the whole request (work#1362/#1363): the walk used to resolve per
-    // link row — the same item linked from N records cost N tracker
-    // round trips, which is what made triage-filtered reads take a
-    // minute. The resolver memoizes both the tracker read and the
-    // claim-ledger read per distinct (project, item).
+    let (entries, total) = store
+        .read_kind_global(
+            PlatformRecordKind::ObservationRecorded,
+            newest_first,
+            page_size,
+            offset,
+            run_id.as_ref(),
+            params.q.as_deref(),
+            category_sql.as_deref(),
+            triage_filter,
+        )
+        .await
+        .map_err(read_failed)?;
+    // The page resolver (work#1362/#1363): the tracker half resolves
+    // once per DISTINCT item for the whole page, the store halves once
+    // per run — the only live resolution a request pays is its own
+    // page's.
     let mut resolver = LinkedItemResolver::new(&state);
     let mut links_by_run: HashMap<RunId, Vec<fabro_work::ObservationLink>> = HashMap::new();
-    // The decision half (ADR-0044): one store read per run, beside the
-    // link rows. A store failure degrades to empty — the feed keeps
-    // serving.
     let mut decisions_by_run: HashMap<RunId, HashMap<u64, String>> = HashMap::new();
-    let (observations, total) = match triage_filter {
-        None => {
-            let (entries, total) = store
-                .read_kind_global(
-                    PlatformRecordKind::ObservationRecorded,
-                    newest_first,
-                    page_size,
-                    offset,
-                    run_id.as_ref(),
-                    params.q.as_deref(),
-                    category_sql.as_deref(),
-                )
-                .await
-                .map_err(read_failed)?;
-            let mut rows = Vec::with_capacity(entries.len());
-            for (entry_run, stored) in &entries {
-                let PlatformRecord::ObservationRecorded(record) = &stored.record else {
-                    continue;
-                };
-                let links = triage_links_of_seq(
-                    &state,
-                    &mut resolver,
-                    &mut links_by_run,
-                    entry_run,
-                    stored.seq,
-                )
-                .await;
-                let decision =
-                    decision_of_seq(&state, &mut decisions_by_run, entry_run, stored.seq).await;
-                let triage = derive_triage(&links, decision);
-                rows.push(wire_global_observation(
-                    entry_run, stored, record, triage, links,
-                ));
-            }
-            (rows, total)
+    let mut observations = Vec::with_capacity(entries.len());
+    for (entry_run, stored) in &entries {
+        let PlatformRecord::ObservationRecorded(record) = &stored.record else {
+            continue;
+        };
+        let (links, states) = triage_links_of_seq(
+            &state,
+            &mut resolver,
+            &mut links_by_run,
+            entry_run,
+            stored.seq,
+        )
+        .await;
+        let decision = decision_of_seq(&state, &mut decisions_by_run, entry_run, stored.seq).await;
+        let triage = observation_triage::derive_triage(&states, decision);
+        // The live overlay: a materialized-matching row whose LIVE
+        // derivation has drifted (an item closed in the tracker since
+        // the last write) falls out of the filtered page. An unfiltered
+        // page keeps every row — its states are live by definition. The
+        // total stays the materialized count — the corner is named, not
+        // hidden.
+        if triage_filter.is_some_and(|wanted| triage != wanted) {
+            continue;
         }
-        Some(wanted) => {
-            // EXACT total under a post-SQL filter (work#1296): walk
-            // every matching record once, derive its triage, count the
-            // matches, and slice the page from the walked matches —
-            // replacing the over-fetch rounds whose total could only
-            // grow while paging. Links are fetched once per run
-            // (work#1296), item states resolve once per distinct item
-            // through the per-request resolver (work#1362), the missing
-            // ones join concurrently (work#1363), and the linkless
-            // short-circuits need no tracker I/O at all: a record with
-            // link rows can never be untriaged or reviewed, and one
-            // without derives those two states from link presence and
-            // the decision row alone.
-            const WALK_BATCH: usize = 500;
-            let mut matched: Vec<GlobalObservation> = Vec::new();
-            let mut walk_offset = 0usize;
-            loop {
-                let (entries, _seen) = store
-                    .read_kind_global(
-                        PlatformRecordKind::ObservationRecorded,
-                        newest_first,
-                        WALK_BATCH,
-                        walk_offset,
-                        run_id.as_ref(),
-                        params.q.as_deref(),
-                        category_sql.as_deref(),
-                    )
-                    .await
-                    .map_err(read_failed)?;
-                if entries.is_empty() {
-                    break;
-                }
-                let exhausted = entries.len() < WALK_BATCH;
-                for (entry_run, stored) in &entries {
-                    let PlatformRecord::ObservationRecorded(record) = &stored.record else {
-                        continue;
-                    };
-                    let run_links = run_link_rows(&state, &mut links_by_run, entry_run).await;
-                    let has_links = run_links.iter().any(|link| link.seq == stored.seq);
-                    let decision =
-                        decision_of_seq(&state, &mut decisions_by_run, entry_run, stored.seq).await;
-                    if !has_links {
-                        // Linkless records derive from the decision row
-                        // alone: reviewed on a no_filing decision,
-                        // untriaged without one. No tracker I/O.
-                        let triage = if decision == Some(NO_FILING_DECISION) {
-                            TriageState::Reviewed
-                        } else {
-                            TriageState::Untriaged
-                        };
-                        if triage == wanted {
-                            matched.push(wire_global_observation(
-                                entry_run,
-                                stored,
-                                record,
-                                triage,
-                                Vec::new(),
-                            ));
-                        }
-                        continue;
-                    }
-                    // Presence-decidable filters (work#1379): a record
-                    // WITH link rows can never derive untriaged or
-                    // reviewed (`derive_triage`), so link presence alone
-                    // rejects it — the walk pays no tracker resolution
-                    // here. Resolving first used to spend every distinct
-                    // linked item's round trip on records the filter then
-                    // dropped, which kept triage-filtered reads past the
-                    // triager sweep's 30-second client budget even after
-                    // the work#1363 batching (measured 2026-11-16 on
-                    // fork.39: untriaged 32.6s, unfiltered 0.13s).
-                    if matches!(wanted, TriageState::Untriaged | TriageState::Reviewed) {
-                        continue;
-                    }
-                    // Link rows present and the filter needs live item
-                    // state (filed / in_progress / closed): the links
-                    // outrank any decision (a filing overrides), and the
-                    // states resolve deduped.
-                    let links = triage_links_of_seq(
-                        &state,
-                        &mut resolver,
-                        &mut links_by_run,
-                        entry_run,
-                        stored.seq,
-                    )
-                    .await;
-                    let triage = derive_triage(&links, decision);
-                    if triage != wanted {
-                        continue;
-                    }
-                    matched.push(wire_global_observation(
-                        entry_run, stored, record, triage, links,
-                    ));
-                }
-                walk_offset += entries.len();
-                if exhausted {
-                    break;
-                }
-            }
-            let total = matched.len() as u64;
-            let observations = matched
-                .into_iter()
-                .skip(offset)
-                .take(page_size)
-                .collect::<Vec<_>>();
-            (observations, total)
-        }
-    };
+        observations.push(wire_global_observation(
+            entry_run, stored, record, triage, links,
+        ));
+    }
     Ok(Json(GlobalObservationList {
         observations,
         total: total.min(i64::MAX.unsigned_abs()).cast_signed(),
@@ -325,7 +216,7 @@ fn wire_global_observation(
     entry_run: &RunId,
     stored: &StoredPlatformRecord,
     record: &ObservationRecordedRecord,
-    triage: TriageState,
+    triage: ObservationTriageState,
     links: Vec<ObservationWorkItemLink>,
 ) -> GlobalObservation {
     GlobalObservation {
@@ -337,31 +228,8 @@ fn wire_global_observation(
         recorded_at:       chrono::DateTime::from_timestamp_millis(
             stored.recorded_at.cast_signed(),
         ),
-        triage_state:      triage.into_wire(),
+        triage_state:      observation_triage::wire_triage_state(triage),
         linked_work_items: links,
-    }
-}
-
-/// The wire triage state and its derivation over a record's links and
-/// decision row.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum TriageState {
-    Untriaged,
-    Filed,
-    InProgress,
-    Closed,
-    Reviewed,
-}
-
-impl TriageState {
-    fn into_wire(self) -> GlobalObservationTriageState {
-        match self {
-            Self::Untriaged => GlobalObservationTriageState::Untriaged,
-            Self::Filed => GlobalObservationTriageState::Filed,
-            Self::InProgress => GlobalObservationTriageState::InProgress,
-            Self::Closed => GlobalObservationTriageState::Closed,
-            Self::Reviewed => GlobalObservationTriageState::Reviewed,
-        }
     }
 }
 
@@ -384,25 +252,25 @@ async fn run_link_rows<'a>(
     &links_by_run[run_id]
 }
 
-/// One record's wire links with resolved live item states: the link rows
-/// of `seq` (store half, cheap) beside the tracker resolution (the
-/// expensive half), memoized once per DISTINCT item for the whole
-/// request through the resolver and joined concurrently — never one
-/// round trip per link row (work#1362/#1363). A record without link
-/// rows resolves nothing: it derives `untriaged` from link presence
-/// alone.
+/// One record's resolved links: the link rows of `seq` (store half,
+/// cheap) beside the tracker resolution (the expensive half), memoized
+/// once per DISTINCT item for the whole request through the resolver and
+/// joined concurrently — never one round trip per link row
+/// (work#1362/#1363). A record without link rows resolves nothing. The
+/// wire links ride beside the states the derivation reads, so the live
+/// overlay derives from exactly what the wire shows.
 async fn triage_links_of_seq(
     state: &AppState,
     resolver: &mut LinkedItemResolver<'_>,
     links_by_run: &mut HashMap<RunId, Vec<fabro_work::ObservationLink>>,
     run_id: &RunId,
     seq: u64,
-) -> Vec<ObservationWorkItemLink> {
+) -> (Vec<ObservationWorkItemLink>, Vec<Option<LinkedItemState>>) {
     let run_links = run_link_rows(state, links_by_run, run_id).await;
     let seq_links: Vec<&fabro_work::ObservationLink> =
         run_links.iter().filter(|link| link.seq == seq).collect();
     if seq_links.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     // The not-yet-memoized distinct items of this record, resolved in
     // bounded concurrent joins (the RESOLVE_CONCURRENCY bound,
@@ -418,24 +286,24 @@ async fn triage_links_of_seq(
     }
     let mut resolutions = Vec::with_capacity(pending.len());
     for chunk in pending.chunks(RESOLVE_CONCURRENCY) {
-        let part = join_all(
-            chunk
-                .iter()
-                .map(|(project_id, item_key)| resolve_linked_item(state, project_id, item_key)),
-        )
+        let part = join_all(chunk.iter().map(|(project_id, item_key)| {
+            observation_triage::resolve_linked_item(state, project_id, item_key)
+        }))
         .await;
         resolutions.extend(part);
     }
     for (key, resolved) in pending.into_iter().zip(resolutions) {
         resolver.resolved.insert(key, resolved);
     }
-    seq_links
+    let mut states = Vec::with_capacity(seq_links.len());
+    let links = seq_links
         .into_iter()
         .map(|link| {
-            let (item_state, item_url, item_state_stale) = match resolver
+            let resolution = resolver
                 .resolved
-                .get(&(link.project_id.clone(), link.item_key.clone()))
-            {
+                .get(&(link.project_id.clone(), link.item_key.clone()));
+            states.push(resolution.and_then(LinkedItemResolution::state));
+            let (item_state, item_url, item_state_stale) = match resolution {
                 Some(LinkedItemResolution::Resolved(item)) => (
                     Some(LinkedItemState::into_wire(item.state)),
                     Some(item.url.clone()),
@@ -456,33 +324,8 @@ async fn triage_links_of_seq(
                 item_url,
             }
         })
-        .collect()
-}
-
-fn derive_triage(links: &[ObservationWorkItemLink], decision: Option<&str>) -> TriageState {
-    if links.is_empty() {
-        // Link rows beat the decision row (ADR-0044): a filing overrides
-        // wherever both exist. Linkless, a no_filing decision reads
-        // reviewed — the triager judged and no item was warranted.
-        return if decision == Some(NO_FILING_DECISION) {
-            TriageState::Reviewed
-        } else {
-            TriageState::Untriaged
-        };
-    }
-    if links
-        .iter()
-        .any(|link| link.item_state == Some(ObservationWorkItemLinkItemState::InProgress))
-    {
-        return TriageState::InProgress;
-    }
-    if links
-        .iter()
-        .any(|link| link.item_state != Some(ObservationWorkItemLinkItemState::Closed))
-    {
-        return TriageState::Filed;
-    }
-    TriageState::Closed
+        .collect();
+    (links, states)
 }
 
 /// One record's decision string (`no_filing` today), from the run's
@@ -666,6 +509,10 @@ async fn manage_observation(
                     "Recording the triage decision failed.",
                 )
             })?;
+        // The write door's materialization (work#1385): both halves of
+        // this write landed, so the record's derived state is
+        // re-derived once and stored beside the record.
+        super::observation_triage::rederive_and_materialize(&state, &run_id, seq).await;
         let outcome_note = match outcome {
             fabro_work::LinkOutcome::Linked => "linked",
             fabro_work::LinkOutcome::AlreadyLinked => "already_linked",
@@ -700,6 +547,9 @@ async fn manage_observation(
                 "Recording the triage decision failed.",
             )
         })?;
+    // The write door's materialization (work#1385): the decision write
+    // can flip a linkless record between untriaged and reviewed.
+    super::observation_triage::rederive_and_materialize(&state, &run_id, seq).await;
     info!(
         run_id = %run_id,
         seq,
@@ -1417,155 +1267,6 @@ async fn list_observations(
     Ok(Json(RunObservationList { observations }).into_response())
 }
 
-/// A linked work item's live state as the observations column shows it:
-/// open, open with a live claim (a run is working it), closed, or merged
-/// (denkhaus/work#1298: the closure rode a merged PR).
-#[derive(Clone, Copy, Debug)]
-enum LinkedItemState {
-    Open,
-    InProgress,
-    Merged,
-    Closed,
-}
-
-impl LinkedItemState {
-    fn into_wire(self) -> ObservationWorkItemLinkItemState {
-        match self {
-            Self::Open => ObservationWorkItemLinkItemState::Open,
-            Self::InProgress => ObservationWorkItemLinkItemState::InProgress,
-            Self::Merged => ObservationWorkItemLinkItemState::Merged,
-            Self::Closed => ObservationWorkItemLinkItemState::Closed,
-        }
-    }
-}
-
-/// Resolve one linked item's state. The claim ledger outranks the
-/// tracker read: a live claim means the item is open and being worked,
-/// whatever the provider's indexing lag says.
-///
-/// The answer says WHY a state is missing (denkhaus/work#1364):
-/// [`LinkedItemResolution::NotFound`] is the tracker's verdict that the
-/// item is gone, [`LinkedItemResolution::Stale`] is a degradation — the
-/// tracker could not be asked (project gone, credentials) or failed the
-/// read (installation budget exhausted even after the client's
-/// rate-limit retries). The feed surfaces stale as
-/// `item_state_stale` instead of silently null.
-#[derive(Clone, Debug)]
-enum LinkedItemResolution {
-    /// The tracker answered with the item's live state and URL.
-    Resolved(ResolvedLinkedItem),
-
-    /// The tracker answered: no such item — a verdict, not a failure.
-    NotFound,
-
-    /// The read FAILED (rate limit, transport, configuration) — the
-    /// null state is a degradation, not a verdict.
-    Stale,
-}
-
-/// A linked work item's live state and tracker URL, resolved together in one
-/// tracker round-trip (denkhaus/work#1235: the client never builds forge
-/// URLs — the work item is an abstract interface).
-#[derive(Clone, Debug)]
-struct ResolvedLinkedItem {
-    state: LinkedItemState,
-    url:   String,
-}
-
-async fn resolve_linked_item(
-    state: &AppState,
-    project_id: &str,
-    item_key: &str,
-) -> LinkedItemResolution {
-    let Some(project) = state.work_store().project(project_id).await.ok().flatten() else {
-        return LinkedItemResolution::Stale;
-    };
-    let Ok(tracker) = state.work_tracker_for_project(&project).await else {
-        return LinkedItemResolution::Stale;
-    };
-    let item = match tracker.get(&project, item_key).await {
-        Ok(Some(item)) => item,
-        // The tracker answered: the item is gone — a verdict.
-        Ok(None) => return LinkedItemResolution::NotFound,
-        // The read failed (rate-limit budget exhausted, transport) — a
-        // degradation the feed must mark, not hide (denkhaus/work#1364).
-        Err(_) => return LinkedItemResolution::Stale,
-    };
-    let state = if matches!(
-        state
-            .work_store()
-            .active_claim_for_item(project_id, item_key)
-            .await,
-        Ok(Some(_))
-    ) {
-        LinkedItemState::InProgress
-    } else {
-        match item.state.as_str() {
-            // The tracker's closed verdict colors `merged` when the
-            // item's closure rode a merged PR (denkhaus/work#1298): its
-            // latest landed claim carries the pull-request URL. One
-            // memoized read per distinct item — the resolver's cache
-            // dedupes.
-            // The tracker's closed verdict colors `merged` when the
-            // item's closure rode a merged PR (denkhaus/work#1298): its
-            // latest landed claim carries the pull-request URL. One
-            // memoized read per distinct item — the resolver's cache
-            // dedupes. A failed ledger read degrades to the tracker's
-            // verdict — plain closed, not a stale column: the tracker
-            // answered; only the merged refinement is lost.
-            "closed" => {
-                if matches!(
-                    state
-                        .work_store()
-                        .landed_claim_with_pr_for_item(project_id, item_key)
-                        .await,
-                    Ok(Some(_))
-                ) {
-                    LinkedItemState::Merged
-                } else {
-                    LinkedItemState::Closed
-                }
-            }
-            _ => LinkedItemState::Open,
-        }
-    };
-    LinkedItemResolution::Resolved(ResolvedLinkedItem {
-        state,
-        url: item.url,
-    })
-}
-
-/// The per-request batch of linked item states (denkhaus/work#1362):
-/// each distinct (project, item) resolves EXACTLY ONCE per feed page or
-/// walk — the tracker read and the claim-ledger read behind
-/// [`resolve_linked_item`] are memoized here, so a page of records
-/// linking the same item costs one round-trip, not one per record per
-/// link. One resolver lives for one HTTP request and is dropped with
-/// it: no cross-request state, no invalidation, no stale columns.
-struct LinkedItemResolver<'a> {
-    state:    &'a AppState,
-    resolved: HashMap<(String, String), LinkedItemResolution>,
-}
-
-impl<'a> LinkedItemResolver<'a> {
-    fn new(state: &'a AppState) -> Self {
-        Self {
-            state,
-            resolved: HashMap::new(),
-        }
-    }
-
-    async fn resolve(&mut self, project_id: &str, item_key: &str) -> LinkedItemResolution {
-        let cache_key = (project_id.to_owned(), item_key.to_owned());
-        if let Some(hit) = self.resolved.get(&cache_key) {
-            return hit.clone();
-        }
-        let resolved = resolve_linked_item(self.state, project_id, item_key).await;
-        self.resolved.insert(cache_key, resolved.clone());
-        resolved
-    }
-}
-
 /// One stored observation record as the API serves it. The category is
 /// the canonical `fabro_types::ObservationCategory` (reused through
 /// `with_replacement` — no parallel DTO, no bridge).
@@ -1585,225 +1286,5 @@ fn wire_observation(
         stage,
         linked_work_items,
         recorded_at: chrono::DateTime::from_timestamp_millis(recorded_at_ms.cast_signed()),
-    }
-}
-
-#[cfg(test)]
-mod link_resolution_tests {
-    use std::sync::Arc;
-
-    use async_trait::async_trait;
-    use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
-
-    use super::{LinkedItemResolution, LinkedItemState};
-    use crate::server::AppState;
-    use crate::test_support::TestAppStateBuilder;
-
-    /// A tracker whose `get` answers one scripted item — the seam the
-    /// observation tables' link resolution reads through
-    /// (denkhaus/work#1235: state and URL resolve together, one
-    /// round-trip). `get_fails` scripts the degraded read of
-    /// denkhaus/work#1364: the installation budget is exhausted and the
-    /// client's retries are spent.
-    struct UrlScriptedTracker {
-        item:      Option<WorkItem>,
-        get_fails: bool,
-    }
-
-    #[async_trait]
-    impl TrackerProvider for UrlScriptedTracker {
-        async fn list(
-            &self,
-            _project: &WorkProject,
-            _filter: WorkItemFilter,
-        ) -> anyhow::Result<Vec<WorkItem>> {
-            Ok(Vec::new())
-        }
-
-        async fn get(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-        ) -> anyhow::Result<Option<WorkItem>> {
-            if self.get_fails {
-                anyhow::bail!("API rate limit exceeded for installation ID 161242007");
-            }
-            Ok(self.item.clone())
-        }
-
-        async fn create(
-            &self,
-            _project: &WorkProject,
-            _draft: WorkItemDraft,
-        ) -> anyhow::Result<WorkItem> {
-            anyhow::bail!("not needed")
-        }
-
-        async fn update(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-            _title: Option<&str>,
-            _body: Option<&str>,
-        ) -> anyhow::Result<WorkItem> {
-            anyhow::bail!("not needed")
-        }
-
-        async fn close(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-            _reason: &str,
-        ) -> anyhow::Result<()> {
-            anyhow::bail!("not needed")
-        }
-
-        async fn comment(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-            _body: &str,
-        ) -> anyhow::Result<()> {
-            anyhow::bail!("not needed")
-        }
-
-        async fn project_claim(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-            _run_id: &str,
-        ) -> anyhow::Result<()> {
-            anyhow::bail!("not needed")
-        }
-
-        async fn clear_claim(
-            &self,
-            _project: &WorkProject,
-            _item_key: &str,
-            _run_id: &str,
-        ) -> anyhow::Result<()> {
-            anyhow::bail!("not needed")
-        }
-    }
-
-    fn scripted_item(state: &str, url: &str) -> WorkItem {
-        WorkItem {
-            item_key:   "denkhaus/work#12".to_string(),
-            title:      "Scripted".to_string(),
-            body:       String::new(),
-            state:      state.to_string(),
-            labels:     Vec::new(),
-            priority:   2,
-            url:        url.to_string(),
-            updated_at: None,
-        }
-    }
-
-    async fn state_with(tracker: UrlScriptedTracker) -> Arc<AppState> {
-        let state = TestAppStateBuilder::new()
-            .work_tracker(Arc::new(tracker) as Arc<dyn TrackerProvider>)
-            .build();
-        let store = fabro_work::WorkStore::new(state.db_pool.clone());
-        store
-            .upsert_project(&WorkProject {
-                project_id:               "fabro".to_string(),
-                display_name:             "Fabro".to_string(),
-                tracker_provider:         "github".to_string(),
-                tracker_repo:             "denkhaus/work".to_string(),
-                target_repo:              None,
-                project_label:            "project:fabro".to_string(),
-                lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
-                    .into_iter()
-                    .collect(),
-                claim_label_prefix:       "fabro:run:".to_string(),
-                claim_comment_enabled:    false,
-                backpressure_open_pr_cap: 0,
-            })
-            .await
-            .expect("project upserts");
-        state
-    }
-
-    #[tokio::test]
-    async fn a_resolved_link_carries_its_state_and_tracker_url_together() {
-        let state = state_with(UrlScriptedTracker {
-            item:      Some(scripted_item(
-                "open",
-                "https://tracker.example/denkhaus/work/issues/12",
-            )),
-            get_fails: false,
-        })
-        .await;
-
-        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await;
-
-        let LinkedItemResolution::Resolved(resolved) = resolved else {
-            panic!("the scripted item resolves: {resolved:?}");
-        };
-        assert!(
-            matches!(resolved.state, LinkedItemState::Open),
-            "the live state rides the resolution"
-        );
-        assert_eq!(
-            resolved.url, "https://tracker.example/denkhaus/work/issues/12",
-            "the tracker URL rides the SAME round-trip — clients never build forge URLs"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_closed_item_resolves_closed_with_its_url() {
-        let state = state_with(UrlScriptedTracker {
-            item:      Some(scripted_item(
-                "closed",
-                "https://tracker.example/denkhaus/work/issues/12",
-            )),
-            get_fails: false,
-        })
-        .await;
-
-        let resolved = super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await;
-
-        let LinkedItemResolution::Resolved(resolved) = resolved else {
-            panic!("the scripted item resolves: {resolved:?}");
-        };
-        assert!(matches!(resolved.state, LinkedItemState::Closed));
-        assert_eq!(
-            resolved.url,
-            "https://tracker.example/denkhaus/work/issues/12"
-        );
-    }
-
-    #[tokio::test]
-    async fn an_absent_item_is_the_trackers_verdict_not_a_stale_read() {
-        let state = state_with(UrlScriptedTracker {
-            item:      None,
-            get_fails: false,
-        })
-        .await;
-
-        assert!(
-            matches!(
-                super::resolve_linked_item(&state, "fabro", "denkhaus/work#13").await,
-                LinkedItemResolution::NotFound
-            ),
-            "the tracker answered — honest nulls, no staleness"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_failed_tracker_read_is_stale_not_silently_null() {
-        let state = state_with(UrlScriptedTracker {
-            item:      None,
-            get_fails: true,
-        })
-        .await;
-
-        assert!(
-            matches!(
-                super::resolve_linked_item(&state, "fabro", "denkhaus/work#12").await,
-                LinkedItemResolution::Stale
-            ),
-            "the failed read is the explicit degradation denkhaus/work#1364 names"
-        );
     }
 }

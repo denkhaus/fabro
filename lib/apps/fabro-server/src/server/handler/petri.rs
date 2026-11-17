@@ -312,6 +312,14 @@ async fn append_platform_record(
             // The run-end filing hook is stripped (ADR-0039: the
             // adjudicator owns filing); the terminal append path is
             // bare again.
+            // The append door's materialization (work#1385): the store
+            // appended the record's initial `untriaged` row
+            // transactionally; the re-derivation corrects the rare
+            // pre-linked sequence (a user link written before the
+            // record existed) and is otherwise a no-op re-read.
+            if matches!(record, PlatformRecord::ObservationRecorded(_)) {
+                super::observation_triage::rederive_and_materialize(&state, &id, stored.seq).await;
+            }
             match wire_platform_record(&stored) {
                 Ok(record) => Json(record).into_response(),
                 Err(err) => err.into_response(),

@@ -22,13 +22,22 @@ pub fn test_blob_store() -> Arc<BlobStore> {
 }
 
 /// The migrations a run summary fixture installs: the `runs` row, the
-/// platform records and the projection tables.
+/// platform records and the projection tables — plus the work-project,
+/// link and decision tables the observation triage state migration's
+/// backfill joins (work#1385): the migration references those tables by
+/// name, so a records-only schema cannot install it, and a real
+/// deployment shares one database file between the two families.
 const RUN_SUMMARY_MIGRATIONS: &[&str] = &[
     fabro_db::RUNS_MIGRATION_SQL,
     fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
     fabro_db::RUNS_HUMAN_NEEDED_MIGRATION_SQL,
     fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
     fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,
+    fabro_db::WORK_QUEUE_MIGRATION_SQL,
+    fabro_db::WORK_PROJECT_TARGET_MIGRATION_SQL,
+    fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
+    fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
+    fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
 ];
 
 /// Returns an isolated SQLite run-summary store backed by its own in-memory

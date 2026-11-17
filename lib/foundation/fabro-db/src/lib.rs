@@ -61,6 +61,19 @@ pub const WORK_PROJECT_TARGET_MIGRATION_SQL: &str =
 pub const WORK_OBSERVATION_LINKS_MIGRATION_SQL: &str =
     include_str!("../migrations/2026103101_work_observation_links.sql");
 
+/// The observation triage decision migration (`observation_triage_decisions`,
+/// ADR-0044), exposed so fixtures in other crates can install the
+/// production schema without a filesystem path into this crate.
+pub const OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026111501_observation_triage_decisions.sql");
+
+/// The materialized observation triage state migration
+/// (`observation_triage_state`, work#1385), exposed so fixtures in other
+/// crates can install the production schema without a filesystem path
+/// into this crate.
+pub const OBSERVATION_TRIAGE_STATE_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026111601_observation_triage_state.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.

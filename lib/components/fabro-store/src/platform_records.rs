@@ -567,6 +567,32 @@ pub struct SandboxReapedRecord {
 /// ergonomics, applied to the platform surface).
 pub const MAX_OBSERVATION_TEXT_CHARS: usize = 2000;
 
+/// The derived triage state of one observation record, MATERIALIZED
+/// beside the record (work#1385): the write doors (record append, link,
+/// unlink, decision) re-derive and store it, and the global feed's
+/// triage filter matches this column in SQL. The vocabulary matches the
+/// wire's `triage_state` enum; the derivation rules live with the write
+/// doors (the server layer holds both stores the derivation reads).
+/// The tracker-side-change corner is by design: an item closing in the
+/// tracker outside the write doors keeps its materialized state until a
+/// write touches the record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumString)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum ObservationTriageState {
+    /// No linked item and no decision.
+    Untriaged,
+    /// Linked, no live item state contradicts it.
+    Filed,
+    /// Linked, an item carries a live claim.
+    InProgress,
+    /// Linked, every item closed.
+    Closed,
+    /// A `no_filing` decision and no link — the triager judged no item
+    /// was warranted. A later filing overrides it.
+    Reviewed,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunParentRecord {
     /// The parent after the change; absent when the link was removed.
@@ -869,6 +895,27 @@ impl PlatformRecordStore {
         .bind(position.map(|position| column(position.firing)))
         .execute(&mut *connection)
         .await?;
+        // The record append is the first write door of the observation
+        // triage read model (work#1385): the initial derivation rides the
+        // same transaction so a triage-filtered feed can never miss a
+        // stored record. A fresh `(run_id, seq)` identity cannot carry a
+        // link or decision yet — both key on the identity and their doors
+        // refuse absent records — so the initial derivation is always
+        // `untriaged`. `DO NOTHING` keeps a row a door materialized for a
+        // pre-linked sequence (a user link written before the record
+        // existed) — it is more truthful than the default.
+        if record.kind() == PlatformRecordKind::ObservationRecorded {
+            sqlx::query(
+                "INSERT INTO observation_triage_state (run_id, seq, triage_state, \
+                 derived_at_ms) VALUES (?, ?, 'untriaged', ?) \
+                 ON CONFLICT (run_id, seq) DO NOTHING",
+            )
+            .bind(run_id.to_string())
+            .bind(column(seq))
+            .bind(column(recorded_at))
+            .execute(&mut *connection)
+            .await?;
+        }
         Ok(StoredPlatformRecord {
             seq,
             recorded_at,
@@ -905,6 +952,13 @@ impl PlatformRecordStore {
     /// (run id beside each record) and the total count under the SAME
     /// SQL filters (kind, run, text, category) — the pager's exact
     /// total (denkhaus/work#1296).
+    ///
+    /// `triage` matches the MATERIALIZED triage state
+    /// ([`ObservationTriageState`], work#1385): the write doors keep the
+    /// side table current, so the filter — page and total alike — rides
+    /// an indexed `EXISTS` probe instead of a read-time derivation. The
+    /// caller re-resolves the returned page's live states and drops rows
+    /// whose live derivation drifted from the filter.
     pub async fn read_kind_global(
         &self,
         kind: PlatformRecordKind,
@@ -914,6 +968,7 @@ impl PlatformRecordStore {
         run_id: Option<&RunId>,
         text_contains: Option<&str>,
         category: Option<&str>,
+        triage: Option<ObservationTriageState>,
     ) -> Result<(Vec<(RunId, StoredPlatformRecord)>, u64)> {
         use sqlx::QueryBuilder;
 
@@ -926,6 +981,7 @@ impl PlatformRecordStore {
             run_id: Option<&RunId>,
             text_contains: Option<&str>,
             category: Option<&str>,
+            triage: Option<ObservationTriageState>,
         ) {
             query.push(" WHERE kind = ").push_bind(kind_tag);
             if let Some(id) = run_id {
@@ -943,6 +999,16 @@ impl PlatformRecordStore {
                     .push_bind(format!("\"category\":\"{category}\""))
                     .push(") > 0");
             }
+            if let Some(triage) = triage {
+                query
+                    .push(
+                        " AND EXISTS (SELECT 1 FROM observation_triage_state t \
+                           WHERE t.run_id = platform_records.run_id \
+                           AND t.seq = platform_records.seq AND t.triage_state = ",
+                    )
+                    .push_bind(triage.to_string())
+                    .push(")");
+            }
         }
 
         let kind_tag: &str = kind.into();
@@ -951,7 +1017,14 @@ impl PlatformRecordStore {
         let mut query = QueryBuilder::<Sqlite>::new(
             "SELECT run_id, seq, recorded_at, record_json, execution, firing FROM platform_records",
         );
-        push_global_feed_filters(&mut query, kind_tag, run_id, text_contains, category);
+        push_global_feed_filters(
+            &mut query,
+            kind_tag,
+            run_id,
+            text_contains,
+            category,
+            triage,
+        );
         query
             .push(" ORDER BY recorded_at ")
             .push(order)
@@ -966,7 +1039,14 @@ impl PlatformRecordStore {
         let rows = query.build().fetch_all(&self.pool).await?;
 
         let mut count = QueryBuilder::<Sqlite>::new("SELECT COUNT(*) FROM platform_records");
-        push_global_feed_filters(&mut count, kind_tag, run_id, text_contains, category);
+        push_global_feed_filters(
+            &mut count,
+            kind_tag,
+            run_id,
+            text_contains,
+            category,
+            triage,
+        );
         let total: i64 = count.build_query_scalar().fetch_one(&self.pool).await?;
 
         let mut records = Vec::with_capacity(rows.len());
@@ -994,6 +1074,59 @@ impl PlatformRecordStore {
             .fetch_all(&self.pool)
             .await?;
         rows.iter().map(decode_row).collect()
+    }
+
+    /// Materialize one observation record's derived triage state
+    /// (work#1385): the write doors' keyed upsert after they re-derived
+    /// the state. Upsert, latest write wins — a re-derivation replaces
+    /// the earlier state, exactly like the decision row's upsert beside
+    /// which it lives.
+    pub async fn materialize_observation_triage(
+        &self,
+        run_id: &RunId,
+        seq: u64,
+        triage: ObservationTriageState,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO observation_triage_state (run_id, seq, triage_state, derived_at_ms) \
+             VALUES (?, ?, ?, ?) ON CONFLICT (run_id, seq) DO UPDATE SET \
+             triage_state = excluded.triage_state, derived_at_ms = excluded.derived_at_ms",
+        )
+        .bind(run_id.to_string())
+        .bind(column(seq))
+        .bind(triage.to_string())
+        .bind(column(now_ms()))
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// One record's MATERIALIZED triage state, `None` before the record's
+    /// first write door ran (a record that predates the read model and a
+    /// backfill that has not covered it). The pins read this door to
+    /// assert the write doors keep the column current.
+    pub async fn observation_triage_state(
+        &self,
+        run_id: &RunId,
+        seq: u64,
+    ) -> Result<Option<ObservationTriageState>> {
+        let state: Option<String> = sqlx::query_scalar(
+            "SELECT triage_state FROM observation_triage_state \
+                                WHERE run_id = ? AND seq = ?",
+        )
+        .bind(run_id.to_string())
+        .bind(column(seq))
+        .fetch_optional(&self.pool)
+        .await?;
+        state
+            .map(|raw| {
+                ObservationTriageState::from_str(&raw).map_err(|_| Error::InvalidStoredRecord {
+                    record: "observation triage state",
+                    field:  "triage_state",
+                    value:  raw,
+                })
+            })
+            .transpose()
     }
 
     /// The last seq stored for the run, or `None` when it has none.
@@ -1117,6 +1250,14 @@ mod tests {
     fn store() -> PlatformRecordStore {
         PlatformRecordStore::new(test_support::in_memory_pool_with(&[
             fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
+            // The triage read model's write doors run against the record
+            // append (work#1385); the side table and the tables its
+            // migration's backfill joins install beside the records.
+            fabro_db::WORK_QUEUE_MIGRATION_SQL,
+            fabro_db::WORK_PROJECT_TARGET_MIGRATION_SQL,
+            fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
+            fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
+            fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
         ]))
     }
 
@@ -1461,6 +1602,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await
             .expect("the unfiltered feed reads");
@@ -1475,6 +1617,7 @@ mod tests {
                 None,
                 None,
                 Some("note"),
+                None,
             )
             .await
             .expect("the category-filtered feed reads");
@@ -1488,6 +1631,7 @@ mod tests {
                 0,
                 None,
                 Some("pager grew"),
+                None,
                 None,
             )
             .await
@@ -1505,10 +1649,237 @@ mod tests {
                 Some(&run),
                 None,
                 None,
+                None,
             )
             .await
             .expect("the run-narrowed feed reads");
         assert_eq!((entries.len(), total), (2, 2));
+    }
+
+    /// The materialized triage read model (work#1385): the record append
+    /// materializes `untriaged` in its own transaction; a write door's
+    /// upsert replaces it; the triage filter matches the column and its
+    /// COUNT — page and total share one WHERE, so the exact-total
+    /// semantics (denkhaus/work#1296) survive as SQL semantics.
+    #[tokio::test]
+    async fn the_triage_filter_matches_the_materialized_state() {
+        use ObservationTriageState as State;
+
+        let store = store();
+        let run = fixtures::RUN_1;
+        let observation = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  fabro_types::ObservationCategory::Painpoint,
+            text:      "materialized painpoint".to_string(),
+            execution: 0,
+            firing:    1,
+        });
+        let stored = store
+            .append(&run, &observation, None)
+            .await
+            .expect("the observation stores");
+
+        // The append's initial derivation: untriaged, in the append's
+        // own transaction — no write door can interleave.
+        assert_eq!(
+            store
+                .observation_triage_state(&run, stored.seq)
+                .await
+                .expect("the materialized state reads"),
+            Some(State::Untriaged),
+            "the append materializes the initial derivation"
+        );
+
+        // A triage-filtered read with NO materialized state (a foreign
+        // run's record predating the read model) matches nothing.
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+                Some(State::Filed),
+            )
+            .await
+            .expect("the triage-filtered feed reads");
+        assert_eq!((entries.len(), total), (0, 0));
+
+        // The write door's upsert: the derivation lands, page and count
+        // move together.
+        store
+            .materialize_observation_triage(&run, stored.seq, State::Filed)
+            .await
+            .expect("the state materializes");
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+                Some(State::Filed),
+            )
+            .await
+            .expect("the triage-filtered feed reads");
+        assert_eq!((entries.len(), total), (1, 1));
+        assert_eq!(entries[0].1.seq, stored.seq);
+
+        // A page of one under three matches: the total stays exact. The
+        // extra records ride their own appends (each appends its initial
+        // `untriaged` row) and then their write-door upserts.
+        let second = store
+            .append(&run, &observation, None)
+            .await
+            .expect("the second observation stores");
+        let third = store
+            .append(&run, &observation, None)
+            .await
+            .expect("the third observation stores");
+        store
+            .materialize_observation_triage(&run, second.seq, State::Filed)
+            .await
+            .expect("the second record's state materializes");
+        store
+            .materialize_observation_triage(&run, third.seq, State::Filed)
+            .await
+            .expect("the third record's state materializes");
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                1,
+                0,
+                None,
+                None,
+                None,
+                Some(State::Filed),
+            )
+            .await
+            .expect("the paged triage feed reads");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(total, 3, "the total is the exact materialized membership");
+
+        // The upsert is latest-wins: re-deriving replaces the state.
+        store
+            .materialize_observation_triage(&run, stored.seq, State::Untriaged)
+            .await
+            .expect("the re-derivation lands");
+        assert_eq!(
+            store
+                .observation_triage_state(&run, stored.seq)
+                .await
+                .expect("the re-materialized state reads"),
+            Some(State::Untriaged)
+        );
+    }
+
+    /// The migration's backfill (work#1385): records that predate the
+    /// read model derive ONCE from the best-effort inputs the migration
+    /// can see — link presence (`filed`, the conservative default: the
+    /// live item state is unknowable inside a SQL migration and the
+    /// feed's live overlay owns the correction) and a `no_filing`
+    /// decision (`reviewed`). Everything else lands `untriaged`.
+    #[tokio::test]
+    async fn the_triage_state_migration_backfills_existing_records() {
+        // The upgrade order: everything EXCEPT the triage-state
+        // migration installs first, the old-shape data seeds, then the
+        // migration file's SQL runs.
+        let pool = test_support::in_memory_pool_with(&[
+            fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
+            fabro_db::WORK_QUEUE_MIGRATION_SQL,
+            fabro_db::WORK_PROJECT_TARGET_MIGRATION_SQL,
+            fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
+            fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
+        ]);
+        let run = fixtures::RUN_1;
+        let observation = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  fabro_types::ObservationCategory::Painpoint,
+            text:      "backfilled painpoint".to_string(),
+            execution: 0,
+            firing:    1,
+        });
+        let record_json = serde_json::to_string(&observation).expect("the record serializes");
+        // The OLD binary's append shape — plain rows, no side table (the
+        // read model's append door does not exist yet at this point in
+        // the upgrade).
+        for seq in 1..=3 {
+            sqlx::query(
+                "INSERT INTO platform_records (run_id, seq, recorded_at, kind, record_json) \
+                 VALUES (?, ?, ?, 'observation.recorded', ?)",
+            )
+            .bind(run.to_string())
+            .bind(seq)
+            .bind(1000 + seq)
+            .bind(&record_json)
+            .execute(&pool)
+            .await
+            .expect("the pre-migration observation stores");
+        }
+        // The link and decision rows the derivation reads. The link keys
+        // a project (the FK), the decision keys the record alone.
+        sqlx::query(
+            "INSERT INTO work_projects (project_id, display_name, tracker_provider, \
+             tracker_repo, project_label, created_at_ms, updated_at_ms) \
+             VALUES ('fabro', 'Fabro', 'github', 'denkhaus/work', 'project:fabro', 0, 0)",
+        )
+        .execute(&pool)
+        .await
+        .expect("the project seeds");
+        sqlx::query(
+            "INSERT INTO work_observation_links (project_id, item_key, run_id, seq, \
+             linked_at_ms) VALUES ('fabro', 'denkhaus/work#1', ?, 1, 0)",
+        )
+        .bind(run.to_string())
+        .execute(&pool)
+        .await
+        .expect("the link seeds");
+        sqlx::query(
+            "INSERT INTO observation_triage_decisions (run_id, seq, decision, reason, \
+             decided_at_ms) VALUES (?, 2, 'no_filing', 'one-off', 0)",
+        )
+        .bind(run.to_string())
+        .execute(&pool)
+        .await
+        .expect("the decision seeds");
+
+        sqlx::raw_sql(fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL)
+            .execute(&pool)
+            .await
+            .expect("the migration runs");
+
+        let state_of = |seq: u64| {
+            let pool = pool.clone();
+            async move {
+                let state: Option<String> = sqlx::query_scalar(
+                    "SELECT triage_state FROM observation_triage_state WHERE run_id = ? AND seq = ?",
+                )
+                .bind(run.to_string())
+                .bind(i64::try_from(seq).expect("seq fits"))
+                .fetch_one(&pool)
+                .await
+                .expect("the backfilled row reads");
+                state
+            }
+        };
+        assert_eq!(
+            state_of(1).await.as_deref(),
+            Some("filed"),
+            "a linked record materializes the conservative filed default"
+        );
+        assert_eq!(
+            state_of(2).await.as_deref(),
+            Some("reviewed"),
+            "a linkless no_filing decision materializes reviewed"
+        );
+        assert_eq!(
+            state_of(3).await.as_deref(),
+            Some("untriaged"),
+            "a record with neither link nor decision materializes untriaged"
+        );
     }
 
     /// The gear substrate query (ADR-0039): `latest_verdicts_by_run`

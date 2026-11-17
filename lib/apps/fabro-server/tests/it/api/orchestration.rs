@@ -51,7 +51,7 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
         self.get_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let state = match item_key {
-            "denkhaus/work#9" => "open",
+            "denkhaus/work#9" | "denkhaus/work#11" | "denkhaus/work#12" => "open",
             "denkhaus/work#10" => "closed",
             _ => return Ok(None),
         };
@@ -138,6 +138,150 @@ fn orchestration_app() -> (
 ) {
     let (app, state, store, _get_calls) = orchestration_app_counting();
     (app, state, store)
+}
+
+/// A tracker whose per-item states a test can flip BETWEEN writes and
+/// reads (the live-overlay pin): `#9` starts open, and `flip` closes it
+/// after the write door materialized `filed` against the open answer.
+#[derive(Default)]
+struct FlippableObservationsTracker {
+    states:    std::sync::Mutex<HashMap<String, String>>,
+    get_calls: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl FlippableObservationsTracker {
+    fn shared() -> (Arc<Self>, Arc<std::sync::atomic::AtomicUsize>) {
+        let tracker = Arc::new(Self {
+            states:    std::sync::Mutex::new(HashMap::from([(
+                "denkhaus/work#9".to_string(),
+                "open".to_string(),
+            )])),
+            get_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        });
+        let get_calls = tracker.get_calls.clone();
+        (tracker, get_calls)
+    }
+
+    fn flip(&self, item_key: &str, state: &str) {
+        self.states
+            .lock()
+            .expect("tracker states lock")
+            .insert(item_key.to_string(), state.to_string());
+    }
+}
+
+#[async_trait::async_trait]
+impl fabro_work::TrackerProvider for FlippableObservationsTracker {
+    async fn list(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _filter: fabro_work::WorkItemFilter,
+    ) -> anyhow::Result<Vec<fabro_work::WorkItem>> {
+        Ok(Vec::new())
+    }
+
+    async fn get(
+        &self,
+        _project: &fabro_work::WorkProject,
+        item_key: &str,
+    ) -> anyhow::Result<Option<fabro_work::WorkItem>> {
+        self.get_calls
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let state = self
+            .states
+            .lock()
+            .expect("tracker states lock")
+            .get(item_key)
+            .cloned();
+        let Some(state) = state else {
+            return Ok(None);
+        };
+        Ok(Some(fabro_work::WorkItem {
+            item_key: item_key.to_owned(),
+            title: "flippable fixture item".to_owned(),
+            body: String::new(),
+            state,
+            labels: vec!["project:fabro".to_owned()],
+            priority: 2,
+            url: String::new(),
+            updated_at: None,
+        }))
+    }
+
+    async fn create(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _draft: fabro_work::WorkItemDraft,
+    ) -> anyhow::Result<fabro_work::WorkItem> {
+        anyhow::bail!("create is outside the flippable tracker's scope")
+    }
+
+    async fn update(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _title: Option<&str>,
+        _body: Option<&str>,
+    ) -> anyhow::Result<fabro_work::WorkItem> {
+        anyhow::bail!("update is outside the flippable tracker's scope")
+    }
+
+    async fn close(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _reason: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn comment(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _body: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn project_claim(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _run_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn clear_claim(
+        &self,
+        _project: &fabro_work::WorkProject,
+        _item_key: &str,
+        _run_id: &str,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+/// The materialized triage state of one record, read straight out of the
+/// records store's side table (the write-door pins read the column the
+/// feed's SQL filter matches on).
+async fn materialized_triage(
+    store: &Arc<fabro_store::Database>,
+    run: &RunId,
+    seq: u64,
+) -> Option<String> {
+    let pool = store.run_summary_store().pool();
+    let state: Option<String> = sqlx::query_scalar(
+        "SELECT triage_state FROM observation_triage_state WHERE run_id = ? \
+                            AND seq = ?",
+    )
+    .bind(run.to_string())
+    .bind(i64::try_from(seq).expect("seq fits"))
+    .fetch_optional(&pool)
+    .await
+    .expect("the materialized triage reads");
+    state
 }
 
 /// The counting form of [`orchestration_app`]: the app beside the
@@ -998,8 +1142,10 @@ async fn the_observations_read_resolves_the_claim_ledgers_in_progress() {
 }
 
 /// The global observations feed: records across runs, newest first,
-/// with the DERIVED triage state — the triage filter pages through the
-/// derivation (over-fetch), and a live claim reads in_progress.
+/// with the triage filter riding the MATERIALIZED state (work#1385) and
+/// a live claim reading in_progress — the link write's materialization
+/// resolves the linked item WITH its live claim when the claim precedes
+/// the link, exactly as the feed's overlay will re-derive it.
 #[tokio::test]
 async fn the_global_observations_feed_derives_and_filters_triage() {
     let (app, state, store) = orchestration_app();
@@ -1041,6 +1187,10 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
         .await
         .expect("observation seed");
     seed_work_project(&state).await;
+    // The live claim precedes the link: the link write door's
+    // materialization resolves #9 as in_progress (a run is working it)
+    // — the state the feed's SQL filter then matches.
+    seed_claim(&state, &newer, "denkhaus/work#9").await;
     let link_app = fabro_server::test_support::build_test_router(Arc::clone(&state));
     let link_request = Request::builder()
         .method(Method::POST)
@@ -1057,7 +1207,6 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
         .expect("link request builds");
     let link_response = link_app.oneshot(link_request).await.expect("link runs");
     assert_eq!(link_response.status(), StatusCode::OK, "link seeds");
-    seed_claim(&state, &newer, "denkhaus/work#9").await;
 
     let token = state.test_issue_worker_token_with_run_tools(&newer);
     let request = Request::builder()
@@ -1086,9 +1235,10 @@ async fn the_global_observations_feed_derives_and_filters_triage() {
         "the unlinked record is filtered out: {body}"
     );
     // The pager's EXACT total (denkhaus/work#1296): the triage filter
-    // counts its derived matches (the walk), the unfiltered feed counts
-    // every record (the SQL count), and the category filter counts
-    // through SQL — stable across a full walk, never a growing guess.
+    // counts its MATERIALIZED matches (SQL over the side table,
+    // work#1385), the unfiltered feed counts every record, and the
+    // category filter counts through SQL — stable across pages, never a
+    // growing guess.
     assert_eq!(
         body["total"].as_i64(),
         Some(1),
@@ -1140,9 +1290,11 @@ async fn link_record(
 /// The batching pin (denkhaus/work#1362): a feed request resolves each
 /// DISTINCT linked item exactly once — one tracker round-trip per item,
 /// not one per record per link. Three records linking the same item
-/// walk (triage-filtered) and page (unfiltered) through ONE resolution
+/// page (triage-filtered) and read (unfiltered) through ONE resolution
 /// each; the per-record N+1 that made triage-filtered pages take ~66s
-/// and burned the GitHub API budget would answer three per request.
+/// and burned the GitHub API budget would answer three per request. The
+/// counter reads the FEED's delta: the link writes above each resolved
+/// the item once at write time (the door's materialization, work#1385).
 #[tokio::test]
 async fn the_global_observations_feed_resolves_each_distinct_item_once_per_request() {
     let (app, state, store, get_calls) = orchestration_app_counting();
@@ -1175,6 +1327,7 @@ async fn the_global_observations_feed_resolves_each_distinct_item_once_per_reque
         link_record(&state, "denkhaus/work#9", &run, seq).await;
     }
 
+    let resolved_before_feed = get_calls.load(std::sync::atomic::Ordering::SeqCst);
     let token = state.test_issue_worker_token_with_run_tools(&run);
     let request = Request::builder()
         .method(Method::GET)
@@ -1190,13 +1343,14 @@ async fn the_global_observations_feed_resolves_each_distinct_item_once_per_reque
         "every linked record matches the filed filter: {body}"
     );
     assert_eq!(
-        get_calls.load(std::sync::atomic::Ordering::SeqCst),
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_feed,
         1,
-        "the triage walk resolves the ONE distinct item exactly once, not once per record"
+        "the triage page resolves the ONE distinct item exactly once, not once per record"
     );
 
     // The unfiltered page shares the same per-request batching: one more
     // resolution for the same item, not three.
+    let resolved_before_unfiltered = get_calls.load(std::sync::atomic::Ordering::SeqCst);
     let request = Request::builder()
         .method(Method::GET)
         .uri(api("/observations"))
@@ -1206,8 +1360,8 @@ async fn the_global_observations_feed_resolves_each_distinct_item_once_per_reque
     let response = app.oneshot(request).await.expect("request runs");
     assert_eq!(response.status(), StatusCode::OK, "unfiltered feed answers");
     assert_eq!(
-        get_calls.load(std::sync::atomic::Ordering::SeqCst),
-        2,
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_unfiltered,
+        1,
         "the unfiltered page adds exactly one more resolution for the same item"
     );
 }
@@ -1290,18 +1444,21 @@ async fn the_feed_colors_a_closed_item_merged_when_its_landed_claim_carries_the_
     );
 }
 
-/// The presence-decidable pin (denkhaus/work#1379): the untriaged walk
-/// decides by link presence and the decision row alone — a record WITH
-/// link rows can never derive untriaged (`derive_triage`), so the walk
-/// must pay NO tracker resolution for it. The production walk used to
-/// resolve every distinct linked item BEFORE the filter rejected the
-/// record, which kept every triage-filtered read past the triager
-/// sweep's 30-second client budget even after the work#1363 batching
-/// fix (measured 2026-11-16 on fork.39: untriaged 32.6s, unfiltered
-/// 0.13s). The `get` counter is the direct witness: zero calls, or the
-/// waste came back.
+/// The presence-decidable pin (denkhaus/work#1379), re-targeted to the
+/// materialized read (work#1385): the untriaged page matches the
+/// MATERIALIZED column and derives each returned row from link presence
+/// and the decision row alone — a record WITH link rows can never derive
+/// untriaged (`derive_triage`), and the SQL filter never offers it to
+/// the page, so the read must pay NO tracker resolution. The production
+/// walk used to resolve every distinct linked item before the filter
+/// rejected the record, which kept every triage-filtered read past the
+/// triager sweep's 30-second client budget even after the work#1363
+/// batching fix (measured 2026-11-16 on fork.39: untriaged 32.6s,
+/// unfiltered 0.13s). The `get` counter reads the FEED's delta — the
+/// link write above resolved its item once at write time — and it is
+/// the direct witness: zero calls, or the waste came back.
 #[tokio::test]
-async fn the_untriaged_walk_resolves_no_tracker_state() {
+async fn the_untriaged_read_resolves_no_tracker_state() {
     let (app, state, store, get_calls) = orchestration_app_counting();
     let run = RunId::new();
     seed_run(&store, run, "develop", true).await;
@@ -1326,6 +1483,7 @@ async fn the_untriaged_walk_resolves_no_tracker_state() {
     seed_work_project(&state).await;
     link_record(&state, "denkhaus/work#9", &run, 2).await;
 
+    let resolved_before_feed = get_calls.load(std::sync::atomic::Ordering::SeqCst);
     let token = state.test_issue_worker_token_with_run_tools(&run);
     let request = Request::builder()
         .method(Method::GET)
@@ -1355,9 +1513,9 @@ async fn the_untriaged_walk_resolves_no_tracker_state() {
         "the linked record never derives untriaged: {body}"
     );
     assert_eq!(
-        get_calls.load(std::sync::atomic::Ordering::SeqCst),
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_feed,
         0,
-        "the untriaged walk decides by link presence alone — no tracker resolution (work#1379)"
+        "the untriaged read decides by link presence alone — no tracker resolution (work#1379)"
     );
 }
 
@@ -1771,5 +1929,270 @@ async fn create_work_item_links_its_observation_refs() {
     assert_eq!(
         record["linked_work_items"][0]["item_key"], "create-linked fixture item",
         "the link row landed with the create: {record}"
+    );
+}
+
+/// The materialized write-door pin (denkhaus/work#1385): the triage
+/// state the feed matches on is MATERIALIZED at write time. A linkless
+/// record decided `no_filing` materializes `reviewed`; linking it
+/// afterwards flips the column to `filed`. The column is read straight
+/// from the records store — the same row the SQL filter matches.
+#[tokio::test]
+async fn the_write_doors_materialize_the_triage_state() {
+    let (app, state, store) = orchestration_app();
+    let recording = RunId::new();
+    let triager = RunId::new();
+    seed_run(&store, recording, "develop", true).await;
+    seed_run(&store, triager, "triager", true).await;
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &recording,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "decided then linked painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+    let triager_token = state.test_issue_worker_token_with_run_tools(&triager);
+
+    // The decision write door: no_filing on a linkless record.
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": 1,
+                "action": "no_filing",
+                "reason": "one-off, explained in the run's journal",
+            }))
+            .expect("decision body serializes"),
+        ))
+        .expect("decision request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    response_json(response, StatusCode::OK, "triager decides").await;
+    assert_eq!(
+        materialized_triage(&store, &recording, 1).await.as_deref(),
+        Some("reviewed"),
+        "the decision write materializes reviewed for the linkless record"
+    );
+
+    // The link write door: the same record links to an OPEN item — the
+    // column flips to filed (a filing overrides the decision, ADR-0044).
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": 1,
+                "action": "link_existing",
+                "reason": "the finding belongs on this item",
+                "projectId": "fabro",
+                "itemKey": "denkhaus/work#9",
+            }))
+            .expect("link body serializes"),
+        ))
+        .expect("link request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    response_json(response, StatusCode::OK, "triager links").await;
+    assert_eq!(
+        materialized_triage(&store, &recording, 1).await.as_deref(),
+        Some("filed"),
+        "the link write flips the materialized state to filed"
+    );
+}
+
+/// The live-overlay pin (denkhaus/work#1385): a materialized-`filed`
+/// record whose tracker item has SINCE closed drops from the filed page
+/// — the returned page re-resolves live and keeps only rows whose live
+/// derivation still matches the filter. The total counts the
+/// MATERIALIZED membership, not the live page (the documented corner:
+/// the row stays counted until a write touches the record again).
+#[tokio::test]
+async fn a_materialized_filed_record_whose_item_closed_drops_from_the_filed_page() {
+    let settings = crate::helpers::test_settings();
+    let (store, artifact_store) = fabro_server::test_support::test_store_bundle();
+    let (tracker, get_calls) = FlippableObservationsTracker::shared();
+    let state = fabro_server::test_support::test_app_state_with_store_and_tracker(
+        settings.server_settings,
+        settings.manifest_run_defaults,
+        5,
+        Arc::clone(&store),
+        artifact_store,
+        tracker.clone(),
+    );
+    let app = build_router_with_options(state.clone(), &test_auth_mode(), RouterOptions::default());
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &run,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "filed then closed painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+    link_record(&state, "denkhaus/work#9", &run, 1).await;
+    assert_eq!(
+        materialized_triage(&store, &run, 1).await.as_deref(),
+        Some("filed"),
+        "the link write materialized filed against the open item"
+    );
+
+    // The tracker-side change OUTSIDE our write doors: the item closes.
+    tracker.flip("denkhaus/work#9", "closed");
+
+    // The filed page drops the row (live says closed) but still counts
+    // the materialized membership — the corner the API description
+    // names, not hidden. The get counter reads the DELTA over the link
+    // write: the write door resolved once (its own materialization);
+    // the feed must add only its page's candidate row.
+    let resolved_before_feed = get_calls.load(std::sync::atomic::Ordering::SeqCst);
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=filed"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "filed feed after the close").await;
+    assert!(
+        body["observations"].as_array().expect("feed").is_empty(),
+        "the live overlay drops the closed row from the filed page: {body}"
+    );
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(1),
+        "the total counts MATERIALIZED membership — the row stays counted until a write \
+         touches the record again: {body}"
+    );
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_feed,
+        1,
+        "only the returned page's candidate row resolved live"
+    );
+
+    // The closed page cannot see it either: the materialized state still
+    // says filed, and SQL matching never offers the row to the overlay.
+    // The closed page's SQL offers NO row, so no resolution runs there.
+    let resolved_before_closed = get_calls.load(std::sync::atomic::Ordering::SeqCst);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=closed"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "closed feed after the close").await;
+    assert_eq!(
+        (
+            body["total"].as_i64(),
+            body["observations"].as_array().map(Vec::len)
+        ),
+        (Some(0), Some(0)),
+        "the tracker-side close is invisible to the closed page until a write re-derives the \
+         record — the documented corner: {body}"
+    );
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_closed,
+        0,
+        "an empty candidate set resolves nothing — SQL decided already"
+    );
+}
+
+/// The page-retention pin (denkhaus/work#1385, the rust-security
+/// should-fix): a triage-filtered read resolves live state ONLY for the
+/// page it returns — never for every match in the corpus. Three linked
+/// records (distinct items) behind a one-row page must cost the FEED
+/// exactly ONE tracker resolution. The old read-time walk retained every
+/// match's full wire row and resolved every match's items before slicing
+/// the page: one request's work scaled with the whole corpus. RED
+/// against the walk (the feed resolved all three), green on the
+/// materialized read (the feed resolves one; the link writes resolved
+/// their own records once each at write time — the door cost the design
+/// accepts).
+#[tokio::test]
+async fn a_triage_filtered_page_resolves_only_its_own_rows() {
+    let (app, state, store, get_calls) = orchestration_app_counting();
+    let run = RunId::new();
+    seed_run(&store, run, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for text in [
+        "linked painpoint one",
+        "linked painpoint two",
+        "linked painpoint three",
+    ] {
+        records
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    link_record(&state, "denkhaus/work#9", &run, 1).await;
+    link_record(&state, "denkhaus/work#11", &run, 2).await;
+    link_record(&state, "denkhaus/work#12", &run, 3).await;
+
+    // The writes above each resolved their own record's items (the
+    // write door's materialization); the pin reads the FEED's delta.
+    let resolved_before_feed = get_calls.load(std::sync::atomic::Ordering::SeqCst);
+    let token = state.test_issue_worker_token_with_run_tools(&run);
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/observations?triage=filed&limit=1"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("feed request builds");
+    let response = app.oneshot(request).await.expect("request runs");
+    let body = response_json(response, StatusCode::OK, "one-row filed page").await;
+    assert_eq!(
+        body["total"].as_i64(),
+        Some(3),
+        "the total is the exact materialized membership, not the page size: {body}"
+    );
+    assert_eq!(
+        body["observations"].as_array().expect("feed").len(),
+        1,
+        "the page never retains more than its page_size: {body}"
+    );
+    assert_eq!(
+        get_calls.load(std::sync::atomic::Ordering::SeqCst) - resolved_before_feed,
+        1,
+        "only the PAGE's row resolved live — the walk that resolved every match is gone"
     );
 }
