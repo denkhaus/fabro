@@ -952,7 +952,20 @@ async fn finalize_created_run(
             }
         }
     }
-    info!(run_id = %created.run_id, "Run created from intent");
+    // Display, never Debug: the log platform must be able to term-query
+    // the identity (Debug renders Some("…") and BlobHash byte arrays,
+    // fabro-5c85). Lost in the denkhaus branch swap's -s ours merge;
+    // restored per denkhaus/work#1380.
+    info!(
+        run_id = %created.run_id,
+        workflow_slug = summary.workflow.slug.as_deref().unwrap_or(""),
+        workflow_version_id = summary
+            .workflow_version_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default(),
+        "Run created from intent"
+    );
     (
         StatusCode::CREATED,
         Json(state.decorate_run_summary(summary).await),
