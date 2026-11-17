@@ -377,7 +377,13 @@ reality.
   `.agents/**`.
 - VCS is PLAIN GIT: named-file staging,
   commit -F, ff-only pulls, pushes only behind the gate; never merge
-  origin/main (upstream intake frozen, ADR-0024).
+  origin/main (upstream intake frozen, ADR-0024). SUBAGENT WORKTREE
+  BUILDS (operator directive 2026-11-17): isolated trees for building
+  subagents are created and managed through worktrunk (`wt switch
+  --create <branch> --no-cd`, `wt remove <branch>`) — never hand-rolled
+  `git worktree add`. The one-world rule is unchanged: the SESSION's own
+  line work stays on denkhaus in the main checkout; worktrees are the
+  subagent-isolation pattern only.
 - Wait budgets derive from observed service latencies, not guesses: a
   bounded wait must outlive the slowest LEGITIMATE stage of what it
   waits for; a fallback bypassing a verification path re-checks the
