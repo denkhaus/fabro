@@ -180,6 +180,24 @@ impl RunStatus {
         if matches!((self, to), (Self::Failed { .. }, Self::Submitted)) {
             return true;
         }
+        // Owner park (work#1345): a user-driven gesture parks a failed or
+        // human-needed run as owner-pending, and the disposition restores
+        // the terminal verdict the park deferred. Both arms precede the
+        // immutable check, like the retry escape above — the parked run's
+        // terminal status is frozen, but the park channel may cross it.
+        if matches!(
+            (self, to),
+            (Self::Failed { .. } | Self::HumanNeeded, Self::Blocked {
+                blocked_reason: BlockedReason::OwnerPending,
+            }) | (
+                Self::Blocked {
+                    blocked_reason: BlockedReason::OwnerPending,
+                },
+                Self::Failed { .. } | Self::HumanNeeded
+            )
+        ) {
+            return true;
+        }
         if self.is_immutable() {
             return false;
         }
@@ -448,6 +466,12 @@ pub enum BlockedReason {
     /// while the run was in flight (fabro-2e7b, generalized by fabro-6ac5);
     /// the operator resumes the run through retry/rewind (fabro-2c4a).
     QuotaRateLimit,
+    /// Owner park (work#1345): the owner dragged a FAILED or HUMAN-NEEDED
+    /// run into the blocked column, signalling retry intent. The park pins
+    /// the run's work-item claim (the run is non-terminal, so the claim
+    /// holds) and clears when a disposition — retry, retry-on-latest,
+    /// archive — restores the terminal verdict the park deferred.
+    OwnerPending,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -697,6 +721,64 @@ mod tests {
         let to = RunStatus::Running;
         let err = from.transition_to(to).expect_err("should reject");
         assert_eq!(err, InvalidTransition { from, to });
+    }
+
+    #[test]
+    fn owner_park_and_restore_cross_the_frozen_terminal_boundary() {
+        // work#1345: the drag gesture parks a failed or human-needed run;
+        // the disposition restores the deferred terminal verdict.
+        let park = RunStatus::Blocked {
+            blocked_reason: BlockedReason::OwnerPending,
+        };
+        for terminal in [
+            RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            },
+            RunStatus::HumanNeeded,
+        ] {
+            assert!(terminal.can_transition_to(park), "{terminal} -> {park}");
+            assert_eq!(terminal.transition_to(park), Ok(park));
+            assert!(park.can_transition_to(terminal), "{park} -> {terminal}");
+            assert_eq!(park.transition_to(terminal), Ok(terminal));
+        }
+    }
+
+    #[test]
+    fn owner_park_is_not_a_general_terminal_exit() {
+        // Only the owner-park reason crosses the frozen boundary, and only
+        // from the retry-intent terminals — a succeeded or dead run never
+        // parks. (The generic `blocked -> running` row stays: it is the
+        // live-block row a worker consumes; a parked run's worker is gone,
+        // so nothing writes it.)
+        let park = RunStatus::Blocked {
+            blocked_reason: BlockedReason::OwnerPending,
+        };
+        assert!(
+            !RunStatus::Succeeded {
+                reason: SuccessReason::Completed,
+            }
+            .can_transition_to(park)
+        );
+        assert!(!RunStatus::Dead.can_transition_to(park));
+        assert!(
+            !RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            }
+            .can_transition_to(RunStatus::Blocked {
+                blocked_reason: BlockedReason::HumanInputRequired,
+            })
+        );
+    }
+
+    #[test]
+    fn owner_pending_serializes_snake_case() {
+        let reason = BlockedReason::OwnerPending;
+        assert_eq!(serde_json::to_string(&reason).unwrap(), "\"owner_pending\"");
+        assert_eq!(
+            serde_json::from_str::<BlockedReason>("\"owner_pending\"").unwrap(),
+            reason
+        );
+        assert_eq!(reason.to_string(), "owner_pending");
     }
 }
 

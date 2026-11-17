@@ -36,7 +36,8 @@ const STALL_AFTER: Duration = Duration::from_mins(90);
 /// Fire-and-forget like the sibling supervisors in `serve.rs`: the loop
 /// owns its shutdown through `AppState::shutdown_token()`.
 pub(crate) fn spawn_run_stall_watchdog(state: Arc<AppState>) -> JoinHandle<()> {
-    tokio::spawn(run_stall_watchdog(state).instrument(info_span!("run_stall_watchdog")))
+    tokio::spawn(run_stall_watchdog(state.clone()).instrument(info_span!("run_stall_watchdog")));
+    tokio::spawn(run_owner_park_watchdog(state).instrument(info_span!("owner_park_watchdog")))
 }
 
 async fn run_stall_watchdog(state: Arc<AppState>) {
@@ -71,6 +72,70 @@ async fn stall_watchdog_pass_logged(state: &AppState) {
     if let Err(error) = stall_watchdog_pass(state, Utc::now()).await {
         warn!(%error, "run stall watchdog pass failed");
     }
+}
+
+/// The owner-park arm (work#1345, deploy-drift arm style): an owner park
+/// PINS its run's work-item claim — an aged park is a stuck item, not a
+/// stalled worker. WARN once as a park crosses the age threshold; WARN
+/// only, never an action: the park is the owner's own retry-intent
+/// signal, and the disposition (or the owner) clears it.
+const OWNER_PARK_WARN_AFTER: Duration = Duration::from_hours(24);
+
+async fn run_owner_park_watchdog(state: Arc<AppState>) {
+    let shutdown = state.shutdown_token();
+    info!(
+        warn_after_hours = OWNER_PARK_WARN_AFTER.as_secs() / 3600,
+        "owner park watchdog started"
+    );
+
+    tokio::select! {
+        () = shutdown.cancelled() => return,
+        () = time::sleep(STALL_WATCHDOG_STARTUP_DELAY) => {
+            owner_park_watchdog_pass_logged(&state).await;
+        }
+    }
+
+    let mut ticker = time::interval(STALL_WATCHDOG_INTERVAL);
+    ticker.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            () = shutdown.cancelled() => break,
+            _ = ticker.tick() => {
+                owner_park_watchdog_pass_logged(&state).await;
+            }
+        }
+    }
+}
+
+async fn owner_park_watchdog_pass_logged(state: &AppState) {
+    if let Err(error) = owner_park_watchdog_pass(state, Utc::now()).await {
+        warn!(%error, "owner park watchdog pass failed");
+    }
+}
+
+/// One watchdog pass over the crossing window: every owner-parked run
+/// whose park just crossed the [`OWNER_PARK_WARN_AFTER`] threshold WARNs
+/// once. `Ok(count)` = runs warned this pass.
+pub(super) async fn owner_park_watchdog_pass(
+    state: &AppState,
+    now: DateTime<Utc>,
+) -> anyhow::Result<usize> {
+    let threshold = chrono::Duration::from_std(OWNER_PARK_WARN_AFTER)?;
+    let window = threshold + chrono::Duration::from_std(STALL_WATCHDOG_INTERVAL)?;
+    let aged = state
+        .stores
+        .run_summaries
+        .owner_parked_run_ids_aged_between(now - window, now - threshold)
+        .await?;
+    for run_id in &aged {
+        warn!(
+            run_id = %run_id,
+            parked_for_hours = OWNER_PARK_WARN_AFTER.as_secs() / 3600,
+            "owner park aged: run parked owner-pending past the threshold, its work-item claim \
+             is pinned (work#1345 watchdog)"
+        );
+    }
+    Ok(aged.len())
 }
 
 /// One watchdog pass over the crossing window: every `running` run whose

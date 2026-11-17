@@ -594,6 +594,114 @@ mod tests {
         );
     }
 
+    /// Owner park pinning (work#1345): a failed run dragged to blocked is
+    /// `Blocked { owner_pending }` — NON-terminal — so the reconciler
+    /// holds its claim indefinitely: no other run can pick the item while
+    /// the owner signals retry intent. The park, not the verdict, decides.
+    #[tokio::test]
+    async fn an_owner_parked_run_pins_its_claim_across_passes() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let parked_run = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   format!("denkhaus/work/{parked_run}"),
+                run_id:     parked_run,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        assert!(matches!(granted, fabro_work::GrantOutcome::Granted(_)));
+
+        let mut projection = fabro_types::RunProjection::new(
+            "owner-parked run".to_string(),
+            fabro_types::RunSpec {
+                run_id:              parked_run,
+                settings:            fabro_types::WorkflowSettings::default(),
+                graph:               fabro_types::RunGraph::new("test"),
+                graph_source:        None,
+                workflow_slug:       Some("develop".to_string()),
+                workflow_version_id: None,
+                target:              None,
+                automation:          None,
+                source_directory:    None,
+                labels:              std::collections::HashMap::new(),
+                provenance:          fabro_types::test_support::test_run_provenance(),
+                definition_blob:     None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                admission:           fabro_types::PetriAdmission::default(),
+            },
+            chrono::Utc::now(),
+        );
+        projection.status = fabro_types::RunStatus::Blocked {
+            blocked_reason: fabro_types::BlockedReason::OwnerPending,
+        };
+        projection.conclusion = Some(fabro_types::Conclusion {
+            timestamp:            chrono::Utc::now(),
+            status:               fabro_types::outcome::StageOutcome::Failed {
+                retry_requested: false,
+            },
+            timing:               fabro_types::RunTiming::default(),
+            failure:              Some(fabro_types::RunFailure {
+                reason: fabro_types::FailureReason::WorkflowError,
+                detail: fabro_types::outcome::FailureDetail::new(
+                    "workflow error",
+                    fabro_types::outcome::FailureCategory::Deterministic,
+                ),
+            }),
+            final_git_commit_sha: None,
+            stages:               Vec::new(),
+            usage:                None,
+            diff:                 fabro_types::RunDiff::default(),
+            total_retries:        0,
+        });
+        let pool = state.stores.run_summaries.pool();
+        let mut tx = pool.begin().await.expect("seed tx");
+        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(
+            &mut tx,
+            &parked_run,
+            &projection,
+        )
+        .await
+        .expect("run row seed");
+        let projection_json = serde_json::to_string(&projection).expect("projection json");
+        sqlx::query(
+            "INSERT INTO petri_projection (run_id, projection_json, fold_json, \
+             positions_json, stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) \
+             ON CONFLICT(run_id) DO UPDATE SET projection_json = excluded.projection_json",
+        )
+        .bind(parked_run.to_string())
+        .bind(projection_json)
+        .execute(&mut *tx)
+        .await
+        .expect("projection row seed");
+        tx.commit().await.expect("seed commit");
+
+        // Two passes: the pin holds — the reconciler neither releases the
+        // claim nor moves it to awaiting_merge while the park stands.
+        let _ = run_pass(&state).await;
+        let _ = run_pass(&state).await;
+
+        let active = store.active_claims("fabro").await.expect("active claims");
+        assert!(
+            active.iter().any(|claim| claim.run_id == parked_run),
+            "the owner-parked run's claim stays pinned across reconciler passes"
+        );
+        let claim = store
+            .active_claim_for_run(&parked_run)
+            .await
+            .expect("claim read")
+            .expect("claim still live");
+        assert_ne!(
+            claim.state,
+            fabro_work::ClaimState::Released,
+            "the parked run's claim never releases while parked"
+        );
+    }
+
     #[tokio::test]
     async fn a_pass_drains_the_outbox_and_projects_live_claims() {
         let tracker = Arc::new(ScriptedTracker::default());

@@ -41,7 +41,9 @@ use tracing::{error, warn};
 use super::super::{
     ApiError, AppState, RequireRunManagementTarget, RequiredUser, parse_run_id_path, run_records,
 };
-use super::lifecycle::{ArchiveAction, queue_run, run_archive_operation, run_response};
+use super::lifecycle::{
+    ArchiveAction, clear_owner_park, queue_run, run_archive_operation, run_response,
+};
 use super::runs::run_provenance;
 use crate::automation_materializer::{AutomationRunMaterializeInput, RunMaterializeError};
 use crate::petri_check;
@@ -433,6 +435,13 @@ async fn fork_at(
     target: Option<ForkTarget>,
     force: bool,
 ) -> Result<ForkOutcome, ApiError> {
+    // A retry disposition clears an owner park first (work#1345): the
+    // restore record puts the source back on its terminal verdict before
+    // `ensure_retryable`'s terminal check, and the terminal flow — the
+    // successor's claim handoff — resumes.
+    clear_owner_park(state, &id)
+        .await
+        .map_err(workflow_operation_error)?;
     let source = run_records::require_projection(state, id).await?;
     match kind {
         ForkKind::Fork => operations::ensure_forkable(&source, &id),
@@ -776,6 +785,11 @@ async fn retry_latest_run(
             }
         },
     };
+    // The retry-on-latest disposition also clears an owner park first
+    // (work#1345), mirroring `fork_at`.
+    if let Err(err) = clear_owner_park(state.as_ref(), &id).await {
+        return workflow_operation_error(err).into_response();
+    }
     let source = match run_records::require_projection(state.as_ref(), id).await {
         Ok(source) => source,
         Err(err) => return err.into_response(),

@@ -142,3 +142,103 @@ async fn stall_watchdog_warns_once_per_episode() {
     assert_eq!(first, 1, "the crossing pass warns");
     assert_eq!(second, 0, "the follow-up pass stays silent");
 }
+
+/// Owner-park arm (work#1345): seed a run row plus a stored projection
+/// whose `status_updated_at` is the park timestamp, the way the
+/// projector folds the park record.
+async fn seed_parked_run(
+    state: &AppState,
+    run_id: &RunId,
+    status: fabro_types::RunStatus,
+    parked_at_offset: ChronoDuration,
+) {
+    let now = Utc::now();
+    let mut projection = fabro_types::RunProjection::new(
+        format!("{status:?} fixture"),
+        fabro_types::RunSpec {
+            run_id:              *run_id,
+            settings:            fabro_types::WorkflowSettings::default(),
+            graph:               fabro_types::RunGraph::new("owner-park"),
+            graph_source:        None,
+            workflow_slug:       None,
+            workflow_version_id: None,
+            target:              None,
+            automation:          None,
+            source_directory:    None,
+            labels:              HashMap::default(),
+            provenance:          fabro_types::test_support::test_run_provenance(),
+            definition_blob:     None,
+            spec_blob:           None,
+            git:                 None,
+            fork_source_ref:     None,
+            admission:           fabro_types::PetriAdmission::default(),
+        },
+        now,
+    );
+    projection.status = status;
+    projection.status_updated_at = now + parked_at_offset;
+
+    let pool = state.stores.run_summaries.pool();
+    let mut tx = pool.begin().await.expect("seed tx");
+    fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, run_id, &projection)
+        .await
+        .expect("seed run row");
+    let projection_json = serde_json::to_string(&projection).expect("projection json");
+    sqlx::query(
+        "INSERT INTO petri_projection (run_id, projection_json, fold_json, \
+         positions_json, stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) \
+         ON CONFLICT(run_id) DO UPDATE SET projection_json = excluded.projection_json",
+    )
+    .bind(run_id.to_string())
+    .bind(projection_json)
+    .execute(&mut *tx)
+    .await
+    .expect("projection row seed");
+    tx.commit().await.expect("seed commit");
+}
+
+fn owner_parked() -> fabro_types::RunStatus {
+    fabro_types::RunStatus::Blocked {
+        blocked_reason: fabro_types::BlockedReason::OwnerPending,
+    }
+}
+
+/// An owner park crossing 24h surfaces once — the pinned claim's stuck
+/// item is the emergency, not the run itself.
+#[tokio::test]
+async fn owner_park_watchdog_warns_aged_parks_once() {
+    let state = test_app_state_with_isolated_storage();
+    let aged = RunId::new();
+    seed_parked_run(
+        &state,
+        &aged,
+        owner_parked(),
+        ChronoDuration::hours(-24) + ChronoDuration::minutes(-5),
+    )
+    .await;
+    let fresh = RunId::new();
+    seed_parked_run(&state, &fresh, owner_parked(), ChronoDuration::hours(-1)).await;
+    let quota = RunId::new();
+    seed_parked_run(
+        &state,
+        &quota,
+        fabro_types::RunStatus::Blocked {
+            blocked_reason: fabro_types::BlockedReason::QuotaRateLimit,
+        },
+        ChronoDuration::hours(-24) + ChronoDuration::minutes(-5),
+    )
+    .await;
+
+    let t0 = Utc::now();
+    let warned = fork_run_stall_watchdog::owner_park_watchdog_pass(&state, t0)
+        .await
+        .expect("owner park pass must not fail");
+    assert_eq!(warned, 1, "only the aged owner park is selected");
+
+    // Once per episode: the next interval's pass re-warns nothing.
+    let t1 = t0 + ChronoDuration::minutes(15);
+    let second = fork_run_stall_watchdog::owner_park_watchdog_pass(&state, t1)
+        .await
+        .expect("second owner park pass");
+    assert_eq!(second, 0, "the aged park left the crossing window");
+}
