@@ -104,8 +104,10 @@ thrash scales with N.
 Decided target behavior (user, 2026-11-18, verbatim): "Wenn ein Gear in den
 Prozess des Image-Neubaus gerät, wird der Neubau für alle anderen Gears
 geblockt; wenn das erste Gear mit dem Neubau fertig ist, nutzen die anderen
-Gears das von diesem gebaute Image automatisch." — single-flight blocking +
-automatic reuse, via a process-wide `tag -> shared build guard` in
+Gears das von diesem gebaute Image automatisch." The verbatim quote is kept
+in German as decision evidence — the named ADR-0033 exemption for this
+artifact; its English rendering is the sentence that follows. — single-flight
+blocking + automatic reuse, via a process-wide `tag -> shared build guard` in
 `ensure_environment_image` (in-process lock suffices; all gears cook in the
 same fabro-server process). Plus the rider: hash a context manifest (file list
 + sizes + mtimes) instead of the packed tar.

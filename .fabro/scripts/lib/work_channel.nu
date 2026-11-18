@@ -125,7 +125,12 @@ export def entries-from [stdout: string]: nothing -> list<any> {
     } else { [] }
 }
 
-# Pure: the argv for one run-mark write (the verdict door).
+# Pure: the argv for one run-mark write (the verdict door). The argv
+# stays the bare door grammar — `run mark <run-id> <field>=<verdict>`
+# (the real parser and the OpenAPI mark request {field, verdict} carry
+# no note flag) — so a park's WHY travels beside it: mark-run-hard's
+# optional note rides the verdict-rationale observation channel, never
+# this argv.
 export def run-mark-argv [srv: string, run_id: string, field: string, verdict: string]: nothing -> list<string> {
     ['run' 'mark' $run_id $"($field)=($verdict)" '--server' $srv]
 }
@@ -301,7 +306,20 @@ export def read-queue-hard [caller: string, field: string, workflow: string, ver
 # The hard verdict write (HARD: a failed mark fails the stage — the
 # engine retries the whole sweep; marks are idempotent at the fold, a
 # re-sweep is gap-safe).
-export def mark-run-hard [caller: string, field: string, run_id: string, verdict: string]: nothing -> nothing {
+#
+# The optional `note` (work#1419 code-review fold) carries the park's
+# WHY verbatim. The mark door itself has NO note transport — the CLI
+# grammar is `run mark <run-id> <field>=<verdict>` and the OpenAPI mark
+# request is {field, verdict} — so the note rides the established
+# verdict-rationale channel instead: one observation record on the
+# CALLING run, `verdict: <target> <field>=<verdict> — <note>`, the
+# machine head the agent pass and the verdict-note cleanup
+# (denkhaus/work#1409) already disposition by. The record is HARD as
+# the mark (a failed rationale fails the stage; the idempotent
+# re-sweep re-writes it). An empty note keeps the bare verdict — the
+# old behavior, byte-identical, so the merger fast path and the
+# closing pass (callers that pass no note) are unaffected.
+export def mark-run-hard [caller: string, field: string, run_id: string, verdict: string, note: string = '']: nothing -> nothing {
     let srv = (server $caller)
     let res = (cli $caller (run-mark-argv $srv $run_id $field $verdict))
     if $res.exit_code != 0 {
@@ -309,6 +327,17 @@ export def mark-run-hard [caller: string, field: string, run_id: string, verdict
         exit 1
     }
     print $"($caller): marked ($run_id) \($field = ($verdict)\)"
+    let why = ($note | str trim)
+    if ($why | is-empty) { return }
+    # Plain-string concatenation: the note may carry parentheses (a
+    # planner note names per-criterion checks) — never an interpolated
+    # string over unreviewed text.
+    let rationale = ('verdict: ' + $run_id + ' ' + $field + '=' + $verdict + ' — ' + $why)
+    let rec = (cli $caller (observation-record-argv $srv 'note' $rationale))
+    if $rec.exit_code != 0 {
+        print -e $"($caller): verdict rationale record failed for ($run_id): ($rec.stderr | str trim | str substring 0..240)"
+        exit 1
+    }
 }
 
 # The routing envelope tail: the smoke drive prints the record bare (a

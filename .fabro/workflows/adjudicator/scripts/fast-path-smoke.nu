@@ -19,6 +19,13 @@ load-env {SMOKE_FAIL_LOG: (start-fail-log 'adjudicator-fast-path-smoke')}
 # The fixture worklist: four develop runs plus a smoke run (the filter
 # keeps it out), one live run (never queues).
 const ADJUDICATOR_RUN = "01ADJUDICATOR00000000000000A"
+
+# work#1419 fold: the already-landed evidence notes as ONE constant per
+# run — the state fixture and the verbatim pin share the same string, so
+# the pin asserts the park carries the note byte-for-byte (no retyped
+# near-copy that could drift).
+const LANDED_NOTE_A = "already landed: denkhaus/work#4 — fix in 6d7cf0f0b; per criterion: schema pins PASS (worktree grep), vendor pins PASS (worktree); residual: none"
+const LANDED_NOTE_B = "ALREADY LANDED: denkhaus/work#5 — fix in 15e3525f9; per criterion: c1 PASS (worktree); residual: the follow-up stays open"
 let state = (mktemp -t adjudicator-fast-path.XXXXXX.json)
 write-shim-state $state {
     items: [
@@ -70,10 +77,11 @@ write-shim-state $state {
         {runId: "01DRAINEDRUN0000000000000000", seq: 1, category: "note", text: "fact=lane-drained lane=develop\nthe develop lane holds no open item; no claim attempted"}
         # work#1419: the planner's already-landed evidence notes — the
         # mandated prefix (item key, fix sha, per-criterion status, the
-        # residual). Both runs park with the claim pinned.
-        {runId: "01ALREADYLANDED000000000000A", seq: 1, category: "note", text: "already landed: denkhaus/work#4 — fix in 6d7cf0f0b; per criterion: schema pins PASS (worktree grep), vendor pins PASS (worktree); residual: none"}
+        # residual). Both runs park with the claim pinned; the park must
+        # carry the note VERBATIM (the pin below reads the same consts).
+        {runId: "01ALREADYLANDED000000000000A", seq: 1, category: "note", text: $LANDED_NOTE_A}
         {runId: "01LANDEDWITHPAIN000000000000B", seq: 1, category: "painpoint", text: "fact=patch-visibility verdict=not-visible base=abc1234"}
-        {runId: "01LANDEDWITHPAIN000000000000B", seq: 2, category: "note", text: "ALREADY LANDED: denkhaus/work#5 — fix in 15e3525f9; per criterion: c1 PASS (worktree); residual: the follow-up stays open"}
+        {runId: "01LANDEDWITHPAIN000000000000B", seq: 2, category: "note", text: $LANDED_NOTE_B}
     ],
     radius: {
         "denkhaus/work#2": [{itemKey: "denkhaus/work#3", title: "The radius blocker", state: "open"}]
@@ -155,6 +163,60 @@ if ($adjudication.parked_already_landed | default []) != $landed_ids {
 # parks — the mandated `already landed:` prefix is the trigger.
 if ("01TRIVIALPR00000000000000000" in ($adjudication.parked_already_landed | default [])) {
     fail "a prose mention of an already-landed fix must never park — the prefix is the trigger (work#1419)"
+}
+
+# --- work#1419 fold: the park carries the note VERBATIM ------------------
+# The bare-enum park reproduces "No reason was recorded." in a new
+# costume (the code-review fold on work#1419). The noted parks must
+# carry their matched evidence note verbatim as the verdict rationale:
+# one observation record with the work#1409 `verdict: ` machine head
+# (the channel the verdict-note cleanup already dispositions), the
+# matched note byte-for-byte as the tail. The mark argv itself keeps
+# the door's bare grammar — the mark door has no note transport
+# (verified against the real parser's help and the OpenAPI mark
+# request: {field, verdict} only).
+let log = (open --raw $state | from json | get -o log | default [])
+let rationales = ($log | where {|l|
+    ($l.flags?.category? == "note") and (($l.argv | get -o 0 | default '') == 'observation') and (($l.argv | get -o 1 | default '') == 'record')
+})
+for landed in $landed_ids {
+    let note = (if $landed == "01ALREADYLANDED000000000000A" { $LANDED_NOTE_A } else { $LANDED_NOTE_B })
+    let want = ('verdict: ' + $landed + ' merge=parked — ' + $note)
+    let hits = ($rationales | where {|l| ($l.flags?.text? | default '') == $want })
+    if ($hits | length) != 1 {
+        fail $"the park of ($landed) must carry its evidence note verbatim as exactly one verdict-rationale record \(wanted: ($want)\): got ($rationales | to json -r)"
+    }
+}
+# The human_needed park derives its why from the queue entry's
+# lifecycle error/reason (work#1418 projection). The shim's queue shape
+# carries none, so this fixture run must stay a BARE park — never
+# invented prose.
+let human_rationales = ($rationales | where {|l| ($l.flags?.text? | default '') =~ '01HUMANNEEDED' })
+if ($human_rationales | is-not-empty) {
+    fail $"a human_needed park with no derivable reason must stay bare — never invent prose: ($human_rationales | to json -r)"
+}
+# Backward compatibility: every mark argv stays byte-identical to the
+# old door shape — the shim's log binds declared flags into `flags`, so
+# the rest argv is exactly [run mark <id> <field>=<verdict>]: no note
+# token, nothing else (the merger and closing-pass callers never pass a
+# note and must be unaffected).
+let mark_calls = ($log | where {|l|
+    (($l.argv | get -o 0 | default '') == 'run') and (($l.argv | get -o 1 | default '') == 'mark')
+})
+if ($mark_calls | length) != 5 {
+    fail $"exactly the five sweep marks must ride the log \(enabled, refused, three parks\): ($mark_calls | to json -r)"
+}
+for call in $mark_calls {
+    if ($call.argv | length) != 4 {
+        fail $"the mark argv must stay the bare door shape — no note transport: ($call.argv | str join ' ')"
+    }
+    let pair = ($call.argv | get 3)
+    let parts = ($pair | split row '=')
+    let field = ($parts | get -o 0 | default '')
+    let verdict = ($parts | get -o 1 | default '')
+    if ($parts | length) != 2 or not (($field in ['merge' 'closable']) and ($verdict in ['enabled' 'refused' 'parked'])) {
+        fail $"the mark argv's field=verdict pair drifted: ($call.argv | str join ' ')"
+    }
 }
 # #1146 (routed notes supersede stage-C decision 5): the lane-drained
 # NOTE escalates the run to the agent pass — no painpoint exists, the
@@ -264,8 +326,11 @@ do {
 # precedent): the pure trigger pins the park class — the mandated
 # `already landed:` prefix parks (whitespace- and case-tolerant), prose
 # that merely mentions an already-landed fix never does, and the other
-# note classes stay untouched.
-use fast-path.nu has-already-landed-note
+# note classes stay untouched. The fold adds the verbatim capture:
+# already-landed-note-of returns the matched note's exact text (case
+# and whitespace as recorded), null on every non-trigger — the text
+# the park carries as its verdict rationale.
+use fast-path.nu [has-already-landed-note, already-landed-note-of]
 def expect-park [notes: list<string>, want: bool]: nothing -> nothing {
     let observations = ($notes | enumerate | each {|pair|
         {seq: $pair.index, category: "note", text: $pair.item}
@@ -284,10 +349,25 @@ expect-park ["parked-fork: should the residual file as unfinished or exempt?"] f
 expect-park ["fact=lane-drained lane=develop\nthe develop lane holds no open item"] false
 expect-park ["nothing durable to record"] false
 expect-park [] false
+def expect-note [notes: list<string>, want: any]: nothing -> nothing {
+    let observations = ($notes | enumerate | each {|pair|
+        {seq: $pair.index, category: "note", text: $pair.item}
+    })
+    let got = (already-landed-note-of $observations)
+    if $got != $want {
+        print -e $"smoke: FAIL — already-landed-note-of ($notes | to json -r) gave ($got), wanted ($want)"
+        exit 1
+    }
+}
+expect-note [$LANDED_NOTE_A] $LANDED_NOTE_A
+expect-note ["  " + $LANDED_NOTE_B] $LANDED_NOTE_B
+expect-note [$LANDED_NOTE_A, $LANDED_NOTE_B] $LANDED_NOTE_A
+expect-note ["the analyst suspected the fix had already landed, but the claim predates it"] null
+expect-note [] null
 
 rm -f $state $empty_state
 end-fail-gate
-print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, already-landed parks with the claim pinned (work#1419), fact-head dedupe, filter, routing envelope"
+print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, already-landed parks with the claim pinned and the note verbatim (work#1419 fold), fact-head dedupe, filter, routing envelope"
 
 # Sourcing fast-path.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.
