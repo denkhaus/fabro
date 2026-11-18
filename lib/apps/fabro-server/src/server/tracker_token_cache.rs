@@ -38,7 +38,7 @@ use fabro_github::token_source::InstallationTokenSource;
 use sha2::{Digest, Sha256};
 
 /// The permission scope every tracker token is minted with.
-pub(crate) fn tracker_token_permissions() -> serde_json::Value {
+fn tracker_token_permissions() -> serde_json::Value {
     serde_json::json!({"issues": "write", "metadata": "read"})
 }
 
