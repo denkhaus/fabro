@@ -118,4 +118,53 @@ pub mod types {
 
     pub use crate::generated::types::*;
 }
+
+/// The single run-status-kind → board-column mapping (work#1460).
+///
+/// `BoardColumn` is the API's board vocabulary — the buckets the runs
+/// list and the kanban board share — and this function is its one source
+/// of status-kind assignments. It lives in fabro-api as a free function
+/// over the foreign [`fabro_types::RunStatusKind`] because the dependency
+/// edge only works this way: fabro-api already imports fabro-types, so
+/// fabro-types cannot host the mapping without a cycle. The spec's
+/// `BoardColumn` enum, [`RunStatusKind::board_rank`]'s ranks, and the
+/// server's status-filter lowering all conform to this mapping;
+/// `tests/board_column_conformance.rs` holds the conformance proof.
+#[must_use]
+pub fn board_column(kind: fabro_types::RunStatusKind) -> types::BoardColumn {
+    use fabro_types::RunStatusKind;
+
+    match kind {
+        RunStatusKind::Submitted | RunStatusKind::Pending => types::BoardColumn::Pending,
+        RunStatusKind::Runnable => types::BoardColumn::Runnable,
+        RunStatusKind::Starting => types::BoardColumn::Initializing,
+        RunStatusKind::Running | RunStatusKind::Paused => types::BoardColumn::Running,
+        RunStatusKind::Blocked => types::BoardColumn::Blocked,
+        RunStatusKind::HumanNeeded => types::BoardColumn::HumanNeeded,
+        RunStatusKind::Succeeded => types::BoardColumn::Succeeded,
+        RunStatusKind::Failed | RunStatusKind::Dead => types::BoardColumn::Failed,
+        RunStatusKind::Removing => types::BoardColumn::Removing,
+    }
+}
+
+/// The status kinds that board in `column`, in enum order — the inverse
+/// of [`board_column`], derived from it by walking
+/// [`fabro_types::RunStatusKind`]'s variants so no second table can
+/// drift. `None` for `archived`: that column selects on the archival
+/// overlay, not on a status bucket.
+#[must_use]
+pub fn board_column_kinds(column: types::BoardColumn) -> Option<Vec<fabro_types::RunStatusKind>> {
+    use strum::VariantArray;
+
+    if column == types::BoardColumn::Archived {
+        return None;
+    }
+    Some(
+        fabro_types::RunStatusKind::VARIANTS
+            .iter()
+            .copied()
+            .filter(|kind| board_column(*kind) == column)
+            .collect(),
+    )
+}
 pub use generated::Client as ApiClient;
