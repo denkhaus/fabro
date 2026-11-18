@@ -122,6 +122,12 @@ petri_attractor_steps = { git = "https://github.com/lithoscomputer/petri.git", b
 petri_frontend_attractor = { git = "https://github.com/lithoscomputer/petri.git", branch = "main", package = "petri-frontend-attractor" }
 petri_frontend_fabro = { git = "https://github.com/lithoscomputer/petri.git", branch = "main", package = "petri-frontend-fabro" }
 petri_testkit = { git = "https://github.com/lithoscomputer/petri.git", branch = "main", package = "petri-testkit" }
+# Fork feature carrier (work#1440): petri's own workspace builds
+# executor-sandbox against upstream lithoscomputer/sandbox-driver, which
+# lacks `OneShot::evict_lru_images`; fabro patches sandbox-driver to the
+# vendored denkhaus fork and switches the cook's mint-time eviction on
+# through this entry. fabro-petri's dependency exists solely to carry it.
+petri_executor_sandbox = { path = "vendor/petri/crates/core/executor-sandbox", package = "petri-executor-sandbox", features = ["env-image-evict"] }
 sentry = { version = "0.35", default-features = false, features = ["backtrace", "contexts", "ureq", "rustls"] }
 fork = "0.2"
 exec = "0.3"

@@ -42,6 +42,10 @@ petri_store.workspace = true
 petri_attractor_steps.workspace = true
 petri_frontend_attractor.workspace = true
 petri_frontend_fabro.workspace = true
+# No code use: switches the petri fork's `env-image-evict` feature on in
+# fabro's graph (work#1440, the cook's mint-time eviction; see the root
+# workspace's petri_executor_sandbox entry).
+petri_executor_sandbox.workspace = true
 lithos-llm = { workspace = true, features = ["runtime"] }
 petri_testkit = { workspace = true, optional = true }
 anyhow.workspace = true
