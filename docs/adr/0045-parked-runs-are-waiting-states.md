@@ -78,7 +78,12 @@ one waiting kind as alive and the other as dead.
   view); reconciler rules for live waiting claims; push-gate
   classification (waiting + held claim blocks — the operator's
   disposition releases); ps/UI badge semantics; GLOSSARY entries for
-  the waiting family.
+  the waiting family. P3's consumer split lands INSIDE the one
+  vocabulary module (`.fabro/scripts/lib/terminal_status.nu`): shrink
+  `TERMINAL_KINDS`, add the waiting family, and give each consumer the
+  predicate its line names — three distinct predicates will otherwise
+  regrow under one name (push-gate exempts waiting, watchdog counts it
+  neither-completed-nor-stalled, salvage refuses).
 
 ## Consequences
 
