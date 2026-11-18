@@ -17,6 +17,7 @@
 #     qualitygate.nu x1);
 #   - test-file / inline-cfg(test) classification (fabro-2f70);
 #   - the web-surface predicate (work#1304);
+#   - the vendor-surface predicate (denkhaus/work#1444);
 #   - the nextest Summary parser with the work#1424/#1432 verdict
 #     distinction: "0 tests matched the filter" is a legit gate FAIL,
 #     "output unparseable" is a tooling error — never a gate verdict.
@@ -240,6 +241,15 @@ export def is-inline-test-diff [base: string, p: string]: nothing -> bool {
 # web suite too).
 export def web-surface-path? [p: string]: nothing -> bool {
     ($p | str starts-with 'apps/fabro-web/') or ($p | str starts-with 'lib/packages/')
+}
+
+# The vendor surface (denkhaus/work#1444): everything under vendor/ — the
+# vendored fork snapshots (vendor/{petri,pebble,sandbox-driver}) AND the
+# provenance record vendor/PINS.toml. A diff here must run the ADR-0034
+# provenance verification — qualitygate.nu's vendor tier keys on this
+# predicate and gates `just vendor-pins`.
+export def vendor-surface-path? [p: string]: nothing -> bool {
+    $p | str starts-with 'vendor/'
 }
 
 # Classification of a nextest display (work#1424 / work#1432). Parse the
