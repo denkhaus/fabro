@@ -29,7 +29,7 @@ fork_sha = "3aa8f41915f10104be16b39ea6262704437c2494"
 upstream = "lithoscomputer/petri"
 upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
 tree_sha = "2e911ce5d953bc9b615176ca3d02123fef94c660"
-content_sha256 = "e725dac0ae0b2042627d1d5e26f932c0f114a7f1d0b093ad7c7afa9b1b2d00aa"
+content_sha256 = "b7ec8e95f9f1a46340753737d76112a583a5b59017abe91c834f577149d2edbe"
 files = 935
 crates = [
     "petri-attractor-steps",
