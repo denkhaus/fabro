@@ -36,6 +36,13 @@ write-shim-state $state {
         {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro"}
         {runId: "01HUMANNEEDED00000000000000A", workflowSlug: "develop", status: "human_needed", title: "the deadlock ask", pullRequest: {owner: "denkhaus", repo: "fabro", number: 503}, claimedItem: "denkhaus/work#3", project: "fabro"}
         {runId: "01DRAINEDRUN0000000000000000", workflowSlug: "develop", status: "succeeded", title: "the drained lane pass", pullRequest: null, claimedItem: null, project: null}
+        # work#1419: the backlog shape — the planner's already-landed
+        # evidence note on a NATURAL completion (the terminal kind never
+        # flipped), a claim to pin, no pull request.
+        {runId: "01ALREADYLANDED000000000000A", workflowSlug: "develop", status: "succeeded", title: "the already-landed completion", pullRequest: null, claimedItem: "denkhaus/work#4", project: "fabro"}
+        # work#1419: the note outranks the painpoint — a painpoint-carrying
+        # already-landed run parks too (the note IS the verdict).
+        {runId: "01LANDEDWITHPAIN000000000000B", workflowSlug: "develop", status: "succeeded", title: "already landed with a painpoint", pullRequest: null, claimedItem: null, project: null}
         {runId: "01SMOKERUN000000000000000000", workflowSlug: "smoke", status: "succeeded", title: "another workflow's run", claimedItem: null, project: null}
         {runId: "01LIVERUN00000000000000000000", workflowSlug: "develop", status: "running", title: "still going", claimedItem: null, project: null}
     ],
@@ -45,6 +52,10 @@ write-shim-state $state {
     observations: [
         # 01TRIVIALPR: one NOTE (visible patch) — notes never trigger.
         {runId: "01TRIVIALPR00000000000000000", seq: 1, category: "note", text: "fact=patch-visibility verdict=visible base=abc1234 item=denkhaus/work#1"}
+        # work#1419 negative arm: a PROSE mention of an already-landed
+        # fix is not the planner's evidence note — the mandated prefix
+        # is the trigger, this run stays trivial (enabled).
+        {runId: "01TRIVIALPR00000000000000000", seq: 2, category: "note", text: "the analyst suspected the fix had already landed, but the claim predates it"}
         # 01PAINPOINT: the SAME visibility painpoint twice (an engine
         # retry re-recorded the first fact — the head collapses it) plus
         # a distinct Dockerfile-touch painpoint: TWO distinct painpoints.
@@ -57,6 +68,12 @@ write-shim-state $state {
         # NOTE whose machine head's fact names the class; the fast path
         # routes it to the agent pass without any painpoint existing.
         {runId: "01DRAINEDRUN0000000000000000", seq: 1, category: "note", text: "fact=lane-drained lane=develop\nthe develop lane holds no open item; no claim attempted"}
+        # work#1419: the planner's already-landed evidence notes — the
+        # mandated prefix (item key, fix sha, per-criterion status, the
+        # residual). Both runs park with the claim pinned.
+        {runId: "01ALREADYLANDED000000000000A", seq: 1, category: "note", text: "already landed: denkhaus/work#4 — fix in 6d7cf0f0b; per criterion: schema pins PASS (worktree grep), vendor pins PASS (worktree); residual: none"}
+        {runId: "01LANDEDWITHPAIN000000000000B", seq: 1, category: "painpoint", text: "fact=patch-visibility verdict=not-visible base=abc1234"}
+        {runId: "01LANDEDWITHPAIN000000000000B", seq: 2, category: "note", text: "ALREADY LANDED: denkhaus/work#5 — fix in 15e3525f9; per criterion: c1 PASS (worktree); residual: the follow-up stays open"}
     ],
     radius: {
         "denkhaus/work#2": [{itemKey: "denkhaus/work#3", title: "The radius blocker", state: "open"}]
@@ -110,6 +127,34 @@ let packets = ($adjudication | get -o packets | default [])
 let packet_ids = ($packets | get run_id)
 if ($packets | length) != 3 {
     fail $"exactly the painpoint, parked, and routed-note runs become packets: ($packet_ids | to json -r)"
+}
+
+# work#1419: the already-landed completions park DIRECTLY, LLM-free —
+# the planner's evidence note IS the verdict. The claim holds (no
+# refused mark: the reconciler releases a refusal back into the queue —
+# the work#1300 burn), and the runs never packet (a judgment pass would
+# re-prove nothing). The painpoint-carrying one parks too: the note
+# outranks the escalation.
+let landed_ids = ["01ALREADYLANDED000000000000A" "01LANDEDWITHPAIN000000000000B"]
+for landed in $landed_ids {
+    let parks = ($merge_marks | where {|m| $m.runId == $landed})
+    if ($parks | length) != 1 or $parks.0.verdict != "parked" {
+        fail $"the already-landed run ($landed) must park with the claim pinned: ($merge_marks | to json -r)"
+    }
+    if ($landed in ($refused | get -o runId | default [])) {
+        fail $"the already-landed run ($landed) must never be refused — the refusal releases the claim (work#1419)"
+    }
+    if ($landed in $packet_ids) {
+        fail $"the already-landed run ($landed) must never packet — the note is the verdict, no judgment needed"
+    }
+}
+if ($adjudication.parked_already_landed | default []) != $landed_ids {
+    fail $"the envelope names the already-landed parking: ($adjudication | to json -r)"
+}
+# The prefix discipline: the prose mention on the trivial run never
+# parks — the mandated `already landed:` prefix is the trigger.
+if ("01TRIVIALPR00000000000000000" in ($adjudication.parked_already_landed | default [])) {
+    fail "a prose mention of an already-landed fix must never park — the prefix is the trigger (work#1419)"
 }
 # #1146 (routed notes supersede stage-C decision 5): the lane-drained
 # NOTE escalates the run to the agent pass — no painpoint exists, the
@@ -215,9 +260,34 @@ do {
     ]
 }
 
+# --- The work#1419 decision table (the merger smoke's label-arm
+# precedent): the pure trigger pins the park class — the mandated
+# `already landed:` prefix parks (whitespace- and case-tolerant), prose
+# that merely mentions an already-landed fix never does, and the other
+# note classes stay untouched.
+use fast-path.nu has-already-landed-note
+def expect-park [notes: list<string>, want: bool]: nothing -> nothing {
+    let observations = ($notes | enumerate | each {|pair|
+        {seq: $pair.index, category: "note", text: $pair.item}
+    })
+    let got = (has-already-landed-note $observations)
+    if $got != $want {
+        print -e $"smoke: FAIL — has-already-landed-note ($notes | to json -r) gave ($got), wanted ($want)"
+        exit 1
+    }
+}
+expect-park ["already landed: denkhaus/work#4 — fix in 6d7cf0f0b; per criterion: c1 PASS (worktree); residual: none"] true
+expect-park ["  ALREADY LANDED: denkhaus/work#5 — fix in 15e3525f9; residual: the follow-up stays open"] true
+expect-park ["the analyst suspected the fix had already landed, but the claim predates it"] false
+expect-park ["stale basis: denkhaus/work#4 — the body's paths moved"] false
+expect-park ["parked-fork: should the residual file as unfinished or exempt?"] false
+expect-park ["fact=lane-drained lane=develop\nthe develop lane holds no open item"] false
+expect-park ["nothing durable to record"] false
+expect-park [] false
+
 rm -f $state $empty_state
 end-fail-gate
-print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, fact-head dedupe, filter, routing envelope"
+print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, already-landed parks with the claim pinned (work#1419), fact-head dedupe, filter, routing envelope"
 
 # Sourcing fast-path.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

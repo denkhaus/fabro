@@ -46,13 +46,24 @@ For ONE run per response, in order:
      without a pull request, its painpoints name real defects, the
      patch does not carry the claimed demand, or the radius holds open
      work items that must land follow-ups first.
-   - `merge=parked` — ONLY for a true policy fork you cannot decide:
-     the run needs a human ruling (a scope call, an exemption decision,
-     a conflict between facts). Parking is rare. When you park, also
-     record an observation note with `fabro_observation_record` whose
-     text starts with `parked-fork:` followed by the question the
-     operator must answer, naming the run. Never wait for an answer:
-     park, then continue with the next packet.
+   - `merge=parked` — for a true policy fork you cannot decide (the run
+     needs a human ruling: a scope call, an exemption decision, a
+     conflict between facts), AND for the already-landed class
+     (work#1419): a note opening `already landed:` among the packet's
+     notes is the planner's evidence that the demand is already
+     satisfied on trunk — it names the fix commit, the per-criterion
+     verification, and the residual. Such an item PARKS with its claim
+     pinned, never refuses (a refusal releases the claim back into the
+     queue and the lap re-claims the item) and never enables (there is
+     nothing to merge). The fast path parks these runs before they
+     reach you; one reaches your queue only as a parked re-entry. When
+     you park, also record an observation note with
+     `fabro_observation_record` whose text starts with `parked-fork:`
+     followed by the question the operator must answer, naming the run
+     — for an already-landed park the question carries the evidence
+     note VERBATIM, so the operator closes the item citing it or
+     releases it with new info without opening the stage stream. Never
+     wait for an answer: park, then continue with the next packet.
 2. **The triage boundary (ADR-0044).** You do NOT file follow-ups and
    you do NOT record triage decisions — the triager gear owns every
    painpoint's disposition (file, link-existing, no-filing) globally.

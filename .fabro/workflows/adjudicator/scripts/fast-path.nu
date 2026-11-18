@@ -29,6 +29,21 @@
 # operator answers through the work-item comment channel; the next
 # passes re-enter as parked and the agent pass verdicts once answered.
 #
+# ALREADY LANDED (work#1419, operator decision 2026-11-17): a run whose
+# notes carry the planner's already-landed evidence note (the mandated
+# `already landed:` prefix — item key, fix sha, per-criterion status,
+# residual) parks DIRECTLY, LLM-free. The note IS the verdict: the fix
+# sits in base history and the criteria verified in the worktree, so a
+# judgment pass would re-prove nothing. The live exit routes through the
+# develop graph's deadlock park (the run concludes human_needed and the
+# arm above parks it); THIS arm is the net for the same class whose
+# terminal kind never flipped — the backlog shape, a natural completion
+# carrying the note. `parked` HOLDS the claim (the reconciler releases
+# only a refused verdict), so the item waits pinned for the operator to
+# close it citing the note or release it with new info; no skip either
+# (the parked run re-enters every pass). The old shape refused these
+# runs, releasing the claim every lap — the work#1300 burn this parks.
+#
 # FACT FAILURE DISCIPLINE (user decision 2026-11-01): a door call that
 # fails FAILS THE STAGE — exit non-zero, the engine retries; never
 # absorb a failed read or write.
@@ -65,6 +80,19 @@ def routed-notes [observations: list<any>]: nothing -> list<string> {
 # when it runs (unclassified notes ride along, they never trigger).
 def note-texts [observations: list<any>]: nothing -> list<string> {
     $observations | where {|o| $o.category == "note"} | get text
+}
+
+# Pure: whether the observations carry the planner's ALREADY-LANDED
+# evidence note (work#1419): a note whose text opens with the mandated
+# prefix (`already landed: <item key> — fix in <sha>; per criterion:
+# ...; residual: ...`, the develop planner prompt). The prefix is the
+# deterministic trigger — prose that merely mentions an already-landed
+# fix never parks, and the park wins over painpoints or an open radius
+# (the note IS the verdict; the worktree verification already happened).
+export def has-already-landed-note [observations: list<any>]: nothing -> bool {
+    $observations
+    | where {|o| $o.category == "note"}
+    | any {|o| ($o.text | str trim | str lowercase | str starts-with 'already landed:')}
 }
 
 # The agent-pass packet: one shape, built at both arms (the parked
@@ -159,6 +187,7 @@ def main [--smoke]: nothing -> nothing {
     mut marked_enabled = []
     mut marked_refused = []
     mut parked_human = []
+    mut parked_landed = []
     mut skipped_parked = []
     for entry in $entries {
         let run_id = $entry.run.id
@@ -189,6 +218,21 @@ def main [--smoke]: nothing -> nothing {
         }
 
         let observations = (read-observations $run_id)
+        if (has-already-landed-note $observations) {
+            # work#1419 (operator decision 2026-11-17): the planner's
+            # already-landed evidence note IS the verdict — park,
+            # LLM-free, before any painpoint/radius escalation (the
+            # worktree verification already happened). `parked` holds
+            # the claim (the reconciler releases only a refused
+            # verdict), so the item waits PINNED for the operator to
+            # close it citing the note or release it with new info; no
+            # skip either — the parked run re-enters every pass. The
+            # old shape refused these runs, releasing the claim every
+            # lap (the work#1300 burn).
+            mark-run $run_id "parked"
+            $parked_landed = ($parked_landed | append $run_id)
+            continue
+        }
         let painpoints = (distinct-painpoints $observations)
         let routed = (routed-notes $observations)
         let radius_count = (read-radius $project $work_item | length)
@@ -208,14 +252,16 @@ def main [--smoke]: nothing -> nothing {
 
     # The pass title (#1159 follow-through): the sweep shape lands on
     # the board tile — the operator reads what THIS pass did without
-    # opening the run. Advisory (work_channel::title-own-run).
-    title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass"
-    print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass"
+    # opening the run, the parked classes named (work#1419: the park is
+    # the attention signal). Advisory (work_channel::title-own-run).
+    title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\); \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked"
+    print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass; \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked"
     let adjudication = {
         packets: $packets,
         marked_enabled: $marked_enabled,
         marked_refused: $marked_refused,
         parked_human_needed: $parked_human,
+        parked_already_landed: $parked_landed,
         parked_reentered: $skipped_parked,
     }
     let label = (if ($packets | is-empty) { "Queue empty" } else { "Runs pending adjudication" })
