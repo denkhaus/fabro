@@ -219,6 +219,7 @@ impl RunView {
                     detail: FailureDetail::new(
                         failure_message
                             .clone()
+                            .or_else(|| stage_failure_tail(&final_visits))
                             .unwrap_or_else(|| "the run failed".to_string()),
                         FailureCategory::Deterministic,
                     ),
@@ -231,6 +232,7 @@ impl RunView {
         // source carries the fork's `x.kind` exit edges; a boundary
         // failure upgrades to `Succeeded { Boundary }`, deadlock/soft
         // success-shapes downgrade to their park reasons.
+        let mut exit_label: Option<String> = None;
         {
             let graph_source = projection.spec.graph_source.as_deref().unwrap_or_default();
             let exit_kinds = super::fork_exit_kinds::ExitKinds::parse(graph_source);
@@ -246,7 +248,14 @@ impl RunView {
                 .rev()
                 .map(|(_, stage)| stage.stage_id.node_id().to_string())
                 .find(|node| node != "exit");
+            // work#1418: the exit edge's DOT label is the prose the graph's
+            // author wrote for THIS exit — captured when the classification
+            // fires, voiced below after every richer failure source passed.
             if let Some(overridden) = exit_kinds.classify(status, last_stage.as_deref(), "exit") {
+                exit_label = last_stage
+                    .as_deref()
+                    .and_then(|from| exit_kinds.label_of(from, "exit"))
+                    .map(str::to_string);
                 run_status = overridden;
             }
         }
@@ -291,6 +300,38 @@ impl RunView {
                     detail: FailureDetail::new(message, FailureCategory::TransientInfra),
                 });
             }
+        }
+        // work#1418: the soft-exit/deadlock conclusion carries PROSE, not
+        // just the machine enum — the UI verdict bar reads
+        // `lifecycle.error.message` and soft exits left it empty. The exit
+        // edge's DOT label is the author's own why ("Reviewer failed (next
+        // run re-enters)", "Gate deadlock (3 reds or unroutable outcome,
+        // needs a human)"); attached only when no richer failure recorded
+        // first (the quota park above outranks the label, and a hard
+        // failure already carries the stage's error tail).
+        if failure.is_none() {
+            failure = match run_status {
+                RunStatus::Failed {
+                    reason: FailureReason::SoftStop,
+                } => Some(RunFailure {
+                    reason: FailureReason::SoftStop,
+                    detail: FailureDetail::new(
+                        exit_label
+                            .clone()
+                            .unwrap_or_else(|| "soft exit — the next run re-enters".to_string()),
+                        FailureCategory::TransientInfra,
+                    ),
+                }),
+                RunStatus::HumanNeeded => Some(RunFailure {
+                    reason: FailureReason::Deadlock,
+                    detail: FailureDetail::new(
+                        exit_label
+                            .unwrap_or_else(|| "gate deadlock — a human is needed".to_string()),
+                        FailureCategory::Structural,
+                    ),
+                }),
+                _ => None,
+            };
         }
         apply_status(projection, run_status, at);
         projection.pending_control = None;
@@ -458,6 +499,19 @@ pub(super) fn first_failed_stage_failure(final_visits: &[FinalVisit]) -> Option<
     })
 }
 
+/// The failing stage's error tail as conclusion prose: `<node>: <message>`
+/// (work#1418). A hard failure whose invocation-level message stayed
+/// empty still names WHERE it broke — the stage id plus the stage's own
+/// failure reason — instead of the bare "the run failed".
+fn stage_failure_tail(final_visits: &[FinalVisit]) -> Option<String> {
+    let visit = final_visits.iter().find(|visit| visit.failed)?;
+    let message = visit
+        .failure
+        .as_deref()
+        .filter(|message| !message.is_empty())?;
+    Some(format!("{}: {message}", visit.node))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,5 +576,40 @@ mod tests {
             None,
             "the explicit conditional bounce is control flow and never refuses green"
         );
+    }
+
+    /// work#1418: a hard failure whose invocation-level message stayed
+    /// empty still names WHERE it broke — the failing stage's id plus its
+    /// own failure reason — instead of the bare "the run failed".
+    #[test]
+    fn the_hard_failure_tail_names_the_stage_and_its_reason() {
+        let visits = [
+            FinalVisit {
+                seq:     1,
+                node:    "planner".to_string(),
+                failed:  true,
+                failure: Some("model returned an empty routing body".to_string()),
+            },
+            FinalVisit {
+                seq:     2,
+                node:    "exit".to_string(),
+                failed:  false,
+                failure: None,
+            },
+        ];
+        assert_eq!(
+            stage_failure_tail(&visits).as_deref(),
+            Some("planner: model returned an empty routing body"),
+            "the conclusion prose names the stage id and its error tail"
+        );
+        // A failure flag without a recorded reason voices nothing — the
+        // generic fallback keeps its place.
+        let reasonless = [FinalVisit {
+            seq:     1,
+            node:    "tester".to_string(),
+            failed:  true,
+            failure: None,
+        }];
+        assert_eq!(stage_failure_tail(&reasonless), None);
     }
 }

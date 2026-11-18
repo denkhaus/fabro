@@ -30,6 +30,10 @@ pub(crate) struct ExitKinds {
     /// finish takes (fabro-843d: a kind edge beside a plain one is not
     /// the exit a green conclusion used).
     plain_edges: BTreeSet<(String, String)>,
+    /// The DOT `label` of every `x.kind` edge: the operator-facing prose
+    /// the graph's author wrote for the exit ("Reviewer failed (next run
+    /// re-enters)"), carried to the conclusion (work#1418).
+    labels:      BTreeMap<(String, String), String>,
 }
 
 impl ExitKinds {
@@ -40,20 +44,38 @@ impl ExitKinds {
     pub(crate) fn parse(graph_source: &str) -> Self {
         let mut edges = BTreeMap::new();
         let mut plain_edges = BTreeSet::new();
+        let mut labels = BTreeMap::new();
         fork_dot_edges::for_each_edge(graph_source, |from, to, attrs| match parse_x_kind(attrs) {
             Some(kind) => {
-                edges.insert((from.to_string(), to.to_string()), kind.to_string());
+                let key = (from.to_string(), to.to_string());
+                if let Some(label) = parse_quoted_attr(attrs, "label") {
+                    labels.insert(key.clone(), label.to_string());
+                }
+                edges.insert(key, kind.to_string());
             }
             None => {
                 plain_edges.insert((from.to_string(), to.to_string()));
             }
         });
-        Self { edges, plain_edges }
+        Self {
+            edges,
+            plain_edges,
+            labels,
+        }
     }
 
     /// The exit kind of the edge `from -> to`, when it carries one.
     pub(crate) fn kind_of(&self, from: &str, to: &str) -> Option<&str> {
         self.edges
+            .get(&(from.to_string(), to.to_string()))
+            .map(String::as_str)
+    }
+
+    /// The DOT `label` prose of the `x.kind` edge `from -> to`: the
+    /// operator-facing WHY the graph's author wrote for this exit
+    /// (work#1418 — the enum alone is a lossy projection).
+    pub(crate) fn label_of(&self, from: &str, to: &str) -> Option<&str> {
+        self.labels
             .get(&(from.to_string(), to.to_string()))
             .map(String::as_str)
     }
@@ -100,7 +122,14 @@ impl ExitKinds {
 }
 
 fn parse_x_kind(block: &str) -> Option<&str> {
-    let marker = "x.kind";
+    parse_quoted_attr(block, "x.kind")
+}
+
+/// The value of `name="…"` inside a DOT attribute block, quotes
+/// excluded. Shared by the `x.kind` classifier and the `label` prose the
+/// conclusion carries (work#1418).
+fn parse_quoted_attr<'a>(block: &'a str, name: &str) -> Option<&'a str> {
+    let marker = name;
     let start = block.find(marker)?;
     let rest = block[start + marker.len()..].trim_start();
     let rest = rest.strip_prefix('=')?;
@@ -134,6 +163,21 @@ digraph Develop {
         assert_eq!(kinds.kind_of("reviewer", "exit"), Some("deadlock"));
         assert_eq!(kinds.kind_of("tester", "exit"), Some("boundary"));
         assert_eq!(kinds.kind_of("closeout", "exit"), None);
+    }
+
+    #[test]
+    fn kind_edges_carry_their_label_prose() {
+        // work#1418: the exit edge's label IS the operator-facing why —
+        // the conclusion must voice it, not just the machine enum.
+        let kinds = ExitKinds::parse(SOURCE);
+        assert_eq!(kinds.label_of("planner", "exit"), Some("Soft exit"));
+        assert_eq!(kinds.label_of("reviewer", "exit"), Some("Deadlock"));
+        assert_eq!(
+            kinds.label_of("tester", "exit"),
+            Some("Boundary"),
+            "plain label attributes parse beside x.kind"
+        );
+        assert_eq!(kinds.label_of("closeout", "exit"), None);
     }
 
     #[test]
