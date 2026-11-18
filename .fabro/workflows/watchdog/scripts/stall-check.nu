@@ -23,6 +23,7 @@
 use ../../../scripts/lib/work_channel.nu [
     server, cli, title-own-run, automations-list-argv, ps-argv
 ]
+use ../../../scripts/lib/terminal_status.nu [is-terminal-kind]
 
 const CALLER = 'watchdog-stall-check'
 
@@ -96,8 +97,10 @@ def last-pass-age-minutes [workflow: string]: nothing -> any {
         exit 1
     })
     let terminal = ($runs | where {|r|
-        let kind = ($r | get -o status | get -o kind | default '')
-        $kind in ['succeeded' 'failed' 'human_needed' 'dead']
+        # The one terminal vocabulary (work#1446): the shared predicate —
+        # succeeded/failed/human_needed/dead, both canceled spellings
+        # accepted (the engine emits none of the canceled kinds).
+        is-terminal-kind ($r | get -o status | get -o kind | default '')
     })
     let newest = ($terminal | sort-by start_time --reverse | get -o 0 | default null)
     if $newest == null { return null }

@@ -131,5 +131,48 @@ if ($mixed.stderr | str contains 'merger') {
     fail $"an absent automation is silent, never an alarm: ($mixed.stderr | str substring 0..300)"
 }
 
+# --- Arm 4: the graph's RED conclusion is pinned AT the stage
+# (denkhaus/work#1168 fold, the code-review demand): arms 1-3 assert the
+# SCRIPT's exit; this arm pins the GRAPH mechanism that turns a stall
+# into a red run. The `outcome=failed` conditional edge is an ABSORBER —
+# the conclusion fold consumes it as declared control flow and concludes
+# the run green at exit (the pinned petri semantics, work#1029 class; run
+# 01M7QBW8A10DJ9YKJ2EH46EQG8 absorbed a live GEAR STALL that way). The
+# landed graph routes red over `on_failure="exit"` on the stall_check
+# node (the stage itself fails the run, classified failed AT the stage)
+# and keeps the healthy preferred_label conditional as the only
+# stall_check condition edge. No cargo, no engine: the pin reads the
+# graph text.
+let graph_path = ($SCRIPTS_DIR | path join '..' 'workflow.fabro')
+let graph_lines = (open --raw $graph_path | lines)
+let stall_at = ($graph_lines | enumerate | where {|it| $it.item | str contains 'stall_check ['} | get -o 0 | default null)
+if $stall_at == null {
+    fail 'the watchdog graph lost the stall_check node — the dead-man watch has no stage'
+}
+mut stall_block = []
+for it in ($graph_lines | enumerate) {
+    if $it.index >= $stall_at.index {
+        if ($it.item | str trim) == ']' { break }
+        $stall_block = ($stall_block | append $it.item)
+    }
+}
+if not ($stall_block | any {|l| $l | str contains 'on_failure="exit"'}) {
+    fail 'the stall_check node lost on_failure="exit" — a stall would route onward instead of reddening the run AT the stage (work#1168)'
+}
+let stall_edges = ($graph_lines | where {|l| ($l | str trim | str starts-with 'stall_check ->') })
+if ($stall_edges | length) < 2 {
+    fail 'the stall_check node lost its exit edges — the healthy route and the soft fallback must both exist'
+}
+let absorber = ($stall_edges | where {|l| $l | str contains 'condition="outcome' })
+if ($absorber | is-not-empty) {
+    for line in $absorber {
+        print -e $"the absorber edge class regrew in workflow.fabro: ($line | str trim)"
+    }
+    fail 'an outcome=... conditional edge on stall_check is an ABSORBER — the engine concludes the run green at exit over it (work#1029 class, work#1168); route red via on_failure=exit instead'
+}
+if not ($stall_edges | any {|l| $l | str contains 'preferred_label=\"All gears healthy\"'}) {
+    fail 'the healthy preferred_label conditional edge is gone — green must route explicitly, not by accident'
+}
+
 end-fail-gate
-print 'watchdog-stall-check-smoke: ok — silent when disabled, healthy when fresh, GEAR STALL alarm past the window'
+print 'watchdog-stall-check-smoke: ok — silent when disabled, healthy when fresh, GEAR STALL alarm past the window, red pinned AT the stage'

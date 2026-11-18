@@ -39,6 +39,10 @@
 # It is a TEST ASSET: nothing in production may resolve the fabro binary
 # here.
 
+# The one terminal vocabulary (work#1446): the shim's run-queue door
+# classifies through the shared predicate, same four emitted kinds.
+use lib/terminal_status.nu [is-terminal-kind]
+
 def state-path []: nothing -> string {
     let p = ($env.FABRO_WORK_SHIM_STATE? | default '')
     if ($p | is-empty) {
@@ -280,7 +284,7 @@ def main [
             let require_verdict = (if $require_parts == null { '' } else { $require_parts | get 1 })
             let data = ($runs | where {|r|
                 let latest = (last-or-null ($marks | where {|m| $m.runId == $r.runId and $m.field == $wanted_field}))
-                let terminal = ($r.status in ["succeeded" "failed" "human_needed" "dead"])
+                let terminal = (is-terminal-kind $r.status)
                 # Without a filter: the anti-join (pending or parked —
                 # the settled runs left). With a filter (stage E):
                 # exactly the runs settled on that verdict.

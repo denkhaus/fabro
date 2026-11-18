@@ -7,28 +7,40 @@
 # branch no run bases on until the W5 cutover) is always OPEN).
 #
 # Two conditions, both must hold for OPEN on the line branch:
-#   (a) NO active run on the production server (status.kind not in the
-#       terminal set: succeeded/failed/canceled) — conductor, develop,
-#       architect, anything. NOTE: fabro ps --json carries
-#       status as {"kind": "..."} — a string compare against 'running'
-#       silently passes while runs are active (the 2026-09-17 violation).
+#   (a) NO active run on the production server — status.kind terminal
+#       per lib/terminal_status.nu (succeeded/failed/human_needed/dead,
+#       both canceled spellings accepted; work#1446 decided semantics,
+#       Jev pre-screen 2026-11-18 terminal_not_blocking: a run parked
+#       human_needed NEVER blocks pushes by itself). The read is
+#       `ps --all`: plain ps scopes to the server's own is_active set,
+#       which hides a parked run entirely — the gate classifies kinds
+#       itself over the full listing, so a server-side scoping change
+#       cannot silently flip the verdict (the 2026-09-17 violation
+#       class: a string compare against 'running' silently passed).
+#       NOTE: fabro ps --json carries status as {"kind": "..."}.
 #   (b) NO live work claim of an ACTIVE run on the line's project (ADR-0032
 #       phase 3, e829 grill fork 4, settled 2026-10-21; terminal-aware
-#       2026-11-13): a claim blocks only while its run is still working —
-#       plain `fabro ps` lists active runs, so a claim whose run is absent
-#       from that list belongs to a terminal run and is the RECONCILER's
-#       to heal (work_reconciler: "run status is the truth"), never the
-#       gate's to wait on. The 2026-11-13 incident: a FAILED run's orphan
-#       claim held the trunk for an hour with nothing in flight. The
-#       merger-era note: awaiting_merge claims of terminal runs no longer
-#       block either — the merger rebases base-first and its own gear run
-#       is ACTIVE during every sweep, so condition (a) owns that race.
-#       A claim whose run cannot be resolved fails the gate CLOSED.
-#       An unreachable claims view fails the gate CLOSED.
+#       2026-11-13; kind-aware per work#1446): the claim arm is the sole
+#       holder of "work is genuinely in flight" — a claim blocks while
+#       its run is still working, and STILL blocks on a parked
+#       human_needed run (the claim holds until the adjudicator's
+#       verdict; the reconciler releases only a refused verdict,
+#       work#1072/#1419). Claims on the other terminal runs (succeeded/
+#       failed/dead) do not block — the reconciler heals them (work_reconciler:
+#       "run status is the truth"), never the gate's to wait on. The
+#       2026-11-13 incident: a FAILED run's orphan claim held the trunk
+#       for an hour with nothing in flight. The merger-era note: awaiting_merge
+#       claims of terminal runs no longer block either — the merger
+#       rebases base-first and its own gear run is ACTIVE during every
+#       sweep, so condition (a) owns that race. A claim whose run cannot
+#       be resolved fails the gate CLOSED. An unreachable claims view
+#       fails the gate CLOSED.
 #
 # Exit 0 = GATE OPEN (push allowed). Exit 1 = REFUSED (prints why).
 # Usage: nu .fabro/scripts/push-gate.nu [--branch denkhaus]
 #        [--server https://mirtuell.net]
+
+use lib/terminal_status.nu [gate-classification]
 
 def main [
     --branch: string = 'denkhaus'
@@ -45,16 +57,12 @@ def main [
     # class is structurally gone: item identity is GitHub's issue number,
     # and the importer's parity report plus the verify gateway own the
     # one-time equivalence proof. Re-checks live in the claims view below.
-    let terminal = ['succeeded' 'failed' 'canceled' 'cancelled']
-    let ps = (do { ^fabro ps --server $server --json } | complete)
+    let ps = (do { ^fabro ps --server $server --all --json } | complete)
     if $ps.exit_code != 0 {
         print $"GATE REFUSED: fabro ps failed — ($ps.stderr | str substring 0..200)"
         exit 1
     }
     let runs = ($ps.stdout | from json)
-    let active = ($runs | where {|r|
-        ($r.status?.kind? | default 'unknown') not-in $terminal
-    })
     # (b) live claims on the line's project (e829 fork 4): granted /
     # active / awaiting_merge. The auth entry carries `token` for
     # dev-token servers and `access_token` for OAuth (short-lived — the
@@ -74,19 +82,11 @@ def main [
         print $"GATE REFUSED: claims view unreachable on ($server) — the gate fails closed, e829 fork 4"
         exit 1
     }
-    let active_ids = ($active | get run_id | each {|id| $id | str substring 0..26})
-    let blocking = ($claims | where {|c|
-        let state = ($c | get -o state | default '')
-        if $state not-in ['granted' 'active' 'awaiting_merge'] { return false }
-        # Terminal-aware (2026-11-13): plain ps lists ACTIVE runs only —
-        # a claiming run absent from it is terminal, and its claim is the
-        # reconciler's to heal, not the gate's to wait on. Unresolvable
-        # run ids fail CLOSED (return true blocks below). The claims view
-        # is camelCase (runId).
-        let claim_run = ($c | get -o runId | default '' | str substring 0..26)
-        if ($claim_run | is-empty) { return true }
-        $claim_run in $active_ids
-    })
+    # The one classification (work#1446): pure over the captured door
+    # JSON, pinned in lane-commons-fixtures.nu families 7a-7c.
+    let verdict = (gate-classification $runs $claims)
+    let active = ($verdict | get active)
+    let blocking = ($verdict | get blocking)
     if ($active | length) > 0 {
         print $"GATE REFUSED: ($active | length) active runs: ($active | each {|r| $r.run_id } | str join ', ')"
         if ($blocking | length) > 0 { print $"also ($blocking | length) live claims" }
