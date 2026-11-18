@@ -23,7 +23,11 @@ The server-owned assignment of one work item to one run, arbitrated in the
 claim ledger (ADR-0032 decision 2). High-frequency and conflict-prone, which
 is why it never travels through the tracker.
 
-- Unique per `(project, item)` and per run while non-terminal.
+- Unique per `(project, item)` and per run while the claim holds — and
+  what holds is `fabro_work::hold_reason`'s answer, not bare
+  non-terminality (denkhaus/work#1457): a parked `human_needed` run is a
+  waiting state (ADR-0045), so its claim holds too; a refused merge
+  verdict releases.
 - States: `granted` → `active` → `awaiting_merge` → `landed`, plus
   `released` when a run gives the item back.
 - Carries the run id, the lane, and the PR url of the run that holds it.

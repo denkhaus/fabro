@@ -1116,14 +1116,15 @@ async fn claim_next(
         })
         .await
         .map_err(tracker_failed)?;
-    let mut claimed: std::collections::HashSet<String> = state
+    let live_claims: std::collections::HashMap<String, fabro_work::WorkClaim> = state
         .work_store()
         .active_claims(&project.project_id)
         .await
         .map_err(store_error)?
         .into_iter()
-        .map(|claim| claim.item_key)
+        .map(|claim| (claim.item_key.clone(), claim))
         .collect();
+    let mut claimed: std::collections::HashSet<String> = live_claims.keys().cloned().collect();
 
     // Misroute skip (denkhaus/work#1179): a run that released an item —
     // misroute, stale basis, planner skip — is never re-granted the same
@@ -1193,7 +1194,25 @@ async fn claim_next(
 
     for item in items {
         if claimed.contains(&item.item_key) {
-            continue;
+            // The claim-hold arm of the pool policy (denkhaus/work#1457,
+            // ADR-0045 P1): a candidate whose live claim HOLDS stays out
+            // of the pool — the park pin included (work#1419,
+            // work#1448): a parked `human_needed` run's claim yields to
+            // nothing but its operator's disposition, never to a fresh
+            // lap's grant (the production burn on denkhaus/work#1312).
+            // A live claim whose hold has lapsed (`hold_reason` answers
+            // None — a refused verdict pending the reconciler's heal)
+            // falls through to the grant attempt: the ledger stays the
+            // arbiter (ADR-0032 decision 2) and the unique index refuses
+            // a true collision. Released-by-run entries in `claimed` are
+            // the misroute skip (#1179/#1186) — no hold to consult.
+            if let Some(claim) = live_claims.get(&item.item_key) {
+                if live_claim_holds(&state, claim).await {
+                    continue;
+                }
+            } else {
+                continue;
+            }
         }
         if let Some(released_at) = stale_basis.get(&item.item_key) {
             let moved_past = item
@@ -1300,6 +1319,42 @@ async fn claim_next(
         item:    None,
     })
     .into_response())
+}
+
+/// The pool policy's hold classification for one live claim
+/// (denkhaus/work#1457): fetches the owning run's status and its latest
+/// merge verdict, then asks the claim-hold seam (`fabro_work::hold_reason`).
+/// `true` = the claim holds and the item stays out of the pool. A run the
+/// store cannot serve counts as holding: the reconciler's orphan grace
+/// owns that release, and the pool never races a claim it cannot classify.
+async fn live_claim_holds(state: &AppState, claim: &fabro_work::WorkClaim) -> bool {
+    let Some(projection) = super::super::run_records::projection(state, claim.run_id)
+        .await
+        .ok()
+        .flatten()
+    else {
+        tracing::debug!(
+            claim_id = %claim.claim_id,
+            run_id = %claim.run_id,
+            item_key = %claim.item_key,
+            "work pool: candidate's claim names a run without a served projection; holding"
+        );
+        return true;
+    };
+    let verdict = super::super::work_reconciler::merge_verdict_of_run(state, claim.run_id).await;
+    match fabro_work::hold_reason(claim, projection.status, verdict) {
+        Some(reason) => {
+            tracing::debug!(
+                claim_id = %claim.claim_id,
+                run_id = %claim.run_id,
+                item_key = %claim.item_key,
+                hold = %reason,
+                "work pool: candidate item is claimed and holds"
+            );
+            true
+        }
+        None => false,
+    }
 }
 
 /// Append a work record to the run's stream, best effort: the claim in the
@@ -2299,6 +2354,126 @@ mod resolve_self_tests {
         assert_eq!(
             second["outcome"], "granted",
             "a misroute release stays per-run — other runs are offered the item: {second}"
+        );
+    }
+
+    /// THE HEADLINE PIN (denkhaus/work#1457, ADR-0045 P1; the production
+    /// burn on denkhaus/work#1312, runs 01M7NWYS…/01M7QB9Y…): a grant
+    /// attempt against a live claim held by a parked `human_needed` run
+    /// is REFUSED — the pool's hold arm skips the item, the fresh lap
+    /// gets nothing, and the parked run's claim stays live. A parked run
+    /// is a WAITING state to the hold seam (ADR-0045): the claim yields
+    /// to nothing but its operator's disposition, never to a new grant.
+    #[tokio::test]
+    async fn a_grant_against_a_live_claim_held_by_a_parked_run_is_refused() {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(OneItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+
+        // Lap one: the run claims the lane's only item…
+        let parked_run = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let first = claim_next_for_run(&state, parked_run).await;
+        assert_eq!(first["outcome"], "granted", "lap one claims the item");
+        let claim_id = first["claim"]["claimId"]
+            .as_str()
+            .expect("the granted claim id")
+            .to_string();
+
+        // …then parks: the decision request (status human_needed,
+        // terminal today, a WAITING state to the hold seam).
+        let mut projection = fabro_types::RunProjection::new(
+            "parked run".to_string(),
+            fabro_types::RunSpec {
+                run_id:              parked_run,
+                settings:            fabro_types::WorkflowSettings::default(),
+                graph:               fabro_types::RunGraph::new("test"),
+                graph_source:        None,
+                workflow_slug:       Some("develop".to_string()),
+                workflow_version_id: None,
+                target:              None,
+                automation:          None,
+                source_directory:    None,
+                labels:              std::collections::HashMap::new(),
+                provenance:          fabro_types::test_support::test_run_provenance(),
+                definition_blob:     None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                admission:           fabro_types::PetriAdmission::default(),
+            },
+            chrono::Utc::now(),
+        );
+        projection.status = fabro_types::RunStatus::HumanNeeded;
+        let pool = state.stores.run_summaries.pool();
+        let mut tx = pool.begin().await.expect("seed tx");
+        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(
+            &mut tx,
+            &parked_run,
+            &projection,
+        )
+        .await
+        .expect("run row seed");
+        let projection_json = serde_json::to_string(&projection).expect("projection json");
+        sqlx::query(
+            "INSERT INTO petri_projection (run_id, projection_json, fold_json, \
+             positions_json, stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) \
+             ON CONFLICT(run_id) DO UPDATE SET projection_json = excluded.projection_json",
+        )
+        .bind(parked_run.to_string())
+        .bind(projection_json)
+        .execute(&mut *tx)
+        .await
+        .expect("projection row seed");
+        tx.commit().await.expect("seed commit");
+
+        // Lap two: a fresh run asks for the lane. The item's live claim
+        // is held by a parked run — the grant attempt must NOT grant.
+        let next_run = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let second = claim_next_for_run(&state, next_run).await;
+        assert_eq!(
+            second["outcome"], "empty",
+            "the parked run's claim holds the item out of the pool: {second}"
+        );
+
+        // The parked run's claim is untouched — the burn's re-claim
+        // stampede is structurally refused, and the operator's
+        // disposition stays the only release.
+        let held = state
+            .work_store()
+            .active_claim_for_run(&parked_run)
+            .await
+            .expect("claim read")
+            .expect("the parked run's claim stays live");
+        assert_eq!(held.claim_id, claim_id);
+        assert_ne!(
+            held.state,
+            fabro_work::ClaimState::Released,
+            "the park pin: the claim never yields to a fresh lap"
         );
     }
 

@@ -102,6 +102,11 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
                             // the verdict releases the claim (the label
                             // is removed with it). Every other verdict
                             // waits for the merger + the closing pass.
+                            // The same rule lives in the claim-hold seam
+                            // (`fabro_work::hold_reason`'s AwaitingMerge
+                            // arm, denkhaus/work#1457); this arm stays
+                            // direct because it runs before any run
+                            // status is read.
                             if merge_verdict_of_run(state, claim.run_id).await
                                 == Some(fabro_types::OrchestrationVerdict::Refused)
                             {
@@ -249,12 +254,10 @@ async fn drain_outbox(
 
 /// Run-status truth for a live claim: terminal runs move to
 /// `awaiting_merge` (PR) or release (no PR); a missing run releases after
-/// the grace window. Since ADR-0039 stage E the no-PR release is
-/// VERDICT-DRIVEN: the claim holds until the adjudicator verdicts —
-/// `merge: refused` releases (the adjudicator rejected the run), any
-/// other state holds (the lock span is claim to merge-complete; the
-/// adjudicator's pass one refuses PR-less runs, so a refusal is the
-/// expected verdict on this path).
+/// the grace window. The no-PR decision is the claim-hold seam's
+/// ([`fabro_work::hold_reason`], denkhaus/work#1457): ADR-0039 stage E as
+/// content — the refused verdict releases, every other state holds (the
+/// park pin included, ADR-0045 P1).
 async fn reconcile_run_state(
     state: &AppState,
     project: &fabro_work::WorkProject,
@@ -297,41 +300,50 @@ async fn reconcile_run_state(
         }
         return;
     }
-    // A terminal run WITHOUT a pull request: the adjudicator's verdict
-    // decides. No verdict yet: HOLD — the adjudicator's pass one will
-    // refuse it (or escalate it); releasing here would strand the item
-    // outside the closure chain the verdicts carry (stage-A finding,
-    // resolved with the stage-E rewire).
+    // A terminal run WITHOUT a pull request: the hold seam decides
+    // (denkhaus/work#1457; ADR-0039 stage E as content). A refused
+    // verdict releases — `hold_reason` answers None; every other state
+    // holds, named: parked waiting runs pin (the park pin, ADR-0045
+    // P1 — a parked run's claim yields to nothing but its operator's
+    // disposition), unadjudicated runs wait for the adjudicator.
+    // Releasing on an unadjudicated run would strand the item outside
+    // the closure chain the verdicts carry (stage-A finding, resolved
+    // with the stage-E rewire).
     let verdict = merge_verdict_of_run(state, claim.run_id).await;
-    if verdict == Some(fabro_types::OrchestrationVerdict::Refused) {
-        match state
-            .work_store()
-            .release(
-                &claim.claim_id,
-                "merge refused: the adjudicator rejected the run",
-            )
-            .await
-        {
-            Ok(_released) => report.orphans_released += 1,
-            Err(error) => tracing::warn!(
+    match fabro_work::hold_reason(claim, projection.status, verdict) {
+        Some(reason) => {
+            tracing::debug!(
                 claim_id = %claim.claim_id,
-                error = ?error,
-                "work reconciler: refused-verdict release failed"
-            ),
+                run_id = %claim.run_id,
+                hold = %reason,
+                "work reconciler: terminal run without a pull request holds its claim"
+            );
         }
-    } else if verdict.is_none() {
-        tracing::debug!(
-            claim_id = %claim.claim_id,
-            run_id = %claim.run_id,
-            "work reconciler: terminal run without a pull request holds its claim until the \
-             adjudicator verdicts (ADR-0039 stage E)"
-        );
+        None => {
+            match state
+                .work_store()
+                .release(
+                    &claim.claim_id,
+                    "merge refused: the adjudicator rejected the run",
+                )
+                .await
+            {
+                Ok(_released) => report.orphans_released += 1,
+                Err(error) => tracing::warn!(
+                    claim_id = %claim.claim_id,
+                    error = ?error,
+                    "work reconciler: refused-verdict release failed"
+                ),
+            }
+        }
     }
 }
 
 /// The run's latest verdict on the `merge` field, when one exists (the
-/// same fold the queue reads).
-async fn merge_verdict_of_run(
+/// same fold the queue reads). Shared with the claim pool's hold arm
+/// (`claim_next`, denkhaus/work#1457) so every consumer folds the same
+/// way.
+pub(crate) async fn merge_verdict_of_run(
     state: &AppState,
     run_id: fabro_types::RunId,
 ) -> Option<fabro_types::OrchestrationVerdict> {
