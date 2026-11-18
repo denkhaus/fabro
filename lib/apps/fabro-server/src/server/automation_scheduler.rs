@@ -1076,6 +1076,54 @@ pub(crate) mod tests {
         assert!(planner.cursors.is_empty());
     }
 
+    /// denkhaus/work#1411: production unpauses missed the first
+    /// post-unpause slot. The planner contract the loop relies on: pause
+    /// drops the cursor, and the unpause re-arm lands on the FIRST cron
+    /// boundary after the unpause — no slot between unpause and the next
+    /// boundary may be silently skipped.
+    #[test]
+    fn unpause_rearms_the_cursor_at_the_first_boundary_after_enablement() {
+        let mut automation = automation("nightly", "Nightly", vec![schedule_trigger(
+            "schedule",
+            "* * * * *",
+            true,
+        )]);
+        let mut planner = AutomationSchedulePlanner::default();
+        planner.reconcile(std::slice::from_ref(&automation), prime_time());
+
+        // Pause (a schedule replace with enabled = false): the next tick
+        // drops the cursor, exactly as `disabled_schedule_trigger_removes_
+        // cursor` pins. Ticks keep running while paused (the loop polls at
+        // most every 30s).
+        automation.triggers = vec![schedule_trigger("schedule", "* * * * *", false)];
+        planner.reconcile(
+            std::slice::from_ref(&automation),
+            dt("2026-05-29T00:00:40Z"),
+        );
+        assert!(planner.cursors.is_empty());
+
+        // Unpause at 00:03:10 (the replace path notifies the scheduler, so
+        // this tick runs immediately, before the next boundary): the first
+        // boundary after the unpause (00:04) must arm and fire.
+        automation.triggers = vec![schedule_trigger("schedule", "* * * * *", true)];
+        planner.reconcile(
+            std::slice::from_ref(&automation),
+            dt("2026-05-29T00:03:10Z"),
+        );
+        let due = planner.take_due(
+            std::slice::from_ref(&automation),
+            dt("2026-05-29T00:04:00Z"),
+        );
+
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].due_at, dt("2026-05-29T00:04:00Z"));
+        // The cursor advanced past the fired boundary.
+        assert_eq!(
+            planner.cursors.values().next().unwrap().next_due_at,
+            dt("2026-05-29T00:05:00Z")
+        );
+    }
+
     #[test]
     fn expression_change_resets_cursor_revision_only_change_preserves_timing() {
         let mut automation = automation("nightly", "Nightly", vec![schedule_trigger(

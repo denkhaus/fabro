@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use cli_table::format::{Border, Separator};
 use cli_table::{Cell, CellStruct, Style, Table};
 use fabro_api::types;
+use fabro_automation::{ProviderWindowKind, ScheduleTrigger};
 use fabro_types::{Run, RunStatus};
 use fabro_util::terminal::Styles;
 use tokio::time::sleep;
@@ -112,11 +113,21 @@ async fn status_snapshot(ctx: &CommandContext) -> Result<Vec<StatusRow>> {
 
 /// Deterministic fire-drift rule (no LLM): an enabled schedule with no
 /// successful fire within 2x its cron interval has drifted; a non-zero
-/// breaker count or a non-null `last_error` flags drift too.
+/// breaker count or a non-null `last_error` flags drift too. A schedule
+/// the provider-window gate is holding gets its own hold state, distinct
+/// from drift (denkhaus/work#1411).
 fn drift_flags(automation: &types::Automation, runs: &[Run], now: DateTime<Utc>) -> Vec<String> {
     let mut flags = Vec::new();
 
     for schedule in schedule_triggers(automation).filter(|schedule| schedule.enabled) {
+        // Provider-window hold first (denkhaus/work#1411): a closed window
+        // holds fires with no run, no error, and no drift signal — the
+        // quiet has a known cause, so it is surfaced as its own state and
+        // never read as (or counted toward) scheduler drift.
+        if let Some(held) = closed_provider_window_flag(schedule) {
+            flags.push(held);
+            continue;
+        }
         if let Ok(Some(interval)) = cron_interval(&schedule.expression, now) {
             let threshold = interval * DRIFT_INTERVALS;
             let last_success = last_success(runs);
@@ -125,13 +136,12 @@ fn drift_flags(automation: &types::Automation, runs: &[Run], now: DateTime<Utc>)
                 None => true,
             };
             if stalled {
-                flags.push(format!(
-                    "fire drift: schedule {} enabled but no successful fire within {}s (last: \
-                     {})",
-                    schedule.expression,
+                flags.push(stalled_fire_flag(
+                    schedule,
+                    runs,
+                    now,
                     threshold,
-                    last_success
-                        .map_or_else(|| "never".to_string(), |success| success.to_rfc3339())
+                    last_success,
                 ));
             }
         }
@@ -154,6 +164,72 @@ fn drift_flags(automation: &types::Automation, runs: &[Run], now: DateTime<Utc>)
     }
 
     flags
+}
+
+/// The provider-window hold state (denkhaus/work#1411): a closed window
+/// holds the trigger's scheduled fires — no run is created, no
+/// `last_error` is recorded, and the API surface stays fully "armed". The
+/// gate's per-trigger read model names the closed providers, so the quiet
+/// is surfaced as an explicit hold, deliberately NOT prefixed `fire drift`
+/// (a held line never counts toward the scheduler-wedge signature).
+fn closed_provider_window_flag(schedule: &ScheduleTrigger) -> Option<String> {
+    let closed: Vec<_> = schedule
+        .provider_window
+        .as_ref()?
+        .providers
+        .iter()
+        .filter(|fact| fact.window == ProviderWindowKind::Closed)
+        .collect();
+    if closed.is_empty() {
+        return None;
+    }
+    let providers = closed
+        .iter()
+        .map(|fact| fact.provider.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let next_probe = closed
+        .iter()
+        .map(|fact| fact.next_probe_at)
+        .min()
+        .map_or_else(|| "unknown".to_string(), |at| at.to_rfc3339());
+    Some(format!(
+        "provider window closed: schedule {} fires held (never attempted) by {providers}; next \
+         probe {next_probe}",
+        schedule.expression,
+    ))
+}
+
+/// One drifted schedule's quiet, classified (denkhaus/work#1411): a run
+/// inside the drift window that did not succeed is a fire ATTEMPTED and
+/// failed; no run in the window means no fire was ever attempted (a held
+/// or silently skipped schedule).
+fn stalled_fire_flag(
+    schedule: &ScheduleTrigger,
+    runs: &[Run],
+    now: DateTime<Utc>,
+    threshold_seconds: i64,
+    last_success: Option<DateTime<Utc>>,
+) -> String {
+    let window_start = now - chrono::Duration::seconds(threshold_seconds);
+    let newest_attempt = runs
+        .iter()
+        .filter(|run| run.timestamps.created_at >= window_start)
+        .max_by_key(|run| run.timestamps.created_at);
+    if let Some(run) = newest_attempt {
+        return format!(
+            "fire drift: schedule {} enabled but fire attempted and failed (last run {} at {})",
+            schedule.expression,
+            run.lifecycle.status.kind(),
+            run.timestamps.created_at.to_rfc3339(),
+        );
+    }
+    format!(
+        "fire drift: schedule {} enabled but no fire attempted within {threshold_seconds}s (last \
+         success {})",
+        schedule.expression,
+        last_success.map_or_else(|| "never".to_string(), |success| success.to_rfc3339()),
+    )
 }
 
 /// Creation time of the most recent succeeded run, if any.
@@ -347,8 +423,118 @@ mod tests {
 
         assert_eq!(flags.len(), 3);
         assert!(flags[0].contains("fire drift"));
+        assert!(
+            flags[0].contains("no fire attempted"),
+            "a drift with no run inside the window is a never-attempted quiet: {flags:?}"
+        );
         assert!(flags[1].contains("breaker count 2"));
         assert!(flags[2].contains("last_error: scheduler failed"));
+    }
+
+    /// denkhaus/work#1411: the drift message distinguishes a fire that was
+    /// attempted and failed from one that was never attempted.
+    #[test]
+    fn drift_flags_distinguish_attempted_and_failed_from_never_attempted() {
+        let now = Utc.with_ymd_and_hms(2026, 9, 20, 12, 0, 0).unwrap();
+        let automation = automation_json_triggers(None);
+        // Newest run inside the 2-day drift window failed; the last success
+        // predates the window — the schedule DID attempt and failed.
+        let runs = vec![
+            run_json(
+                "2026-09-20T11:00:00Z",
+                &serde_json::json!({ "kind": "failed", "reason": "workflow_error" }),
+            ),
+            run_json(
+                "2026-09-10T03:00:00Z",
+                &serde_json::json!({ "kind": "succeeded", "reason": "completed" }),
+            ),
+        ];
+
+        let flags = drift_flags(&automation, &runs, now);
+
+        let drift = flags
+            .iter()
+            .find(|flag| flag.starts_with("fire drift"))
+            .expect("the attempted-and-failed quiet is still drift: {flags:?}");
+        assert!(
+            drift.contains("fire attempted and failed (last run failed at 2026-09-20T11:00:00"),
+            "an in-window non-succeeded run is an attempted fire: {flags:?}"
+        );
+    }
+
+    /// denkhaus/work#1411: a closed provider window is an explicit hold
+    /// state, distinct from drift — fires were never attempted, and the
+    /// flag must not carry the `fire drift` prefix (held lines never count
+    /// toward the scheduler-wedge signature).
+    #[test]
+    fn closed_provider_window_is_a_hold_state_not_drift() {
+        let now = Utc.with_ymd_and_hms(2026, 11, 17, 16, 25, 0).unwrap();
+        let automation = serde_json::from_value::<Automation>(serde_json::json!({
+            "id": "adjudicator",
+            "revision": "1111111111111111111111111111111111111111111111111111111111111111",
+            "name": "Adjudicator",
+            "description": null,
+            "environment_id": "toolchain",
+            "last_error": null,
+            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
+            "workflow": "adjudicate",
+            "triggers": [
+                { "id": "manual", "type": "api", "enabled": true },
+                {
+                    "id": "schedule",
+                    "type": "schedule",
+                    "enabled": true,
+                    "expression": "*/15 * * * *",
+                    "provider_window": {
+                        "providers": [
+                            {
+                                "provider": "zai",
+                                "window": "closed",
+                                "last_probe_at": "2026-11-17T16:20:00Z",
+                                "next_probe_at": "2026-11-17T16:30:00Z"
+                            },
+                            {
+                                "provider": "openai",
+                                "window": "open",
+                                "last_probe_at": "2026-11-17T16:20:00Z",
+                                "next_probe_at": "2026-11-17T16:30:00Z"
+                            }
+                        ]
+                    }
+                }
+            ]
+        }))
+        .unwrap();
+        // Last success long before the hold: the schedule is quiet, but the
+        // closed window — not the scheduler — explains the quiet.
+        let runs = vec![run_json(
+            "2026-11-17T13:00:00Z",
+            &serde_json::json!({ "kind": "succeeded", "reason": "completed" }),
+        )];
+
+        let flags = drift_flags(&automation, &runs, now);
+
+        assert_eq!(flags.len(), 1);
+        assert!(
+            flags[0].starts_with("provider window closed: schedule */15 * * * * fires held"),
+            "the hold names the schedule and the state: {flags:?}"
+        );
+        assert!(
+            flags[0].contains("by zai"),
+            "only closed providers are named: {flags:?}"
+        );
+        assert!(
+            flags[0].contains("never attempted"),
+            "the hold says fires were never attempted: {flags:?}"
+        );
+        assert!(
+            flags[0].contains("next probe 2026-11-17T16:30:00"),
+            "the hold carries the next probe time: {flags:?}"
+        );
+        assert!(
+            !flags[0].starts_with("fire drift"),
+            "a hold is not drift: {flags:?}"
+        );
     }
 
     #[test]
