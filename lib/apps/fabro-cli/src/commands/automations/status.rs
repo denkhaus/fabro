@@ -359,30 +359,50 @@ mod tests {
         base
     }
 
+    /// The Nightly fixture: one manual trigger plus the nightly schedule
+    /// carrying a tripped breaker.
     fn automation_json_triggers(last_error: Option<&str>) -> Automation {
+        automation_json(
+            "nightly-deps",
+            "Nightly",
+            "dependency-update",
+            last_error,
+            &serde_json::json!({
+                "id": "nightly",
+                "type": "schedule",
+                "enabled": true,
+                "expression": "0 3 * * *",
+                "breaker": {
+                    "signature": "park|dependency-update|boundary",
+                    "consecutive_count": 2,
+                    "last_run_id": "01M2ZSYQR4ZM8N6HD67TT3AT3X",
+                    "paused_at": null
+                }
+            }),
+        )
+    }
+
+    /// One automation fixture with the manual trigger plus a single
+    /// schedule trigger built from `schedule_trigger`'s raw JSON.
+    fn automation_json(
+        id: &str,
+        name: &str,
+        workflow: &str,
+        last_error: Option<&str>,
+        schedule_trigger: &serde_json::Value,
+    ) -> Automation {
         serde_json::from_value(serde_json::json!({
-            "id": "nightly-deps",
+            "id": id,
             "revision": "1111111111111111111111111111111111111111111111111111111111111111",
-            "name": "Nightly",
+            "name": name,
             "description": null,
             "environment_id": "toolchain",
             "last_error": last_error,
             "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
-            "workflow": "dependency-update",
+            "workflow": workflow,
             "triggers": [
                 { "id": "manual", "type": "api", "enabled": true },
-                {
-                    "id": "nightly",
-                    "type": "schedule",
-                    "enabled": true,
-                    "expression": "0 3 * * *",
-                    "breaker": {
-                        "signature": "park|dependency-update|boundary",
-                        "consecutive_count": 2,
-                        "last_run_id": "01M2ZSYQR4ZM8N6HD67TT3AT3X",
-                        "paused_at": null
-                    }
-                }
+                schedule_trigger
             ]
         }))
         .unwrap()
@@ -452,10 +472,12 @@ mod tests {
 
         let flags = drift_flags(&automation, &runs, now);
 
-        let drift = flags
-            .iter()
-            .find(|flag| flag.starts_with("fire drift"))
-            .expect("the attempted-and-failed quiet is still drift: {flags:?}");
+        let drift = flags.iter().find(|flag| flag.starts_with("fire drift"));
+        assert!(
+            drift.is_some(),
+            "the attempted-and-failed quiet is still drift: {flags:?}"
+        );
+        let drift = drift.expect("the attempted-and-failed quiet is still drift");
         assert!(
             drift.contains("fire attempted and failed (last run failed at 2026-09-20T11:00:00"),
             "an in-window non-succeeded run is an attempted fire: {flags:?}"
@@ -469,42 +491,34 @@ mod tests {
     #[test]
     fn closed_provider_window_is_a_hold_state_not_drift() {
         let now = Utc.with_ymd_and_hms(2026, 11, 17, 16, 25, 0).unwrap();
-        let automation = serde_json::from_value::<Automation>(serde_json::json!({
-            "id": "adjudicator",
-            "revision": "1111111111111111111111111111111111111111111111111111111111111111",
-            "name": "Adjudicator",
-            "description": null,
-            "environment_id": "toolchain",
-            "last_error": null,
-            "target": { "kind": "git", "repo": "fabro-sh/fabro", "branch": "main" },
-            "workflow": "adjudicate",
-            "triggers": [
-                { "id": "manual", "type": "api", "enabled": true },
-                {
-                    "id": "schedule",
-                    "type": "schedule",
-                    "enabled": true,
-                    "expression": "*/15 * * * *",
-                    "provider_window": {
-                        "providers": [
-                            {
-                                "provider": "zai",
-                                "window": "closed",
-                                "last_probe_at": "2026-11-17T16:20:00Z",
-                                "next_probe_at": "2026-11-17T16:30:00Z"
-                            },
-                            {
-                                "provider": "openai",
-                                "window": "open",
-                                "last_probe_at": "2026-11-17T16:20:00Z",
-                                "next_probe_at": "2026-11-17T16:30:00Z"
-                            }
-                        ]
-                    }
+        let automation = automation_json(
+            "adjudicator",
+            "Adjudicator",
+            "adjudicate",
+            None,
+            &serde_json::json!({
+                "id": "schedule",
+                "type": "schedule",
+                "enabled": true,
+                "expression": "*/15 * * * *",
+                "provider_window": {
+                    "providers": [
+                        {
+                            "provider": "zai",
+                            "window": "closed",
+                            "last_probe_at": "2026-11-17T16:20:00Z",
+                            "next_probe_at": "2026-11-17T16:30:00Z"
+                        },
+                        {
+                            "provider": "openai",
+                            "window": "open",
+                            "last_probe_at": "2026-11-17T16:20:00Z",
+                            "next_probe_at": "2026-11-17T16:30:00Z"
+                        }
+                    ]
                 }
-            ]
-        }))
-        .unwrap();
+            }),
+        );
         // Last success long before the hold: the schedule is quiet, but the
         // closed window — not the scheduler — explains the quiet.
         let runs = vec![run_json(
