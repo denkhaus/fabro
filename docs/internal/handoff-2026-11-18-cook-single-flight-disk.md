@@ -243,8 +243,13 @@ Adjacent lines (own carriers, own lanes):
 - [ ] work#1335 (loop): release-binary fetch in `.fabro/Dockerfile.toolchain`
       + `just host-release` — collapses the per-tip cook cost; makes aggressive
       eviction safe
-- [ ] work#1188 (loop): df threshold alarm to Slack + the hourly backstop
-      sweep executor (the smoke detector that was missing on 2026-11-17)
+- [ ] #1188 (loop): df threshold alarm to Slack + the hourly backstop
+      sweep executor — IMPLEMENTED in fabro-tofu (`main` @ `ec4c938`):
+      GC alert arm (WARN once per crossing / CRIT every run, out-of-band
+      webhook, host cron, no server in the loop) + 5 ladder test pins.
+      Owed by the user: `gopass insert fabro-tofu/gc-slack-webhook-url`
+      (webhook first), then the tofu apply — until both, alerts skip
+      silently
 - [ ] work#1425 (loop): close after relief + activation are recorded with
       before/after evidence
 
