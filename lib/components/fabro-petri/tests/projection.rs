@@ -129,6 +129,12 @@ fn pool() -> DbPool {
         fabro_db::PETRI_RECORDS_MIGRATION_SQL,
         fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
         fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,
+        // The observation fold materializes triage state (work#1385); the
+        // state migration's backfill join resolves the work tables at
+        // prepare time, so they ride along even on a fresh fixture.
+        fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
+        fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
+        fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
     ])
 }
 
