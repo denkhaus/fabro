@@ -153,7 +153,19 @@ def run-base [] {
             let sha = ($checkpoint | first | parse --regex '^(?P<sha>[0-9a-f]+)' | get sha.0)
             {base: (git rev-parse $"($sha)^"), hit: true}
         } else {
-            {base: (git rev-parse HEAD), hit: false}
+            # No checkpoint-pattern commit in the log (work#1427 /
+            # work#1182): the engine's auto-commit and journal commits
+            # carry different subjects, and a recovery or re-entry pass
+            # over them sees a CLEAN tree — base HEAD would derive an
+            # EMPTY diff and answer "nothing to verify" while the whole
+            # attempt sits in HEAD. Fall back to the last journal
+            # commit's diff (journal commits carry the whole tree).
+            let has_parent = ((do { git rev-parse --verify --quiet $"HEAD^" } | complete | get exit_code) == 0)
+            if $has_parent {
+                {base: (git rev-parse $"HEAD^"), hit: true}
+            } else {
+                {base: (git rev-parse HEAD), hit: false}
+            }
         }
     } else {
         # Host / non-run checkout: diff against origin's branch tip when
