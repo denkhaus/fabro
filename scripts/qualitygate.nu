@@ -24,7 +24,7 @@ source ../.fabro/workflows/develop/scripts/anchor_check.nu
 # The verification commons (denkhaus/work#1445): the run-id parse, run-base
 # (checkpoint pick 'earliest' — this gate's whole-run scope, now with the
 # work#1427 checkpoint-miss journal fallback healed here too), the crate
-# extraction, and the web-surface predicate live ONCE in
+# extraction, and the web/vendor surface predicates live ONCE in
 # scripts/lib/verification_commons.nu. No local copy of those shapes
 # remains (the regrowth pin in scripts/verification-commons-fixtures.nu
 # holds that).
@@ -318,6 +318,37 @@ def check-web [base: record]: nothing -> bool {
     true
 }
 
+# ── Vendor tier (denkhaus/work#1444) ───────────────────────────────────
+# `just vendor-pins` as a RECORDED gate arm: a diff touching vendor/**
+# (the vendored fork snapshots or vendor/PINS.toml) runs the ADR-0034
+# provenance verification inside the gate transcript — previously the
+# content-hash/tree-sha check rode only inside the loop-asset battery's
+# anonymous battery list, so a green vendor diff rested on the evidence
+# header alone (run 01M7QEQT1P8CF3SF4D4W8SN7BE, work#1444). A red verdict
+# fails the gate; no vendor path in the diff skips the tier in one path
+# check — the web tier's idiom.
+def vendor-diff? [base: record]: nothing -> bool {
+    run-diff-paths $base | any {|p| vendor-surface-path? $p}
+}
+
+def check-vendor-pins [base: record]: nothing -> bool {
+    if (not (vendor-diff? $base)) {
+        print '== vendor tier skipped — no vendor/ files in the diff =='
+        return true
+    }
+    print '== just vendor-pins — diff touches vendor/ (denkhaus/work#1444) =='
+    let res = (do { ^just vendor-pins } | complete)
+    if $res.exit_code != 0 {
+        print ($res.stdout | str trim -r -c "\n" | lines | last 30)
+        print ($res.stderr | str trim -r -c "\n" | lines | last 10)
+        print 'vendor pins RED: the vendored trees no longer match vendor/PINS.toml — reconcile first (just vendor status / just vendor import); a vendor diff never ships past a red provenance check'
+        return false
+    }
+    print ($res.stdout | str trim -r -c "\n")
+    print 'vendor pins green'
+    true
+}
+
 # Deterministic run-scope verdict for one lane (product|loop). Prints the
 # violations and exits 1 on any; exit 0 when the diff is in lane. An
 # empty diff is green (a bookkeeping-only run diff is legitimate).
@@ -508,6 +539,18 @@ def "main check-dot-snapshot" []: nothing -> nothing {
     if not (check-dot-snapshot $base) { exit 1 }
 }
 
+# Subcommand surface: `nu scripts/qualitygate.nu check-vendor-pins` is
+# the vendor tier's direct probe (denkhaus/work#1444) — the same check
+# the product gate runs inline, shared instead of copied; also the drive
+# arm for the close-when evidence over a vendor/ scratch change.
+def "main check-vendor-pins" []: nothing -> nothing {
+    let base = (run-base)
+    if not $base.grounded {
+        print "vendor-pins base ungrounded: interactive or pre-checkpoint, diffing working tree"
+    }
+    if not (check-vendor-pins $base) { exit 1 }
+}
+
 def main [] {
     let crates = (touched-crates)
     let base = (run-base)
@@ -535,6 +578,14 @@ def main [] {
     # must run the TS checks even when no lib/ crate is touched. First red
     # stops (qualitygate style).
     if not (check-web $base) {
+        print "GATE RED"
+        exit 1
+    }
+    # Vendor tier (denkhaus/work#1444): before the crates branches — a
+    # vendor/ diff must show the PINS provenance verification green in
+    # this transcript even when no lib/ crate is touched. First red
+    # stops (qualitygate style).
+    if not (check-vendor-pins $base) {
         print "GATE RED"
         exit 1
     }

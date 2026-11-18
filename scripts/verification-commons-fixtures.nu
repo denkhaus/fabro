@@ -6,7 +6,8 @@
 #
 # Pin families:
 #   1. PURE pins — the run-id parse, the subject mark, crate extraction,
-#      test-file classification, the web predicate, the nextest Summary
+#      test-file classification, the web and vendor predicates, the
+#      nextest Summary
 #      parse from COMBINED streams (work#1424: the Summary rides stderr),
 #      and the work#1424/#1432 verdict split ("0 tests matched the
 #      filter" = legit FAIL vs "output unparseable" = tooling error,
@@ -116,6 +117,19 @@ def test-web-predicate []: nothing -> nothing {
     assert-eq (verification_commons web-surface-path? 'lib/packages/fabro-api-client/src/x.ts') true 'lib/packages path is the web surface (workspace:*-consumed)'
     assert-eq (verification_commons web-surface-path? 'lib/components/fabro-dot/src/lib.rs') false 'lib/components is not the web surface'
     assert-eq (verification_commons web-surface-path? 'apps/marketing/x.ts') false 'other apps are not the web surface'
+}
+
+# The vendor surface (denkhaus/work#1444): everything under vendor/ —
+# the vendored fork snapshots AND vendor/PINS.toml — must route the diff
+# to the qualitygate's vendor tier (`just vendor-pins`). Workspace-crate
+# paths (lib/...) never fire it, and a vendor-prefixed sibling directory
+# (vendorx/) is not the surface either.
+def test-vendor-predicate []: nothing -> nothing {
+    assert-eq (verification_commons vendor-surface-path? 'vendor/petri/Cargo.toml') true 'a vendored fork path is the vendor surface'
+    assert-eq (verification_commons vendor-surface-path? 'vendor/PINS.toml') true 'the PINS provenance file itself is the vendor surface'
+    assert-eq (verification_commons vendor-surface-path? 'lib/apps/fabro-cli/src/main.rs') false 'lib/apps is not the vendor surface'
+    assert-eq (verification_commons vendor-surface-path? 'lib/components/fabro-dot/src/lib.rs') false 'lib/components is not the vendor surface'
+    assert-eq (verification_commons vendor-surface-path? 'vendorx/petri/x') false 'a vendor-prefixed sibling directory is not the vendor surface'
 }
 
 def test-first-cfg-line []: nothing -> nothing {
@@ -400,6 +414,7 @@ def test-no-mirror-regrows []: nothing -> nothing {
         'Fabro-Run: '
         "str starts-with 'apps/fabro-web/'"
         "str starts-with 'lib/packages/'"
+        "str starts-with 'vendor/'"
     ]
     for pair in [
         ['verify.nu' $VERIFY_SRC]
@@ -442,6 +457,7 @@ def main []: nothing -> nothing {
     test-crate-extraction
     test-test-file-classification
     test-web-predicate
+    test-vendor-predicate
     test-first-cfg-line
     test-summary-parse-combined
     test-verdict-split
