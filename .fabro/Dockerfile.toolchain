@@ -44,7 +44,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         bash git ca-certificates curl xz-utils \
         build-essential pkg-config perl cmake \
-        graphviz mold; \
+        graphviz mold rsync; \
     dot -V; \
     mold --version; \
     rm -rf /var/lib/apt/lists/*

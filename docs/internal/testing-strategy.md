@@ -39,6 +39,8 @@ If the setup requires direct writes to internal run files or runtime directories
 
 ### `lib/apps/fabro-cli/tests/it/cmd/*.rs`
 
+Tests under `tests/it/` build a separate integration-test target (`it`), not part of the crate's unit tests: run them with `cargo nextest run -p <crate> --test it <filter>` and add `--features test-support` where the target requires it. A bare `cargo nextest run -p <crate> <name>` answers "no tests to run" even though the test exists.
+
 `cmd/*` tests are command-owned tests.
 
 Each file should focus on one command's public contract. Setup may use other commands for convenience, but the final assertion should still be about the command under test.
