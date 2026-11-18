@@ -296,3 +296,30 @@ against a compile-time floor at connect, not frozen by version pins
 
 - Not the **work facade**: the work channel is how stage scripts CALL
   `fabro work` verbs; the run channel is the transport underneath.
+
+## Supervisor
+
+The full-access operating mode of the Ask Fabro agent (ADR-0046): global
+context over runs, observations and work items, with the full run-tool
+registry (including `run_mark`, `run_merge`, `run_create`, `work_close`)
+available for countermeasures. Reached through the docked run chat, the
+global chat page, or `fabro ask --capability full`.
+
+- Not the **controlling session**: the session is the human-side agent
+  driving the CLI; the supervisor is the productized in-product partner.
+- Not the **run-local read-only chat**: that is Ask Fabro's default
+  mode; the supervisor mode is an explicit per-session operator grant.
+
+## Capability control
+
+The per-session, server-enforced switch between Ask Fabro's read-only
+default and supervisor (full access) mode (ADR-0046). Flipping requires
+the authenticated principal, persists for the session, and lands an
+auditable capability-change event in the run stream. The CLI performs
+the same flip via `fabro ask --capability full`.
+
+- Not a **role model**: today's production reality is a single
+  operator; graded tiers, if fabro ever becomes multi-user, ride the
+  existing token scope machinery.
+- Not a **client toggle**: the tool policy enforces the mode
+  server-side; a UI switch alone would be decoration.
