@@ -8,8 +8,8 @@ use fabro_api::types::{
 };
 use fabro_types::session_event::SessionTurnStartedProps;
 use fabro_types::{
-    RunSessionMetadata, SessionDetail, SessionEvent, SessionEventBody, SessionId, SessionStatus,
-    SessionSummary, SessionTurn, TurnId, fixtures,
+    AskFabroCapability, RunSessionMetadata, SessionDetail, SessionEvent, SessionEventBody,
+    SessionId, SessionStatus, SessionSummary, SessionTurn, TurnId, fixtures,
 };
 use serde_json::json;
 
@@ -70,6 +70,7 @@ fn session_detail_round_trips_active_turn_and_last_seq() {
                 started_at: turn_started_at,
                 input:      "What changed?".to_string(),
             }),
+            capability: AskFabroCapability::ReadOnly,
             created_at,
             updated_at,
         },

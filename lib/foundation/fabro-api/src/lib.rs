@@ -50,7 +50,7 @@ pub mod types {
     };
     pub use fabro_types::{
         AgentEventProps, AgentSessionActivatedProps, AgentToolsAvailableProps, AskFabro,
-        AuthMethod, AutomationRef, BlobHash, CommandTermination, Conclusion,
+        AskFabroCapability, AuthMethod, AutomationRef, BlobHash, CommandTermination, Conclusion,
         ContextWindowBreakdownItem, ContextWindowCategory, ContextWindowCountMethod,
         ContextWindowSnapshot, ContextWindowStaleness, ContextWindowWarning, CreateVariableRequest,
         DiffStats, DiffSummary, DirtyStatus, ExecOutputTail, FailureCategory, FailureDetail,
@@ -76,13 +76,14 @@ pub mod types {
         SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxProviderKind,
         SandboxProviderLookupError, SandboxService, SandboxServiceListResponse, SecretMetadata,
         SecretType, ServerSettings, SessionDetail, SessionEvent, SessionEventBody, SessionId,
-        SessionStatus, SessionSummary, SessionTurn, SkillActivationSource, SkillSummary,
-        StageCompletion, StageContextWindow, StageContextWindowUnavailableReason, StageHandler,
-        StageId, StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection,
-        StageState, StageToolBatchProjection, SystemActorKind, SystemIntegrationStatus,
-        SystemIntegrationsResponse, TodoListProjection, ToolCategory, ToolSource, ToolSummary,
-        TurnId, UpdateVariableRequest, UserPrincipal, Variable, VariableListResponse,
-        WorkItemComment, WorkflowPath, WorkflowSettings, WorkflowVersion, WorkflowVersionId,
+        SessionStatus, SessionSummary, SessionTurn, SetSessionCapabilityRequest,
+        SkillActivationSource, SkillSummary, StageCompletion, StageContextWindow,
+        StageContextWindowUnavailableReason, StageHandler, StageId, StageInferenceProjection,
+        StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
+        SystemActorKind, SystemIntegrationStatus, SystemIntegrationsResponse, TodoListProjection,
+        ToolCategory, ToolSource, ToolSummary, TurnId, UpdateVariableRequest, UserPrincipal,
+        Variable, VariableListResponse, WorkItemComment, WorkflowPath, WorkflowSettings,
+        WorkflowVersion, WorkflowVersionId,
     };
     pub use lithos_llm::catalog::{ModelHandle, ProviderId};
     pub use lithos_llm::types::{

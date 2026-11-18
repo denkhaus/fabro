@@ -458,7 +458,14 @@ fn require_worker_or_user_for_run(
     let context = slot.0.lock().expect("auth context lock poisoned");
     match &context.principal {
         Some(Principal::User(_)) => Ok(()),
-        Some(Principal::Worker { run_id }) if run_id == route_run_id => Ok(()),
+        // A supervisor worker (ADR-0046: a full-access Ask Fabro session's
+        // backend) may reach any run — the widened scope is exactly the
+        // cross-run read the supervisor mode grants.
+        Some(Principal::Worker { run_id })
+            if run_id == route_run_id || context.worker_scopes.has_supervisor() =>
+        {
+            Ok(())
+        }
         Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
         None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
     }

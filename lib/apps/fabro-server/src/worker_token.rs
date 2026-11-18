@@ -15,6 +15,10 @@ pub(crate) const WORKER_TOKEN_ISSUER: &str = "fabro-server-worker";
 pub(crate) const WORKER_TOKEN_KID: &str = "fabro-worker";
 pub(crate) const WORKER_TOKEN_SCOPE: &str = "run:worker";
 pub(crate) const WORKER_RUN_TOOLS_SCOPE: &str = "agent:run_tools";
+/// The Ask Fabro supervisor capability (ADR-0046): a worker token that
+/// carries it is the widened half of a full-access ask session — the
+/// run-scoped guards stop rejecting its cross-run tool calls.
+pub(crate) const WORKER_SUPERVISOR_SCOPE: &str = "agent:supervisor";
 pub(crate) const WORKER_TOKEN_TTL_SECS: u64 = 72 * 60 * 60;
 
 #[derive(Clone)]
@@ -87,6 +91,7 @@ pub(crate) struct WorkerTokenClaims {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct WorkerScopeSet {
     agent_run_tools: bool,
+    supervisor:      bool,
 }
 
 impl WorkerScopeSet {
@@ -94,6 +99,7 @@ impl WorkerScopeSet {
     pub(crate) const fn run_worker() -> Self {
         Self {
             agent_run_tools: false,
+            supervisor:      false,
         }
     }
 
@@ -101,6 +107,18 @@ impl WorkerScopeSet {
     pub(crate) const fn run_worker_with_agent_run_tools() -> Self {
         Self {
             agent_run_tools: true,
+            supervisor:      false,
+        }
+    }
+
+    /// A full-access Ask Fabro session's backend (ADR-0046): the run tools
+    /// plus the supervisor capability, so run-scoped guards accept the
+    /// session's cross-run tool calls.
+    #[must_use]
+    pub(crate) const fn run_worker_supervisor() -> Self {
+        Self {
+            agent_run_tools: true,
+            supervisor:      true,
         }
     }
 
@@ -109,12 +127,22 @@ impl WorkerScopeSet {
         self.agent_run_tools
     }
 
+    #[must_use]
+    pub(crate) const fn has_supervisor(self) -> bool {
+        self.supervisor
+    }
+
     fn claim(self) -> String {
+        let mut scopes = WORKER_TOKEN_SCOPE.to_string();
         if self.agent_run_tools {
-            [WORKER_TOKEN_SCOPE, WORKER_RUN_TOOLS_SCOPE].join(" ")
-        } else {
-            WORKER_TOKEN_SCOPE.to_string()
+            scopes.push(' ');
+            scopes.push_str(WORKER_RUN_TOOLS_SCOPE);
         }
+        if self.supervisor {
+            scopes.push(' ');
+            scopes.push_str(WORKER_SUPERVISOR_SCOPE);
+        }
+        scopes
     }
 }
 
@@ -185,10 +213,12 @@ pub(crate) fn decode_worker_token(
 fn parse_worker_scopes(scope: &str) -> Result<WorkerScopeSet, ()> {
     let mut has_run_worker = false;
     let mut has_agent_run_tools = false;
+    let mut has_supervisor = false;
     for scope in scope.split_whitespace() {
         match scope {
             WORKER_TOKEN_SCOPE => has_run_worker = true,
             WORKER_RUN_TOOLS_SCOPE => has_agent_run_tools = true,
+            WORKER_SUPERVISOR_SCOPE => has_supervisor = true,
             _ => return Err(()),
         }
     }
@@ -197,6 +227,7 @@ fn parse_worker_scopes(scope: &str) -> Result<WorkerScopeSet, ()> {
     }
     Ok(WorkerScopeSet {
         agent_run_tools: has_agent_run_tools,
+        supervisor:      has_supervisor,
     })
 }
 
@@ -418,6 +449,23 @@ mod tests {
 
         assert_eq!(decoded.run_id, run_id);
         assert!(decoded.scopes.has_agent_run_tools());
+    }
+
+    /// ADR-0046: the supervisor capability rides the same space-delimited
+    /// scope claim and decodes back — the widened token a full-access ask
+    /// session's backend carries.
+    #[test]
+    fn decode_worker_token_round_trips_the_supervisor_scope() {
+        let run_id = run_id();
+        let keys = keys(TEST_SECRET);
+        let token =
+            issue_worker_token_with_scopes(&keys, &run_id, WorkerScopeSet::run_worker_supervisor())
+                .expect("worker token should issue");
+        let decoded = decode_worker_token(&token, &keys).unwrap();
+
+        assert_eq!(decoded.run_id, run_id);
+        assert!(decoded.scopes.has_agent_run_tools());
+        assert!(decoded.scopes.has_supervisor());
     }
 
     #[test]

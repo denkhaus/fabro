@@ -174,8 +174,8 @@ pub use sandbox_provider::{
 pub use sandbox_services::{SandboxService, SandboxServiceListResponse};
 pub use secret::{OAuthConfig, OAuthCredential, OAuthTokens, SecretMetadata, SecretType};
 pub use session::{
-    RunSessionMetadata, SessionDetail, SessionId, SessionStatus, SessionSummary, SessionTurn,
-    TurnId,
+    AskFabroCapability, RunSessionMetadata, SessionDetail, SessionId, SessionStatus,
+    SessionSummary, SessionTurn, SetSessionCapabilityRequest, TurnId,
 };
 pub use session_event::{SessionEvent, SessionEventBody};
 pub use stage_completion::StageCompletion;

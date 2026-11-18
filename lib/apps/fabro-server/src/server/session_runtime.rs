@@ -86,6 +86,15 @@ impl SessionRuntimeManager {
             .get(&session_id)
             .cloned()
     }
+
+    /// Drop the session's cached agent (ADR-0046 capability flip): the
+    /// agent was built under the session's previous tool capability, so
+    /// the next turn must rebuild it under the new posture.
+    pub(crate) async fn invalidate_agent(&self, session_id: SessionId) {
+        if let Some(entry) = self.existing_entry(session_id) {
+            entry.clear_agent().await;
+        }
+    }
 }
 
 /// The live coding agent behind one Ask Fabro session, when this process has

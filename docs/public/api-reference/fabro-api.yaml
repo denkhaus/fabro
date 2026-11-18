@@ -898,6 +898,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/sessions/{id}/capability:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/SessionId"
+    post:
+      operationId: setSessionCapability
+      tags: [Sessions]
+      summary: Set the session's tool capability
+      description: >-
+        The server-enforced Ask Fabro capability flip (ADR-0046): moves a
+        session between `read_only` (the default posture) and `full_access`
+        (the supervisor). Requires an authenticated user principal — a
+        worker token is refused. The flip persists per session, audits
+        into the run stream as a `session.capability` platform record, and
+        applies from the session's next turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSessionCapabilityRequest"
+      responses:
+        "200":
+          description: Session detail under the requested capability
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetail"
+        "403":
+          description: The principal may not flip the capability (worker token)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Session not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/sessions/{id}/events:
     parameters:
       - name: id
@@ -10435,12 +10487,34 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SessionTurn"
             - type: "null"
+        capability:
+          $ref: "#/components/schemas/AskFabroCapability"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    AskFabroCapability:
+      description: >-
+        An Ask Fabro session's tool capability (ADR-0046). `read_only` is
+        the default posture every session starts in; `full_access` is the
+        supervisor mode an authenticated principal flips the session into.
+      type: string
+      enum:
+        - read_only
+        - full_access
+      default: read_only
+
+    SetSessionCapabilityRequest:
+      description: The Ask Fabro capability flip's body (ADR-0046).
+      type: object
+      required:
+        - capability
+      properties:
+        capability:
+          $ref: "#/components/schemas/AskFabroCapability"
 
     SessionSummary:
       description: List projection of an Ask Fabro session.
@@ -10473,6 +10547,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SessionTurn"
             - type: "null"
+        capability:
+          $ref: "#/components/schemas/AskFabroCapability"
         created_at:
           type: string
           format: date-time
@@ -10515,6 +10591,8 @@ components:
           oneOf:
             - $ref: "#/components/schemas/SessionTurn"
             - type: "null"
+        capability:
+          $ref: "#/components/schemas/AskFabroCapability"
         created_at:
           type: string
           format: date-time
@@ -10573,6 +10651,7 @@ components:
       type: string
       enum:
         - run.session.created
+        - run.session.capability.changed
         - run.session.turn.started
         - run.session.user_message
         - run.session.assistant_delta
