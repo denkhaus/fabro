@@ -52,7 +52,14 @@ Mechanics:
 1. **The flip is server-enforced** in the tool policy — a UI toggle
    alone would be decoration. Flipping requires the authenticated
    principal, persists per session (a new session starts read-only),
-   and lands an auditable capability-change event in the run stream.
+   and lands the auditable capability-change event in the SESSION LOG
+   (a `run.session.capability_changed` kind through
+   RunSessionEventStore — works for runless sessions), mirroring a
+   platform record onto the run stream ONLY when the session is
+   run-anchored.
+   (Session events live in `run_session_events` and never enter run
+   streams, and platform records are run-keyed — a global-page flip
+   has no run to mirror onto; see the events strategy.)
 2. **The CLI is a first-class door**: `fabro ask --capability full`
    performs the same server-enforced, audited flip. Anything the web
    UI can do, the fabro CLI can do.
@@ -103,8 +110,10 @@ model is built now (today's production reality is a single operator).
   Revisit the no-guard decision when the supervisor sees daily use.
 - Migration footprint: capability-stateful tool policy (server),
   worker-token scope widening at full access, supervisor system prompt
-  (merge soft-confirm mandate), capability-change event in the run
-  stream, global session index door + resume picker + reset door,
+  (merge soft-confirm mandate), the `run.session.capability_changed`
+  event in the session log (RunSessionEventStore; a platform-record
+  mirror on the run stream only when the session is run-anchored),
+  global session index door + resume picker + reset door,
   global viewport chat route, `fabro ask --capability`. Phased as
   work items in project `fabro` (lane:develop).
 - The vocabulary gains: **supervisor** (the full-access operating mode
