@@ -240,6 +240,10 @@ def test-names [content: string] {
 # Tests-run count parsed from a nextest run's Summary line (fabro-bdff):
 # `Summary [  1.234s] 12 tests run: 12 passed, ...`. Null when the summary
 # cannot be parsed — the caller treats that as a failure, never as zero.
+# NOTE (work#1424 / work#1432): nextest prints the Summary to STDERR —
+# parse the COMBINED streams, never stdout alone; a stdout-only parse
+# false-FAILs green name-filter runs (the zero-selection guard then
+# burns a gate cycle on a pass).
 def nextest-tests-run [output: string] {
     let m = ($output | lines | parse --regex 'Summary\s+\[[^\]]*\]\s+(?P<ran>\d+)\s+tests?\s+run' | last)
     if ($m | is-empty) { return null }
@@ -375,8 +379,10 @@ def stage-implementer [] {
             # must never look green. Each extracted name is a distinct test
             # fn and nextest matches filters by substring, so a correct
             # extraction selects at least `names` tests; anything less (or an
-            # unparseable summary) means extraction mismatch — FAIL.
-            let ran = (nextest-tests-run $res.stdout)
+            # unparseable summary) means extraction mismatch — FAIL. The
+            # summary travels on STDERR (work#1424/work#1432): parse the
+            # combined streams.
+            let ran = (nextest-tests-run ($res.stdout + $res.stderr))
             if $res.exit_code != 0 or $ran == null or $ran < ($tm.names | length) {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
                 print $"verify: FAIL nextest ($c) \(name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length)\)"
