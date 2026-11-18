@@ -59,8 +59,20 @@ def assert-tofu-fresh [tofu_dir: string]: nothing -> nothing {
     if $fetch.exit_code != 0 {
         error make {msg: $"deploy-window: tofu fetch failed: ($fetch.stderr | str trim | str substring 0..160)"}
     }
-    let branch = (git -C $tofu_dir rev-parse --abbrev-ref HEAD | str trim)
-    let behind = (git -C $tofu_dir rev-list --count $"HEAD..origin/($branch)" | str trim | into int)
+    # Curated errors on the git failure modes: `into int` on an empty
+    # rev-parse answer would fail closed but name nothing (the bare or
+    # corrupt checkout case). Detached HEAD resolves against
+    # origin/HEAD — the default branch, which is the intent here.
+    let branch = (do { git -C $tofu_dir rev-parse --abbrev-ref HEAD } | complete)
+    if $branch.exit_code != 0 {
+        error make {msg: 'deploy-window: resolving the tofu branch failed — is the checkout a git worktree with a HEAD?'}
+    }
+    let branch = ($branch.stdout | str trim)
+    let count = (do { git -C $tofu_dir rev-list --count $"HEAD..origin/($branch)" } | complete)
+    if $count.exit_code != 0 {
+        error make {msg: 'deploy-window: counting commits behind origin failed — inspect the tofu checkout'}
+    }
+    let behind = ($count.stdout | str trim | into int)
     if $behind > 0 {
         # Plain-string concatenation, NOT $"..." interpolation: the message
         # carries (s) and (2026-11-18: ...) — an interpolated string parses
