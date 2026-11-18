@@ -323,3 +323,8 @@ the same flip via `fabro ask --capability full`.
   existing token scope machinery.
 - Not a **client toggle**: the tool policy enforces the mode
   server-side; a UI switch alone would be decoration.
+- Not the **capability channel**: the codebase already says
+  "capability channel" for the ADR-0035 run-channel socket — the
+  per-run transport between a sandbox and the platform. The capability
+  control is a DIFFERENT concept: the per-session tool-policy switch
+  between Ask Fabro's read-only default and supervisor mode.

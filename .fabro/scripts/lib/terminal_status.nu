@@ -11,7 +11,16 @@
 # `RunStatusKind` (snake_case serde) — its terminal family is exactly
 # succeeded / failed / human_needed / dead (`RunStatus::is_terminal`,
 # work#1072: the decision request is TERMINAL, never a failure or a
-# block). A CANCELLED run is a different thing: petri's engine-level
+# block). ADR-0045 (parked runs are waiting states) SUPERSEDES that
+# terminality clause: under its P2, `human_needed` leaves
+# `is_terminal` and grows the waiting family. The interim decided
+# semantics below stand until P2 lands; when ADR-0045's P3 consumer
+# split opens, it lands INSIDE this module — shrink TERMINAL_KINDS,
+# add the waiting family, and give each consumer the predicate its
+# line names (per-consumer imports: push-gate exempts waiting,
+# watchdog counts it neither-completed-nor-stalled, salvage refuses).
+#
+# A CANCELLED run is a different thing: petri's engine-level
 # `RunStatus::Cancelled` maps to platform `Failed { reason:
 # FailureReason::Cancelled }` — NEITHER canceled spelling is ever
 # emitted as a status kind. Both spellings stay ACCEPTED here because

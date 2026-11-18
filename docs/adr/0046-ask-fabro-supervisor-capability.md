@@ -52,7 +52,14 @@ Mechanics:
 1. **The flip is server-enforced** in the tool policy — a UI toggle
    alone would be decoration. Flipping requires the authenticated
    principal, persists per session (a new session starts read-only),
-   and lands an auditable capability-change event in the run stream.
+   and lands the auditable capability-change event in the SESSION LOG
+   (a `run.session.capability_changed` kind through
+   RunSessionEventStore — works for runless sessions), mirroring a
+   platform record onto the run stream ONLY when the session is
+   run-anchored.
+   (Session events live in `run_session_events` and never enter run
+   streams, and platform records are run-keyed — a global-page flip
+   has no run to mirror onto; see the events strategy.)
 2. **The CLI is a first-class door**: `fabro ask --capability full`
    performs the same server-enforced, audited flip. Anything the web
    UI can do, the fabro CLI can do.
