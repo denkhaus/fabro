@@ -54,6 +54,7 @@
 # absorb a failed read or write.
 
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
+use ../../../scripts/lib/terminal_status.nu [is-human-needed-kind]
 use ../../../scripts/lib/work_channel.nu [
     server, cli, observation-list-argv, work-radius-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
 ]
@@ -225,7 +226,7 @@ def main [--smoke]: nothing -> nothing {
         }
 
         let terminal_kind = ($entry.run | get -o lifecycle | get -o status | get -o kind | default '')
-        if $terminal_kind == "human_needed" {
+        if (is-human-needed-kind $terminal_kind) {
             # work#1072 (stage-F design consequence, grilled 2026-11-05):
             # the run itself asks for a human — the deadlock exit means a
             # decision pends. Park directly, LLM-free: the park needs no

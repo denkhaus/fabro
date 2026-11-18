@@ -53,6 +53,16 @@ export def is-success-kind [kind: string]: nothing -> bool {
     $kind == $SUCCESS_KIND
 }
 
+# The decision-request kind (work#1072): the run itself asks for a human —
+# the adjudicator fast-path parks such runs LLM-free. One spelled home
+# beside the other single-kind predicate so no consumer re-types the
+# literal (the work#1446 same-file adoption).
+export const HUMAN_NEEDED_KIND = 'human_needed'
+
+export def is-human-needed-kind [kind: string]: nothing -> bool {
+    $kind == $HUMAN_NEEDED_KIND
+}
+
 # The push gate's blocking classification, PURE over captured door JSON
 # (work#1446) — no server in reach:
 #   runs   = `fabro ps --all --json` rows (the FULL listing: plain ps

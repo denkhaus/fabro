@@ -33,7 +33,7 @@ const DIR = (path self | path dirname)
 
 use lib/run_anchor.nu
 use lib/work_channel.nu
-use lib/terminal_status.nu [TERMINAL_KINDS, is-terminal-kind, is-success-kind, gate-classification]
+use lib/terminal_status.nu [TERMINAL_KINDS, is-terminal-kind, is-success-kind, gate-classification, HUMAN_NEEDED_KIND, is-human-needed-kind]
 use ../workflows/develop/scripts/check-transcript.nu
 
 # The consumers whose mirrors retired into the lib (#1108): the develop
@@ -553,6 +553,18 @@ def test-consumers-use-the-predicate []: nothing -> nothing {
     }
 }
 
+def test-human-needed-kind []: nothing -> nothing {
+    # The adjudicator fast-path's single-kind predicate (the work#1446
+    # note's same-file adoption): THE decision-request kind, spelled once
+    # in the module — no consumer re-types the literal. Every other kind
+    # (active, terminal, renamed, empty) is false by shape.
+    assert-true (is-human-needed-kind 'human_needed') 'the decision-request kind is recognized'
+    for kind in [succeeded failed dead canceled cancelled submitted running paused ''] {
+        assert-false (is-human-needed-kind $kind) $"non-decision kind rejected: ($kind)"
+    }
+    assert-eq $HUMAN_NEEDED_KIND 'human_needed' 'the canonical spelling lives in the module'
+}
+
 def main []: nothing -> nothing {
     test-id-from-branch
     test-subject-mark
@@ -569,5 +581,6 @@ def main []: nothing -> nothing {
     test-gate-classification-live
     test-gate-classification-healed
     test-consumers-use-the-predicate
+    test-human-needed-kind
     print 'lane-commons: all pins green'
 }
