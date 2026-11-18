@@ -2577,6 +2577,7 @@ dependencies = [
  "pebble-coding-agent",
  "petri-attractor-steps",
  "petri-execution",
+ "petri-executor-sandbox",
  "petri-frontend-attractor",
  "petri-frontend-fabro",
  "petri-runtime",
