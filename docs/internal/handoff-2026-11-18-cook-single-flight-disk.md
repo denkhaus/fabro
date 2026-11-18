@@ -1,10 +1,12 @@
 # Handoff: Toolchain cook single-flight & the Docker disk (2026-11-18)
 
-Updated: 2026-11-18, 17:4x CET (16:4x UTC) — evening state: PR #602 merged +
-fork export done + the alert arm LIVE in fabro-tofu (`4b44794`, end-to-end
-tested to Slack) + the #168 arm verified live + three loop fixes merged to
-`denkhaus` (`2606b8d74`: #1168, #1419, #1190/#1150). Deploy tonight on the
-build machine is the last step.
+Updated: 2026-11-18, ~19:35 CET (18:35 UTC) — window-prep state: the deploy
+window is IN PREP (operator stopped all five schedule triggers, verified
+live; code review + architecture review complete; four fix branches in
+flight; bench pending). See the "Window-prep addendum" at the bottom.
+DELETION RULE (ADR-0036): this doc is deleted (git rm) in the window's
+commit series once the deploy AND both acceptance checks below are
+consumed — everything else in it already is.
 
 Origin: a line-monitoring session on 2026-11-18 (runs of the morning, painpoint
 sweep, live incident follow-up). This document freezes the state, the decisions,
@@ -221,10 +223,16 @@ contract accepts outcome synonyms).
 - **#1440 lifecycle:** the lap's follow-up painpoints became items
   #1442 (vendor export needs rsync; agent sandboxes lack it),
   #1443 (vendored clippy debt blocks `-D warnings`), #1444
-  (`just vendor-pins` missing from the gate transcript) — unlinked from
-  #1440's closure radius as independent follow-ups; the radius is empty
-  and the p0 closes on the next adjudicator pass. The deploy remains the
-  last operational step (tonight, on the build machine).
+  (`just vendor-pins` missing from the gate transcript) — CORRECTION
+  (2026-11-18 18:35 UTC, live probe): the unlink did NOT persist —
+  all three are LINKED into #1440's closure radius again (most likely
+  re-linked by the pair-keyed link enrichment, work#1237). The p0 will
+  therefore NOT auto-close on the next adjudicator pass; a close attempt
+  would hit the `close_radius_open` retry burn (the work#1418 class).
+  Remedy at re-arm: one unlink pass over the three links right after the
+  window, then let the next adjudicator pass close #1440; the durable
+  fix is work#1434 (radius semantics for follow-up links). The deploy
+  remains the last operational step (tonight, on the build machine).
 - **Line rhythm observed (pre-deploy mode):** every merge still triggers
   a cold cook — gear laps 22–47 min, scheduled fires eaten while a lap
   overruns (work#1435 live), the watchdog alarmed three times today and
@@ -308,3 +316,37 @@ Optional, no overlap:
 - [ ] work#1272 (BuildKit routing) and work#1208 (layer order) — evaluate only
       after #1440 + #1335 land; they optimize the same cook from different
       angles
+
+## Window-prep addendum (2026-11-18, ~19:35 CET)
+
+Live-probed state behind this window's deploy (state claims above re-verified,
+per the handoff rule that a state section is a claim, never evidence):
+
+- **Line stopped by the operator** — verified live: all five gears carry
+  `schedule enabled=false` (manual/api trigger stays on). The window's
+  `just deploy pause` phase is still run (it records the paused set for
+  `arm`).
+- **Reviews complete, folds in flight.** Two-axis code review over
+  `435238316f...HEAD` (1 hard + 5 judgement calls; spec: 3 partial after
+  verification against tracker bodies) plus the architecture review (3
+  Strong candidates) ran BEFORE the window, per operator decision. Folds
+  ride four fix branches (worktree-per-subagent): `fix/cli-status-review-folds`
+  (status.rs review folds), `fix/verification-commons` (work#1445 + the
+  work#1427/#1424/#1432 folds), `fix/terminal-status-kind` (work#1446 + the
+  work#1168 fold), `fix/adjudicator-park-note` (the work#1419 park-note fold).
+  Items filed: #1445 (C1, worked this window), #1446 (C2, worked this window),
+  #1447 (C3, filed only).
+- **Deploy-relevant review outcome:** work#1440 conforms fully (single-flight
+  guard, manifest digest, mint-time LRU ceiling all verified against the
+  demands). The #603 scheduler commit's production unpause half is already
+  live in fork.40 (scope note on work#1411) — the observable NEW behavior
+  this window ships is the drift/provider-window cause classification plus
+  the #1440 cluster.
+- **Still owed before the image builds:** the four folds merged to
+  `denkhaus`, the bench gate (`workbench` + `smoke-window-gate`, the window
+  ships scheduler/status-surface changes), the fork.41 version bump, and a
+  warm gopass store for plan/apply.
+- **After the apply:** the standard proof ceremony PLUS this doc's two
+  acceptance checks (one build for concurrent first cooks; petri-env
+  population bounded at the first eviction sweep) — then this doc is
+  `git rm`ed (deletion rule in the header).
