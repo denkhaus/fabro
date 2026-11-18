@@ -1,7 +1,10 @@
 # Handoff: Toolchain cook single-flight & the Docker disk (2026-11-18)
 
-Updated: 2026-11-18, 15:45 CET (14:45 UTC) — PR #602 merged to trunk
-(`1d979693d0`); the fix goes live only with the next server deploy.
+Updated: 2026-11-18, 17:4x CET (16:4x UTC) — evening state: PR #602 merged +
+fork export done + the alert arm LIVE in fabro-tofu (`4b44794`, end-to-end
+tested to Slack) + the #168 arm verified live + three loop fixes merged to
+`denkhaus` (`2606b8d74`: #1168, #1419, #1190/#1150). Deploy tonight on the
+build machine is the last step.
 
 Origin: a line-monitoring session on 2026-11-18 (runs of the morning, painpoint
 sweep, live incident follow-up). This document freezes the state, the decisions,
@@ -200,6 +203,34 @@ contract accepts outcome synonyms).
    when provably orphaned). Raising its aggressiveness is NOT the chosen path —
    the engine-side ceiling is.
 
+## Evening addendum (2026-11-18, ~17:45 CET)
+
+- **Three loop fixes merged to `denkhaus`** (`2606b8d74`; cargo-free, three
+  parallel worktrees + subagents): #1168 (the watchdog STALL now ends the
+  run red AT the stage — the `outcome=failed` edge WAS the absorber: petri
+  routes an explicitly-routed red as control flow, work#1029's pinned
+  semantics; live specimen run `01M7QBW8A10DJ9YKJ2EH46EQG8`), #1419 (the
+  already-landed verdict parks needs-human with the claim pinned — the
+  reconciler's refused-release was the re-claim burn, work#1300's class),
+  #1190/#1150 (the recorded-check metachar trap is refused at
+  registration, Exit 64; the argv registry's work-list/automations/ps
+  builders landed with byte-equal pins and a re-growth check).
+- **Consequence:** the next stalling hour produces the FIRST red watchdog
+  run + Slack ping — expected, not an incident. Up to 3 parks may trip
+  the schedule breaker; re-enable is one command.
+- **#1440 lifecycle:** the lap's follow-up painpoints became items
+  #1442 (vendor export needs rsync; agent sandboxes lack it),
+  #1443 (vendored clippy debt blocks `-D warnings`), #1444
+  (`just vendor-pins` missing from the gate transcript) — unlinked from
+  #1440's closure radius as independent follow-ups; the radius is empty
+  and the p0 closes on the next adjudicator pass. The deploy remains the
+  last operational step (tonight, on the build machine).
+- **Line rhythm observed (pre-deploy mode):** every merge still triggers
+  a cold cook — gear laps 22–47 min, scheduled fires eaten while a lap
+  overruns (work#1435 live), the watchdog alarmed three times today and
+  all three were absorbed green (fixed by #1168 above). The GC prune at
+  :17 reclaimed ~35 GB at 17:17 CET (66% -> 59%).
+
 ## Todo
 
 Implementation (landed on trunk; fork export and deploy owed):
@@ -232,26 +263,32 @@ Host/ops:
       verify `fabro version --server` shows the new build, then confirm at
       the next new-tip cook that concurrent gears yield ONE build and the
       petri-env tag count drops to the ceiling on the first eviction sweep
-- [ ] Activate the work#168 retention arm on the deploy host (seed
-      fabro-tofu-1055: `terminal_sandbox_age_hours 48` +
-      `disk_brake_percent 85` + container restart) — relief step 5 of
-      work#1425, still owed after yesterday's emergency purge
-- [ ] Record before/after `df -h /var/lib/docker` in work#1425 on activation
+- [x] Activate the work#168 retention arm on the deploy host — VERIFIED
+      LIVE 2026-11-18: settings (`terminal_sandbox_age_hours=24`,
+      `disk_brake_percent=85`) written 21:18 UTC before the 22:54 UTC
+      boot (read order proven); no exited container older than ~1h
+      remains; brake dormant at 59% churn-disk use. Recorded in
+      work#1425; the incident item is CLOSED with that evidence
+- [x] Record before/after `df -h /var/lib/docker` in work#1425 — in the
+      body (57 MB free at incident -> 53% post-purge -> 59% at evening,
+      GC-pruned)
 
 Adjacent lines (own carriers, own lanes):
 
 - [ ] work#1335 (loop): release-binary fetch in `.fabro/Dockerfile.toolchain`
       + `just host-release` — collapses the per-tip cook cost; makes aggressive
       eviction safe
-- [ ] #1188 (loop): df threshold alarm to Slack + the hourly backstop
-      sweep executor — IMPLEMENTED in fabro-tofu (`main` @ `ec4c938`):
-      GC alert arm (WARN once per crossing / CRIT every run, out-of-band
-      webhook, host cron, no server in the loop) + 5 ladder test pins.
-      Owed by the user: `gopass insert fabro-tofu/gc-slack-webhook-url`
-      (webhook first), then the tofu apply — until both, alerts skip
-      silently
-- [ ] work#1425 (loop): close after relief + activation are recorded with
-      before/after evidence
+- [x] #1188 (loop): df threshold alarm to Slack + the hourly backstop
+      sweep executor — DONE AND LIVE: gopass inserted, tofu applied
+      (fabro-tofu `main` @ `4b44794`), end-to-end Slack post proven from
+      the host file path. Two apply-gate catches en route (nu-guard
+      prose parens; a builtin-into-complete pipe) — both fixed, both
+      now guarded. The deploy also converges the settings.toml seed:
+      the retention keys entered the fabro-app template, so the seed
+      re-run carries the work#168 arm values
+- [x] work#1425 (loop): incident closed 2026-11-18 with the full evidence
+      chain (relief recipe executed, work#168 arm verified live,
+      before/after df recorded); radius was empty, close clean
 
 Verification once #1440 lands:
 
