@@ -279,8 +279,11 @@ def 'main export' [
 
     let clone = (ensure-clone $fork $branch)
     # The clone is a scratch copy of the fork branch: make it byte-equal to
-    # the tree, .git excluded.
-    let sync = (do { ^rsync -a --delete --exclude '.git/' $"($dest)/" $"($clone)/" } | complete)
+    # the tree, .git excluded. `target/` is excluded too: the vendored
+    # workspaces' build dirs carry tens of GB of compile artifacts no fork
+    # commit ever contains (2026-11-18: a 63 GB copy hung every export past
+    # its timeout — rsync crawled the target dir into the clone).
+    let sync = (do { ^rsync -a --delete --exclude '.git/' --exclude 'target/' $"($dest)/" $"($clone)/" } | complete)
     if $sync.exit_code != 0 {
         error make {msg: $"vendor-sync: rsync into ($clone) failed: ($sync.stderr | str trim)"}
     }
