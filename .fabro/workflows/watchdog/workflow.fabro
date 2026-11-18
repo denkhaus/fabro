@@ -42,19 +42,30 @@ digraph Watchdog {
         shape=parallelogram,
         script="nu .fabro/workflows/watchdog/scripts/stall-check.nu",
         timeout="5m",
-        max_retries=0
+        max_retries=0,
+        // work#1168: the alarm must fail the run AT this stage. A red
+        // routed onward over an explicit `outcome=failed` edge is
+        // control flow, not a failure — the engine concludes the run
+        // SUCCEEDED at exit (work#1029's routed arm; run
+        // 01M7QBW8A10DJ9YKJ2EH46EQG8 absorbed a live GEAR STALL into a
+        // green conclusion that way). on_failure="exit" (env_guard's
+        // class, work#1277) ends the run failed here instead: the red
+        // rides the Slack lifecycle notification to the operator.
+        on_failure="exit"
     ]
 
     start -> env_guard
     env_guard -> stall_check
 
-    // Health is natural completion.
+    // Health is natural completion: the stage exits 0 and prints the
+    // preferred label; the run reaches exit green, exactly as before.
     stall_check -> exit [label="All gears healthy", condition="preferred_label=\"All gears healthy\""]
-    // The alarm routes to exit as a FAILURE: the stage exited non-zero,
-    // the run concludes red, the Slack lifecycle notification pings the
-    // operator (the fact-failure discipline — the check IS the
-    // contract, never absorbed).
-    stall_check -> exit [label="Gear stall alarm", condition="outcome=failed"]
+    // NO `outcome=failed` edge (work#1168): a failure routed over an
+    // explicit conditional edge is control flow and concludes the run
+    // green at exit — that edge WAS the absorber. The stall (and any
+    // door failure) now ends the run AT the stage red through
+    // on_failure="exit"; the script never prints the healthy preferred
+    // label on a failure, so no conditional edge can route a red.
     // Unconditional fallback (the engine requires one): an unrouted
     // outcome still ends the pass; the next hourly tick re-checks.
     stall_check -> exit [x.kind="soft", label="Unrouted check outcome"]
