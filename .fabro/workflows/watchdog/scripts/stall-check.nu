@@ -20,7 +20,9 @@
 # `fabro ps -a --workflow watchdog` make a dead watchdog visible on the
 # operator's manual glance.
 
-use ../../../scripts/lib/work_channel.nu [server, cli, title-own-run]
+use ../../../scripts/lib/work_channel.nu [
+    server, cli, title-own-run, automations-list-argv, ps-argv
+]
 
 const CALLER = 'watchdog-stall-check'
 
@@ -48,7 +50,9 @@ const GEARS = [
 # failure.
 def automation-rows []: nothing -> list<any> {
     let srv = (server $CALLER)
-    let res = (cli $CALLER [automations --server $srv list --json])
+    # The automations door through the registry builder (work#1150) —
+    # the retired inline literal is pinned in lane-commons-fixtures.nu.
+    let res = (cli $CALLER (automations-list-argv $srv))
     if $res.exit_code != 0 {
         set-title $"Watchdog: door failure — automations list: ($res.stderr | str trim | str substring 0..48)"
         print -e $"($CALLER): automations list failed: ($res.stderr | str trim | str substring 0..240)"
@@ -78,7 +82,9 @@ def schedule-enabled [rows: list<any>, workflow: string]: nothing -> bool {
 # not count: only a COMPLETED pass proves the gear works.
 def last-pass-age-minutes [workflow: string]: nothing -> any {
     let srv = (server $CALLER)
-    let res = (cli $CALLER [ps --server $srv --all --json --workflow $workflow])
+    # The ps door through the registry builder (work#1150): --all widens
+    # past this watchdog's own runs, the workflow filter is server-side.
+    let res = (cli $CALLER (ps-argv $srv --all --workflow $workflow))
     if $res.exit_code != 0 {
         set-title $"Watchdog: door failure — ps for ($workflow): ($res.stderr | str trim | str substring 0..48)"
         print -e $"($CALLER): ps failed for ($workflow): ($res.stderr | str trim | str substring 0..240)"

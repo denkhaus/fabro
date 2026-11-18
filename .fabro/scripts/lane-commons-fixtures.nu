@@ -2,7 +2,7 @@
 # Lane-script commons battery (denkhaus/work#1108): the work-channel and
 # run-anchor modules exist so the MIRRORED reporter/evidence helpers
 # ("reuse this shape, do not invent a new one" comments) become ONE
-# implementation. Two pin families:
+# implementation. Pin families:
 #
 #   1. PURE pins — the branch parse (anchored end, off-run default
 #      parametrized per consumer), the fixed-string grep mark (the
@@ -14,6 +14,16 @@
 #      current-branch defs in the consumers). The extraction pins are
 #      the red-first core of #1108: red before the extraction (helpers
 #      still mirrored), green after.
+#   3. NO-INLINE-ARGV pins (work#1150) — the def-only granularity hole:
+#      the mirror scan matched local `def`s, so an inline argv literal
+#      passed green — exactly how the lane-check work-list and the
+#      stall-check automations/ps literals landed. Every `--server`
+#      token on a consumer's code line is a re-grown literal now.
+#   4. QUOTE-GUARD pins (work#1190) — the recorded-check wrapper refuses
+#      the nested-shell metachar trap (a `sh -c` payload parses twice;
+#      run 01M6X3WCQ1's unquoted graphviz arrow became the stray
+#      repo-root file `b` in the evidence commit). The boundary pins
+#      hold the detector's refusals AND its allowed forms.
 #
 # The transport arms (server refusal, end-to-end argv against a channel)
 # stay pinned by the reporter/evidence smokes, which drive the real
@@ -23,6 +33,7 @@ const DIR = (path self | path dirname)
 
 use lib/run_anchor.nu
 use lib/work_channel.nu
+use ../workflows/develop/scripts/check-transcript.nu
 
 # The consumers whose mirrors retired into the lib (#1108): the develop
 # graph's stage scripts. check-transcript only consumed the run-anchor
@@ -35,9 +46,17 @@ const CONSUMERS_BOTH = [
 const CONSUMER_ANCHOR = [
     'check-transcript.nu'
 ]
+# work#1150: the two door consumers whose inline argv retired into the
+# builders — scanned by the no-inline-argv check beside the develop
+# consumers.
+const CONSUMER_LANES = [
+    [workflow name];
+    [develop lane-check.nu]
+    [watchdog stall-check.nu]
+]
 
-def consumer-src [name: string]: nothing -> string {
-    open --raw ($DIR | path join '..' 'workflows' 'develop' 'scripts' $name)
+def consumer-src [workflow: string, name: string]: nothing -> string {
+    open --raw ($DIR | path join '..' 'workflows' $workflow 'scripts' $name)
 }
 
 def assert-eq [got: any, want: any, what: string]: nothing -> nothing {
@@ -50,6 +69,20 @@ def assert-eq [got: any, want: any, what: string]: nothing -> nothing {
 def assert-contains [haystack: string, needle: string, what: string]: nothing -> nothing {
     if not ($haystack | str contains $needle) {
         print -e $"lane-commons: ($what): missing `($needle)`"
+        exit 1
+    }
+}
+
+def assert-true [got: bool, what: string]: nothing -> nothing {
+    if not $got {
+        print -e $"lane-commons: ($what): expected true, got false"
+        exit 1
+    }
+}
+
+def assert-false [got: bool, what: string]: nothing -> nothing {
+    if $got {
+        print -e $"lane-commons: ($what): expected false, got true"
         exit 1
     }
 }
@@ -136,6 +169,29 @@ def test-run-set-title-argv []: nothing -> nothing {
     assert-eq ($argv | last) 'Watchdog: all enabled gears healthy' 'the title rides as the final positional'
 }
 
+def test-door-read-argv []: nothing -> nothing {
+    # work#1150: the lane check's work-list and the watchdog's
+    # automations-list/ps reads retired their inline literals into the
+    # builders. Each pin freezes the RETIRED literal byte-for-byte —
+    # these are the shapes the lane-check and stall-check smokes drive
+    # against the channel shim.
+    let srv = 'http://127.0.0.1:32276'
+    assert-eq (work_channel work-list-argv $srv 'fabro-proof' 'develop') [
+        'work' '--server' $srv 'list' '--project' 'fabro-proof' '--lane' 'develop' '--limit' '1' '--json'
+    ] 'work-list-argv equals the retired lane-check literal (facade-level --server, subcommand before --project)'
+    assert-eq (work_channel automations-list-argv $srv) [
+        'automations' '--server' $srv 'list' '--json'
+    ] 'automations-list-argv equals the retired stall-check literal (facade-level --server)'
+    assert-eq (work_channel ps-argv $srv --all --workflow 'watchdog') [
+        'ps' '--server' $srv '--all' '--json' '--workflow' 'watchdog'
+    ] 'ps-argv equals the retired stall-check literal (verb-level --server)'
+    # The bare ps read: no --all, no workflow filter — the caller-scoped
+    # default the shim smoke's owned-ps arm drives.
+    assert-eq (work_channel ps-argv $srv) [
+        'ps' '--server' $srv '--json'
+    ] 'ps-argv defaults to the caller-scoped json read'
+}
+
 # --- 2b. probe-literal equality: the lib argv IS the bench literal --------
 # The bench registry (the fabro test repo) pins the argv GRAMMAR against the toolchain's
 # fabro CLI with hand-spelled literals (probe-28: work-create; probe-37:
@@ -204,13 +260,19 @@ def test-probe-literal-equality []: nothing -> nothing {
 
 def test-consumers-source-the-lib []: nothing -> nothing {
     for name in $CONSUMERS_BOTH {
-        let text = (consumer-src $name)
+        let text = (consumer-src 'develop' $name)
         assert-contains $text 'use ../../../scripts/lib/work_channel.nu' $"($name) sources the work-channel module"
         assert-contains $text 'use ../../../scripts/lib/run_anchor.nu' $"($name) sources the run-anchor module"
     }
     for name in $CONSUMER_ANCHOR {
-        let text = (consumer-src $name)
+        let text = (consumer-src 'develop' $name)
         assert-contains $text 'use ../../../scripts/lib/run_anchor.nu' $"($name) sources the run-anchor module"
+    }
+    # work#1150: the two door consumers source the work-channel module —
+    # their argv travels through the builders now.
+    for row in $CONSUMER_LANES {
+        let text = (consumer-src $row.workflow $row.name)
+        assert-contains $text 'use ../../../scripts/lib/work_channel.nu' $"($row.name) sources the work-channel module"
     }
 }
 
@@ -220,7 +282,7 @@ def test-no-mirror-regrows []: nothing -> nothing {
     let mirrors = ['def work-call' 'def work-server' 'def run-base' 'def current-branch' 'def current-run-id' 'def work-create']
     let names = ($CONSUMERS_BOTH | append $CONSUMER_ANCHOR)
     for name in $names {
-        let text = (consumer-src $name)
+        let text = (consumer-src 'develop' $name)
         for marker in $mirrors {
             if ($text | str contains $marker) {
                 print -e $"lane-commons: mirror regrew in ($name): `($marker)` — the lib owns that shape now"
@@ -228,6 +290,68 @@ def test-no-mirror-regrows []: nothing -> nothing {
             }
         }
     }
+}
+
+# --- 4. extraction pins: no inline door argv (work#1150) -------------------
+
+def assert-no-inline-server [workflow: string, name: string]: nothing -> nothing {
+    let hits = (consumer-src $workflow $name | lines | enumerate | where {|it|
+        (($it.item | str trim | str starts-with '#') == false) and ($it.item | str contains '--server')
+    })
+    if ($hits | is-not-empty) {
+        for h in $hits {
+            print -e $"lane-commons: inline --server argv regrew in ($workflow)/($name):($h.index + 1) — the work_channel builders own the flag, work#1150"
+            print -e $"  ($h.item | str trim)"
+        }
+        exit 1
+    }
+}
+
+def test-no-inline-server-argv []: nothing -> nothing {
+    # The granularity hole (work#1150): test-no-mirror-regrows only
+    # matches local `def`s, so an INLINE argv literal passed green —
+    # exactly how the lane-check work-list and the stall-check
+    # automations/ps literals landed. Every `--server` token on a
+    # consumer's code line is a re-grown literal now: consumers resolve
+    # the server with `server` and hand its VALUE to a builder. Comment
+    # lines are prose, not argv.
+    for name in ($CONSUMERS_BOTH | append $CONSUMER_ANCHOR) {
+        assert-no-inline-server 'develop' $name
+    }
+    for row in $CONSUMER_LANES {
+        assert-no-inline-server $row.workflow $row.name
+    }
+}
+
+# --- 5. quote-guard pins: the recorded-check trap (work#1190) --------------
+
+def test-recorded-check-quote-guard []: nothing -> nothing {
+    # The trap: a nested `sh -c` payload parses twice (the wrapper's
+    # bash, then the inner shell) and the inner layer's quoting intent is
+    # invisible in the raw text — the recorded diagnostic of run
+    # 01M6X3WCQ1 (work#1190) made the inner shell parse the unquoted
+    # graphviz arrow as a redirect, and echo's output became the
+    # repo-root file `b` in the evidence commit.
+    #
+    # REFUSED — the verbatim trap shape.
+    assert-true (check-transcript nested-shell-metachar-trap 'sh -c "echo digraph G { a -> b } | ... __render-graph"') 'the #1190 trap refuses (nested shell, unquoted arrow in the payload)'
+    # REFUSED — inner single-quoting changes nothing: the wrapper cannot
+    # verify the inner layer's quoting from the raw text.
+    assert-true (check-transcript nested-shell-metachar-trap "sh -c 'echo digraph G { a -> b }'") 'nested shell with an inner-quoted payload still refuses (conservative)'
+    # ALLOWED — the demanded canonical form (demand shape 1): the DOT
+    # single-quoted in a bare pipeline, one parse layer.
+    assert-false (check-transcript nested-shell-metachar-trap "echo 'digraph G { a -> b }' | __render-graph") 'the single-quoted bare pipeline is the allowed canonical form'
+    # ALLOWED — the heredoc escape.
+    assert-false (check-transcript nested-shell-metachar-trap "__render-graph <<'EOF'\ndigraph G { a -> b }\nEOF") 'the heredoc escape is allowed'
+    # ALLOWED — a deliberate top-level redirect parses exactly once, the
+    # way it reads.
+    assert-false (check-transcript nested-shell-metachar-trap 'cargo nextest run --workspace > /tmp/out.txt 2>&1') 'deliberate top-level redirects stay allowed'
+    # ALLOWED — a nested shell WITHOUT metacharacters (the shape the
+    # evidence smoke's re-run arms record).
+    assert-false (check-transcript nested-shell-metachar-trap "sh -c 'exit 0'") 'nested shell without metacharacters is allowed'
+    # ALLOWED — nu -c payloads are out of scope (nu pipes are the
+    # idiomatic recording; the wrapper routes probes to nu script files).
+    assert-false (check-transcript nested-shell-metachar-trap 'nu -c "open x | get y"') 'nu -c payloads are out of scope'
 }
 
 def main []: nothing -> nothing {
@@ -239,5 +363,7 @@ def main []: nothing -> nothing {
     test-probe-literal-equality
     test-consumers-source-the-lib
     test-no-mirror-regrows
+    test-no-inline-server-argv
+    test-recorded-check-quote-guard
     print 'lane-commons: all pins green'
 }
