@@ -227,9 +227,13 @@ friction verdict is `architecture-due`; `grind` deepens only on smells;
 `normal` never deepens on score alone. The architecture gate fires the
 LOCAL improve-codebase-architecture agent (the architect WORKFLOW stays
 deactivated on the line); only its STRONG recommendations become work
-items, worked LOCALLY. Architect scope is binding: findings
-restructure ONLY the fork's own surface; `lib/**`/`apps/**` is
-observable, never restructurable. The full gate procedure:
+items, worked LOCALLY. Architect scope (operator directive 2026-11-18,
+replacing the former lib/apps observable-only binding — the Rust
+foundation pass found the foundation's deepest candidates exactly where
+that binding pointed the reviewers away): findings cover the WHOLE
+fork; platform candidates (lib/**, apps/**) are first-class and
+actionable as lane:develop work items; vendor/** stays engine-frozen
+(ADR-0027, observations only). The full gate procedure:
 `reference/review.md`.
 
 ## Phase 5 — Integrate

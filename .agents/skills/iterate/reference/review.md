@@ -172,8 +172,11 @@ classes, and the architecture gate.
   beyond this machine is an exposure decision that belongs to the user.
   Mark the ledger (`last_arch_review_at_sprint`) and offer the grilling
   loop for the picked candidate.
-- Architect scope is binding: findings restructure ONLY the fork's own
-  surface (`.fabro/workflows/**`, `.fabro/scripts/**`, fork-only files,
-  our tooling). Upstream-owned `lib/**`/`apps/**` is observable, never
-  restructurable. Apply the same filter when reviewing architect
+- Architect scope (operator directive 2026-11-18, replacing the former
+  observable-only binding — the Rust foundation pass found the
+  foundation's deepest candidates exactly where that binding pointed
+  the reviewers away): findings cover the WHOLE fork; platform
+  candidates (`lib/**`, `apps/**`) are first-class and actionable as
+  lane:develop work items. `vendor/**` stays engine-frozen (ADR-0027,
+  observations only). Apply the same filter when reviewing architect
   findings.
