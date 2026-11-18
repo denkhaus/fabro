@@ -25,10 +25,10 @@
 vendor = "vendor/petri"
 fork = "denkhaus/petri"
 branch = "fabro"
-fork_sha = "3aa8f41915f10104be16b39ea6262704437c2494"
+fork_sha = "8b4978743f307d89fea985bb988110b2e98c4f60"
 upstream = "lithoscomputer/petri"
 upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
-tree_sha = "2e911ce5d953bc9b615176ca3d02123fef94c660"
+tree_sha = "20681830b369bebb9357ac9709ef427d2291932b"
 content_sha256 = "b7ec8e95f9f1a46340753737d76112a583a5b59017abe91c834f577149d2edbe"
 files = 935
 crates = [
