@@ -49,6 +49,31 @@ def fabro-bin []: nothing -> string {
     if ($installed | path exists) { $installed } else { 'fabro' }
 }
 
+# The tofu checkout must not be behind origin: a stale plan acts on a
+# configuration missing live commits (2026-11-18: a stale plan offered
+# to destroy the work#1188 alert webhook that origin had applied that
+# afternoon — the shape review caught it, but the guard makes the
+# refusal mechanical). Fails pins/plan/apply until the pull happened.
+def assert-tofu-fresh [tofu_dir: string]: nothing -> nothing {
+    let fetch = (do { git -C $tofu_dir fetch origin --quiet } | complete)
+    if $fetch.exit_code != 0 {
+        error make {msg: $"deploy-window: tofu fetch failed: ($fetch.stderr | str trim | str substring 0..160)"}
+    }
+    let branch = (git -C $tofu_dir rev-parse --abbrev-ref HEAD | str trim)
+    let behind = (git -C $tofu_dir rev-list --count $"HEAD..origin/($branch)" | str trim | into int)
+    if $behind > 0 {
+        # Plain-string concatenation, NOT $"..." interpolation: the message
+        # carries (s) and (2026-11-18: ...) — an interpolated string parses
+        # those paren groups as subexpressions (the lint-nu bare-paren class).
+        let msg = ('deploy-window: the tofu checkout is '
+            + ($behind | into string)
+            + ' commit(s) behind origin/'
+            + $branch
+            + ' — pull first; a stale plan acts on a configuration missing live commits (2026-11-18: it would have destroyed the work#1188 alert webhook applied from origin that afternoon)')
+        error make {msg: $msg}
+    }
+}
+
 # The tofu prod profile answers "which host?" — parsed at runtime, the
 # values never echo (user directive 2026-11-15: infrastructure
 # addresses stay out of every artifact this session produces).
@@ -156,6 +181,7 @@ def replace-default [text: string, variable: string, value: string]: nothing -> 
 }
 
 def phase-pins [tofu_dir: string]: nothing -> nothing {
+    assert-tofu-fresh $tofu_dir
     let tag = (image-tag)
     let variables = ($tofu_dir | path join 'variables.tf')
     # Recompute, never assume: the same pin rev USUALLY means the same
@@ -203,6 +229,7 @@ def tofu-env [tofu_dir: string]: nothing -> string {
 }
 
 def phase-plan [tofu_dir: string]: nothing -> nothing {
+    assert-tofu-fresh $tofu_dir
     $env.TF_VAR_state_passphrase = (tofu-env $tofu_dir)
     $env.TF_DATA_DIR = '.terraform-prod'
     cd $tofu_dir
@@ -210,6 +237,7 @@ def phase-plan [tofu_dir: string]: nothing -> nothing {
 }
 
 def phase-apply [tofu_dir: string, server: string]: nothing -> nothing {
+    assert-tofu-fresh $tofu_dir
     # Capture the deployed tip BEFORE the cd: after `cd $tofu_dir`, a bare
     # `git rev-parse HEAD` resolves the TOFU repo's tip and the skew check
     # compares against the wrong repository (live 2026-11-16: the fork.38
