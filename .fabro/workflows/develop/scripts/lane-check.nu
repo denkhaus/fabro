@@ -15,7 +15,7 @@
 # FACT FAILURE DISCIPLINE: a failed door call fails the stage.
 
 use ../../../scripts/lib/work_channel.nu [
-    server, cli, observation-record, emit-envelope
+    server, cli, observation-record, emit-envelope, work-list-argv
 ]
 
 const CALLER = 'develop-lane-check'
@@ -26,7 +26,11 @@ def main [
     --smoke            # emit the bare record instead of the routing envelope
 ]: nothing -> nothing {
     let srv = (server $CALLER)
-    let res = (cli $CALLER [work '--server' $srv 'list' '--project' $project '--lane' $lane '--limit' '1' '--json'])
+    # The work-list door through the registry builder (work#1150): the
+    # retired inline literal is pinned byte-for-byte in
+    # lane-commons-fixtures.nu; --limit defaults to 1 (the lane check
+    # wants the ANSWER, not the lane).
+    let res = (cli $CALLER (work-list-argv $srv $project $lane))
     if $res.exit_code != 0 {
         print -e $"($CALLER): work list failed for lane ($lane): ($res.stderr | str trim | str substring 0..240)"
         exit 1

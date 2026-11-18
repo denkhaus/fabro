@@ -62,12 +62,60 @@ def transcript-path [run_id: string]: nothing -> string {
     $"(transcript-dir)/($run_id).md"
 }
 
+# The nested-shell metachar trap (denkhaus/work#1190): a `sh -c` /
+# `bash -c` payload parses TWICE — once in this wrapper's bash, then
+# again in the inner shell — and the inner layer's quoting intent is
+# invisible in the raw command text. A metacharacter the inner shell
+# sees as an operator leaks as an artifact: run 01M6X3WCQ1's recorded
+# diagnostic `sh -c "echo digraph G { a -> b } | … __render-graph"` made
+# the inner shell parse the unquoted graphviz arrow as a redirect and
+# echo's output landed in the repo-root file `b`, which rode the
+# evidence commit as seed work. The wrapper refuses this shape at
+# registration ("cannot be registered", the item's closes-when).
+#
+# Conservative by design: any quoted payload after `sh -c`/`bash -c`
+# (their /bin/ forms included) that carries `>`, `|` or `&` refuses,
+# even when the caller inner-quoted the data — the wrapper cannot verify
+# inner quoting from the raw text. The escapes all parse ONCE: drop the
+# nested shell (this wrapper already runs bash) and single-quote the
+# data, heredoc the payload, or write the probe as a nu script under
+# mktemp. Deliberate TOP-LEVEL redirects stay allowed (`cmd >
+# /tmp/out.txt` parses exactly once, the way it reads). `nu -c` payloads
+# are out of scope: nu pipes are the idiomatic recording and the
+# wrapper's own advice routes probes to nu script files.
+export def nested-shell-metachar-trap [cmd: string]: nothing -> bool {
+    # One pattern per quote kind (the payload's opening quote closes it):
+    # the head must follow start/whitespace/another operator so a longer
+    # word (`rebash`) never matches, and `[^<quote>]` keeps each match
+    # inside one quoted span.
+    let patterns = [
+        `(?s)(?:^|[\s;&|(])(?:/bin/)?(?:ba)?sh[ \t]+-c[ \t]*"(?P<p>(?:\\.|[^"])*)"`
+        `(?s)(?:^|[\s;&|(])(?:/bin/)?(?:ba)?sh[ \t]+-c[ \t]*'(?P<p>(?:\\.|[^'])*)'`
+    ]
+    for pat in $patterns {
+        let payloads = ($cmd | parse --regex $pat | get -o p | default [])
+        if ($payloads | any {|p| $p =~ `[>|&]` }) {
+            return true
+        }
+    }
+    false
+}
+
 def main [...command: string, --path, --by: string = "implementer"]: nothing -> nothing {
     if $path or ($command | is-empty) {
         print (transcript-path (run_anchor run-id 'local'))
         return
     }
     let cmd = ($command | str join ' ')
+    # Registration guard (denkhaus/work#1190): the trap shape cannot be
+    # recorded — bash would parse the payload's metacharacters into
+    # redirects and stray files, and the record would ship them as proof.
+    # Exit 64 (EX_USAGE): the command never ran, nothing was appended.
+    if (nested-shell-metachar-trap $cmd) {
+        print -e "check-transcript: REFUSED — a nested `sh -c`/`bash -c` payload carries `>`, `|` or `&`: the payload parses twice (this wrapper's bash, then the inner shell), and a metacharacter the inner shell sees as an operator leaks as a redirect or pipe artifact into the worktree (denkhaus/work#1190: the recorded diagnostic that created the stray repo-root file `b`)."
+        print -e "check-transcript: write the check so it parses ONCE — drop the nested shell (this wrapper already runs bash) and single-quote the data, e.g. echo 'digraph G { a -> b }' | <render>; or heredoc the payload, cmd <<'EOF' ... EOF; or write the probe as a nu script under mktemp outside the worktree and wrap nu /tmp/<probe>.nu. Nothing was recorded."
+        exit 64
+    }
     # Explicit marker capture: append an immediate-exit block AFTER the
     # guarded command (leading newline so a trailing `# comment` in the
     # command cannot swallow it). The inner bash writes the guarded

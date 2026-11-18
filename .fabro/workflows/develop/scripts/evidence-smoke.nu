@@ -159,10 +159,16 @@ if not ($sec | str contains "`/tmp` dir") {
 # exactly this battery) against a command that exits 7 with stderr —
 # the wrapper must exit 7 AND the transcript record must carry
 # `-> exit 7` plus the command's stderr, never a later command's code.
+# The nested shell matters here: an embedded `exit` must not kill the
+# wrapper's own bash before the marker write. The POSIX form this arm
+# once used (`sh -c 'echo boom >&2; exit 7'`) is the #1190 trap shape,
+# refused at registration since the guard landed — `nu -c` carries the
+# same inner-exit semantics through the wrapper's documented escape
+# hatch (nu probes) without the double-parsed POSIX payload.
 let tdir_pin = (mktemp -d)
 let wrapped = (do {
     with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_pin } {
-        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "sh -c 'echo boom >&2; exit 7'"
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- "nu -c \"print -e boom; exit 7\""
     }
 } | complete)
 if $wrapped.exit_code != 7 {
@@ -237,6 +243,37 @@ if not ($q_rec | str contains "[quoting]") {
 if not ($q_rec | str contains "mktemp") {
     fail $"quoting pin: hint must name the mktemp nu-probe escape: ($q_rec)"
 }
+
+# Nested-shell metachar refusal pin (denkhaus/work#1190): run
+# 01M6X3WCQ1's recorded diagnostic — a nested `sh -c` payload whose
+# unquoted graphviz arrow the inner shell parsed as a redirect, leaking
+# echo's output into the repo-root file `b` that rode the evidence
+# commit as seed work. The wrapper refuses the shape at registration:
+# exit 64 (EX_USAGE — the command never ran), the REFUSED message names
+# the parse-once escapes, and NOTHING lands in the transcript.
+let tdir_ref = (mktemp -d)
+let refused = (do {
+    with-env { FABRO_CHECK_TRANSCRIPT_DIR: $tdir_ref } {
+        ^nu $"($SCRIPTS_DIR)/check-transcript.nu" -- 'sh -c "echo digraph G { a -> b } | ... __render-graph"'
+    }
+} | complete)
+if $refused.exit_code != 64 {
+    rm -rf $tdir_ref
+    fail $"refusal pin: wrapper must refuse the nested-shell metachar trap with 64, got ($refused.exit_code)"
+}
+if not ($refused.stderr | str contains "REFUSED") {
+    rm -rf $tdir_ref
+    fail $"refusal pin: refusal must print the REFUSED escape guidance: ($refused.stderr)"
+}
+if not ($refused.stderr | str contains "Nothing was recorded") {
+    rm -rf $tdir_ref
+    fail $"refusal pin: refusal must say nothing was recorded: ($refused.stderr)"
+}
+if ((ls $tdir_ref | length) != 0) {
+    rm -rf $tdir_ref
+    fail "refusal pin: the refused command must not land in the transcript"
+}
+rm -rf $tdir_ref
 
 # Re-run stamp pin (a first-attempt failure fixed and re-run must not
 # leave two indistinguishable records): the SAME command recorded twice
@@ -520,7 +557,7 @@ try {
     rm -rf $erepo
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/walk-failure-note/zero-hunk-note/channel-resolve-and-claim-integrity verified"
+print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/nested-shell-refusal-pin/walk-failure-note/zero-hunk-note/channel-resolve-and-claim-integrity verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

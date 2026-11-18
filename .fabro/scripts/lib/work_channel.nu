@@ -183,6 +183,44 @@ export def work-close-argv [srv: string, project: string, work_item: string, rea
     ['work' '--server' $srv 'close' '--project' $project $work_item '--reason' $reason]
 }
 
+# --- The read doors of the pass scripts (denkhaus/work#1150) -------------
+# The lane check and the watchdog's stall check mirrored these three argv
+# inline — the registry's contract (every door's call shape lives HERE,
+# #1108) had three holes. Pure builders beside their siblings; the
+# lane-commons pin freezes each retired inline literal byte-for-byte and
+# flags a re-grown `--server` in the consumer set.
+
+# Pure: the argv for one work-list read (the lane check's drained-lane
+# door, work#1144 + work#1150): the work facade seats --server at the
+# FACADE level (like radius/comments/close), the subcommand precedes
+# --project (run 01M60NX9's lesson), --lane rides the server-side label
+# translation, and --limit bounds the read (the lane check wants the
+# ANSWER — any open item — not the whole lane). --json prints the bare
+# item array.
+export def work-list-argv [srv: string, project: string, lane: string, limit: int = 1]: nothing -> list<string> {
+    ['work' '--server' $srv 'list' '--project' $project '--lane' $lane '--limit' ($limit | into string) '--json']
+}
+
+# Pure: the argv for one automations-list read (the watchdog's gear
+# inventory, work#1150): the automations facade seats --server at the
+# FACADE level (`fabro automations --server X list`); --json prints the
+# automation rows.
+export def automations-list-argv [srv: string]: nothing -> list<string> {
+    ['automations' '--server' $srv 'list' '--json']
+}
+
+# Pure: the argv for one ps read (the watchdog's last-pass door,
+# work#1150): ps is a TOP-LEVEL verb, --server rides the verb level;
+# --all widens past the caller's own runs, --workflow filters
+# server-side. --json is unconditional (every consumer parses records).
+export def ps-argv [srv: string, --all, --workflow: string = '']: nothing -> list<string> {
+    mut argv = ['ps' '--server' $srv]
+    if $all { $argv = ($argv | append '--all') }
+    $argv = ($argv | append '--json')
+    if not ($workflow | is-empty) { $argv = ($argv | append ['--workflow' $workflow]) }
+    $argv
+}
+
 # One CLI call over the channel with a COMPLETE argv (the builders
 # above carry facade, server and flags in their grammatically correct
 # positions — the run facade differs from work/observation). Returns the
