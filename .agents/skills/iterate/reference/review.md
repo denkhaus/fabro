@@ -178,10 +178,14 @@ classes, and the architecture gate.
   the reviewers away): findings cover the WHOLE fork — the entire Rust
   codebase AND the loop surface TOGETHER, so synergies surface.
   Platform candidates (`lib/**`, `apps/**`) are first-class and
-  actionable as lane:develop work items. `vendor/**` stays engine-
-  frozen (ADR-0027, observations only). BIDIRECTIONAL: loop→core
-  promotion candidates (script logic that has become general-purpose)
-  are platform work items — first example: the quiet-cause verdict
-  (#1459), moving the stall-check/CLI re-derivations into a server
+  actionable as lane:develop work items. `vendor/**` is IN scope: the
+  forks are fork-owned (ADR-0034), candidates there are develop-
+  landable (work#1440, work#1454), and the working rules are
+  constraints, not exclusions (ADR-0034 export-in-the-same-change;
+  ADR-0027 recorded reasons for dependency moves). BIDIRECTIONAL:
+  loop→core promotion candidates (script logic that has become
+  general-purpose) are platform work items — first example: the
+  quiet-cause verdict (#1459), moving the stall-check/CLI
+  re-derivations into a server
   read model. Apply the same filter when reviewing architect
   findings.

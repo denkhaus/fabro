@@ -233,13 +233,17 @@ foundation pass found the foundation's deepest candidates exactly where
 that binding pointed the reviewers away): findings cover the WHOLE
 fork — the entire Rust codebase AND the loop surface TOGETHER, so
 synergies surface. Platform candidates (lib/**, apps/**) are
-first-class and actionable as lane:develop work items; vendor/** stays
-engine-frozen (ADR-0027, observations only). The scope is deliberately
-BIDIRECTIONAL: script logic that has become general-purpose belongs
-PROMOTED INTO THE CORE — loop→core promotion candidates are platform
-work items (first example: the quiet-cause verdict #1459, moving the
-stall-check/CLI re-derivations into a server read model). The full
-gate procedure:
+first-class and actionable as lane:develop work items. Vendor/** is IN
+scope: the vendored forks are fork-owned (ADR-0034), candidates there
+are develop-landable (precedents: work#1440's cook single-flight,
+work#1454's manifest digest), and the working rules are constraints,
+not exclusions — ADR-0034 (export in the same change that needs it),
+ADR-0027 (recorded reasons for dependency moves). The scope is
+deliberately BIDIRECTIONAL: script logic that has become general-purpose
+belongs PROMOTED INTO THE CORE — loop→core promotion candidates are
+platform work items (first example: the quiet-cause verdict #1459,
+moving the stall-check/CLI re-derivations into a server read model).
+The full gate procedure:
 `reference/review.md`.
 
 ## Phase 5 — Integrate
