@@ -26,7 +26,9 @@
 # HUMAN_NEEDED (work#1072, stage-F consequence): a run whose terminal
 # kind is human_needed parks DIRECTLY, LLM-free — the deadlock exit
 # itself means a human decision pends; the park needs no judgment. The
-# operator answers through the work-item comment channel; the next
+# decision request's own reason (lifecycle.error.message, the work#1418
+# projection) rides the park verbatim when the queue entry carries one.
+# The operator answers through the work-item comment channel; the next
 # passes re-enter as parked and the agent pass verdicts once answered.
 #
 # ALREADY LANDED (work#1419, operator decision 2026-11-17): a run whose
@@ -38,7 +40,10 @@
 # develop graph's deadlock park (the run concludes human_needed and the
 # arm above parks it); THIS arm is the net for the same class whose
 # terminal kind never flipped — the backlog shape, a natural completion
-# carrying the note. `parked` HOLDS the claim (the reconciler releases
+# carrying the note. The MATCHED note rides the park VERBATIM as the
+# verdict rationale (the mark-run note, the work#1419 code-review
+# fold — a bare enum park reproduces "No reason was recorded." in a new
+# costume). `parked` HOLDS the claim (the reconciler releases
 # only a refused verdict), so the item waits pinned for the operator to
 # close it citing the note or release it with new info; no skip either
 # (the parked run re-enters every pass). The old shape refused these
@@ -82,17 +87,29 @@ def note-texts [observations: list<any>]: nothing -> list<string> {
     $observations | where {|o| $o.category == "note"} | get text
 }
 
-# Pure: whether the observations carry the planner's ALREADY-LANDED
-# evidence note (work#1419): a note whose text opens with the mandated
-# prefix (`already landed: <item key> — fix in <sha>; per criterion:
-# ...; residual: ...`, the develop planner prompt). The prefix is the
+# Pure: the FIRST of the run's observations carrying the planner's
+# ALREADY-LANDED evidence note (work#1419) — its text VERBATIM (the
+# mandated prefix `already landed: <item key> — fix in <sha>; per
+# criterion: ...; residual: ...`, the develop planner prompt; the
+# matched text is returned untouched, case and whitespace as
+# recorded), null when no note matches. The prefix is the
 # deterministic trigger — prose that merely mentions an already-landed
 # fix never parks, and the park wins over painpoints or an open radius
-# (the note IS the verdict; the worktree verification already happened).
+# (the note IS the verdict; the worktree verification already
+# happened). The verbatim text is what the park carries as its
+# verdict rationale (the mark-run note, work#1419 fold).
+export def already-landed-note-of [observations: list<any>]: nothing -> any {
+    let matches = ($observations
+        | where {|o| $o.category == "note"}
+        | where {|o| ($o.text | str trim | str lowercase | str starts-with 'already landed:')})
+    if ($matches | is-empty) { null } else { $matches | first | get text }
+}
+
+# Pure: whether the observations carry the planner's ALREADY-LANDED
+# evidence note (work#1419) — the parked trigger beside
+# already-landed-note-of's verbatim capture.
 export def has-already-landed-note [observations: list<any>]: nothing -> bool {
-    $observations
-    | where {|o| $o.category == "note"}
-    | any {|o| ($o.text | str trim | str lowercase | str starts-with 'already landed:')}
+    (already-landed-note-of $observations) != null
 }
 
 # The agent-pass packet: one shape, built at both arms (the parked
@@ -175,9 +192,12 @@ def read-radius [project: string, work_item: string]: nothing -> list<any> {
 # One verdict write through the door (HARD: a failed mark fails the
 # stage — the engine retries the whole sweep; marks are idempotent at
 # the fold, a re-sweep is gap-safe). The wrapper is the shared policy
-# (#1132); this alias carries the script's FIELD.
-def mark-run [run_id: string, verdict: string]: nothing -> nothing {
-    mark-run-hard $CALLER $FIELD $run_id $verdict
+# (#1132); this alias carries the script's FIELD. The optional note is
+# the park's WHY (work#1419 fold): mark-run-hard carries it verbatim
+# onto the verdict-rationale channel — an empty note keeps the bare
+# verdict.
+def mark-run [run_id: string, verdict: string, note: string = '']: nothing -> nothing {
+    mark-run-hard $CALLER $FIELD $run_id $verdict $note
 }
 
 def main [--smoke]: nothing -> nothing {
@@ -212,7 +232,13 @@ def main [--smoke]: nothing -> nothing {
             # judgment; the operator answers through the work-item
             # comment channel; the next passes re-enter (parked stays
             # queued) and the agent pass verdicts once answered.
-            mark-run $run_id "parked"
+            # work#1419 fold: the decision request's own reason (the
+            # work#1418 projection surface, lifecycle.error.message)
+            # rides the park verbatim when the queue entry carries one;
+            # absent or blank keeps the bare verdict — never invented
+            # prose.
+            let reason = ($entry.run | get -o lifecycle | default {} | get -o error | default {} | get -o message | default '' | str trim)
+            mark-run $run_id "parked" $reason
             $parked_human = ($parked_human | append $run_id)
             continue
         }
@@ -228,8 +254,12 @@ def main [--smoke]: nothing -> nothing {
             # close it citing the note or release it with new info; no
             # skip either — the parked run re-enters every pass. The
             # old shape refused these runs, releasing the claim every
-            # lap (the work#1300 burn).
-            mark-run $run_id "parked"
+            # lap (the work#1300 burn). work#1419 fold: the MATCHED
+            # note rides the park VERBATIM as the verdict rationale
+            # (the mark-run note) — the operator reads the exact
+            # evidence, never a bare enum park.
+            let landed_note = (already-landed-note-of $observations | default '')
+            mark-run $run_id "parked" $landed_note
             $parked_landed = ($parked_landed | append $run_id)
             continue
         }
