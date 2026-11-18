@@ -13,6 +13,7 @@
 
 const ANALYSIS = 'salvage-analysis.nu'
 source $ANALYSIS
+use lib/terminal_status.nu [is-terminal-kind]
 
 def main [
   --server: string = 'https://mirtuell.net'  # the production line
@@ -27,7 +28,10 @@ def main [
     exit 1
   }
   let terminal = ($runs.stdout | from json | where {|r|
-    ($r.status?.kind? | default 'unknown') in $TERMINAL
+    # The one terminal vocabulary (work#1446): the shared predicate —
+    # a parked human_needed run is terminal, its stranded work is as
+    # salvageable as a failed run's.
+    is-terminal-kind ($r.status?.kind? | default 'unknown')
   } | where {|r| ($r.start_time? | default '') >= $cutoff } | first $max_runs)
   for run in $terminal {
     let dump_dir = (mktemp -d)

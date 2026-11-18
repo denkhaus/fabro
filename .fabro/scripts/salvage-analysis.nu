@@ -11,8 +11,10 @@
 # its smoke battery, and nu allows no nested `source`.)
 use lib/seed_id.nu seed-ids-in
 
-# Terminal status kinds (the engine's terminal set).
-const TERMINAL = [succeeded failed canceled cancelled]
+# The terminal status kinds live in lib/terminal_status.nu (work#1446,
+# the one predicate); the sweep classifies through it — this file's
+# retired inline const (succeeded/failed/canceled/cancelled, no
+# human_needed, no dead) is gone.
 
 # A patch is noteworthy when it changes more than this many lines, or adds
 # any new file - counted over lines that touch REAL work (the run's own

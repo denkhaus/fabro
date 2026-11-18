@@ -38,6 +38,12 @@
 #   nu .fabro/scripts/salvage-pull.nu <run-id> [--dest <dir>] [--paths <csv>]
 #       [--fabro ./target/debug/fabro] [--server https://mirtuell.net]
 
+# The one terminal vocabulary (work#1446): the shared predicate —
+# succeeded/failed/human_needed/dead, both canceled spellings accepted.
+# A parked human_needed run is TERMINAL (GLOSSARY, work#1072): its
+# stranded work is as salvageable as a failed run's.
+use lib/terminal_status.nu [is-terminal-kind]
+
 # Copy one path out of the run sandbox; missing remote paths are a soft skip.
 def sandbox-copy [fabro: string, server: string, run: string, remote: string, into: string] {
     let dst = ($into | path join $remote)
@@ -71,7 +77,7 @@ def main [
     }
     let run = ($inspect.stdout | from json | first)
     let status = ($run.status.kind? | default "unknown")
-    if ($status not-in ["failed", "cancelled", "succeeded"]) {
+    if (not (is-terminal-kind $status)) {
         print $"salvage-pull: refusing — run ($run_id) is not terminal (status: ($status))"
         exit 1
     }

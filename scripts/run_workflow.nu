@@ -38,6 +38,12 @@
 # arg-spread wrapper — rest params would swallow --flags meant for the
 # external command.
 
+# The one terminal vocabulary (work#1446): the wait verdict classifies
+# through the shared predicate — a non-terminal status (a timed-out
+# wait) is its own alarm, and only a SUCCEEDED run integrates
+# (is-success-kind).
+use ../.fabro/scripts/lib/terminal_status.nu [is-terminal-kind, is-success-kind]
+
 # Line server (fabro-e62d): the manual develop era targets mirtuell — the
 # local 127.0.0.1 stack is for TESTS only and a silent default there costs a
 # dead start (connection refused at fabro create). Override with FABRO_SERVER.
@@ -347,7 +353,10 @@ def main [
     let status = ($info | get -o status | default '')
     let reason = ($info | get -o reason | default '')
     print $"run_workflow: terminal status ($status) ($reason)"
-    if $status != 'succeeded' {
+    if (not (is-terminal-kind $status)) {
+        fail $"run ($run_id) never reached a terminal status \(($status) ($reason)\) — nothing integrated; inspect ($server)/runs/($run_id)"
+    }
+    if (not (is-success-kind $status)) {
         fail $"run ($run_id) ended ($status) ($reason) — nothing integrated; inspect ($server)/runs/($run_id)"
     }
 
