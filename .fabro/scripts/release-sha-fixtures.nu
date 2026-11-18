@@ -28,10 +28,14 @@ const ALLOWED = [
     '.fabro/scripts/line-tip-sha.nu'
     # Run-LOCAL diff bases inside a run's own checkout (the run's HEAD or a
     # checkpoint ref), never a release tag. The derivation lives in the
-    # shared run-anchor module since #1108 — the develop scripts source it,
-    # and an allow-listed consumer regrowing its own `--short` derivation
-    # REDs here as unauthorised. loop uses the module through the develop
-    # copies.
+    # shared verification-commons module since work#1445 (run-base's
+    # `short` field) — verify.nu, qualitygate.nu and the run-anchor
+    # adapter all consume it, and an allow-listed consumer regrowing its
+    # own `--short` derivation REDs here as unauthorised.
+    'scripts/lib/verification_commons.nu'
+    # The run-anchor adapter (work#1108 -> work#1445): its derivation
+    # delegated to scripts/lib/verification_commons.nu; the entry stays
+    # for history and costs nothing while the file carries no `--short`.
     '.fabro/scripts/lib/run_anchor.nu'
     # This battery: it assembles the pattern from fragments to scan for it
     # and derives nothing itself.
