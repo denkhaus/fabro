@@ -35,12 +35,21 @@ pub enum RunStatusKind {
 }
 
 impl RunStatusKind {
-    /// Position of this status in the run-board column order. Ranks mirror
-    /// the API `BoardColumn` enum: pending 0, runnable 1, initializing 2,
-    /// running 3, blocked 4, human_needed 5, succeeded 6, failed 7,
-    /// archived 8, removing 9. The decision column (#1072) sits between
-    /// the attention states and the outcome columns. Rank 8 is reserved
-    /// for archived runs, which is an overlay flag rather than a status.
+    /// Position of this status in the run-board column order. A rank is
+    /// the position of the status's mapped board column in the API
+    /// `BoardColumn` enum (pending 0, runnable 1, initializing 2, running
+    /// 3, blocked 4, human_needed 5, succeeded 6, failed 7, archived 8,
+    /// removing 9). The single kind→column mapping is
+    /// `fabro_api::board_column` — a free function over this enum in the
+    /// generated API crate, because fabro-types cannot depend on fabro-api
+    /// without a cycle — and the rank stays here only because the store's
+    /// SQL status sort consumes it without pulling in the API crate. The
+    /// conformance test
+    /// `lib/foundation/fabro-api/tests/board_column_conformance.rs` ties
+    /// the mapping, these ranks, and the YAML enum together, so the three
+    /// cannot drift. The decision column (#1072) sits between the
+    /// attention states and the outcome columns; rank 8 is reserved for
+    /// archived runs, which are an overlay flag rather than a status.
     #[must_use]
     pub fn board_rank(self) -> u8 {
         match self {

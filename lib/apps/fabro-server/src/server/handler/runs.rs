@@ -30,17 +30,15 @@ use fabro_store::{
 use fabro_types::diagnostic::Severity;
 use fabro_types::{
     AutomationRef, ContextWindowStaleness, ManifestPath, Principal, Run, RunClientProvenance,
-    RunId, RunProvenance, RunServerProvenance, RunStatus, RunStatusKind, RunTarget,
-    SandboxProviderKind, StageContextWindow, StageContextWindowUnavailableReason, StageHandler,
-    StageModelUsage, StageProjection, ValidatedRunTarget, json_scalar_to_toml_value,
-    parse_blob_ref,
+    RunId, RunProvenance, RunServerProvenance, RunStatus, RunTarget, SandboxProviderKind,
+    StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageModelUsage,
+    StageProjection, ValidatedRunTarget, json_scalar_to_toml_value, parse_blob_ref,
 };
 use fabro_util::error as error_util;
 use fabro_util::version::FABRO_VERSION;
 use fabro_workflow::{Error as WorkflowError, operations};
 use lithos_llm::catalog::ProviderId;
 use serde::de::IgnoredAny;
-use strum::VariantArray as _;
 use tokio::fs;
 use tracing::{info, warn};
 
@@ -147,37 +145,16 @@ fn summary_visibility(selected: &[BoardColumn], include_archived: bool) -> RunSu
     let mut statuses = HashSet::new();
     let mut archived = false;
     for column in selected {
-        match board_column_rank(*column) {
+        // `archived` selects on the archival overlay, not a status bucket,
+        // so it is the one column with no kinds behind it.
+        match fabro_api::board_column_kinds(*column) {
             None => archived = true,
-            Some(rank) => statuses.extend(
-                RunStatusKind::VARIANTS
-                    .iter()
-                    .copied()
-                    .filter(|kind| kind.board_rank() == rank),
-            ),
+            Some(kinds) => statuses.extend(kinds),
         }
     }
     RunSummaryVisibility::Selected {
         statuses: statuses.into_iter().collect(),
         archived,
-    }
-}
-
-/// Rank of each board column, mirroring the `BoardColumn` enum order.
-/// Statuses map to columns through [`RunStatusKind::board_rank`]; `archived`
-/// has no rank because it selects on the archival overlay, not a status.
-fn board_column_rank(column: BoardColumn) -> Option<u8> {
-    match column {
-        BoardColumn::Pending => Some(0),
-        BoardColumn::Runnable => Some(1),
-        BoardColumn::Initializing => Some(2),
-        BoardColumn::Running => Some(3),
-        BoardColumn::Blocked => Some(4),
-        BoardColumn::HumanNeeded => Some(5),
-        BoardColumn::Succeeded => Some(6),
-        BoardColumn::Failed => Some(7),
-        BoardColumn::Archived => None,
-        BoardColumn::Removing => Some(9),
     }
 }
 
