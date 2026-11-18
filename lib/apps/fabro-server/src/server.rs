@@ -211,6 +211,7 @@ mod run_publish;
 pub(crate) mod run_records;
 mod session_runtime;
 pub(crate) mod stream_follower;
+mod tracker_token_cache;
 pub(crate) mod work_reconciler;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
@@ -1185,6 +1186,14 @@ pub struct AppState {
     session_runtimes: SessionRuntimeManager,
     artifact_store: ArtifactStore,
     automation_repo_cache: Arc<GitRepoCache>,
+    /// Cached installation-token sources per tracker mint scope (work#1384):
+    /// without this, every `work_tracker_for_project` call minted a fresh
+    /// installation token (one JWT sign + one mint round trip per
+    /// resolution), which drained the installation's token budget into
+    /// GitHub 403 rate-limit exhaustion in production on 2026-11-17. The
+    /// cached SOURCE hands out reused tokens; the cheap `GitHubTracker`
+    /// struct is still rebuilt per call. See `tracker_token_cache`.
+    tracker_token_sources: tracker_token_cache::TrackerTokenSourceCache,
     /// The seeds read API's data source; unconfigured servers serve the
     /// documented `503` instead of guessing a checkout (fabro-3488).
     #[cfg(any(test, feature = "test-support"))]
@@ -1876,7 +1885,9 @@ impl AppState {
     /// id; production resolves the named forge. Adding a forge (Forgejo)
     /// means adding an adapter that implements `fabro_work::TrackerProvider`
     /// and one match arm here — the port, the store and the API change
-    /// nothing.
+    /// nothing. The GitHub arm resolves its installation token through the
+    /// per-scope source cache (`tracker_token_sources`, work#1384), so
+    /// repeated resolutions reuse a token instead of minting one per call.
     pub(crate) async fn work_tracker_for_project(
         &self,
         project: &fabro_work::WorkProject,
@@ -1888,7 +1899,6 @@ impl AppState {
 
         match project.tracker_provider.as_str() {
             "github" => {
-                use fabro_github::token_source::InstallationTokenSource;
                 use fabro_github::work_tracker::GitHubTracker;
 
                 let settings = self.server_settings();
@@ -1900,18 +1910,15 @@ impl AppState {
                             "GitHub credentials are not configured -- run fabro install"
                         )
                     })?;
-                let (owner, name) = project.tracker_repo.split_once('/').ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "tracker repository must be owner/name: {}",
-                        project.tracker_repo
-                    )
-                })?;
-                let source = InstallationTokenSource::for_repository(
-                    &credentials,
-                    owner.to_string(),
-                    name.to_string(),
-                    serde_json::json!({"issues": "write", "metadata": "read"}),
-                )?;
+                // The token SOURCE is cached per mint scope (work#1384): its
+                // resolve reuses the cached token until REFRESH_MARGIN to
+                // expiry, so repeated resolutions cost no mint. The cheap
+                // `GitHubTracker` struct is rebuilt per call around the
+                // resolved token — caching the tracker itself would serve a
+                // token pinned past its 60-minute life.
+                let source = self
+                    .tracker_token_sources
+                    .source_for(&project.tracker_repo, &credentials)?;
                 let token = source.resolve().await?.token.expose().to_string();
                 let client = self.http_client.clone().unwrap_or_else(|| {
                     fabro_http::http_client().expect("HTTP client should build")
@@ -2913,6 +2920,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         session_runtimes: SessionRuntimeManager::new(),
         artifact_store,
         automation_repo_cache,
+        tracker_token_sources: tracker_token_cache::TrackerTokenSourceCache::default(),
         #[cfg(any(test, feature = "test-support"))]
         automation_materializer_override,
         #[cfg(any(test, feature = "test-support"))]
