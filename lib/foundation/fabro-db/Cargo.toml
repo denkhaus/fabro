@@ -12,6 +12,11 @@ doctest = false
 [lints]
 workspace = true
 
+[features]
+# In-memory fixture pools carrying the full production migration set, for
+# other crates' test suites (dual-listed dev-dependencies only).
+test-support = []
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true

@@ -16,6 +16,9 @@ pub type DbPool = sqlx::SqlitePool;
 
 static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
+
 /// The blob-table migration, exposed so fixtures in other crates can install
 /// the production blob schema without a filesystem path into this crate.
 pub const BLOBS_MIGRATION_SQL: &str = include_str!("../migrations/2026081301_blobs.sql");

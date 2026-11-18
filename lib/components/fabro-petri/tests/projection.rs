@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fabro_db::DbPool;
+use fabro_db::test_support::fully_migrated_in_memory_pool;
 use fabro_interview::ControlInterviewer;
 use fabro_petri::blobs::{Blobs, RunBlobs};
 use fabro_petri::check::Launch;
@@ -28,11 +29,11 @@ use fabro_petri::projector::{self, Projector};
 use fabro_petri::providers::SandboxProviderConfig;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::{SqliteRunStore, providers, test_support as petri_support};
+use fabro_store::BlobStore;
 use fabro_store::platform_records::{
     ObservationRecordedRecord, PlatformRecord, PlatformRecordStore, RunCreatedRecord,
     RunLifecycleKind, RunLifecycleRecord, RunOrchestrationRecord, RunTitleRecord, StagePosition,
 };
-use fabro_store::{BlobStore, test_support};
 use fabro_types::{
     BlobHash, BlockedReason, FailureReason, OrchestrationField, OrchestrationVerdict,
     PetriAdmission, PetriGraphRef, RunId, RunStatus, StageHandler, StageId, StageState,
@@ -119,23 +120,13 @@ fn described_gate_workflow(markers: &Path) -> String {
     )
 }
 
-/// A fresh in-memory database with every table the projection touches.
-fn pool() -> DbPool {
-    test_support::in_memory_pool_with(&[
-        fabro_db::BLOBS_MIGRATION_SQL,
-        fabro_db::RUNS_MIGRATION_SQL,
-        fabro_db::DROP_RUN_EVENTS_MIGRATION_SQL,
-        fabro_db::RUNS_HUMAN_NEEDED_MIGRATION_SQL,
-        fabro_db::PETRI_RECORDS_MIGRATION_SQL,
-        fabro_db::PETRI_PROJECTION_MIGRATION_SQL,
-        fabro_db::RUN_TOMBSTONES_MIGRATION_SQL,
-        // The observation fold materializes triage state (work#1385); the
-        // state migration's backfill join resolves the work tables at
-        // prepare time, so they ride along even on a fresh fixture.
-        fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
-        fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
-        fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
-    ])
+/// A fresh in-memory database carrying the FULL production migration set,
+/// applied by the same migrator the fabro-server suite runs — the fixture
+/// schema cannot drift from the production shape (work#1421).
+async fn pool() -> DbPool {
+    fully_migrated_in_memory_pool()
+        .await
+        .expect("the in-memory pool migrates")
 }
 
 fn hello_bundle() -> PathBuf {
@@ -267,7 +258,7 @@ async fn scenario(name: &str, files: &[(&str, &str)], stubs: bool) -> Scenario {
         .iter()
         .find(|(file, _)| *file == "workflow.fabro")
         .map_or("", |(_, text)| *text);
-    let pool = pool();
+    let pool = pool().await;
     let run_id = RunId::new();
     create_run(&pool, run_id, name, graph_source).await;
     Scenario {
@@ -347,7 +338,7 @@ async fn large_output_scenario() -> Scenario {
         ("workflow.toml", SETTINGS),
     ])
     .await;
-    let pool = pool();
+    let pool = pool().await;
     let run_id = RunId::new();
     create_run(&pool, run_id, "large", &graph).await;
     Scenario {
@@ -1025,7 +1016,7 @@ async fn insert_petri_row(pool: &DbPool, run_id: RunId, row: &(String, i64, i64,
 /// A copy of the run in a fresh database: its blobs, its Petri run row and
 /// its platform records, but none of its Petri records yet.
 async fn copy_run_without_records(source: &DbPool, run_id: RunId) -> DbPool {
-    let target = pool();
+    let target = pool().await;
     let blobs: Vec<(String, Vec<u8>)> = sqlx::query_as("SELECT hash, data FROM blobs")
         .fetch_all(source)
         .await
