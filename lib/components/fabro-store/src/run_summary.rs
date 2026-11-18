@@ -2,7 +2,7 @@
 //! the board and the scheduler read, derived from the projection.
 
 use fabro_types::{
-    AskFabro, RepositoryRef, Run, RunId, RunLifecycle, RunLinks, RunModel, RunOrigin,
+    AskFabro, RepositoryRef, Run, RunError, RunId, RunLifecycle, RunLinks, RunModel, RunOrigin,
     RunProjection, RunSize, RunTimestamps, WorkflowRef, sum_usage,
 };
 use lithos_llm::types::Usage;
@@ -77,7 +77,15 @@ pub fn build_summary(state: &RunProjection, run_id: &RunId) -> Run {
             approval:           state.approval.clone(),
             pending_control:    state.pending_control,
             queue_position:     None,
-            error:              None,
+            // work#1418: the UI verdict bar reads `lifecycle.error.message`
+            // ("No reason was recorded" when absent) — the conclusion's
+            // failure detail IS the recorded why, so it must not stay
+            // behind when the row leaves the projection.
+            error:              state.conclusion.as_ref().and_then(|conclusion| {
+                conclusion.failure.as_ref().map(|failure| RunError {
+                    message: failure.detail.message.clone(),
+                })
+            }),
             conclusion_failure: state.conclusion.as_ref().and_then(|c| c.failure.clone()),
             archived:           state.archived_at.is_some(),
             archived_at:        state.archived_at,
@@ -143,4 +151,70 @@ fn run_models(state: &RunProjection) -> Vec<RunModel> {
     });
     models.dedup_by(|left, right| left.provider == right.provider && left.name == right.name);
     models
+}
+
+#[cfg(test)]
+mod tests {
+    use fabro_types::outcome::StageOutcome;
+    use fabro_types::{
+        Conclusion, FailureCategory, FailureDetail, FailureReason, RunFailure, RunStatus,
+        test_support as types_support,
+    };
+
+    use super::build_summary;
+
+    fn concluded_projection(failure: Option<RunFailure>) -> fabro_types::RunProjection {
+        let mut projection = fabro_types::RunProjection::new(
+            "summary".to_string(),
+            types_support::test_run_spec(),
+            chrono::Utc::now(),
+        );
+        projection.status = RunStatus::Failed {
+            reason: FailureReason::SoftStop,
+        };
+        projection.conclusion = Some(Conclusion::outcome_only(
+            chrono::Utc::now(),
+            StageOutcome::Failed {
+                retry_requested: false,
+            },
+            failure,
+        ));
+        projection
+    }
+
+    /// work#1418: the verdict bar reads `lifecycle.error.message` and
+    /// renders "No reason was recorded" when absent — the conclusion's
+    /// failure detail must lift into the summary row's error slot.
+    #[test]
+    fn a_concluded_failure_populates_the_lifecycle_error_message() {
+        let projection = concluded_projection(Some(RunFailure {
+            reason: FailureReason::SoftStop,
+            detail: FailureDetail::new(
+                "Reviewer failed (next run re-enters)",
+                FailureCategory::TransientInfra,
+            ),
+        }));
+        let summary = build_summary(&projection, &fabro_types::RunId::new());
+        assert_eq!(
+            summary
+                .lifecycle
+                .error
+                .as_ref()
+                .map(|error| error.message.as_str()),
+            Some("Reviewer failed (next run re-enters)"),
+            "the exit-edge prose reaches the verdict bar's read slot"
+        );
+    }
+
+    /// The control: a concluded run WITHOUT a failure carries no error —
+    /// successes and reasonless conclusions stay quiet.
+    #[test]
+    fn a_failureless_conclusion_carries_no_lifecycle_error() {
+        let projection = concluded_projection(None);
+        let summary = build_summary(&projection, &fabro_types::RunId::new());
+        assert!(
+            summary.lifecycle.error.is_none(),
+            "no failure recorded, no error prose invented"
+        );
+    }
 }
