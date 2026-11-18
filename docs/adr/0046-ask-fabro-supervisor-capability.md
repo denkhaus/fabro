@@ -110,8 +110,10 @@ model is built now (today's production reality is a single operator).
   Revisit the no-guard decision when the supervisor sees daily use.
 - Migration footprint: capability-stateful tool policy (server),
   worker-token scope widening at full access, supervisor system prompt
-  (merge soft-confirm mandate), capability-change event in the run
-  stream, global session index door + resume picker + reset door,
+  (merge soft-confirm mandate), the `run.session.capability_changed`
+  event in the session log (RunSessionEventStore; a platform-record
+  mirror on the run stream only when the session is run-anchored),
+  global session index door + resume picker + reset door,
   global viewport chat route, `fabro ask --capability`. Phased as
   work items in project `fabro` (lane:develop).
 - The vocabulary gains: **supervisor** (the full-access operating mode

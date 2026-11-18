@@ -315,8 +315,11 @@ global chat page, or `fabro ask --capability full`.
 The per-session, server-enforced switch between Ask Fabro's read-only
 default and supervisor (full access) mode (ADR-0046). Flipping requires
 the authenticated principal, persists for the session, and lands an
-auditable capability-change event in the run stream. The CLI performs
-the same flip via `fabro ask --capability full`.
+auditable `run.session.capability_changed` event in the session log
+(through RunSessionEventStore, so runless sessions work); a platform
+record mirrors onto the run stream only when the session is
+run-anchored. The CLI performs the same flip via
+`fabro ask --capability full`.
 
 - Not a **role model**: today's production reality is a single
   operator; graded tiers, if fabro ever becomes multi-user, ride the
