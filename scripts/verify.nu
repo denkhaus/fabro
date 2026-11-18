@@ -22,10 +22,16 @@
 # Exit 0 = all checks green. First red stops (qualitygate style:
 # `do { ^cmd } | complete`).
 #
-# Touched-crate + base detection reuse the qualitygate.nu pattern. The
-# stage comes from the engine-injected FABRO_STAGE env (fabro-6e7f /
+# Touched-crate + base detection come from the shared verification
+# commons (denkhaus/work#1445): the run-id parse, run-base (checkpoint
+# hit + the work#1427 journal fallback), crate extraction, test-file /
+# inline-cfg(test) classification, web-surface predicate, and the
+# nextest Summary parser all live ONCE in scripts/lib/verification_
+# commons.nu — this script keeps stage dispatch + tier policy only.
+# The stage comes from the engine-injected FABRO_STAGE env (fabro-6e7f /
 # fork_stage_env.rs) since v2 (fabro-a9cc); an explicit argument remains
 # as a manual override.
+source lib/verification_commons.nu
 
 const PINNED_TOOLCHAIN = "nightly-2026-04-14"
 
@@ -64,152 +70,28 @@ def output-tail [text: string, bound: int] {
 }
 
 
-# A test file by the repo's layout: tests/ dirs, *_tests.rs companions,
-# or a tests.rs module file inside src/.
-def is-test-file [p: string] {
-    ($p | str contains '/tests/') or ($p | str ends-with '_tests.rs') or ($p | str ends-with '/tests.rs')
-}
-
-# fabro-2f70: a diff touching an inline `#[cfg(test)]` module (the repo's
-# dominant test convention) also marks the file test-touched — previously
-# only test-path filenames counted, so inline-module edits silently
-# degraded verify to a compile check. Two signals from the per-file diff,
-# both fail-safe (over-detection only widens to the full crate suite):
-#   1. a CHANGED line (+/-, not context) contains `cfg(test)` — the
-#      attribute itself was added/removed (whole-file deletions land here
-#      too, since removing the file removes the attribute line);
-#   2. a changed line falls inside the file's cfg(test) region: at/after
-#      the first `#[cfg(test)]` attribute line. The region extends toward
-#      EOF (approximation: content after a closed mid-file module counts
-#      too), which only widens verification, never narrows it. Added
-#      lines are judged in new-file numbering against the current file;
-#      removed lines in old-file numbering against the base blob.
-def first-cfg-line [content: list<string>] {
-    let idx = ($content
-        | enumerate
-        | where {|r| $r.item | str contains '#[cfg(test)]'}
-        | get -o index)
-    if ($idx | is-empty) { null } else { ($idx | first) + 1 } # 1-based
-}
-
-def is-inline-test-diff [base: string, p: string] {
-    let diff = (git diff $base -- $p)
-    if ($diff | is-empty) { return false }
-    let lines = ($diff | lines)
-    let changed = ($lines | where {|l|
-        ((($l | str starts-with '+') and (not ($l | str starts-with '+++'))) or
-            (($l | str starts-with '-') and (not ($l | str starts-with '---'))))})
-    if ($changed | any {|l| $l | str contains 'cfg(test)'}) { return true }
-    if (not ($p | path exists)) { return false }
-    let new_cfg = (first-cfg-line (open --raw $p | lines))
-    let old_blob = (do { git show $"($base):($p)" } | complete)
-    let old_cfg = (if $old_blob.exit_code == 0 {
-        first-cfg-line ($old_blob.stdout | lines)
-    } else { null })
-    mut old_ln = 0
-    mut new_ln = 0
-    for l in $lines {
-        if ($l | str starts-with '@@') {
-            let h = ($l | parse --regex '^@@ -(?P<o>\d+)(?:,\d+)? \+(?P<n>\d+)(?:,\d+)? @@')
-            if ($h | is-not-empty) {
-                $old_ln = ($h.o | first | into int)
-                $new_ln = ($h.n | first | into int)
-            }
-        } else if ($l | str starts-with '+') and (not ($l | str starts-with '+++')) {
-            if ($new_cfg != null) and ($new_ln >= $new_cfg) { return true }
-            $new_ln = $new_ln + 1
-        } else if ($l | str starts-with '-') and (not ($l | str starts-with '---')) {
-            if ($old_cfg != null) and ($old_ln >= $old_cfg) { return true }
-            $old_ln = $old_ln + 1
-        } else if ($l | str starts-with ' ') {
-            $old_ln = $old_ln + 1
-            $new_ln = $new_ln + 1
-        }
-        # headers, \-no-newline markers, and everything else: no advance
-    }
-    false
-}
-
-def current-branch [] {
-    (git branch --show-current | str trim)
-}
-
-def run-base [] {
-    let run_id = (
-        current-branch
-        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
-        | get -o id.0
-        | default '')
-    if ($run_id | is-not-empty) {
-        let subjects = (git log --format='%H %s' -n 40)
-        let checkpoint = ($subjects | lines | where {|l|
-            # Plain-string concatenation, NOT $'...' interpolation: an
-            # interpolated string parses every (...) — including the regex
-            # group (?P<sha>...) — as a subexpression (parse bug found by
-            # run 01M2GVW7GGGB's implementer; lint-nu guards the class).
-            ($l | parse --regex ('^(?P<sha>[0-9a-f]+) fabro\(' + $run_id + '\): ') | get -o sha.0 | is-not-empty)
-        })
-        if ($checkpoint | is-not-empty) {
-            let sha = ($checkpoint | first | parse --regex '^(?P<sha>[0-9a-f]+)' | get sha.0)
-            {base: (git rev-parse $"($sha)^"), hit: true}
-        } else {
-            # No checkpoint-pattern commit in the log (work#1427 /
-            # work#1182): the engine's auto-commit and journal commits
-            # carry different subjects, and a recovery or re-entry pass
-            # over them sees a CLEAN tree — base HEAD would derive an
-            # EMPTY diff and answer "nothing to verify" while the whole
-            # attempt sits in HEAD. Fall back to the last journal
-            # commit's diff (journal commits carry the whole tree).
-            let has_parent = ((do { git rev-parse --verify --quiet $"HEAD^" } | complete | get exit_code) == 0)
-            if $has_parent {
-                {base: (git rev-parse $"HEAD^"), hit: true}
-            } else {
-                {base: (git rev-parse HEAD), hit: false}
-            }
-        }
-    } else {
-        # Host / non-run checkout: diff against origin's branch tip when
-        # available, else HEAD (no uncommitted-work signal on a clean tree).
-        let br = (current-branch)
-        let origin = $"origin/($br)"
-        let has_origin = (do { git rev-parse --verify --quiet $origin } | complete | get exit_code) == 0
-        if $has_origin {
-            {base: (git rev-parse $origin), hit: true}
-        } else {
-            {base: (git rev-parse HEAD), hit: false}
-        }
-    }
-}
+# Test-file / inline-cfg(test) classification (is-test-file,
+# first-cfg-line, is-inline-test-diff) lives in the shared verification
+# commons module — sourced above (denkhaus/work#1445).
 
 # Crates touched by the diff, split into {code: [...], tests: [...]}:
 # `tests` = crates with at least one test-file change, `code` = every
 # touched crate (tests included — fmt/clippy cover them too).
 def touched [] {
-    let run = (run-base)
+    let run = (run-base '' --origin-branch --checkpoint-pick 'latest')
     let base = $run.base
     let paths = (git diff --name-only $base | lines | compact)
     let crate_paths = ($paths | where {|p| $p | str starts-with 'lib/' })
-    let crates = ($crate_paths
-        | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
-        | flatten
-        | get -o crate
-        | uniq
-        | compact)
+    let crates = (crates-from-paths $crate_paths)
     let test_files = ($crate_paths
         | where {|p| (is-test-file $p) or (is-inline-test-diff $base $p) })
-    let test_crates = ($test_files
-        | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
-        | flatten
-        | get -o crate
-        | uniq
-        | compact)
-    # The web surface (work#1304): the bun workspace members. lib/packages
-    # counts — fabro-api-client is workspace:*-consumed by the web app, so
-    # its diffs verify through the web suite too.
-    let web_paths = ($paths | where {|p|
-        ($p | str starts-with 'apps/fabro-web/') or ($p | str starts-with 'lib/packages/')
-    })
-    {base: $base, code: $crates, tests: $test_crates, test_files: $test_files, web: ($web_paths | is-not-empty)}
+    let test_crates = (crates-from-paths $test_files)
+    # The web surface (work#1304): the bun workspace members, via the
+    # shared predicate. lib/packages counts — fabro-api-client is
+    # workspace:*-consumed by the web app, so its diffs verify through
+    # the web suite too.
+    let web = ($paths | any {|p| web-surface-path? $p})
+    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, web: $web}
 }
 
 # Test function names declared under a test attribute in a file's Rust
@@ -237,18 +119,9 @@ def test-names [content: string] {
     $names
 }
 
-# Tests-run count parsed from a nextest run's Summary line (fabro-bdff):
-# `Summary [  1.234s] 12 tests run: 12 passed, ...`. Null when the summary
-# cannot be parsed — the caller treats that as a failure, never as zero.
-# NOTE (work#1424 / work#1432): nextest prints the Summary to STDERR —
-# parse the COMBINED streams, never stdout alone; a stdout-only parse
-# false-FAILs green name-filter runs (the zero-selection guard then
-# burns a gate cycle on a pass).
-def nextest-tests-run [output: string] {
-    let m = ($output | lines | parse --regex 'Summary\s+\[[^\]]*\]\s+(?P<ran>\d+)\s+tests?\s+run' | last)
-    if ($m | is-empty) { return null }
-    ($m | get ran | into int)
-}
+# The nextest Summary parser lives in the shared verification commons
+# (nextest-summary / nextest-filter-verdict, with the work#1424/#1432
+# FAIL-vs-tool-error classification) — sourced above.
 
 # Per-crate nextest scope (fabro-7f58): when EVERY test-touched file in the
 # crate is purely added (absent from the base, present in the worktree),
@@ -318,6 +191,13 @@ def stage-implementer [] {
         print "verify: no lib/ crates and no web surface touched — nothing to verify (parse-level checks belong to the brief)"
         return
     }
+    # Base observability (work#1427): say WHICH fallback arm grounded the
+    # scope — a recovery pass must be visible in the surviving output.
+    if $t.how == 'journal' {
+        print "verify: checkpoint miss on the run branch — base is the last journal commit's parent (work#1427 fallback)"
+    } else if $t.how == 'head-parent' {
+        print "verify: checkpoint and journal detection both missed — last-resort HEAD^ base"
+    }
     print $"verify: code-touched=($t.code | str join ', ') test-file-touched=($t.tests | str join ', ')"
     if $t.web {
         print $"verify: web surface touched \(($WEB_DIR), lib/packages\)"
@@ -367,25 +247,33 @@ def stage-implementer [] {
         print $"verify: PASS compile ($c)"
     }
     for c in $t.tests {
-        let files = ($t.test_files
-            | where {|p| (($p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/') | get -o crate.0) == $c })
+        let files = ($t.test_files | where {|p| (crate-of-path $p) == $c })
         let tm = (test-mode-for $t.base $files)
         if $tm.mode == 'names' {
             print $"== nextest -p ($c) \(added tests by name filter: ($tm.names | str join ', '))=="
             let t0 = (date now)
             let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 ...$tm.names } | complete)
             let secs = (((date now) - $t0) / 1sec | math round)
-            # Zero-selection guard (fabro-bdff): a filter matching zero tests
-            # must never look green. Each extracted name is a distinct test
-            # fn and nextest matches filters by substring, so a correct
-            # extraction selects at least `names` tests; anything less (or an
-            # unparseable summary) means extraction mismatch — FAIL. The
-            # summary travels on STDERR (work#1424/work#1432): parse the
-            # combined streams.
-            let ran = (nextest-tests-run ($res.stdout + $res.stderr))
-            if $res.exit_code != 0 or $ran == null or $ran < ($tm.names | length) {
+            # Zero-selection guard (fabro-bdff), classified by the shared
+            # verdict (work#1424/work#1432). The summary travels on STDERR —
+            # the verdict parses the COMBINED streams. Two different reds:
+            #   FAIL (exit 1)      — a real test verdict: non-zero exit, or
+            #                      the filter matched fewer tests than
+            #                      extracted ("0 tests matched the filter"
+            #                      included);
+            #   TOOL-ERROR (exit 3) — the display has no Summary line at
+            #                      all: the tool broke; NOT a gate verdict.
+            let verdict = (nextest-filter-verdict $res.exit_code ($res.stdout + $res.stderr) ($tm.names | length))
+            if $verdict.verdict == 'tool-error' {
                 print (output-tail ($res.stdout + $res.stderr) 3000)
-                print $"verify: FAIL nextest ($c) \(name filter ran ($ran | default 'unparsed') tests, expected at least ($tm.names | length)\)"
+                print "verify: TOOL-ERROR nextest — output unparseable (no Summary line in stdout+stderr): tooling failure, not a gate verdict (work#1424/#1432)"
+                $env.LAST_VERIFY_FAIL = "nextest-tool-error"
+                exit 3
+            }
+            if $verdict.verdict == 'fail' {
+                print (output-tail ($res.stdout + $res.stderr) 3000)
+                print $"verify: FAIL nextest ($c) \(name filter: ($verdict.reason)\)"
+                $env.LAST_VERIFY_FAIL = "nextest"
                 exit 1
             }
             print $"verify: PASS nextest ($c) \(($secs)s\)"

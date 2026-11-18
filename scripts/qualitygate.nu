@@ -8,9 +8,12 @@
 # scripts/qualitygate.nu): sections, `do { ^cmd } | complete`, first red
 # stops the gate.
 #
-# Base detection reuses the lab evidence.nu pattern: the parent of the LAST
-# engine checkpoint commit (subject 'fabro(<run-id>): ...') is the run base —
-# works in the shallow sandbox clone without origin refs.
+# Base detection comes from the shared verification commons
+# (denkhaus/work#1445): the parent of the LAST engine checkpoint commit
+# (subject 'fabro(<run-id>): ...') is the run base — works in the shallow
+# sandbox clone without origin refs. The checkpoint-miss arm carries the
+# work#1427 journal fallback (base = the last journal commit's parent),
+# healing this gate's former HEAD-on-miss drift by construction.
 
 # Shared creation-intent window (fabro-48f3): anchor_check.nu is the ONE
 # seam — claim-check and planner-preflight source the same file, so both
@@ -18,36 +21,20 @@
 # `source` resolves against this file's directory.
 source ../.fabro/workflows/develop/scripts/anchor_check.nu
 
+# The verification commons (denkhaus/work#1445): the run-id parse, run-base
+# (checkpoint pick 'earliest' — this gate's whole-run scope, now with the
+# work#1427 checkpoint-miss journal fallback healed here too), the crate
+# extraction, and the web-surface predicate live ONCE in
+# scripts/lib/verification_commons.nu. No local copy of those shapes
+# remains (the regrowth pin in scripts/verification-commons-fixtures.nu
+# holds that).
+source lib/verification_commons.nu
+
 # Flaky-test policy: nextest retries each failing test once. The known
 # fabro-80b3 class (for_each_accepts_an_array_at_the_item_limit times out
 # under full-suite load) gets its second chance; deterministic failures
 # still fail the gate.
 const NEXTEST_RETRIES = 1
-
-def current-branch [] {
-    (git branch --show-current | str trim)
-}
-
-def run-base [] {
-    let run_id = (
-        current-branch
-        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
-        | get -o id.0
-        | default ''
-    )
-    if ($run_id | is-empty) {
-        # Interactive/human invocation outside a run: diff the working tree
-        # against HEAD (uncommitted changes) — the touched-set of a draft.
-        return {base: "HEAD", grounded: false}
-    }
-    let subject_mark = $"fabro\(($run_id)\):"
-    let checkpoints = (git log --format=%H --fixed-strings --grep $subject_mark | lines | compact)
-    if ($checkpoints | is-empty) {
-        return {base: "HEAD", grounded: false}
-    }
-    let base = (git rev-parse $"($checkpoints | last)^")
-    {base: $base, grounded: true}
-}
 
 # Map changed paths to workspace crates; root manifest/lock changes mark the
 # whole workspace as touched (dependency edits can affect every crate).
@@ -58,14 +45,7 @@ def touched-crates [] {
     if ($crate_paths | is-empty) {
         return []
     }
-    # `parse` yields a table PER input string, so `each` would nest the
-    # result (list<list<record>> — the run-1 gate crash). flatten first.
-    let crates = ($crate_paths
-        | each {|p| $p | parse --regex '^lib/(?:apps|components|foundation)/(?P<crate>[^/]+)/' }
-        | flatten
-        | get -o crate
-        | uniq
-        | compact)
+    let crates = (crates-from-paths $crate_paths)
     let root_touched = ($paths | where {|p|
         ($p in ['Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml'])
     } | is-not-empty)
@@ -298,9 +278,7 @@ const WEB_DIR = "apps/fabro-web"
 const WEB_INSTALL_TIMEOUT_SECS = 600
 
 def web-diff? [base: record]: nothing -> bool {
-    (run-diff-paths $base | where {|p|
-        ($p | str starts-with 'apps/fabro-web/') or ($p | str starts-with 'lib/packages/')
-    } | is-not-empty)
+    run-diff-paths $base | any {|p| web-surface-path? $p}
 }
 
 def check-web [base: record]: nothing -> bool {
@@ -427,12 +405,7 @@ def "main check-seed-spec-paths" [--seed: string = ""]: nothing -> nothing {
         print "seed-spec-paths base ungrounded: interactive or pre-checkpoint, diffing working tree"
     }
     let diff = (run-diff-paths $base)
-    let run_id = (
-        current-branch
-        | parse --regex 'fabro/run/(?P<id>[^/]+)$'
-        | get -o id.0
-        | default ''
-    )
+    let run_id = (id-from-branch (current-branch))
     let seed = (if ($seed | is-not-empty) {
         $seed
     } else {

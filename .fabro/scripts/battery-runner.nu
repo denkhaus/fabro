@@ -202,6 +202,16 @@ const BATTERIES = [
     # a PATH-planted canned seeds CLI. The empty-edit pass must RED in
     # seconds, not a review cycle.
     '.fabro/scripts/seed-spec-paths-fixtures.nu'
+    # verification-commons battery (denkhaus/work#1445, arch candidate
+    # C1): the ONE diff-scope seam — run-id parse, run-base (checkpoint
+    # hit + the work#1427 journal fallback + the head-parent last
+    # resort), crate extraction, test-file/cfg(test) classification, web
+    # predicate, and the nextest Summary parser with the
+    # work#1424/#1432 FAIL-vs-unparseable verdict split. Pins the pure
+    # shapes, the git-fixture base derivations, and the regrowth scan
+    # over verify.nu/qualitygate.nu/run_anchor.nu (no mirror def or
+    # regex literal regrows beside the module).
+    'scripts/verification-commons-fixtures.nu'
 ]
 
 def run-list [kind: string, paths: list<string>]: nothing -> bool {
