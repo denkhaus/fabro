@@ -8,10 +8,12 @@
 //! beside it without changes here.
 
 mod forge_pr;
+mod hold;
 mod store;
 mod tracker;
 
 pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
+pub use hold::{HoldReason, hold_reason};
 pub use store::{
     ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
     ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,
