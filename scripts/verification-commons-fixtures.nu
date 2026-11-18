@@ -68,9 +68,12 @@ def test-run-id-parse []: nothing -> nothing {
     assert-eq (verification_commons id-from-branch 'fabro/run/a/b') '' 'nested path under fabro/run is off-run'
     assert-eq (verification_commons id-from-branch '') '' 'detached HEAD is off-run'
     # run_anchor's adapter: same answers through the unchanged public API.
+    # (The ambient `run_anchor run-id` assertion moved into
+    # test-off-run-contract below — work#1456: it read AMBIENT checkout
+    # state and can never hold inside a run sandbox; two laps paid the
+    # same tester re-entry gate-red on 2026-11-18.)
     assert-eq (run_anchor id-from-branch 'fabro/run/01M5844J1FDD' 'local') '01M5844J1FDD' 'run_anchor adapter yields the id'
     assert-eq (run_anchor id-from-branch 'main' 'local') 'local' 'run_anchor adapter keeps the per-consumer off-run sentinel'
-    assert-eq (run_anchor run-id 'local') 'local' 'run_anchor run-id answers off-run on the battery host'
 }
 
 def test-subject-mark []: nothing -> nothing {
@@ -326,6 +329,14 @@ def test-off-run-contract []: nothing -> nothing {
     let o = (verification_commons run-base '' --origin-branch)
     assert-eq $o.how 'origin' 'the origin arm names itself'
     assert-eq $o.base (git rev-parse HEAD) 'the origin arm grounds on the remote tip'
+    # The run-branch kind pins here too (work#1456, 2026-11-18): the
+    # ambient `run_anchor run-id` assertion this battery once carried can
+    # never hold inside a run sandbox (the branch is fabro/run/<id>
+    # there) — two laps paid the same tester re-entry gate-red before the
+    # assertion moved into the controlled scratch.
+    git checkout -q -b fabro/run/fxrid
+    assert-eq (run_anchor run-id) 'fxrid' 'run branch: run_anchor run-id yields the run id'
+    assert-eq (run_anchor id-from-branch 'fabro/run/fxrid' 'local') 'fxrid' 'run branch: id-from-branch yields the id'
     cd $DIR
     rm -rf $dir
 }
