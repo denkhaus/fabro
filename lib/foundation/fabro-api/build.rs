@@ -794,8 +794,6 @@ fn main() {
             "fabro_types::SandboxServiceListResponse",
             &[],
         ),
-        ("SandboxState", "fabro_types::SandboxState", &[]),
-        ("SandboxResources", "fabro_types::SandboxResources", &[]),
         ("SandboxTimestamps", "fabro_types::SandboxTimestamps", &[]),
         ("AskFabro", "fabro_types::AskFabro", &[]),
         ("Automation", "fabro_automation::Automation", &[]),
@@ -910,6 +908,25 @@ fn main() {
         ("WorkItemComment", "fabro_types::WorkItemComment", &[]),
         ("ObservationRef", "fabro_types::ObservationRef", &[]),
     ];
+    // The table must keep one entry per schema name. Typify honors the LAST
+    // `with_replacement` for a name, so a duplicate silently shadows the
+    // earlier entry (work#1461: trailing stale entries shadowed the working
+    // `sandbox_driver::` sandbox replacements). Fail the build instead.
+    let mut seen = std::collections::HashSet::new();
+    let mut duplicates: Vec<&str> = Vec::new();
+    for (name, _, _) in replacements {
+        if !seen.insert(*name) && !duplicates.contains(name) {
+            duplicates.push(name);
+        }
+    }
+    if !duplicates.is_empty() {
+        panic!(
+            "duplicate with_replacement keys in the OpenAPI type-replacement table: {}; \
+             typify honors the last entry for a schema name, so a later duplicate \
+             silently shadows the earlier one — keep exactly one entry per schema name",
+            duplicates.join(", ")
+        );
+    }
     for (name, path, impls) in replacements {
         settings.with_replacement(*name, *path, impls.iter().copied());
     }
