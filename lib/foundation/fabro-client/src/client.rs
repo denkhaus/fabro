@@ -87,6 +87,90 @@ struct ListStoreRunsOptions {
     parent_id: Option<RunId>,
 }
 
+/// One page of `GET /api/v1/runs` as raw JSON: the lenient listing's
+/// envelope (work#1437). Only the pagination contract is typed — the
+/// rows stay `Value` so each can decode (or refuse) on its own. The
+/// envelope itself stays loud: a 200 response without `data` is drift
+/// the caller must see, not a silently empty listing.
+#[derive(Debug, Deserialize)]
+struct RawRunPage {
+    data: Vec<serde_json::Value>,
+    /// Absent or `null` meta reads as "no more pages" — the lenient
+    /// path takes the one field its loop needs and ignores the rest.
+    meta: Option<RawRunPageMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawRunPageMeta {
+    #[serde(default)]
+    has_more: bool,
+}
+
+/// One run-listing row the client could not decode into a typed `Run`:
+/// the server's payload carries a field or variant this build does not
+/// know (schema drift — work#1437's incident shape: a new run-status
+/// kind an older CLI's enum rejects).
+#[derive(Debug, Clone)]
+pub struct UndecodableRunRow {
+    /// The row verbatim, so renderers can still surface its identity
+    /// (`id`, `title`, `lifecycle.status.kind`) without understanding it.
+    pub raw: serde_json::Value,
+    /// Why the row refused to decode (the serde error text).
+    pub error: String,
+}
+
+impl UndecodableRunRow {
+    /// The run's id, when the raw row carries one.
+    #[must_use]
+    pub fn run_id(&self) -> Option<&str> {
+        self.raw.get("id").and_then(serde_json::Value::as_str)
+    }
+
+    /// The status-kind tag of the row's `lifecycle.status`, when the raw
+    /// row carries one (`"human_needed"` for work#1437's shape).
+    #[must_use]
+    pub fn status_kind(&self) -> Option<&str> {
+        self.raw
+            .pointer("/lifecycle/status/kind")
+            .and_then(serde_json::Value::as_str)
+    }
+
+    /// The run's title, when the raw row carries one.
+    #[must_use]
+    pub fn title(&self) -> Option<&str> {
+        self.raw
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+    }
+}
+
+/// A run listing that degrades per row instead of failing whole
+/// (work#1437): every row that decoded, plus every row that refused —
+/// ONE unknown variant on ONE row must not kill the whole table.
+#[derive(Debug, Clone, Default)]
+pub struct RunListing {
+    pub runs:        Vec<Run>,
+    pub undecodable: Vec<UndecodableRunRow>,
+}
+
+/// Per-row decode of one raw listing page: rows that decode join
+/// `runs`, rows that refuse land verbatim in `undecodable`. A free
+/// function so the leniency contract stays unit-testable without a
+/// server.
+fn decode_run_rows(rows: Vec<serde_json::Value>) -> RunListing {
+    let mut listing = RunListing::default();
+    for row in rows {
+        match serde_json::from_value::<Run>(row.clone()) {
+            Ok(run) => listing.runs.push(run),
+            Err(error) => listing.undecodable.push(UndecodableRunRow {
+                raw: row,
+                error: error.to_string(),
+            }),
+        }
+    }
+    listing
+}
+
 #[derive(Clone)]
 struct ClientState {
     client:       fabro_api::ApiClient,
@@ -1743,6 +1827,105 @@ impl Client {
         }
 
         Ok(all_runs)
+    }
+
+    /// The run listing the `ps` surfaces, fetched leniently (work#1437):
+    /// pages arrive as raw JSON and decode per row, so one server-side
+    /// drift — a status kind or field this build does not know —
+    /// degrades to an [`UndecodableRunRow`] placeholder instead of
+    /// failing the whole listing. The strict [`Client::list_store_runs`]
+    /// stays for callers that must have every row typed.
+    pub async fn list_store_runs_lenient(&self) -> Result<RunListing> {
+        self.list_store_runs_lenient_with_options(ListStoreRunsOptions::default())
+            .await
+    }
+
+    /// The child-run listing for one parent, fetched leniently — the
+    /// per-row degradation of [`Client::list_store_runs_lenient`].
+    pub async fn list_store_runs_lenient_by_parent(&self, parent_id: RunId) -> Result<RunListing> {
+        self.list_store_runs_lenient_with_options(ListStoreRunsOptions {
+            parent_id: Some(parent_id),
+        })
+        .await
+    }
+
+    async fn list_store_runs_lenient_with_options(
+        &self,
+        options: ListStoreRunsOptions,
+    ) -> Result<RunListing> {
+        let mut listing = RunListing::default();
+        let mut offset = 0_usize;
+        let limit = 100_usize;
+        let parent_id = options.parent_id.map(|run_id| run_id.to_string());
+
+        loop {
+            let page = self
+                .fetch_raw_run_page(limit, offset, parent_id.as_deref())
+                .await?;
+            let decoded = decode_run_rows(page.data);
+            // Pagination advances by EVERY row the server sent: skipping
+            // an undecodable row from the count would re-fetch the same
+            // page forever.
+            let rows_in_page = decoded.runs.len() + decoded.undecodable.len();
+            listing.runs.extend(decoded.runs);
+            listing.undecodable.extend(decoded.undecodable);
+
+            let has_more = page.meta.is_some_and(|meta| meta.has_more);
+            if !has_more || rows_in_page == 0 {
+                break;
+            }
+            offset += rows_in_page;
+        }
+
+        Ok(listing)
+    }
+
+    /// One raw page of `GET /api/v1/runs` (work#1437): the same door the
+    /// strict listing uses, built off the base URL with an absolute
+    /// path join the way the generated client does (so a base that
+    /// already carries `/api/v1` does not double it), and decoded only
+    /// down to the envelope so the rows can lenient-decode one by one.
+    #[expect(
+        clippy::disallowed_types,
+        reason = "Client builds raw server API request URLs for wire transit; logging redaction is handled at log boundaries."
+    )]
+    async fn fetch_raw_run_page(
+        &self,
+        limit: usize,
+        offset: usize,
+        parent_id: Option<&str>,
+    ) -> Result<RawRunPage> {
+        let base_url = self.base_url();
+        let mut url = fabro_http::Url::parse(&base_url)
+            .with_context(|| format!("invalid server base URL {base_url}"))?
+            .join("/api/v1/runs")
+            .with_context(|| format!("cannot build the run-listing URL from {base_url}"))?;
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.append_pair("page[limit]", &limit.to_string());
+            pairs.append_pair("page[offset]", &offset.to_string());
+            pairs.append_pair("include_archived", "true");
+            if let Some(parent_id) = parent_id {
+                pairs.append_pair("parent_id", parent_id);
+            }
+        }
+
+        let response = self
+            .send_http(|http_client| {
+                let url = url.clone();
+                async move {
+                    http_client
+                        .get(url)
+                        .header(ACCEPT, "application/json")
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        response
+            .json::<RawRunPage>()
+            .await
+            .context("server returned invalid JSON for the run listing")
     }
 
     pub async fn link_run_parent(&self, child_id: &RunId, parent_id: &RunId) -> Result<Run> {
@@ -4656,6 +4839,77 @@ mod tests {
         assert!(
             !message.contains("Upgrade the fabro server"),
             "hint should only fire on unstructured 404s, got: {message}"
+        );
+    }
+
+    /// A minimal run row the typed `Run` accepts (every required field
+    /// present, the rest defaulted), with the status kind selectable —
+    /// `"human_needed"` stands in for work#1437's server-side drift.
+    fn run_row_fixture(status_kind: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": "01JNQVR7M0EJ5GKAT2SC4ERS1Z",
+            "title": "t",
+            "goal": "g",
+            "workflow": {},
+            "created_by": {"kind": "system", "system_kind": "engine"},
+            "origin": {"kind": "api"},
+            "labels": {},
+            "lifecycle": {"status": {"kind": status_kind}, "archived": false},
+            "models": [],
+            "timestamps": {"created_at": "2026-11-19T00:00:00Z"},
+            "links": {}
+        })
+    }
+
+    /// work#1437: the lenient listing's per-row decode — a row carrying
+    /// a status kind this build does not know refuses ALONE, verbatim,
+    /// with its identity still readable off the raw row, while the
+    /// known row decodes normally. The strict path would lose the
+    /// whole page here.
+    #[test]
+    fn decode_run_rows_degrades_per_row_on_unknown_status_kind() {
+        let listing = super::decode_run_rows(vec![
+            run_row_fixture("running"),
+            run_row_fixture("human_needed"),
+        ]);
+
+        assert_eq!(listing.runs.len(), 1, "the known row must decode");
+        assert_eq!(listing.undecodable.len(), 1, "the drifted row alone");
+
+        let drifted = &listing.undecodable[0];
+        assert_eq!(drifted.status_kind(), Some("human_needed"));
+        assert_eq!(drifted.run_id(), Some("01JNQVR7M0EJ5GKAT2SC4ERS1Z"));
+        assert_eq!(drifted.title(), Some("t"));
+        assert!(
+            drifted.error.contains("unknown variant `human_needed`"),
+            "the serde verdict must travel: {}",
+            drifted.error
+        );
+    }
+
+    /// The lenient envelope reads: absent or `null` meta means "no more
+    /// pages", while a response without `data` is envelope drift the
+    /// caller must see — not a silently empty listing.
+    #[test]
+    fn raw_run_page_meta_is_lenient_but_data_is_demanded() {
+        let page: super::RawRunPage = serde_json::from_value(json!({
+            "data": [run_row_fixture("running")],
+            "meta": null
+        }))
+        .unwrap();
+        assert_eq!(page.data.len(), 1);
+        assert!(!page.meta.is_some_and(|meta| meta.has_more));
+
+        let page: super::RawRunPage = serde_json::from_value(json!({
+            "data": []
+        }))
+        .unwrap();
+        assert!(page.meta.is_none());
+
+        assert!(
+            serde_json::from_value::<super::RawRunPage>(json!({"meta": {"has_more": false}}))
+                .is_err(),
+            "a page without data must refuse, not decode to an empty listing"
         );
     }
 }

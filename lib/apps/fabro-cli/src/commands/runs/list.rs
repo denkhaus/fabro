@@ -12,6 +12,7 @@ use super::short_run_id;
 use crate::args::RunsListArgs;
 use crate::command_context::CommandContext;
 use crate::commands::resolve_run_id;
+use crate::server_client::UndecodableRunRow;
 use crate::server_runs::{ServerRunLookup, filter_server_runs};
 use crate::shared::{color_if, format_duration_ms, run_status_kind, tilde_path};
 
@@ -41,8 +42,22 @@ pub(crate) async fn list_command(
         !args.all,
     );
 
+    // work#1437: rows the server sent that this CLI cannot decode
+    // render as placeholders instead of killing the whole listing.
+    // Warn loudly, once, before any rendering — and point at the
+    // self-update door, since the matching CLI ships with the server's
+    // own release.
+    if !lookup.undecodable_runs().is_empty() {
+        fabro_util::printerr!(
+            printer,
+            "WARNING: {}",
+            undecodable_skew_warning(lookup.undecodable_runs())
+        );
+        fabro_util::printerr!(printer, "{SELF_UPDATE_HINT}");
+    }
+
     if ctx.json_output() {
-        let json_rows: Vec<_> = filtered
+        let mut json_rows: Vec<_> = filtered
             .iter()
             .map(|run| {
                 serde_json::json!({
@@ -63,6 +78,14 @@ pub(crate) async fn list_command(
                 })
             })
             .collect();
+        json_rows.extend(lookup.undecodable_runs().iter().map(|row| {
+            serde_json::json!({
+                "run_id": row.run_id(),
+                "undecodable": true,
+                "error": row.error,
+                "raw": row.raw,
+            })
+        }));
         fabro_util::printout!(printer, "{}", serde_json::to_string_pretty(&json_rows)?);
         return Ok(());
     }
@@ -71,10 +94,15 @@ pub(crate) async fn list_command(
         for run in &filtered {
             fabro_util::printout!(printer, "{}", run.run_id());
         }
+        for row in lookup.undecodable_runs() {
+            if let Some(run_id) = row.run_id() {
+                fabro_util::printout!(printer, "{run_id}");
+            }
+        }
         return Ok(());
     }
 
-    if filtered.is_empty() {
+    if filtered.is_empty() && lookup.undecodable_runs().is_empty() {
         if args.all {
             fabro_util::printerr!(printer, "No runs found.");
         } else {
@@ -151,6 +179,12 @@ pub(crate) async fn list_command(
             ]);
             row
         })
+        .chain(
+            lookup
+                .undecodable_runs()
+                .iter()
+                .map(|row| undecodable_row_cells(row, show_parent_column, use_color)),
+        )
         .collect();
 
     let color_choice = if use_color {
@@ -166,7 +200,11 @@ pub(crate) async fn list_command(
         .separator(Separator::builder().build());
     fabro_util::printout!(printer, "{}", table.display()?);
 
-    fabro_util::printerr!(printer, "\n{} run(s) listed.", display_runs.len());
+    fabro_util::printerr!(
+        printer,
+        "\n{} run(s) listed.",
+        display_runs.len() + lookup.undecodable_runs().len()
+    );
     Ok(())
 }
 
@@ -187,6 +225,78 @@ fn status_cell(status: RunStatus, use_color: bool) -> CellStruct {
     text.cell()
         .bold(use_color && color != Some(Color::Ansi256(8)))
         .foreground_color(color_if(use_color, color.unwrap_or(Color::Ansi256(8))))
+}
+
+/// The one-line self-update pointer printed under the skew warning
+/// (work#1437): the matching CLI ships inside the server's own release
+/// image, so upgrading the CLI converges it with the server.
+const SELF_UPDATE_HINT: &str =
+    "upgrade the CLI: the release carries it — `fabro upgrade` (or the mise github backend installs it)";
+
+/// The drift warning for rows this CLI cannot decode: names how many
+/// rows drifted and what the server's unknown shape looks like (the
+/// status kind when the raw row carries one), capped at five details.
+fn undecodable_skew_warning(runs: &[UndecodableRunRow]) -> String {
+    let details = runs
+        .iter()
+        .take(5)
+        .map(|row| {
+            row.status_kind().map_or_else(
+                || "unknown shape".to_string(),
+                |kind| format!("status_kind={kind}"),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let more = runs.len().saturating_sub(5);
+    let more_note = if more > 0 {
+        format!(" ...and {more} more")
+    } else {
+        String::new()
+    };
+    format!(
+        "{} run row(s) this CLI cannot decode — the server sent a field or variant this CLI \
+         does not know ({details}{more_note}). They render as placeholder rows.",
+        runs.len()
+    )
+}
+
+/// The title a placeholder row carries: the task's suggested shape,
+/// naming the unknown status kind when the raw row exposes one.
+fn undecodable_title(row: &UndecodableRunRow) -> String {
+    match row.status_kind() {
+        Some(kind) => format!("<undecodable run: status_kind={kind}>"),
+        None => "<undecodable run>".to_string(),
+    }
+}
+
+/// One table row for a run this CLI cannot decode: the run id and
+/// status kind off the raw JSON where present, dashes elsewhere, and
+/// the `<undecodable run>` placeholder as the title.
+fn undecodable_row_cells(
+    row: &UndecodableRunRow,
+    show_parent_column: bool,
+    use_color: bool,
+) -> Vec<CellStruct> {
+    let gray = color_if(use_color, Color::Ansi256(8));
+    let mut cells = vec![row.run_id().unwrap_or("-").cell().foreground_color(gray)];
+    if show_parent_column {
+        cells.push("-".cell().foreground_color(gray));
+    }
+    cells.extend([
+        "-".cell(),
+        row.status_kind()
+            .unwrap_or("undecodable")
+            .cell()
+            .bold(use_color)
+            .foreground_color(color_if(use_color, Color::Yellow)),
+        "-".cell(),
+        "-".cell(),
+        truncate_goal(&undecodable_title(row), 50)
+            .cell()
+            .foreground_color(gray),
+    ]);
+    cells
 }
 
 fn parse_label_filters(label_args: &[String]) -> Vec<(String, String)> {
@@ -242,5 +352,47 @@ mod tests {
             truncate_goal("## A long goal description", 10),
             "A long ..."
         );
+    }
+
+    fn undecodable_row(raw: serde_json::Value) -> UndecodableRunRow {
+        UndecodableRunRow {
+            raw,
+            error: "unknown variant `human_needed`".to_string(),
+        }
+    }
+
+    #[test]
+    fn undecodable_title_carries_the_status_kind() {
+        let row = undecodable_row(serde_json::json!({
+            "id": "01JNQVR7M0EJ5GKAT2SC4ERS1Z",
+            "lifecycle": {"status": {"kind": "human_needed"}}
+        }));
+        assert_eq!(undecodable_title(&row), "<undecodable run: status_kind=human_needed>");
+        assert_eq!(
+            undecodable_title(&undecodable_row(serde_json::json!({}))),
+            "<undecodable run>"
+        );
+    }
+
+    #[test]
+    fn skew_warning_names_the_drift_and_caps_details() {
+        let rows: Vec<_> = (0..7)
+            .map(|_| {
+                undecodable_row(serde_json::json!({
+                    "lifecycle": {"status": {"kind": "human_needed"}}
+                }))
+            })
+            .collect();
+        let warning = undecodable_skew_warning(&rows);
+        assert!(warning.contains("7 run row(s)"), "{warning}");
+        assert!(
+            warning.contains("a field or variant this CLI does not know"),
+            "{warning}"
+        );
+        assert!(warning.contains("status_kind=human_needed"), "{warning}");
+        assert!(warning.contains("...and 2 more"), "{warning}");
+
+        let single = undecodable_skew_warning(&rows[..1]);
+        assert!(!single.contains("more"), "{single}");
     }
 }
