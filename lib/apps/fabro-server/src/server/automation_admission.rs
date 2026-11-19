@@ -23,26 +23,11 @@ use chrono::Utc;
 use fabro_automation::Automation;
 use fabro_store::platform_records::{ObservationTriageState, PlatformRecordKind};
 use fabro_types::{OrchestrationField, OrchestrationVerdict};
-use fabro_work::{WorkItemFilter, WorkItemStateFilter};
+use fabro_work::WorkItemFilter;
 use tracing::warn;
 
 use super::AppState;
-
-/// The workflow slug the run-queue gears sweep (the scripts' `WORKFLOW`
-/// const: the adjudicator's fast path and closing pass and the merger's
-/// fast path all read `--workflow develop`).
-const SWEPT_WORKFLOW: &str = "develop";
-
-/// The observation category the triager sweeps (`--category painpoint`,
-/// `.fabro/workflows/triager/scripts/sweep.nu`) — the store matches the
-/// serde fragment, so the wire name rides here verbatim.
-const PAINPOINT_CATEGORY: &str = "painpoint";
-
-/// The claim door's bounded lane page (`handler::work_items::claim_next`
-/// lists the lane with limit 50, page 1) — the gate reuses the same read
-/// instead of a cheaper narrower one, so its answer never disagrees with
-/// what the lap's own claim would find.
-const CLAIM_POOL_PAGE: usize = 50;
+use super::gear_worklist::{ClaimPoolSpec, GearWorklistSpec};
 
 /// Why the gate says the gear's worklist is positively empty. One variant
 /// per gear arm; the Display is the skip log's reason token.
@@ -77,21 +62,35 @@ pub(crate) enum AdmissionDecision {
     Fire,
 }
 
-/// Consult the automation's gear worklist. Dispatch is on the workflow
-/// slug; only the four worklist-driven gears of denkhaus/work#1436 are
-/// gated (the watchdog's heartbeat sweeps its own systems and is left
-/// ungated), and every consult error fails OPEN — the fire proceeds.
+/// Consult the automation's gear worklist. Dispatch rides the gear
+/// worklist table ([`super::gear_worklist`]): only the four
+/// worklist-driven gears of denkhaus/work#1436 are in it (the
+/// watchdog's heartbeat sweeps its own systems and is left ungated),
+/// each arm consumes the table's spec, and every consult error fails
+/// OPEN — the fire proceeds.
 pub(crate) async fn admission_decision(
     state: &AppState,
     automation: &Automation,
 ) -> AdmissionDecision {
-    let consulted = match automation.workflow.as_str() {
-        "merger" => merger_worklist(state).await,
-        "adjudicator" => adjudicator_worklists(state).await,
-        "triager" => triager_worklist(state).await,
-        "develop" => develop_claim_pool(state, automation).await,
+    let consulted = match super::gear_worklist::by_slug(&automation.workflow) {
+        Some(gear) => match gear.spec {
+            GearWorklistSpec::Queue {
+                workflow,
+                field,
+                requires,
+            } => merger_worklist(state, field, requires, workflow).await,
+            GearWorklistSpec::QueueAndClosing {
+                workflow,
+                queue_field,
+                closing,
+            } => adjudicator_worklists(state, queue_field, closing, workflow).await,
+            GearWorklistSpec::Feed { category, triage } => {
+                triager_worklist(state, category, triage).await
+            }
+            GearWorklistSpec::ClaimPool(pool) => develop_claim_pool(state, automation, pool).await,
+        },
         // Not a gated gear: no opinion, fire as today.
-        _ => Ok(None),
+        None => Ok(None),
     };
     match consulted {
         Ok(Some(empty)) => AdmissionDecision::Skip(empty),
@@ -112,21 +111,20 @@ pub(crate) async fn admission_decision(
 }
 
 /// The merger's worklist (ADR-0039 stage E): the closable anti-join
-/// restricted to `merge = enabled` — the EXACT query the merger's
+/// restricted to its settled requirement — the EXACT query the merger's
 /// fast-path sweep walks (`run queue --field closable --workflow develop
-/// --requires merge=enabled`). The gate asks only "is there anything", so
-/// limit 1 answers it.
-async fn merger_worklist(state: &AppState) -> Result<Option<WorklistEmpty>, String> {
+/// --requires merge=enabled`), spelled by the table's Queue spec. The
+/// gate asks only "is there anything", so limit 1 answers it.
+async fn merger_worklist(
+    state: &AppState,
+    field: OrchestrationField,
+    requires: (OrchestrationField, OrchestrationVerdict),
+    workflow: &str,
+) -> Result<Option<WorklistEmpty>, String> {
     let queue = state
         .stores
         .run_summaries
-        .adjudication_queue(
-            OrchestrationField::Closable,
-            Some((OrchestrationField::Merge, OrchestrationVerdict::Enabled)),
-            Some(SWEPT_WORKFLOW),
-            1,
-            Utc::now(),
-        )
+        .adjudication_queue(field, Some(requires), Some(workflow), 1, Utc::now())
         .await
         .map_err(|error| error.to_string())?;
     Ok(queue.is_empty().then_some(WorklistEmpty::MergeEnabled))
@@ -139,18 +137,17 @@ async fn merger_worklist(state: &AppState) -> Result<Option<WorklistEmpty>, Stri
 /// whose work items may close. Only BOTH drained means nothing to do;
 /// skipping on the closing list alone would starve pass-one adjudication
 /// beside a fresh batch of terminal runs.
-async fn adjudicator_worklists(state: &AppState) -> Result<Option<WorklistEmpty>, String> {
+async fn adjudicator_worklists(
+    state: &AppState,
+    queue_field: OrchestrationField,
+    closing: (OrchestrationField, OrchestrationVerdict),
+    workflow: &str,
+) -> Result<Option<WorklistEmpty>, String> {
     let now = Utc::now();
     let merge_queue = state
         .stores
         .run_summaries
-        .adjudication_queue(
-            OrchestrationField::Merge,
-            None,
-            Some(SWEPT_WORKFLOW),
-            1,
-            now,
-        )
+        .adjudication_queue(queue_field, None, Some(workflow), 1, now)
         .await
         .map_err(|error| error.to_string())?;
     if !merge_queue.is_empty() {
@@ -159,13 +156,7 @@ async fn adjudicator_worklists(state: &AppState) -> Result<Option<WorklistEmpty>
     let closings = state
         .stores
         .run_summaries
-        .verdict_queue(
-            OrchestrationField::Closable,
-            OrchestrationVerdict::Enabled,
-            Some(SWEPT_WORKFLOW),
-            1,
-            now,
-        )
+        .verdict_queue(closing.0, closing.1, Some(workflow), 1, now)
         .await
         .map_err(|error| error.to_string())?;
     Ok(closings.is_empty().then_some(WorklistEmpty::Adjudication))
@@ -176,7 +167,11 @@ async fn adjudicator_worklists(state: &AppState) -> Result<Option<WorklistEmpty>
 /// is irrelevant to the gate, the COUNT is the worklist. The store's
 /// materialized total is an upper bound on what the sweep's live overlay
 /// would keep, so zero is a positive empty answer and any count fires.
-async fn triager_worklist(state: &AppState) -> Result<Option<WorklistEmpty>, String> {
+async fn triager_worklist(
+    state: &AppState,
+    category: &str,
+    triage: ObservationTriageState,
+) -> Result<Option<WorklistEmpty>, String> {
     let (_, total) = state
         .stores
         .run_summaries
@@ -188,17 +183,17 @@ async fn triager_worklist(state: &AppState) -> Result<Option<WorklistEmpty>, Str
             0,
             None,
             None,
-            Some(PAINPOINT_CATEGORY),
-            Some(ObservationTriageState::Untriaged),
+            Some(category),
+            Some(triage),
         )
         .await
         .map_err(|error| error.to_string())?;
     Ok((total == 0).then_some(WorklistEmpty::UntriagedPainpoints))
 }
 
-/// The develop claim pool (ADR-0032): the SAME bounded lane reads the
-/// claim door serves (`handler::work_items::claim_next` —
-/// `tracker.list` with the lane, limit 50, page 1) minus the live
+/// The develop claim pool (ADR-0032): the SAME bounded lane read the
+/// claim door serves (`handler::work_items::claim_next` — the table's
+/// claim-pool spec: the lane, its page, OPEN items) minus the live
 /// claims. Every declared lane must drain before the gate skips: the
 /// planner claims whatever lane PROJECT_FACTS names, and the pool
 /// policy's run-scoped refinements (the misroute skip, the stale-basis
@@ -209,6 +204,7 @@ async fn triager_worklist(state: &AppState) -> Result<Option<WorklistEmpty>, Str
 async fn develop_claim_pool(
     state: &AppState,
     automation: &Automation,
+    pool: ClaimPoolSpec,
 ) -> Result<Option<WorklistEmpty>, String> {
     let Some(project_id) = automation.work_project.as_deref() else {
         // The binding gate (fabro-f1a9) already refused an unbound
@@ -244,11 +240,11 @@ async fn develop_claim_pool(
         let items = tracker
             .list(&project, WorkItemFilter {
                 lane:  Some(lane.clone()),
-                limit: CLAIM_POOL_PAGE,
+                limit: pool.page,
                 query: None,
                 label: None,
                 page:  1,
-                state: WorkItemStateFilter::All,
+                state: pool.state,
             })
             .await
             .map_err(|error| error.to_string())?;
@@ -268,24 +264,39 @@ mod tests {
     };
     use fabro_static::EnvVars;
     use fabro_types::{GitRunTarget, RunId, RunTarget};
+    use fabro_work::WorkItemStateFilter;
 
     use super::super::automation_scheduler::{AutomationSchedulePlanner, run_due_schedules_once};
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
 
-    /// A lane-scripted tracker: which item keys each lane serves, and a
-    /// switch for a tracker read FAILURE (the fail-open arm).
+    /// A lane-scripted tracker: which items each lane serves, and a
+    /// switch for a tracker read FAILURE (the fail-open arm). The list
+    /// read is STATE-FAITHFUL — a real tracker filters by the filter's
+    /// state, so the double serves an item only when the filter
+    /// enumerates its state — the property the parity pin (work#1488)
+    /// needs.
     struct LaneTracker {
-        lanes:      std::sync::Mutex<std::collections::HashMap<String, Vec<String>>>,
+        lanes:      std::sync::Mutex<std::collections::HashMap<String, Vec<fabro_work::WorkItem>>>,
         fail_reads: bool,
     }
 
     impl LaneTracker {
         fn with_lane(lane: &str, item_keys: &[&str]) -> Self {
+            Self::with_items(
+                lane,
+                item_keys
+                    .iter()
+                    .map(|key| Self::item(key))
+                    .collect::<Vec<_>>(),
+            )
+        }
+
+        fn with_items(lane: &str, items: Vec<fabro_work::WorkItem>) -> Self {
             Self {
                 lanes:      std::sync::Mutex::new(std::collections::HashMap::from([(
                     lane.to_owned(),
-                    item_keys.iter().map(|key| (*key).to_owned()).collect(),
+                    items,
                 )])),
                 fail_reads: false,
             }
@@ -298,12 +309,27 @@ mod tests {
             }
         }
 
+        /// The filter's state arm, mirrored the way a real tracker
+        /// applies it: `Open` serves open items only, `Closed` closed
+        /// items only, `All` everything.
+        fn passes_state(item: &fabro_work::WorkItem, state: WorkItemStateFilter) -> bool {
+            match state {
+                WorkItemStateFilter::Open => item.state == "open",
+                WorkItemStateFilter::Closed => item.state == "closed",
+                WorkItemStateFilter::All => true,
+            }
+        }
+
         fn item(key: &str) -> fabro_work::WorkItem {
+            Self::item_in_state(key, "open")
+        }
+
+        fn item_in_state(key: &str, state: &str) -> fabro_work::WorkItem {
             fabro_work::WorkItem {
                 item_key:   key.to_owned(),
                 title:      format!("item {key}"),
                 body:       "the spec".to_owned(),
-                state:      "open".to_owned(),
+                state:      state.to_owned(),
                 labels:     Vec::new(),
                 priority:   1,
                 url:        format!("https://github.com/denkhaus/work/issues/{key}"),
@@ -325,10 +351,14 @@ mod tests {
                 anyhow::bail!("tracker read failed (scripted)");
             }
             let lanes = self.lanes.lock().expect("lane tracker lock poisoned");
-            let Some(keys) = lanes.get(filter.lane.as_deref().unwrap_or_default()) else {
+            let Some(items) = lanes.get(filter.lane.as_deref().unwrap_or_default()) else {
                 return Ok(Vec::new());
             };
-            Ok(keys.iter().map(|key| Self::item(key)).collect())
+            Ok(items
+                .iter()
+                .filter(|item| Self::passes_state(item, filter.state))
+                .cloned()
+                .collect())
         }
 
         async fn get(
@@ -522,6 +552,32 @@ mod tests {
             decision,
             AdmissionDecision::Fire,
             "a free lane item is claimable work — the fire proceeds"
+        );
+    }
+
+    /// The parity pin (work#1488): the admission gate's develop worklist
+    /// answer equals claim_next's claimable reality. The claim door
+    /// reads the lane with `WorkItemStateFilter::Open` — a CLOSED lane
+    /// item is not claimable work, so the gate must answer exactly what
+    /// claim_next answers for the same lane (an empty pool: skip),
+    /// never count the closed item as work.
+    #[tokio::test]
+    async fn develop_gate_matches_the_claim_pools_claimable_reality() {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .work_projects([project_with_lanes(&["develop"])])
+            .work_tracker(std::sync::Arc::new(LaneTracker::with_items(
+                "develop",
+                vec![LaneTracker::item_in_state("denkhaus/work#1", "closed")],
+            )))
+            .build();
+        let decision = admission_decision(&state, &automation_with_workflow("develop")).await;
+        assert_eq!(
+            decision,
+            AdmissionDecision::Skip(WorklistEmpty::ClaimPool),
+            "a closed lane item is not claimable — the gate must agree with \
+             claim_next's Open read (an empty claimable pool skips), not \
+             answer Fire off an item no lap could claim"
         );
     }
 

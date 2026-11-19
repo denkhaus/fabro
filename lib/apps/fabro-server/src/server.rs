@@ -200,6 +200,7 @@ pub(crate) mod fork_work_registry;
 mod fork_work_registry_tests;
 #[cfg(test)]
 mod fork_worker_exit_park_tests;
+pub(crate) mod gear_worklist;
 #[cfg(test)]
 mod merge_door_tests;
 #[cfg(test)]
