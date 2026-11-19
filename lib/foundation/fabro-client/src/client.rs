@@ -3598,6 +3598,26 @@ impl Client {
         Ok(bytes)
     }
 
+    pub async fn get_sandbox_archive(&self, run_id: &RunId, path: &str) -> Result<Vec<u8>> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .get_sandbox_archive()
+                    .id(run_id.to_string())
+                    .path(path)
+                    .send()
+                    .await
+            })
+            .await?;
+        let mut stream = response.into_inner();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(anyhow::Error::new)?;
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok(bytes)
+    }
+
     pub async fn put_sandbox_file(&self, run_id: &RunId, path: &str, bytes: Vec<u8>) -> Result<()> {
         self.send_api(|client| async move {
             client

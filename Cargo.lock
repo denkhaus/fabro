@@ -2176,6 +2176,7 @@ dependencies = [
  "sha2 0.10.9",
  "shlex",
  "strum 0.28.0",
+ "tar",
  "temp-env",
  "tempfile",
  "thiserror 2.0.18",

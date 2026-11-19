@@ -5335,6 +5335,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/sandbox/archive:
+    get:
+      operationId: getSandboxArchive
+      tags: [Human-in-the-Loop]
+      summary: Download Sandbox Directory Archive
+      description: >
+        Downloads one directory of the run's sandbox as an uncompressed
+        tar archive whose entries are relative to the requested path
+        (work#1416's bulk transfer path — one round trip instead of one
+        per file). The tar is built inside the sandbox and transferred
+        as a single file; the request needs the sandbox's exec facet.
+        Per-file downloads stay on `/sandbox/file`.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - in: query
+          name: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Uncompressed tar archive of the directory's contents
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Run or path not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Run has no active sandbox
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: The in-sandbox tar failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ── Automations ──────────────────────────────────────────────────────
 
   /api/v1/automations:
