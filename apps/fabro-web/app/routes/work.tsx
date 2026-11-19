@@ -124,6 +124,10 @@ export default function WorkItemsView() {
           limit,
           filters.label || undefined,
           (sort ?? undefined) as ListWorkItemsSortEnum | undefined,
+          // work#1476 inserted state + cursor before page: the two stay
+          // unset (the table filters client-side; the pager walks pages).
+          undefined,
+          undefined,
           page,
         );
         const items = response.data?.data ?? [];
