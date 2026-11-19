@@ -43,9 +43,11 @@ name = "glm-5.3"
 depth = 0
 
 # No [run.integrations.github.permissions] (ADR-0019): agent shells get
-# NO forge token; the merge door is engine-mediated, and the run branch
-# a conflict resolution pushes rides the engine's own clone credentials
-# (the develop lane's run-branch mechanism, nothing new).
+# NO forge token. The merge door is engine-mediated, and a conflict
+# resolution pushes through the resolve push door (ADR-0047): the
+# server transfers the commit's objects from this run's checkout and
+# pushes the target's run branch with its own credentials — the
+# sandbox never holds a forge credential.
 
 # The run branch is the conflict-resolution vehicle ONLY: a resolution
 # commit lands on the run's branch (never on the line branch — the

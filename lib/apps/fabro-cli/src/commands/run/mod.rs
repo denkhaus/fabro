@@ -25,6 +25,7 @@ pub(crate) mod overrides;
 pub(crate) mod petri_stream;
 mod petri_worker;
 pub(crate) mod preview;
+pub(crate) mod push_resolution;
 pub(crate) mod queue;
 mod remote_workflow;
 mod resolution;
@@ -54,6 +55,9 @@ pub(crate) async fn dispatch(
         RunCommands::Run(args) => match args.verb {
             Some(RunVerb::Mark(mark_args)) => mark::mark_command(&mark_args, base_ctx).await,
             Some(RunVerb::Merge(merge_args)) => merge::merge_command(&merge_args, base_ctx).await,
+            Some(RunVerb::PushResolution(push_args)) => {
+                push_resolution::push_resolution_command(&push_args, base_ctx).await
+            }
             Some(RunVerb::Queue(queue_args)) => queue::queue_command(&queue_args, base_ctx).await,
             Some(RunVerb::SetTitle(set_title_args)) => {
                 set_title::set_title_command(&set_title_args, base_ctx).await

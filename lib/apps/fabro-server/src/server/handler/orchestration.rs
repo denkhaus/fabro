@@ -56,7 +56,7 @@ use crate::principal_middleware::RequiredRunManagementActor;
 /// settings knob. Shared with the work-item close door (stage E): the
 /// adjudicator is the only workflow that closes work items.
 pub(super) const MERGE_WRITER_WORKFLOW: &str = "adjudicator";
-pub(super) const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
+pub(in crate::server) const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
 
 /// The triager's workflow slug (ADR-0044): the only workflow whose runs
 /// may write observation triage decisions — the manage door's allowlist,
@@ -74,6 +74,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/queue", get(list_queue))
         .route("/runs/{id}/orchestration", post(mark_orchestration))
         .route("/runs/{id}/merge", post(merge_run))
+        .route(
+            "/runs/{id}/resolution",
+            post(super::super::resolution_push::push_run_resolution),
+        )
         .route("/runs/{id}/observations", get(list_observations))
         .route("/observations", get(list_global_observations))
         .route("/observations/manage", post(manage_observation))
@@ -922,8 +926,9 @@ async fn mark_orchestration(
 /// The field this writer's workflow owns, `None` when the workflow is
 /// not on the allowlist. An unreadable writer summary is an internal
 /// error, not a silent refusal: the token named a run the store cannot
-/// see.
-async fn owned_field_for_writer(
+/// see. Shared by the doors that authorize on the allowlist (the
+/// verdict write door, the merge door, and the resolve push door).
+pub(in crate::server) async fn owned_field_for_writer(
     state: &AppState,
     writer: &RunId,
 ) -> Result<Option<OrchestrationField>, ApiError> {

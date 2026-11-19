@@ -920,6 +920,145 @@ async fn the_merge_door_refuses_every_non_merger_shape() {
     );
 }
 
+/// The resolve push door's refusal arms (ADR-0047): every unauthorized
+/// shape refuses BEFORE any sandbox or forge work — a plain worker, the
+/// adjudicator (the content judge never integrates), a self-push, a
+/// PR-less run, a run whose merge verdict is not enabled, and a target
+/// whose recorded branch does not name the run's own
+/// `fabro/run/<id>` shape.
+#[tokio::test]
+async fn the_resolution_push_door_refuses_every_unauthorized_shape() {
+    let (app, state, store) = orchestration_app();
+    let merger = RunId::new();
+    let adjudicator = RunId::new();
+    let plain = RunId::new();
+    let targeted = RunId::new();
+    let pr_less = RunId::new();
+    let not_enabled = RunId::new();
+    let no_branch = RunId::new();
+    seed_run(&store, merger, "merger", true).await;
+    seed_run(&store, adjudicator, "adjudicator", true).await;
+    seed_run(&store, plain, "develop", true).await;
+    seed_run(&store, targeted, "develop", true).await;
+    seed_run(&store, pr_less, "develop", true).await;
+    seed_run(&store, not_enabled, "develop", true).await;
+    seed_run(&store, no_branch, "develop", true).await;
+
+    // The targeted run carries a PR and merge = enabled (the
+    // adjudicator's content verdict); not_enabled carries only the PR;
+    // no_branch carries both but records no run branch, so the
+    // server-side branch scope has nothing to match.
+    for (run, with_verdict) in [(targeted, true), (not_enabled, false), (no_branch, true)] {
+        store
+            .run_summary_store()
+            .platform_records()
+            .append(
+                &run,
+                &fabro_store::platform_records::PlatformRecord::PullRequestCreated(
+                    fabro_store::platform_records::PullRequestCreatedRecord {
+                        number:    501,
+                        owner:     "denkhaus".to_string(),
+                        repo:      "fabro".to_string(),
+                        html_url:  "https://github.com/denkhaus/fabro/pull/501".to_string(),
+                        head_sha:  None,
+                        draft:     false,
+                        operation: None,
+                    },
+                ),
+                None,
+            )
+            .await
+            .unwrap();
+        if with_verdict {
+            store
+                .run_summary_store()
+                .platform_records()
+                .append(
+                    &run,
+                    &fabro_store::platform_records::PlatformRecord::RunOrchestration(
+                        fabro_store::platform_records::RunOrchestrationRecord {
+                            field:   fabro_types::OrchestrationField::Merge,
+                            verdict: fabro_types::OrchestrationVerdict::Enabled,
+                            by_run:  Some(adjudicator),
+                        },
+                    ),
+                    None,
+                )
+                .await
+                .unwrap();
+        }
+    }
+
+    let push_as = |worker: &RunId, target: &RunId| {
+        let app = app.clone();
+        let token = state.test_issue_worker_token_with_run_tools(worker);
+        let target = *target;
+        async move {
+            app.oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api(&format!("/runs/{target}/resolution")))
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({"commit": "abc123"}).to_string()))
+                    .expect("push request builds"),
+            )
+            .await
+            .expect("push request runs")
+        }
+    };
+
+    // A plain develop worker is not on the allowlist at all.
+    let refused = push_as(&plain, &targeted).await;
+    assert_eq!(
+        refused.status(),
+        StatusCode::FORBIDDEN,
+        "a plain worker refuses"
+    );
+    // The adjudicator judges content — it never pushes resolutions.
+    let judge = push_as(&adjudicator, &targeted).await;
+    assert_eq!(
+        judge.status(),
+        StatusCode::FORBIDDEN,
+        "the adjudicator refuses"
+    );
+    // A run cannot push its own branch through the door.
+    let self_push = push_as(&merger, &merger).await;
+    assert_eq!(
+        self_push.status(),
+        StatusCode::FORBIDDEN,
+        "a self-push refuses"
+    );
+    // A PR-less run has no run-branch flow to land a resolution on.
+    let no_pr = push_as(&merger, &pr_less).await;
+    assert_eq!(
+        no_pr.status(),
+        StatusCode::CONFLICT,
+        "a PR-less run refuses"
+    );
+    // The verdict gate: the adjudicator has not enabled this merge.
+    let unelected = push_as(&merger, &not_enabled).await;
+    assert_eq!(
+        unelected.status(),
+        StatusCode::FORBIDDEN,
+        "a not-enabled run refuses"
+    );
+    // The branch scope: the door names the branch server-side; a
+    // target whose projection records no run branch cannot match it.
+    let scoped = push_as(&merger, &no_branch).await;
+    assert_eq!(
+        scoped.status(),
+        StatusCode::FORBIDDEN,
+        "a branch-scope mismatch refuses"
+    );
+    let scoped_body = response_json(scoped, StatusCode::FORBIDDEN, "branch scope refusal").await;
+    assert_eq!(
+        scoped_body["errors"][0]["code"].as_str().expect("code"),
+        "resolution_push_branch_scope",
+        "the scope refusal carries its teaching code: {scoped_body}"
+    );
+}
+
 /// The observations read door: a run's observation records in seq order
 /// with the category that routes adjudication, the stage attribution
 /// from the positioned fold, and the linked work-item column (the run

@@ -17,6 +17,7 @@ use serde_json::Value;
 
 use crate::run_mark::RunMarkOutcome;
 use crate::run_merge::RunMergeResult;
+use crate::run_push_resolution::RunPushResolutionResult;
 
 #[derive(Debug)]
 pub struct ToolError {
@@ -133,6 +134,20 @@ pub trait FabroToolBackend: Send + Sync {
     /// verdict; a conflict surfaces as the merge_conflict error.
     async fn merge_run(&self, _run_id: &fabro_types::RunId) -> anyhow::Result<RunMergeResult> {
         Err(write_tool_unavailable_error(FABRO_RUN_MERGE_TOOL_NAME))
+    }
+    /// `fabro_run_push_resolution` (ADR-0047): the merger resolve door —
+    /// land a resolution commit on the TARGET run's own branch
+    /// server-side. The door refuses non-merger workflows, refuses any
+    /// ref but `fabro/run/<target>`, and refuses force pushes; the
+    /// audit record lands in the target run's stream per push.
+    async fn push_run_resolution(
+        &self,
+        _run_id: &fabro_types::RunId,
+        _commit: &str,
+    ) -> anyhow::Result<RunPushResolutionResult> {
+        Err(write_tool_unavailable_error(
+            FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME,
+        ))
     }
     /// `fabro_observation_list` (ADR-0039 stage D part 2): a run's
     /// observation records in `seq` order — the facts behind a packet's
@@ -556,6 +571,7 @@ pub const FABRO_WORK_UPDATE_TOOL_NAME: &str = "fabro_work_update";
 pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
 pub const FABRO_RUN_QUEUE_TOOL_NAME: &str = "fabro_run_queue";
 pub const FABRO_RUN_MERGE_TOOL_NAME: &str = "fabro_run_merge";
+pub const FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME: &str = "fabro_run_push_resolution";
 pub const FABRO_OBSERVATION_LIST_TOOL_NAME: &str = "fabro_observation_list";
 pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
 pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
@@ -615,6 +631,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroRunMergeParams>(
             FABRO_RUN_MERGE_TOOL_NAME,
             "Merge the target run's pull request server-side (ADR-0039 stage E): the technical integration act, the merger gear's write door. The run must carry a pull request the adjudicator marked `merge: enabled` — this tool never judges content and never writes a verdict; mark `closable` through fabro_run_mark after the merge (and your smoke) settles. A conflict answers with the merge_conflict refusal — park the run for the agent pass on exactly that signal.",
+        ),
+        tool_definition::<crate::FabroRunPushResolutionParams>(
+            FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME,
+            "Push a conflict-resolution commit onto the target run's own branch (ADR-0047): the resolve pass lands its work after the merge door declined with merge_conflict. Pass the run id and the resolution commit's sha as committed on that run branch in THIS checkout — the server transfers the objects itself and pushes with its own credentials; the door refuses any branch but the run's own, refuses non-fast-forward pushes, and records the push in the run stream. After the push, retry fabro_run_merge.",
         ),
         tool_definition::<crate::FabroObservationListParams>(
             FABRO_OBSERVATION_LIST_TOOL_NAME,

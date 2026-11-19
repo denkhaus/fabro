@@ -42,8 +42,16 @@ and the run branches you resolve — nothing else.
    Then merge or rebase the line branch into it, resolve the conflicts
    file by file (read both sides; the resolution keeps both intents
    when they are compatible, and prefers the line's newer state when
-   the run's side is stale), and push the run branch. The push rides
-   the engine's own clone credentials — no forge token exists.
+   the run's side is stale), commit on the run branch, and push the
+   run branch through the resolve push door: `fabro_run_push_resolution`
+   with the run id and the resolution commit's sha. The door is
+   engine-mediated (ADR-0047): the server transfers the commit's
+   objects from THIS checkout itself and pushes `fabro/run/<run id>`
+   with its own credentials — no forge token exists in the sandbox and
+   none is needed, a plain `git push` from the checkout fails by
+   design. The door refuses any branch but the run's own and refuses
+   non-fast-forward pushes; if the branch moved on the forge,
+   re-fetch and re-resolve on top.
 3. **Retry the door.** `fabro_run_merge` for the run. A clean merge now
    succeeds; re-run the smoke discipline: `git fetch origin denkhaus`,
    check out `FETCH_HEAD`, `cargo check --workspace`, restore your

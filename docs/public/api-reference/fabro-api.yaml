@@ -1784,6 +1784,80 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/resolution:
+    post:
+      operationId: pushRunResolution
+      tags: [Runs]
+      summary: Push a Resolution Commit to the Run's Branch
+      description: |
+        The merger's resolve push door (ADR-0047, denkhaus/work#1471):
+        land a conflict-resolution commit on the target run's OWN branch
+        (`fabro/run/<id>`) server-side. Authorization mirrors the merge
+        door: the caller's worker token names the WRITER run, the
+        writer's workflow must be the merger, and the TARGET must carry
+        a pull request whose latest `merge` verdict is `enabled`. The
+        branch scope is fixed server-side — the door pushes only
+        `fabro/run/<id>` for the run named in the path; main, any other
+        ref, and force pushes are refused. The commit's objects travel
+        from the calling merger run's own sandbox checkout to the server
+        as a git bundle (the engine-mediated transfer — the sandbox
+        never holds forge credentials), and the server pushes with the
+        same credentials `run_publish` uses, refusing a non-fast-forward
+        push. One `run.branch_pushed` audit record lands in the target
+        run's stream per push. The door is idempotent: a re-drive of an
+        already-pushed commit answers 200.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunPushResolutionRequest"
+      responses:
+        "200":
+          description: The branch head on the forge is the resolution commit (pushed now or already)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPushResolutionResponse"
+        "403":
+          description: Not a merger run, a self-push, the run's merge verdict is not enabled, or the branch scope refused
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The commit is not resolvable on the resolved branch, carries no new objects, or the push is not a fast-forward
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: The object transfer or the git push failed
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}:
     get:
       operationId: retrieveRun
@@ -9909,6 +9983,51 @@ components:
         pull_request:
           type: string
           description: The merged pull request's HTML URL.
+
+    RunPushResolutionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - commit
+      properties:
+        commit:
+          type: string
+          description: |-
+            The resolution commit's sha (short or full), as committed on
+            the run's own branch in the calling merger run's checkout.
+            The server resolves and verifies it; the branch itself is
+            never caller-supplied.
+      description: |-
+        One resolve push through the door (ADR-0047): the commit to land
+        on the run's own branch. The branch is derived from the run in
+        the path — there is no branch parameter to pass.
+
+    RunPushResolutionResponse:
+      description: |
+        The resolve push door's result (ADR-0047): the branch head on
+        the forge is the resolution commit — pushed by this call or by
+        an earlier one (the door is idempotent).
+      type: object
+      required:
+        - run_id
+        - pushed
+        - run_branch
+        - head_sha
+      properties:
+        run_id:
+          type: string
+          description: The run whose branch carries the resolution.
+        pushed:
+          type: boolean
+          description: True when this call (or a previous one) landed
+            the commit as the branch head on the forge.
+        run_branch:
+          type: string
+          description: The branch the door pushed — always the run's
+            own `fabro/run/<id>`.
+        head_sha:
+          type: string
+          description: The resolution commit the branch now names.
 
     BatchRunLifecycleRequest:
       description: Run IDs to archive or unarchive as one bounded fail-soft batch.
