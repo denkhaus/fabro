@@ -52,7 +52,8 @@ fn help() {
           --label <KEY=VALUE>    Filter by label (KEY=VALUE, repeatable, AND semantics)
           --orphans              Include orphan directories (no matching durable run)
           --verbose              Enable verbose output [env: FABRO_VERBOSE=]
-      -a, --all                  Show all runs, not just running (like docker ps -a)
+      -a, --all                  Show all runs, not just running (like docker ps -a): active plus terminal runs, including archived ones. Archived rows are marked `archived/<status>` in the table and carry `\"archived\": true` in --json output. Use --archived for archived runs only
+          --archived             Show only archived runs (terminal runs carrying the archived overlay flag). Mutually exclusive with -a: -a includes archived runs among everything else, --archived filters down to them
       -q, --quiet                Only display run IDs
           --parent <RUN>         Only display runs linked to this orchestration parent
       -h, --help                 Print help
@@ -199,6 +200,10 @@ fn ps_all_json_lists_created_and_completed_runs() {
     assert!(output.status.success(), "ps should succeed");
     let runs: Vec<Value> = serde_json::from_slice(&output.stdout).expect("ps JSON should parse");
     assert_eq!(runs.len(), 2, "expected submitted + completed runs");
+    assert!(
+        runs.iter().all(|run| run["archived"] == false),
+        "ps JSON rows must always carry the archived flag: {runs:#?}"
+    );
     assert!(
         runs.iter()
             .all(|run| run["workflow_name"].is_null() && run["workflow_graph_name"] == "Simple"),

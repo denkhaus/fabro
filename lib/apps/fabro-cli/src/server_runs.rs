@@ -56,6 +56,13 @@ impl ServerRunInfo {
         self.run.lifecycle.status
     }
 
+    /// Whether the run carries the archived overlay flag. Orthogonal to
+    /// the terminal status: an archived run keeps `succeeded`/`failed`
+    /// as its status and layers `archived` on top.
+    pub(crate) fn archived(&self) -> bool {
+        self.run.lifecycle.archived
+    }
+
     pub(crate) fn start_time(&self) -> String {
         self.start_time_dt()
             .map(|time| time.to_rfc3339())
@@ -150,15 +157,31 @@ impl ServerRunLookup {
     }
 }
 
+/// Which slice of the run store a listing shows (the `ps` tri-state).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum RunListScope {
+    /// Default: active runs only.
+    #[default]
+    Active,
+    /// `-a`: every run, terminal and archived included.
+    All,
+    /// `--archived`: only runs carrying the archived overlay flag.
+    Archived,
+}
+
 pub(crate) fn filter_server_runs(
     runs: &[ServerRunInfo],
     before: Option<&str>,
     workflow: Option<&str>,
     labels: &[(String, String)],
-    running_only: bool,
+    scope: RunListScope,
 ) -> Vec<ServerRunInfo> {
     runs.iter()
-        .filter(|run| !running_only || run.status().is_active())
+        .filter(|run| match scope {
+            RunListScope::Active => run.status().is_active(),
+            RunListScope::All => true,
+            RunListScope::Archived => run.archived(),
+        })
         .filter(|run| {
             before.is_none_or(|before| {
                 let start_time = run.start_time();

@@ -1156,6 +1156,7 @@ pub(crate) fn compact_inspect(output: &Output) -> Value {
                 serde_json::json!({
                     "run_id": "[ULID]",
                     "status": item["status"],
+                    "archived": item["archived"],
                     "run_spec": {
                         "goal": run_spec.pointer("/settings/run/goal"),
                         "workflow_name": run_spec.pointer("/graph/name"),

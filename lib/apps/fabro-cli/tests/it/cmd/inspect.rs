@@ -106,6 +106,7 @@ fn inspect_resolves_selector_via_server_endpoint() {
           "kind": "succeeded",
           "reason": "completed"
         },
+        "archived": false,
         "run_spec": {
           "run_id": "[ULID]",
           "settings": {
@@ -324,6 +325,7 @@ fn inspect_created_run_shows_run_spec_without_start_or_conclusion() {
         "status": {
           "kind": "submitted"
         },
+        "archived": false,
         "run_spec": {
           "goal": {
             "type": "inline",
@@ -365,6 +367,7 @@ fn inspect_completed_run_shows_run_start_conclusion_checkpoint() {
           "kind": "succeeded",
           "reason": "completed"
         },
+        "archived": false,
         "run_spec": {
           "goal": {
             "type": "inline",
@@ -433,6 +436,7 @@ fn inspect_completed_run_reads_store_without_disk_metadata_files() {
           "kind": "succeeded",
           "reason": "completed"
         },
+        "archived": false,
         "run_spec": {
           "goal": {
             "type": "inline",
