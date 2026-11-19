@@ -169,11 +169,14 @@ use crate::{
 
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
+pub(crate) mod fork_env_build_reaper;
+#[cfg(test)]
+mod fork_env_build_reaper_tests;
 #[cfg(test)]
 mod fork_graphviz_env_guard_tests;
 #[cfg(test)]
 mod fork_inspection_guard_tests;
-mod fork_line_recovery;
+pub(crate) mod fork_line_recovery;
 #[cfg(test)]
 mod fork_publish_gate_tests;
 pub(crate) mod fork_run_retention;
@@ -215,6 +218,7 @@ mod tracker_token_cache;
 pub(crate) mod work_reconciler;
 
 pub(crate) use automation_scheduler::spawn_automation_scheduler;
+pub(crate) use fork_env_build_reaper::spawn_env_build_reaper;
 pub(crate) use fork_run_retention::spawn_run_retention_supervisor;
 pub(crate) use fork_run_stall_watchdog::spawn_run_stall_watchdog;
 pub(crate) use handler::graph::render_graph_bytes;
