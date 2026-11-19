@@ -29,8 +29,8 @@ use fabro_work::{
 };
 
 use super::super::{
-    ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode, get, post,
-    run_records,
+    ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode,
+    gear_worklist, get, post, run_records,
 };
 use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
 
@@ -564,34 +564,20 @@ async fn list_work_items(
                 .collect::<Vec<_>>()
         }
     };
-    // The lock badge overlay (denkhaus/work#1420): the lock lives in the
-    // store beside the claims, so the tracker-shaped items are stamped
-    // here — the operator sees the hold in the same listing that shows
-    // the lane.
-    let locked_items: std::collections::HashSet<String> = state
-        .work_store()
-        .locked_items(&project.project_id)
-        .await
-        .map_err(store_error)?
-        .into_iter()
-        .collect();
+    // The served-item read path (work#1488): ONE overlay of the
+    // operator-lock badge — the store read happens once for the page.
+    let served = served_items(&state, project, items).await?;
     // The next-page cursor (work#1476), the full-page heuristic: a page
     // that filled its page size MAY have more (the caller walks until a
     // short page or a null cursor — the `gh --paginate` posture); a
     // short page is the last one, whatever the total said.
-    let next_cursor = if items.len() == page_size {
+    let next_cursor = if served.len() == page_size {
         Some(page.saturating_add(1).to_string())
     } else {
         None
     };
     let response = WorkItemListResponse {
-        data: items
-            .into_iter()
-            .map(|item| {
-                let locked = locked_items.contains(&item.item_key);
-                stamp_lock(api_item(item), locked)
-            })
-            .collect(),
+        data: served,
         total: total.map(|total| total.min(i64::MAX.unsigned_abs()).cast_signed()),
         next_cursor,
     };
@@ -648,13 +634,7 @@ async fn get_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| ApiError::not_found(format!("work item `{}` not found", query.item_key)))?;
-    let locked = state
-        .work_store()
-        .item_lock(&project.project_id, &query.item_key)
-        .await
-        .map_err(store_error)?
-        .is_some();
-    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
+    Ok(Json(served_item(&state, project, item).await?).into_response())
 }
 
 async fn create_work_item(
@@ -1253,15 +1233,55 @@ async fn unlock_work_item(
 
 /// Stamps the operator-lock badge (denkhaus/work#1420) onto a served
 /// item: the lock lives in the store, not the tracker, so the
-/// tracker-shaped item cannot carry it and the door overlays it for the
-/// wire. `locked` is optional in the schema — the doors that stamp it
-/// (list, the single-item reads, lock/unlock) answer truthfully; a door
-/// that leaves it unset makes no claim either way.
+/// tracker-shaped item cannot carry it. The read doors stamp through
+/// [`served_items`]; this direct form is for the WRITE doors that just
+/// placed or lifted the lock and answer their own mutation truthfully
+/// without re-reading the store.
 fn stamp_lock(item: ApiWorkItem, locked: bool) -> ApiWorkItem {
     ApiWorkItem {
         locked: Some(locked),
         ..item
     }
+}
+
+/// The served-item read path (denkhaus/work#1420, work#1488): ONE
+/// overlay of the operator-lock badge onto a page of tracker-shaped
+/// items. The lock lives in the store beside the claims, so the lock
+/// set is read once here and every item is stamped from it — the list
+/// door holds no overlay of its own, and a door served through this
+/// path cannot forget the badge: an unlocked item answers
+/// `locked: false`, never silence.
+async fn served_items(
+    state: &AppState,
+    project: &WorkProject,
+    items: Vec<WorkItem>,
+) -> Result<Vec<ApiWorkItem>, ApiError> {
+    let locked_items: std::collections::HashSet<String> = state
+        .work_store()
+        .locked_items(&project.project_id)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .collect();
+    Ok(items
+        .into_iter()
+        .map(|item| {
+            let locked = locked_items.contains(&item.item_key);
+            stamp_lock(api_item(item), locked)
+        })
+        .collect())
+}
+
+/// The single-item form of [`served_items`]: the same one-overlay read
+/// path for the single-item doors, so a key-addressed fetch answers the
+/// badge exactly as the listing does.
+async fn served_item(
+    state: &AppState,
+    project: &WorkProject,
+    item: WorkItem,
+) -> Result<ApiWorkItem, ApiError> {
+    let mut served = served_items(state, project, vec![item]).await?;
+    Ok(served.pop().expect("one served item per input item"))
 }
 
 async fn claim_next(
@@ -1291,11 +1311,14 @@ async fn claim_next(
     let items = tracker
         .list(project, WorkItemFilter {
             lane:  Some(request.lane.clone()),
-            limit: 50,
+            // The pool read is the table's claim-pool spec (work#1488):
+            // the admission gate's consult walks the same page and the
+            // same OPEN filter, so the two answers cannot disagree.
+            limit: gear_worklist::CLAIM_POOL.page,
             query: None,
             label: None,
             page:  1,
-            state: WorkItemStateFilter::Open,
+            state: gear_worklist::CLAIM_POOL.state,
         })
         .await
         .map_err(tracker_failed)?;
@@ -1588,13 +1611,7 @@ async fn retrieve_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &item_key))?;
-    let locked = state
-        .work_store()
-        .item_lock(&project.project_id, &item_key)
-        .await
-        .map_err(store_error)?
-        .is_some();
-    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
+    Ok(Json(served_item(&state, project, item).await?).into_response())
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -1982,8 +1999,8 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         item_key:   item.item_key,
         labels:     item.labels,
         // The lock badge (denkhaus/work#1420) is a store overlay, not
-        // tracker state: unset here, stamped by the doors that read the
-        // lock table (stamp_lock).
+        // tracker state: unset here, stamped by the served-item read
+        // path (served_items) or by the write doors' own truthful stamp.
         locked:     None,
         priority:   item.priority,
         state:      item.state,

@@ -2329,3 +2329,328 @@ mod closure_radius {
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
     }
 }
+
+mod lock_overlay {
+    //! The overlay invariant (denkhaus/work#1420, work#1488): EVERY
+    //! served-item read door stamps the operator-lock badge from the
+    //! store. The lock lives in the store, never in the tracker-shaped
+    //! item, so the list door and the single-item doors answer
+    //! truthfully — a door cannot forget the badge, and an item that
+    //! carries no lock must read as `locked: false`, not as silence.
+
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode, header};
+    use chrono::Utc;
+    use fabro_server::test_support::{TestAppStateBuilder, build_test_router};
+    use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
+    use serde_json::{Value, json};
+    use tower::ServiceExt;
+
+    use crate::helpers::{api, response_json};
+
+    /// A scripted tracker: two fixed open items, nothing else.
+    struct ItemsTracker {
+        items: Mutex<Vec<WorkItem>>,
+    }
+
+    impl ItemsTracker {
+        fn with_items(items: Vec<WorkItem>) -> Arc<Self> {
+            Arc::new(Self {
+                items: Mutex::new(items),
+            })
+        }
+    }
+
+    fn item(number: u64) -> WorkItem {
+        WorkItem {
+            item_key:   format!("denkhaus/work#{number}"),
+            title:      format!("Item {number}"),
+            body:       "the spec".to_string(),
+            state:      "open".to_string(),
+            labels:     vec!["project:fabro".to_string()],
+            priority:   1,
+            url:        format!("https://github.com/denkhaus/work/issues/{number}"),
+            updated_at: Some(Utc::now()),
+            created_at: None,
+            closed_at:  None,
+        }
+    }
+
+    #[async_trait]
+    impl TrackerProvider for ItemsTracker {
+        async fn list(
+            &self,
+            _project: &WorkProject,
+            filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            let items = self.items.lock().expect("lock overlay test tracker lock");
+            Ok(items
+                .iter()
+                .filter(|item| item.state == "open")
+                .take(filter.limit.max(1))
+                .cloned()
+                .collect())
+        }
+
+        async fn get(
+            &self,
+            _project: &WorkProject,
+            item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok(self
+                .items
+                .lock()
+                .expect("lock overlay test tracker lock")
+                .iter()
+                .find(|item| item.item_key == item_key)
+                .cloned())
+        }
+
+        async fn create(
+            &self,
+            _project: &WorkProject,
+            _draft: WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("the lock overlay test creates no items")
+        }
+
+        async fn update(
+            &self,
+            _project: &WorkProject,
+            item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("the lock overlay test updates no items ({item_key})")
+        }
+
+        async fn close(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("the lock overlay test closes no items")
+        }
+
+        async fn comment(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn project_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn clear_claim(
+            &self,
+            _project: &WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    async fn app() -> axum::Router {
+        let state = TestAppStateBuilder::new()
+            .work_tracker(
+                ItemsTracker::with_items(vec![item(1), item(2)]) as Arc<dyn TrackerProvider>
+            )
+            .build();
+        let app = build_test_router(state);
+        put_project(&app).await;
+        app
+    }
+
+    async fn put_project(app: &axum::Router) {
+        let request = Request::builder()
+            .method(Method::PUT)
+            .uri(api("/projects/fabro"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_string(&json!({
+                    "displayName": "Fabro",
+                    "trackerProvider": "github",
+                    "trackerRepo": "denkhaus/work",
+                    "targetRepo": "denkhaus/fabro",
+                    "projectLabel": "project:fabro",
+                    "laneLabels": {"loop": "lane:loop"}
+                }))
+                .expect("lock overlay project fixture should serialize"),
+            ))
+            .expect("lock overlay request should build");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("lock overlay test step should succeed");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    async fn json_call(app: &axum::Router, method: Method, path: &str, body: &Value) -> Value {
+        let request = Request::builder()
+            .method(method)
+            .uri(api(path))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(body).expect("lock overlay body should serialize"),
+            ))
+            .expect("lock overlay request should build");
+        let response = app
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("lock overlay test step should succeed");
+        response_json(response, StatusCode::OK, "lock overlay door call").await
+    }
+
+    async fn list_page(app: &axum::Router) -> Vec<Value> {
+        let page = json_call(app, Method::GET, "/projects/fabro/work-items", &json!({})).await;
+        page["data"].as_array().expect("the work-item list").clone()
+    }
+
+    fn lock_of(served: &Value) -> Value {
+        served["locked"].clone()
+    }
+
+    /// The invariant, walked through the doors: the list door and both
+    /// single-item read doors stamp the badge from the store — before
+    /// any lock (truthful `false`), while the lock stands (the locked
+    /// item `true`, its lane neighbor `false`), and after the lift
+    /// (`false` again). One overlay, one answer, no door exempt.
+    #[tokio::test]
+    async fn every_served_item_read_door_stamps_the_operator_lock_badge() {
+        let app = app().await;
+
+        // Nothing is locked: the badge is stamped, and it reads false —
+        // the doors claim the lock state, they never omit it.
+        for served in list_page(&app).await {
+            assert_eq!(
+                lock_of(&served),
+                json!(false),
+                "the unlocked item must list with the badge stamped false: {served}"
+            );
+        }
+        let fetched = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-items/item?itemKey=denkhaus%2Fwork%231",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(
+            lock_of(&fetched),
+            json!(false),
+            "the item door must stamp the badge false: {fetched}"
+        );
+        let retrieved = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-item?itemKey=denkhaus%2Fwork%231",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(
+            lock_of(&retrieved),
+            json!(false),
+            "the retrieve door must stamp the badge false: {retrieved}"
+        );
+
+        // The operator locks item 1: every read door answers truthfully,
+        // and the neighbor stays false — the badge is per item, not per
+        // project.
+        let locked = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/lock",
+            &json!({"itemKey": "denkhaus/work#1"}),
+        )
+        .await;
+        assert_eq!(
+            lock_of(&locked),
+            json!(true),
+            "the lock door's own answer reports the placed lock: {locked}"
+        );
+        let listed = list_page(&app).await;
+        let listed_by_key = |key: &str| {
+            listed
+                .iter()
+                .find(|served| served["itemKey"] == json!(key))
+                .expect("the listed item")
+                .clone()
+        };
+        assert_eq!(
+            lock_of(&listed_by_key("denkhaus/work#1")),
+            json!(true),
+            "the list door must stamp the placed lock: {listed:?}"
+        );
+        assert_eq!(
+            lock_of(&listed_by_key("denkhaus/work#2")),
+            json!(false),
+            "the unlocked neighbor must stay false: {listed:?}"
+        );
+        let fetched = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-items/item?itemKey=denkhaus%2Fwork%231",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(
+            lock_of(&fetched),
+            json!(true),
+            "the item door must stamp the placed lock: {fetched}"
+        );
+        let retrieved = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-item?itemKey=denkhaus%2Fwork%231",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(
+            lock_of(&retrieved),
+            json!(true),
+            "the retrieve door must stamp the placed lock: {retrieved}"
+        );
+
+        // The lift: the badge answers false again on every door.
+        let unlocked = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/unlock",
+            &json!({"itemKey": "denkhaus/work#1"}),
+        )
+        .await;
+        assert_eq!(
+            lock_of(&unlocked),
+            json!(false),
+            "the unlock door's own answer reports the lifted lock: {unlocked}"
+        );
+        let fetched = json_call(
+            &app,
+            Method::GET,
+            "/projects/fabro/work-items/item?itemKey=denkhaus%2Fwork%231",
+            &Value::Null,
+        )
+        .await;
+        assert_eq!(
+            lock_of(&fetched),
+            json!(false),
+            "the lifted lock must read false at the item door: {fetched}"
+        );
+    }
+}

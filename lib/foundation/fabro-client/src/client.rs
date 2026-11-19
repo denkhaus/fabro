@@ -5063,7 +5063,9 @@ mod tests {
         assert_eq!(drifted.run_id(), Some("01JNQVR7M0EJ5GKAT2SC4ERS1Z"));
         assert_eq!(drifted.title(), Some("t"));
         assert!(
-            drifted.error.contains("unknown variant `queued_by_a_newer_server`"),
+            drifted
+                .error
+                .contains("unknown variant `queued_by_a_newer_server`"),
             "the serde verdict must travel: {}",
             drifted.error
         );

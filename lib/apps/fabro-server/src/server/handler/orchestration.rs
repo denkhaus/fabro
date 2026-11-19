@@ -41,7 +41,7 @@ use fabro_types::{
 use futures_util::future::join_all;
 use tracing::info;
 
-use super::super::{AppState, run_records};
+use super::super::{AppState, gear_worklist, run_records};
 use super::observation_triage;
 use super::observation_triage::{
     LinkedItemResolution, LinkedItemResolver, LinkedItemState, RESOLVE_CONCURRENCY,
@@ -51,18 +51,23 @@ use crate::principal_middleware::RequiredRunManagementActor;
 
 /// The workflow allowlist (ADR-0039 stage D grill, hardcoded carrier
 /// decision): the only workflow slugs whose runs may write orchestration
-/// verdicts, each bound to exactly one field. The names are stable,
-/// line-owned contracts — a change is a deliberate code edit, not a
-/// settings knob. Shared with the work-item close door (stage E): the
-/// adjudicator is the only workflow that closes work items.
-pub(super) const MERGE_WRITER_WORKFLOW: &str = "adjudicator";
-pub(in crate::server) const CLOSABLE_WRITER_WORKFLOW: &str = "merger";
+/// verdicts, each bound to exactly one field. The slugs are the gear
+/// worklist table's ([`crate::server::gear_worklist`], work#1488) — the
+/// writer of a field IS the gear whose worklist sweeps its queue, and
+/// `owned_field_for_writer` resolves the pairing through the table. The
+/// names are stable, line-owned contracts — a change is a deliberate
+/// code edit, not a settings knob. Shared with the work-item close door
+/// (stage E): the adjudicator is the only workflow that closes work
+/// items.
+pub(super) const MERGE_WRITER_WORKFLOW: &str = gear_worklist::ADJUDICATOR;
+pub(in crate::server) const CLOSABLE_WRITER_WORKFLOW: &str = gear_worklist::MERGER;
 
 /// The triager's workflow slug (ADR-0044): the only workflow whose runs
 /// may write observation triage decisions — the manage door's allowlist,
 /// the mark door's posture. The triager owns global painpoint triage;
-/// user principals write through the same door unconditionally.
-pub(super) const TRIAGER_WORKFLOW: &str = "triager";
+/// user principals write through the same door unconditionally. The slug
+/// is the gear worklist table's triager entry (work#1488).
+pub(super) const TRIAGER_WORKFLOW: &str = gear_worklist::TRIAGER;
 
 /// How many runs one queue read returns at most. The queue is the
 /// adjudicator's worklist, not an archive walk: a gear that needs more
@@ -950,11 +955,15 @@ pub(in crate::server) async fn owned_field_for_writer(
                 "The writer run named by the worker token does not exist.",
             )
         })?;
-    Ok(match summary.workflow.slug.as_deref() {
-        Some(MERGE_WRITER_WORKFLOW) => Some(OrchestrationField::Merge),
-        Some(CLOSABLE_WRITER_WORKFLOW) => Some(OrchestrationField::Closable),
-        _ => None,
-    })
+    Ok(summary
+        .workflow
+        .slug
+        .as_deref()
+        // The allowlist IS the gear worklist table (work#1488, ADR-0039
+        // decision 6): a workflow writes a field when its gear sweeps
+        // that field's queue.
+        .and_then(gear_worklist::by_slug)
+        .and_then(|gear| gear.spec.queue_field()))
 }
 
 /// The merger's merge door (ADR-0039 stage E): merge the TARGET run's
