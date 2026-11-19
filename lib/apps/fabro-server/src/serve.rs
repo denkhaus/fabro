@@ -36,7 +36,7 @@ use crate::interp::process_env_var;
 use crate::server::{
     self, AppState, AppStateConfig, ResolvedAppStateSettings, RouterOptions, build_app_state,
     build_router_with_options, reconcile_incomplete_runs_on_startup, shutdown_active_workers,
-    spawn_automation_scheduler, spawn_pull_request_creation_supervisor,
+    spawn_automation_scheduler, spawn_env_build_reaper, spawn_pull_request_creation_supervisor,
     spawn_run_publish_supervisor, spawn_run_retention_supervisor, spawn_run_stall_watchdog,
     spawn_scheduler,
 };
@@ -784,6 +784,7 @@ where
     spawn_run_publish_supervisor(Arc::clone(&state));
     let work_reconciler = server::work_reconciler::spawn(Arc::clone(&state));
     spawn_run_retention_supervisor(Arc::clone(&state));
+    spawn_env_build_reaper(Arc::clone(&state));
     spawn_run_stall_watchdog(Arc::clone(&state));
     let router = build_router_with_options(Arc::clone(&state), &auth_mode, RouterOptions {
         web_enabled,
