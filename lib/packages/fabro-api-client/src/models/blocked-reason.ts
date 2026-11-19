@@ -20,7 +20,8 @@
 
 export const BlockedReason = {
     HUMAN_INPUT_REQUIRED: 'human_input_required',
-    QUOTA_RATE_LIMIT: 'quota_rate_limit'
+    QUOTA_RATE_LIMIT: 'quota_rate_limit',
+    OWNER_PENDING: 'owner_pending'
 } as const;
 
 export type BlockedReason = typeof BlockedReason[keyof typeof BlockedReason];

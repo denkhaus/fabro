@@ -43,7 +43,7 @@ export interface GlobalObservation {
      */
     'recorded_at'?: string | null;
     /**
-     * The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a triage decision exists and no link — the triager judged no item needed; a later filing overrides it).
+     * The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a triage decision exists and no link — the triager judged no item needed; a later filing overrides it). Filter matching rides the state materialized at write time: an `item_state` change in the tracker outside the write doors keeps the record\'s materialized state until a write touches the record again, while each returned row\'s links still resolve live.
      */
     'triage_state': GlobalObservationTriageStateEnum;
     /**

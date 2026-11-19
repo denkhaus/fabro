@@ -61,6 +61,7 @@ models/approval-mode.ts
 models/artifact-entry.ts
 models/artifact-list-response.ts
 models/artifacts-settings.ts
+models/ask-fabro-capability.ts
 models/ask-fabro.ts
 models/auth-config-response.ts
 models/auth-me-response.ts
@@ -545,6 +546,7 @@ models/session-event.ts
 models/session-status.ts
 models/session-summary.ts
 models/session-turn.ts
+models/set-session-capability-request.ts
 models/skill-activation-source.ts
 models/skill-summary.ts
 models/slack-integration-settings.ts
