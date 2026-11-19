@@ -9,8 +9,10 @@
 #   (default base: origin/denkhaus — the FACTS merge-target branch)
 #
 # Mechanical classification, no LLM judgment:
-#   - tracker-authoritative: `seeds show <id>` status closed -> duplicate,
-#     UNLESS the closing evidence classifies as a self-closure (--self).
+#   - tracker-authoritative: the tracker's state for the id — resolved via
+#     the migrated `seeds:<id>` label on denkhaus/work (gh label search) —
+#     closed -> duplicate, UNLESS the closing evidence classifies as a
+#     self-closure (--self).
 #   - history: commits on the base ref referencing the seed id, restricted
 #     to LANDED-PR commits — true merge commits (2-parent) OR squash-merge
 #     subjects ending in `(#<n>)`.
@@ -25,7 +27,7 @@
 #     never an implementation match. A real implementation names the seed
 #     in its subject or a narrative body line ("Root cause (fabro-x):"),
 #     so it still matches.
-#   - non-PR commits referencing the id (seed-sync/tracker churn) are
+#   - non-PR commits referencing the id (tracker churn) are
 #     reported as `other` — informational, never a duplicate.
 #
 # Closure identity (fabro-e6a0): every implementation match carries a
@@ -35,11 +37,14 @@
 #           trailer run-id ships as `trailer_run` for consumers
 # Self matches never drive a `duplicate` verdict: with --self supplied they
 # auto-downgrade the verdict to `clean` with a `closure_note`. Status-
-# independent: an in_progress seed whose own landed PR matches is a
+# independent: an in_progress item whose own landed PR matches is a
 # self-closure, not a duplicate. When the tracker says closed but no
-# implementation match exists, the closing commit is resolved (last commit
-# touching .seeds referencing the id, else any body-matching commit) and
-# reported as `closing_evidence` with the same closure classification.
+# implementation match exists, the closing commit is resolved by body-grep
+# (any base-ref commit whose body names the id — the subject-truncation
+# fallback) and reported as `closing_evidence` with the same closure
+# classification. (work#1477: the retired file-tracker close arm and its
+# adjacent-landed-PR trailer inheritance watched the pre-cutover store;
+# both can never fire on a post-cutover base.)
 #
 # Regression (fabro-395b, 2026-09-19): landed commits that merely REOPEN,
 # VERIFY, or do tracker bookkeeping for the named seed (e769f791
@@ -159,101 +164,25 @@ def with-closure [rows, self_id] {
     }
 }
 
-# Last commit whose .seeds patch ADDS the closed status for this id — the
-# mechanical form of "tracker closedAt evidence" (seeds writes one compact JSON
-# line per issue; the closing edit adds '<id> ... "status":"closed"').
-def closing-seeds-commit [base, id] {
-    let r = (do { ^git log --format="%H %s" -n 50 $base -- .seeds } | complete)
-    if $r.exit_code != 0 {
-        return null
-    }
-    for row in (parse-log $r.stdout) {
-        let p = (do { ^git show $row.sha -- .seeds } | complete)
-        if $p.exit_code == 0 {
-            # fabro-96c8: anchor the match on the added line's OWN record
-            # identity — a close line that merely CITES the searched id in
-            # its title/body (fabro-899b via fabro-2366's close line) must
-            # not resolve as this seed's closure. Unparseable added lines
-            # (diff headers, merge markers) fail open to no-match.
-            let closed = ($p.stdout
-                | lines
-                | where {|l| ($l | str starts-with '+') }
-                | each {|l| try { $l | str substring 1.. | str trim | from json } catch { null } }
-                | where {|rec| $rec != null }
-                | where {|rec| ($rec | describe | str starts-with 'record') }
-                | where {|rec| ($rec.id? == $id) and ($rec.status? == 'closed') })
-            if (not ($closed | is-empty)) {
-                return $row
-            }
-        }
-    }
-    null
-}
-
-# Inherit a Fabro-Run trailer for a trailer-less seeds-close commit from the
-# adjacent landed-PR commit: the seeds-close commit's first parent when it
-# carries a trailer, else the nearest preceding landed-PR commit (true merge
-# or squash subject `(#<n>)`) that carries one. seeds stamps no trailer on its
-# closing sync commit, but that sync sits directly on the closing run's
-# landed PR (fabro-cf2a). Null when nothing adjacent carries a trailer.
-def inherited-trailer [base, sha] {
-    mut cands = []
-    let fp = (do { ^git rev-parse $"($sha)^" } | complete)
-    if $fp.exit_code == 0 and (not ($fp.stdout | str trim | is-empty)) {
-        $cands = [($fp.stdout | str trim)]
-    }
-    let r = (do { ^git log --format="%H %s" -n 30 $sha } | complete)
-    if $r.exit_code == 0 {
-        let merge_shas = (do {
-            let m = (do { ^git log --merges --format="%H %s" -n 30 $sha } | complete)
-            if $m.exit_code == 0 {
-                parse-log $m.stdout
-            } else {
-                []
-            }
-        })
-        let landed = (parse-log $r.stdout | skip 1 | where {|x|
-            ($x.subject =~ '\(#\d+\)$') or ($merge_shas | any {|mrow| $mrow.sha == $x.sha})})
-        $cands = ($cands | append ($landed | get sha))
-    }
-    for cand in ($cands | uniq) {
-        let t = (trailer-run $cand)
-        if $t != null {
-            return {trailer_run: $t, inherited_from: $cand}
-        }
-    }
-    null
-}
-
 # Tracker-closed arm with empty implementation matches: resolve the closing
-# commit and classify ITS trailer, so the JSON never lacks closure identity.
-# A seeds-close commit without its own trailer inherits from the adjacent
-# landed-PR commit (fabro-cf2a); the body-grep arm never inherits.
+# commit by body-grep (the id in a commit body beyond the squash subject)
+# and classify ITS trailer, so the JSON never lacks closure identity.
+# (work#1477: the retired store-log close arm — which grepped the pre-cutover
+# file tracker's history for a JSON close line — and the trailer inheritance
+# that served only that arm (fabro-cf2a) can never fire again: the store
+# left the tree at the tracker cutover, denkhaus/work#988/#990.)
 def resolve-closing [base, id, self_id] {
-    let seeds_close = (closing-seeds-commit $base $id)
-    let c = (if ($seeds_close != null) { $seeds_close } else {
-        # subject-truncation fallback: the seed id may sit in a commit body
-        # beyond the squash subject — any body-matching commit qualifies.
-        let pool = (git-log-matching $base $id []).rows
-        if ($pool | is-empty) { null } else { $pool | first }
-    })
-    if $c == null {
+    let pool = (git-log-matching $base $id []).rows
+    if ($pool | is-empty) {
         return null
     }
+    let c = ($pool | first)
     let tr = (trailer-run $c.sha)
-    let inh = (if $tr == null and $seeds_close != null {
-        inherited-trailer $base $c.sha
-    } else {
-        null
-    })
-    let trailer_run = (if $inh != null { $inh.trailer_run } else { $tr })
-    let inherited_from = (if $inh != null { $inh.inherited_from } else { null })
-    {source: (if ($seeds_close != null) { "seeds-close" } else { "body-grep" }),
+    {source: "body-grep",
      sha: $c.sha,
      subject: $c.subject,
-     trailer_run: $trailer_run,
-     trailer_inherited_from: $inherited_from,
-     closure: (classify-closure $trailer_run $self_id)}
+     trailer_run: $tr,
+     closure: (classify-closure $tr $self_id)}
 }
 
 def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
@@ -336,14 +265,7 @@ def main [...ids: string, --base: string = "origin/denkhaus", --self: string] {
         })
 
         let closure_note = (if $verdict == "clean" and $self_id != null and (($impl | length) > 0 or $tracker_status == "closed") {
-            let inh = (if $closing_evidence == null { null } else {
-                $closing_evidence.trailer_inherited_from? | default null
-            })
-            if $inh != null {
-                $"self-closure: Fabro-Run trailer inherited from ($inh)"
-            } else {
-                $"self-closure: Fabro-Run trailer names ($self_id)"
-            }
+            $"self-closure: Fabro-Run trailer names ($self_id)"
         } else {
             null
         })
