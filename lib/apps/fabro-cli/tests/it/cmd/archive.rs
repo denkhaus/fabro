@@ -83,7 +83,8 @@ fn archive_succeeded_run_hides_it_from_default_ps() {
     ----- stderr -----
     "#);
 
-    // `ps -a` surfaces it with status `archived`.
+    // `ps -a` surfaces it, marked archived (work#1464): the JSON row
+    // carries the overlay flag and the status stays terminal.
     let output = context
         .ps()
         .args(["-a", "--json", "--label", &context.test_case_label()])
@@ -95,6 +96,49 @@ fn archive_succeeded_run_hides_it_from_default_ps() {
     assert_eq!(runs[0]["status"]["kind"], "succeeded");
     assert_eq!(runs[0]["status"]["reason"], "completed");
     assert_eq!(runs[0]["run_id"], run.run_id);
+    assert_eq!(runs[0]["archived"], true, "ps rows must expose archived");
+
+    // `ps --archived` narrows to the archived run only.
+    let archived_only = context
+        .ps()
+        .args([
+            "--archived",
+            "--json",
+            "--label",
+            &context.test_case_label(),
+        ])
+        .output()
+        .expect("ps --archived should execute");
+    assert!(archived_only.status.success());
+    let runs: Vec<Value> =
+        serde_json::from_slice(&archived_only.stdout).expect("ps JSON should parse");
+    assert_eq!(runs.len(), 1, "ps --archived should show the archived run");
+    assert_eq!(runs[0]["run_id"], run.run_id);
+    assert_eq!(runs[0]["archived"], true);
+
+    // The table marks archived rows in the STATUS column.
+    let table = context
+        .ps()
+        .args(["-a", "--label", &context.test_case_label()])
+        .output()
+        .expect("ps table should execute");
+    assert!(table.status.success());
+    let table_stdout = String::from_utf8_lossy(&table.stdout);
+    assert!(
+        table_stdout.contains("archived/succeeded"),
+        "ps table should mark archived rows, got:\n{table_stdout}"
+    );
+
+    // `inspect` exposes the archived overlay flag too.
+    let inspect = context
+        .command()
+        .args(["inspect", &run.run_id])
+        .output()
+        .expect("inspect should execute");
+    assert!(inspect.status.success());
+    let items: Vec<Value> =
+        serde_json::from_slice(&inspect.stdout).expect("inspect JSON should parse");
+    assert_eq!(items[0]["archived"], true, "inspect must expose archived");
 }
 
 #[test]
