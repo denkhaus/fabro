@@ -7583,9 +7583,10 @@ paths:
           description: >-
             Plain-keyword text search over item title and body, INCLUDING
             closed items (duplicate checks before filing need the closed
-            half). Without `query` the call lists OPEN items only, sorted
-            by priority then recency; with `query` the tracker's search
-            ranks by relevance instead.
+            half). Without `query` the call lists items per `state`
+            (open by default), sorted by priority then recency; with
+            `query` the tracker's search ranks by relevance instead and
+            `state` does not apply.
           schema:
             type: string
         - name: limit
@@ -7615,12 +7616,35 @@ paths:
           schema:
             type: string
             enum: [priority, -priority, updated, -updated]
+        - name: state
+          in: query
+          required: false
+          description: >-
+            Which states the listing enumerates (work#1476): `open` (the
+            default — every established caller's answer), `closed`, or
+            `all` (the full census read; friction-score enumerates the
+            project's whole item population through this).
+          schema:
+            type: string
+            enum: [open, closed, all]
+        - name: cursor
+          in: query
+          required: false
+          description: >-
+            The previous response's opaque `nextCursor` token, verbatim
+            (work#1476); absent or empty serves the first page. When
+            present it overrides `page` — a cursor walker never
+            double-reads a page boundary. Walk until the response's
+            `nextCursor` is null (a page shorter than `limit`).
+          schema:
+            type: string
         - name: page
           in: query
           required: false
           description: >-
             1-based results page of the listing or search (default 1);
-            `limit` is the page size — a full census walks pages.
+            `limit` is the page size — a full census walks `cursor`
+            instead.
           schema:
             type: integer
             format: int32
@@ -8030,6 +8054,126 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Caller is not a user (run workers may not move lanes)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/lock:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: lockWorkItem
+      tags: [Work Items]
+      summary: Place the operator lock on a work item
+      description: >-
+        The item-lock door (denkhaus/work#1420): a locked item is not
+        grantable by the claim pool or the grant door, regardless of its
+        lane; the lane itself stays untouched. The lock has no TTL — it
+        stands until an operator unlocks it. User-only: a run worker
+        principal is refused (the lane-move posture). Refused with 409
+        while the item carries a live claim.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemLockRequest"
+      responses:
+        "200":
+          description: Work item with the operator lock placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not lock items)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The item carries a live claim (named in the message)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/unlock:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: unlockWorkItem
+      tags: [Work Items]
+      summary: Lift the operator lock from a work item
+      description: >-
+        The lock door's lift (denkhaus/work#1420): the item becomes
+        grantable again; the lane is untouched. Unlocking an unlocked
+        item succeeds (the response just reports the item unlocked).
+        User-only: a run worker principal is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemLockRequest"
+      responses:
+        "200":
+          description: Work item with the operator lock lifted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not unlock items)
           content:
             application/json:
               schema:
@@ -20640,9 +20784,30 @@ components:
           type: string
           format: date-time
           nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            When the tracker recorded the item's creation; absent when it
+            names no creation time.
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the tracker closed the item; null while it is open.
+        locked:
+          type: boolean
+          description: >-
+            The operator lock (denkhaus/work#1420): a locked item is not
+            grantable by the claim pool or the grant door; the lane is
+            untouched. The lock lives in the store, not the tracker, so
+            the field is optional — the doors that overlay it (list,
+            single-item reads, the lock and unlock doors) answer
+            truthfully; a door that omits it makes no claim either way.
 
     WorkItemListResponse:
-      description: Open work items of one project.
+      description: One page of a project's work items.
       type: object
       required:
         - data
@@ -20662,6 +20827,14 @@ components:
             paging (denkhaus/work#1296) — the tracker search's
             total_count on both arms. Null only when the provider has
             no counting read (test fakes, the null tracker).
+        nextCursor:
+          type: string
+          nullable: true
+          description: |-
+            The opaque next-page token (work#1476): pass it back as the
+            `cursor` parameter for the following page. Null on the last
+            page — a page that returned fewer items than `limit` is
+            the last one, so a walker stops at the null cursor.
 
     WorkItemCreateRequest:
       description: File a work item in the project's tracker.
@@ -20832,6 +21005,18 @@ components:
           description: >-
             Lane name as declared in the project's laneLabels; omitted or
             `null` clears the item's lane.
+
+    WorkItemLockRequest:
+      description: >-
+        Place or lift the operator lock on one work item
+        (denkhaus/work#1420). The lock blocks claiming while it stands;
+        the lane is untouched.
+      type: object
+      required:
+        - itemKey
+      properties:
+        itemKey:
+          type: string
 
     WorkItemCloseResponse:
       description: >-

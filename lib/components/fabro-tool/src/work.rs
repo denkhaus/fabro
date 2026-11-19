@@ -796,6 +796,8 @@ mod tests {
             priority:   2,
             url:        "https://github.com/denkhaus/work/issues/1".to_string(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         };
         let listed = work_list_text(std::slice::from_ref(&item), None);
         assert!(listed.starts_with("1 open work item(s):"));
@@ -821,6 +823,8 @@ mod tests {
             priority:   2,
             url:        format!("https://github.com/denkhaus/work/issues/{key}"),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         }
     }
 

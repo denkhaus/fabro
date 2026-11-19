@@ -14,6 +14,7 @@ mod create;
 mod lane;
 mod link;
 mod list;
+mod lock;
 mod radius;
 mod show;
 mod unlink;
@@ -40,6 +41,8 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Close(args) => close::close_command(&args, &ctx).await,
         WorkCommand::Update(args) => update::update_command(&args, &ctx).await,
         WorkCommand::Lane(args) => lane::lane_command(&args, &ctx).await,
+        WorkCommand::Lock(args) => lock::lock_command(&args, &ctx).await,
+        WorkCommand::Unlock(args) => lock::unlock_command(&args, &ctx).await,
         WorkCommand::Link(args) => link::link_command(&args, &ctx).await,
         WorkCommand::Unlink(args) => unlink::unlink_command(&args, &ctx).await,
         WorkCommand::Radius(args) => radius::radius_command(&args, &ctx).await,
@@ -224,6 +227,15 @@ fn labels_cell(labels: &[String]) -> String {
     } else {
         labels.join(",")
     }
+}
+
+/// Whether the served item carries the operator-lock badge
+/// (denkhaus/work#1420): `locked` is optional on the wire — the doors
+/// that stamp it answer truthfully, a door that omits it makes no claim,
+/// and a missing badge reads as unlocked (the lock only ever comes from
+/// the store).
+fn is_locked(item: &types::WorkItem) -> bool {
+    item.locked.unwrap_or(false)
 }
 
 #[cfg(test)]

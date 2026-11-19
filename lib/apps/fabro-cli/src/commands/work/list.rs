@@ -17,19 +17,25 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
         ensure_known_lane(&project, lane)?;
     }
     let printer = ctx.printer();
-    let items = client
+    // `--json` prints the FULL envelope (`data`, `total`, `nextCursor`)
+    // — a cursor walker needs the next token (work#1476); the table
+    // keeps the bare columns.
+    let response = client
         .list_work_items(
             &args.project,
             args.lane.as_deref(),
             args.limit,
             args.query.as_deref(),
             args.label.as_deref(),
+            args.state.as_deref(),
             args.page,
+            args.cursor.as_deref(),
         )
         .await?;
+    let items = &response.data;
 
     if ctx.json_output() {
-        print_json_pretty(&items)?;
+        print_json_pretty(&response)?;
         return Ok(());
     }
 
@@ -45,6 +51,7 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
         "KEY".cell().bold(use_color),
         "PRIO".cell().bold(use_color),
         "STATE".cell().bold(use_color),
+        "LOCK".cell().bold(use_color),
         "LABELS".cell().bold(use_color),
         "TITLE".cell().bold(use_color),
     ];
@@ -56,6 +63,12 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
                 item.item_key.clone().cell().bold(use_color),
                 item.priority.to_string().cell(),
                 item.state.clone().cell(),
+                if super::is_locked(item) {
+                    "locked"
+                } else {
+                    "-"
+                }
+                .cell(),
                 labels_cell(&item.labels).cell(),
                 item.title.clone().cell(),
             ]

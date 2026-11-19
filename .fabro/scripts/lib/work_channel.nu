@@ -200,10 +200,33 @@ export def work-close-argv [srv: string, project: string, work_item: string, rea
 # FACADE level (like radius/comments/close), the subcommand precedes
 # --project (run 01M60NX9's lesson), --lane rides the server-side label
 # translation, and --limit bounds the read (the lane check wants the
-# ANSWER — any open item — not the whole lane). --json prints the bare
-# item array.
+# ANSWER — any open item — not the whole lane). --json prints the
+# WorkItemListResponse envelope (.data + .total + .nextCursor), never a
+# bare array (work#1476).
 export def work-list-argv [srv: string, project: string, lane: string, limit: int = 1]: nothing -> list<string> {
     ['work' '--server' $srv 'list' '--project' $project '--lane' $lane '--limit' ($limit | into string) '--json']
+}
+
+# Pure: the argv for one cursor-paged work-list read (work#1476: the
+# census door — friction-score enumerates the project's whole item
+# population through the facade, the raw gh leg retired). The state
+# spans every item (`all`); the cursor is the previous response's
+# nextCursor verbatim, the first page omits it; --limit is the page
+# size (the API clamps 1-100). --json prints the envelope, so the
+# walker reads `.data` and `.nextCursor` per page.
+export def work-list-page-argv [
+    srv: string,
+    project: string,
+    --state: string = 'all',
+    --cursor: string = '',
+    --limit: int = 100,
+]: nothing -> list<string> {
+    mut argv = [
+        'work' '--server' $srv 'list' '--project' $project
+        '--state' $state '--limit' ($limit | into string) '--json'
+    ]
+    if not ($cursor | is-empty) { $argv = ($argv | append ['--cursor' $cursor]) }
+    $argv
 }
 
 # Pure: the argv for one automations-list read (the watchdog's gear

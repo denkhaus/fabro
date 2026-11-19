@@ -333,9 +333,33 @@ ORDER BY project_id
     /// The unique indexes are the mutex: a concurrent grant for the same item
     /// or for a run that already holds another item loses and returns the
     /// live conflicting claim.
+    ///
+    /// The operator lock door (work#1420): a locked item is not grantable,
+    /// regardless of lane. The refusal is a lock check before the insert,
+    /// not a fifth unique index — the lock table is a side table, so the
+    /// check-then-insert window is milliseconds wide and the pool filter
+    /// (the caller's `locked_items` read) is the second, wider net. An
+    /// idempotent repeat by the run that already holds the item is NOT a
+    /// new claim: the lock blocks claiming, never an already-claimed run,
+    /// so that arm classifies first.
     pub async fn grant(&self, request: &GrantRequest) -> Result<GrantOutcome> {
         if self.project(&request.project_id).await?.is_none() {
             return Err(Error::WorkProjectNotFound(request.project_id.clone()));
+        }
+        if self
+            .item_lock(&request.project_id, &request.item_key)
+            .await?
+            .is_some()
+        {
+            if let Some(claim) = self
+                .active_claim_for_item(&request.project_id, &request.item_key)
+                .await?
+            {
+                if claim.run_id == request.run_id {
+                    return Ok(GrantOutcome::AlreadyHeld(claim));
+                }
+            }
+            return Err(Error::WorkItemLocked(request.item_key.clone()));
         }
 
         let claim_id = uuid::Uuid::new_v4().to_string();
@@ -701,6 +725,93 @@ GROUP BY item_key
             verdicts.insert(item_key, released_at);
         }
         Ok(verdicts)
+    }
+
+    /// Place the operator lock on one item (denkhaus/work#1420): a locked
+    /// item is not grantable by the claim pool or the grant door,
+    /// regardless of lane. The lock lives only here — the lane is never
+    /// touched. Refused while the item carries a live claim: the lock is
+    /// for items no run owns (a claimed item is already protected by the
+    /// ledger's uniqueness), and the refusal names the live claim so the
+    /// operator knows whose run stands in the way. Re-locking a locked
+    /// item keeps the first lock (idempotent).
+    pub async fn lock_item(&self, project_id: &str, item_key: &str) -> Result<()> {
+        if self.project(project_id).await?.is_none() {
+            return Err(Error::WorkProjectNotFound(project_id.to_string()));
+        }
+        if let Some(claim) = self.active_claim_for_item(project_id, item_key).await? {
+            return Err(Error::WorkClaimConflict(format!(
+                "item {item_key} holds a live claim ({}, run {}) — release it before locking",
+                claim.claim_id, claim.run_id
+            )));
+        }
+        sqlx::query(
+            r"
+INSERT INTO work_item_locks (project_id, item_key, locked_at_ms)
+VALUES (?, ?, ?)
+ON CONFLICT (project_id, item_key) DO NOTHING
+",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .bind(Utc::now().timestamp_millis())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Lift the operator lock (denkhaus/work#1420): the item becomes
+    /// grantable again, lane untouched. Unlocking an unlocked item is
+    /// `false`, not an error — the caller's verdict, the unlink posture.
+    pub async fn unlock_item(&self, project_id: &str, item_key: &str) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM work_item_locks WHERE project_id = ? AND item_key = ?")
+                .bind(project_id)
+                .bind(item_key)
+                .execute(&self.pool)
+                .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// The item's operator lock, if any — the lock's placement time. The
+    /// grant door's refusal check; the lock badge's single-item read.
+    pub async fn item_lock(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<Option<DateTime<Utc>>> {
+        let locked_at_ms: Option<i64> = sqlx::query_scalar(
+            "SELECT locked_at_ms FROM work_item_locks WHERE project_id = ? AND item_key = ?",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .fetch_optional(&self.pool)
+        .await?;
+        locked_at_ms
+            .map(|value| {
+                DateTime::from_timestamp_millis(value).ok_or(Error::InvalidStoredTimestamp {
+                    record: "work item lock",
+                    field: "locked_at_ms",
+                    value,
+                })
+            })
+            .transpose()
+    }
+
+    /// Every operator-locked item of a project, ordered by key — the
+    /// claim pool's exclusion set (denkhaus/work#1420) and the lock
+    /// badge's list overlay. One fixed query; the pool reads it once per
+    /// claim_next.
+    pub async fn locked_items(&self, project_id: &str) -> Result<Vec<String>> {
+        let rows = sqlx::query(
+            "SELECT item_key FROM work_item_locks WHERE project_id = ? ORDER BY item_key",
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter()
+            .map(|row| row.try_get::<String, _>("item_key"))
+            .collect()
     }
 
     /// The transition history of one claim, oldest first.
@@ -1701,6 +1812,141 @@ mod tests {
         assert!(
             verdicts["denkhaus/work#1"] > first_verdict,
             "the latest stale release is the verdict"
+        );
+    }
+
+    /// THE OPERATOR LOCK DOOR (denkhaus/work#1420): a locked item is not
+    /// grantable — regardless of lane — until an operator unlocks it. No
+    /// TTL: the lock survives laps indefinitely.
+    #[tokio::test]
+    async fn a_locked_item_is_refused_by_grant_until_unlocked() {
+        let (_directory, store) = store().await;
+        let run = fabro_types::RunId::new();
+        store.lock_item("fabro", "denkhaus/work#1").await.unwrap();
+        assert_eq!(
+            store.locked_items("fabro").await.unwrap(),
+            vec!["denkhaus/work#1".to_string()],
+            "the locked set names exactly the locked item"
+        );
+        let error = store
+            .grant(&request("denkhaus/work#1", run))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, Error::WorkItemLocked(key) if key == "denkhaus/work#1"),
+            "the grant door refuses the locked item: {error}"
+        );
+
+        // An unlocked item in the same project grants normally: the door
+        // is per item, never a project-wide stop.
+        store.grant(&request("denkhaus/work#2", run)).await.unwrap();
+
+        store.unlock_item("fabro", "denkhaus/work#1").await.unwrap();
+        assert!(
+            store.locked_items("fabro").await.unwrap().is_empty(),
+            "the unlock lifts the lock"
+        );
+        let GrantOutcome::Granted(claim) =
+            store.grant(&request("denkhaus/work#1", run)).await.unwrap()
+        else {
+            panic!("the unlocked item grants again");
+        };
+        assert_eq!(claim.item_key, "denkhaus/work#1");
+    }
+
+    /// The lock refuses to land on a claimed item — naming the live
+    /// claim — and the holding run's grant repeat stays `AlreadyHeld`
+    /// (work#1420: the lock never changes an already-claimed run).
+    #[tokio::test]
+    async fn a_lock_refuses_a_claimed_item_and_held_grants_stay_alreadyheld() {
+        let (_directory, store) = store().await;
+        let run = fabro_types::RunId::new();
+        let GrantOutcome::Granted(claim) =
+            store.grant(&request("denkhaus/work#1", run)).await.unwrap()
+        else {
+            panic!("grant must win");
+        };
+        // A lock refuses to land on a claimed item at all.
+        let error = store
+            .lock_item("fabro", "denkhaus/work#1")
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, Error::WorkClaimConflict(message)
+                if message.contains(&claim.claim_id) && message.contains("live claim")),
+            "the lock refusal names the live claim: {error}"
+        );
+
+        // And the holding run's own grant repeat stays `AlreadyHeld` —
+        // the lock door never converts an already-held grant into a
+        // refusal, so a lock landing mid-run changes nothing for the
+        // run that holds the item.
+        store.lock_item("fabro", "denkhaus/work#9").await.unwrap();
+        let outcome = store.grant(&request("denkhaus/work#1", run)).await.unwrap();
+        assert!(
+            matches!(outcome, GrantOutcome::AlreadyHeld(_)),
+            "an already-held grant is untouched by the lock door: {outcome:?}"
+        );
+    }
+
+    /// Re-locking keeps the first lock; unlocking an unlocked item is
+    /// `false` — the caller's verdict, not an error (the unlink posture).
+    #[tokio::test]
+    async fn relock_keeps_the_first_and_unlock_reports_the_absent_row() {
+        let (_directory, store) = store().await;
+        store.lock_item("fabro", "denkhaus/work#1").await.unwrap();
+        let first = store.item_lock("fabro", "denkhaus/work#1").await.unwrap();
+        store.lock_item("fabro", "denkhaus/work#1").await.unwrap();
+        assert_eq!(
+            store.item_lock("fabro", "denkhaus/work#1").await.unwrap(),
+            first,
+            "a re-lock keeps the first lock"
+        );
+        assert!(
+            !store.unlock_item("fabro", "denkhaus/work#2").await.unwrap(),
+            "unlocking an unlocked item reports false"
+        );
+        assert!(
+            store
+                .item_lock("fabro", "denkhaus/work#2")
+                .await
+                .unwrap()
+                .is_none(),
+            "an unlocked item carries no lock"
+        );
+    }
+
+    /// A lock is scoped to its project: the same item key in another
+    /// project stays grantable (the key is only unique per project).
+    #[tokio::test]
+    async fn a_lock_is_scoped_to_its_project() {
+        let (_directory, store) = store().await;
+        let mut other = project();
+        other.project_id = "other".to_string();
+        other.target_repo = None;
+        store.upsert_project(&other).await.unwrap();
+        store.lock_item("fabro", "denkhaus/work#1").await.unwrap();
+        assert!(
+            store
+                .item_lock("other", "denkhaus/work#1")
+                .await
+                .unwrap()
+                .is_none(),
+            "the other project's same-key item is unlocked"
+        );
+        let run = fabro_types::RunId::new();
+        let outcome = store
+            .grant(&GrantRequest {
+                project_id: "other".to_string(),
+                item_key:   "denkhaus/work#1".to_string(),
+                run_id:     run,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome, GrantOutcome::Granted(_)),
+            "the other project's item grants: {outcome:?}"
         );
     }
 

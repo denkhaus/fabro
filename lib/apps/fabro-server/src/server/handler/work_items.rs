@@ -14,7 +14,7 @@ use fabro_api::types::{
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
     WorkItemCloseResponse, WorkItemCommentList, WorkItemCreateRequest, WorkItemLaneRequest,
-    WorkItemListResponse, WorkItemRadiusResponse, WorkItemUpdateRequest,
+    WorkItemListResponse, WorkItemLockRequest, WorkItemRadiusResponse, WorkItemUpdateRequest,
     WorkObservationLinkOutcome, WorkObservationLinkRequest, WorkObservationLinkResponse,
     WorkObservationUnlinkResponse, WorkProject as ApiWorkProject, WorkProjectListResponse,
     WorkProjectUpsertRequest,
@@ -25,7 +25,7 @@ use fabro_store::platform_records::{
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
-    WorkItemDraft, WorkItemFilter, WorkProject,
+    WorkItemDraft, WorkItemFilter, WorkItemStateFilter, WorkProject,
 };
 
 use super::super::{
@@ -77,6 +77,14 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/lane",
             post(lane_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/lock",
+            post(lock_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/unlock",
+            post(unlock_work_item),
         )
         .route("/projects/{projectId}/next", post(claim_next))
         .route("/projects/{projectId}/work-item", get(retrieve_work_item))
@@ -403,6 +411,14 @@ fn store_error(error: fabro_work::Error) -> ApiError {
         fabro_work::Error::WorkClaimConflict(message) => {
             ApiError::new(StatusCode::CONFLICT, message)
         }
+        fabro_work::Error::WorkItemLocked(item_key) => ApiError::with_code(
+            StatusCode::CONFLICT,
+            format!(
+                "item {item_key} carries an operator lock — claiming is refused until an \
+                 operator lifts it (`fabro work unlock {item_key}`)"
+            ),
+            "item_locked",
+        ),
         other => {
             tracing::error!(error = %other, "work store operation failed");
             ApiError::new(
@@ -424,7 +440,37 @@ async fn list_work_items(
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
-    let page = params.page.unwrap_or(1).max(1) as usize;
+    // Which states the listing enumerates (work#1476): the default stays
+    // OPEN — every pre-#1476 caller's answer, unchanged; `all` is the
+    // census read (the friction-score swap). Unknown values are refused
+    // loudly, never silently narrowed.
+    let state_filter = match params.state.as_deref() {
+        None | Some("open") => WorkItemStateFilter::Open,
+        Some("closed") => WorkItemStateFilter::Closed,
+        Some("all") => WorkItemStateFilter::All,
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "unknown state '{other}' (open | closed | all)"
+            )));
+        }
+    };
+    // The cursor (work#1476) names the page to serve: the previous
+    // response's `nextCursor` verbatim, the first page when absent. The
+    // token is the 1-based page number — the same walk the tracker
+    // provider serves, opaque to the client. It overrides an explicit
+    // `page` so a walker can never double-read a page boundary.
+    let page = match params.cursor.as_deref().map(str::trim) {
+        None | Some("") => params.page.unwrap_or(1).max(1),
+        Some(cursor) => match cursor.parse::<u32>() {
+            Ok(n) if n >= 1 => n,
+            _ => {
+                return Err(ApiError::bad_request(
+                    "invalid cursor — pass the previous response's nextCursor verbatim, \
+                     or omit it for the first page",
+                ));
+            }
+        },
+    };
     let page_size = params.limit.unwrap_or(50).clamp(1, 100) as usize;
     let sort = match params.sort.as_deref() {
         None => None,
@@ -441,6 +487,7 @@ async fn list_work_items(
     // The pager's truthful total (denkhaus/work#1296): the tracker's
     // counting read names the number of items the filter matches,
     // independent of paging — the page-window estimate is gone.
+    let page = usize::try_from(page).unwrap_or(1);
     let mut total: Option<u64> = None;
     let items = match sort {
         None => {
@@ -451,6 +498,7 @@ async fn list_work_items(
                     query: params.query,
                     label: params.label,
                     page,
+                    state: state_filter,
                 })
                 .await
                 .map_err(tracker_failed)?;
@@ -473,6 +521,7 @@ async fn list_work_items(
                     query: params.query.clone(),
                     label: params.label.clone(),
                     page:  tracker_page,
+                    state: state_filter,
                 };
                 let batch = if tracker_page == 1 {
                     let page = tracker
@@ -515,9 +564,36 @@ async fn list_work_items(
                 .collect::<Vec<_>>()
         }
     };
+    // The lock badge overlay (denkhaus/work#1420): the lock lives in the
+    // store beside the claims, so the tracker-shaped items are stamped
+    // here — the operator sees the hold in the same listing that shows
+    // the lane.
+    let locked_items: std::collections::HashSet<String> = state
+        .work_store()
+        .locked_items(&project.project_id)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .collect();
+    // The next-page cursor (work#1476), the full-page heuristic: a page
+    // that filled its page size MAY have more (the caller walks until a
+    // short page or a null cursor — the `gh --paginate` posture); a
+    // short page is the last one, whatever the total said.
+    let next_cursor = if items.len() == page_size {
+        Some(page.saturating_add(1).to_string())
+    } else {
+        None
+    };
     let response = WorkItemListResponse {
-        data:  items.into_iter().map(api_item).collect(),
+        data:  items
+            .into_iter()
+            .map(|item| {
+                let locked = locked_items.contains(&item.item_key);
+                stamp_lock(api_item(item), locked)
+            })
+            .collect(),
         total: total.map(|total| total.min(i64::MAX.unsigned_abs()).cast_signed()),
+        next_cursor,
     };
     Ok(Json(response).into_response())
 }
@@ -536,6 +612,12 @@ struct WorkItemQuery {
     /// Applies before paging: the handler accumulates tracker pages
     /// (bounded), sorts, and slices the requested page.
     sort:  Option<String>,
+    /// Which states the listing enumerates: `open` (the default),
+    /// `closed`, or `all` — the census read (work#1476).
+    state: Option<String>,
+    /// The previous response's opaque next-page token (work#1476);
+    /// absent or empty starts at the first page. Overrides `page`.
+    cursor: Option<String>,
 }
 
 /// One work item by key, including closed items (denkhaus/work#1235):
@@ -566,7 +648,13 @@ async fn get_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| ApiError::not_found(format!("work item `{}` not found", query.item_key)))?;
-    Ok(Json(api_item(item)).into_response())
+    let locked = state
+        .work_store()
+        .item_lock(&project.project_id, &query.item_key)
+        .await
+        .map_err(store_error)?
+        .is_some();
+    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
 }
 
 async fn create_work_item(
@@ -1082,6 +1170,100 @@ async fn lane_work_item(
     Ok(Json(api_item(item)).into_response())
 }
 
+/// The operator lock door (denkhaus/work#1420): `lock` places the lock,
+/// `unlock` lifts it. USER operations (the lane-move posture): the lock
+/// is the human surface — a worker principal is refused before any store
+/// or tracker call, so the run tools never carry it. The lock rides the
+/// store's lock table (never a tracker label), so it survives tracker
+/// round-trips; the lane stays untouched by both verbs. The lock's
+/// enforcement lives in the claim path: the pool filter (the
+/// stale-basis-skip layer) and the grant door's refusal.
+async fn lock_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemLockRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("the item lock is a user operation — run {run_id} may not lock items"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    // The lock names a real item: an unknown key is a 404, not a lock
+    // row pointing into the void (the close door's item gate).
+    let item = tracker
+        .get(&project, &request.item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| not_found("work item", &request.item_key))?;
+    // Refused while the item carries a live claim (the message names
+    // it): the lock is for items no run owns. Idempotent for an
+    // already-locked item.
+    state
+        .work_store()
+        .lock_item(&project.project_id, &request.item_key)
+        .await
+        .map_err(store_error)?;
+    tracing::info!(
+        project = %project.project_id,
+        item_key = %request.item_key,
+        "operator lock placed"
+    );
+    Ok(Json(stamp_lock(api_item(item), true)).into_response())
+}
+
+/// The lock door's lift (denkhaus/work#1420): the item becomes grantable
+/// again; the lane is untouched. Unlocking an unlocked item succeeds —
+/// the response just reports the item unlocked.
+async fn unlock_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemLockRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("the item lock is a user operation — run {run_id} may not unlock items"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    let item = tracker
+        .get(&project, &request.item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| not_found("work item", &request.item_key))?;
+    let removed = state
+        .work_store()
+        .unlock_item(&project.project_id, &request.item_key)
+        .await
+        .map_err(store_error)?;
+    tracing::info!(
+        project = %project.project_id,
+        item_key = %request.item_key,
+        removed,
+        "operator lock lifted"
+    );
+    Ok(Json(stamp_lock(api_item(item), false)).into_response())
+}
+
+/// Stamps the operator-lock badge (denkhaus/work#1420) onto a served
+/// item: the lock lives in the store, not the tracker, so the
+/// tracker-shaped item cannot carry it and the door overlays it for the
+/// wire. `locked` is optional in the schema — the doors that stamp it
+/// (list, the single-item reads, lock/unlock) answer truthfully; a door
+/// that leaves it unset makes no claim either way.
+fn stamp_lock(item: ApiWorkItem, locked: bool) -> ApiWorkItem {
+    ApiWorkItem {
+        locked: Some(locked),
+        ..item
+    }
+}
+
 async fn claim_next(
     auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
@@ -1113,6 +1295,7 @@ async fn claim_next(
             query: None,
             label: None,
             page:  1,
+            state: WorkItemStateFilter::Open,
         })
         .await
         .map_err(tracker_failed)?;
@@ -1160,6 +1343,20 @@ async fn claim_next(
         .await
         .map_err(store_error)?;
 
+    // Operator lock door (denkhaus/work#1420): an item carrying an
+    // operator-held lock is not grantable — regardless of lane, with no
+    // expiry (the operator lifts it). The same pool layer as the
+    // stale-basis skip above; the grant door's own refusal (the store's
+    // `grant`) is the second net. The lane is untouched by the lock, so
+    // the item still lists under its lane for re-routing decisions.
+    let locked_items: std::collections::HashSet<String> = state
+        .work_store()
+        .locked_items(&project.project_id)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .collect();
+
     // Lane backpressure (fabro-4580, ADR-0032): a lane grants only when its
     // open run PRs are drained. Cap 0 = refuse while ANY claim of the lane
     // awaits merge; the scheduler cannot fire a second overlapping run past
@@ -1193,6 +1390,13 @@ async fn claim_next(
     }
 
     for item in items {
+        if locked_items.contains(&item.item_key) {
+            tracing::debug!(
+                item_key = %item.item_key,
+                "work pool: candidate item carries an operator lock; skipped (work#1420)"
+            );
+            continue;
+        }
         if claimed.contains(&item.item_key) {
             // The claim-hold arm of the pool policy (denkhaus/work#1457,
             // ADR-0045 P1): a candidate whose live claim HOLDS stays out
@@ -1384,7 +1588,13 @@ async fn retrieve_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &item_key))?;
-    Ok(Json(api_item(item)).into_response())
+    let locked = state
+        .work_store()
+        .item_lock(&project.project_id, &item_key)
+        .await
+        .map_err(store_error)?
+        .is_some();
+    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -1771,11 +1981,17 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         body:       item.body,
         item_key:   item.item_key,
         labels:     item.labels,
+        // The lock badge (denkhaus/work#1420) is a store overlay, not
+        // tracker state: unset here, stamped by the doors that read the
+        // lock table (stamp_lock).
+        locked:     None,
         priority:   item.priority,
         state:      item.state,
         title:      item.title,
         updated_at: item.updated_at,
         url:        item.url,
+        created_at: item.created_at,
+        closed_at:  item.closed_at,
     }
 }
 
@@ -2063,6 +2279,101 @@ mod resolve_self_tests {
         );
     }
 
+    /// THE LOCK DOOR AT THE POOL (denkhaus/work#1420): the lane's sole
+    /// open candidate carries an operator lock — claim_next answers
+    /// EMPTY, no claim row lands, and the lane label is untouched. The
+    /// lane stays visible for re-routing; the lock is the only hold.
+    #[tokio::test]
+    async fn an_operator_locked_item_is_never_granted_by_claim_next() {
+        use fabro_api::types::WorkClaimNextRequest;
+        use fabro_work::TrackerProvider;
+
+        use super::claim_next;
+
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(OneItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        // The lock lands only on an unclaimed item — this one.
+        state
+            .work_store()
+            .lock_item("fabro", "denkhaus/work#1")
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+
+        let response = claim_next(
+            auth,
+            State(Arc::clone(&state)),
+            Path("fabro".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            body["outcome"], "empty",
+            "the locked candidate is skipped, the pool is empty"
+        );
+        assert!(
+            state
+                .work_store()
+                .active_claims("fabro")
+                .await
+                .unwrap()
+                .is_empty(),
+            "no claim may land for a locked item"
+        );
+        // The unlock restores grantability — the same run, same pool.
+        assert!(
+            state
+                .work_store()
+                .unlock_item("fabro", "denkhaus/work#1")
+                .await
+                .unwrap(),
+            "the unlock lifts a placed lock"
+        );
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let response = claim_next(
+            auth,
+            State(Arc::clone(&state)),
+            Path("fabro".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["outcome"], "granted", "the unlocked item grants again");
+    }
+
     /// One open candidate item, static fixture — the shape the original
     /// `claim_next` grant test drives.
     struct OneItemTracker;
@@ -2082,6 +2393,8 @@ mod resolve_self_tests {
                 priority:   1,
                 url:        "https://github.com/denkhaus/work/issues/1".to_string(),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at:  None,
             }])
         }
         async fn get(
@@ -2162,6 +2475,8 @@ mod resolve_self_tests {
                 priority:   1,
                 url:        "https://github.com/denkhaus/work/issues/1".to_string(),
                 updated_at: Some(*self.updated_at.lock().unwrap()),
+                created_at: None,
+                closed_at:  None,
             }])
         }
         async fn get(
@@ -2515,6 +2830,8 @@ mod resolve_self_tests {
                 priority,
                 url: format!("https://github.com/denkhaus/work/issues/{key}"),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at: None,
             }
         }
         #[async_trait::async_trait]

@@ -37,6 +37,8 @@ pub enum Error {
     WorkClaimNotFound(String),
     #[error("work claim conflict: {0}")]
     WorkClaimConflict(String),
+    #[error("work item is locked: {0}")]
+    WorkItemLocked(String),
     #[error("work outbox entry not found: {0}")]
     WorkOutboxEntryNotFound(String),
     #[error("invalid work claim state: {0}")]
