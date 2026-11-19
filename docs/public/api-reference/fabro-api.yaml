@@ -3213,16 +3213,22 @@ paths:
       tags: [Run Internals]
       summary: Get Run Snapshot Bundle
       description: |
-        Streams a `git bundle` (all refs) of the run's snapshot repository — the
+        Serves a `git bundle` (all refs) of the run's snapshot repository — the
         bare store the checkpoint hooks publish every workspace commit to
         (`refs/checkpoints/...`), which survives the run's terminal state and
         its pruned sandbox.
 
+        The bundle is created and checked BEFORE the response streams: a failed
+        bundle answers a named 500 instead of a truncated 200. The complete
+        bundle's SHA256 and byte count ride the response as an integrity proof
+        (`X-Bundle-Sha256`, `X-Bundle-Bytes`); consumers must verify the bytes
+        they receive against them, so a transfer cut mid-flight fails loudly
+        instead of salvaging a corrupt bundle.
+
         Runs currently have exactly one workspace (`invocation-0-scope-0`); a run
         with more than one snapshot repository is refused with a named conflict
-        error instead of an ambiguous bundle. The bundle streams from the store
-        (never fully buffered in memory); a pathological snapshot is refused up
-        front with a clear error. Salvage flow: `fabro snapshot <run>` then
+        error instead of an ambiguous bundle. A pathological snapshot is refused
+        up front with a clear error. Salvage flow: `fabro snapshot <run>` then
         `git fetch <bundle> 'refs/*:refs/remotes/run/<id>/*'`.
       parameters:
         - $ref: "#/components/parameters/RunId"
@@ -3234,6 +3240,15 @@ paths:
               description: Attachment filename for the bundle
               schema:
                 type: string
+            Content-Length:
+              description: Exact byte count of the bundle (the framing enforces it)
+              schema:
+                type: integer
+                format: int64
+            x-bundle-sha256:
+              $ref: "#/components/headers/XBundleSha256"
+            x-bundle-bytes:
+              $ref: "#/components/headers/XBundleBytes"
           content:
             application/octet-stream:
               schema:
@@ -8527,6 +8542,25 @@ components:
       schema:
         type: string
       example: '"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"'
+
+    XBundleSha256:
+      description: >
+        SHA256 (hex) the server computed over the COMPLETE bundle before
+        streaming. Verify the received bytes against it: a mismatch, or a body
+        shorter than `X-Bundle-Bytes`, means the transfer was truncated
+        mid-stream and the bundle must not be trusted.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+
+    XBundleBytes:
+      description: >
+        Exact byte count of the complete bundle, computed before streaming. A
+        received body shorter than this was truncated mid-stream.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
 
   schemas:
     AuthConfigResponse:

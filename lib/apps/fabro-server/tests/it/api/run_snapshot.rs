@@ -13,6 +13,7 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use fabro_config::Storage;
 use fabro_types::RunId;
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use tower::ServiceExt;
 
@@ -181,9 +182,9 @@ async fn snapshot_streams_a_bundle_the_salvage_fetch_recovers() {
         StatusCode::OK,
         "GET /api/v1/runs/{run_id}/snapshot"
     );
+    let headers = response.headers().clone();
     assert_eq!(
-        response
-            .headers()
+        headers
             .get("content-type")
             .and_then(|value| value.to_str().ok()),
         Some("application/octet-stream")
@@ -191,6 +192,32 @@ async fn snapshot_streams_a_bundle_the_salvage_fetch_recovers() {
     let body = to_bytes(response.into_body(), 64 * 1024 * 1024)
         .await
         .expect("bundle body reads");
+
+    // The integrity proof (work#1430): the headers carry the COMPLETE
+    // bundle's size and hash, and they describe exactly the received bytes —
+    // a truncated transfer can never pass the consumer's verification.
+    let received_bytes = body.len().to_string();
+    assert_eq!(
+        headers
+            .get("x-bundle-bytes")
+            .and_then(|value| value.to_str().ok()),
+        Some(received_bytes.as_str()),
+        "x-bundle-bytes names the whole bundle"
+    );
+    assert_eq!(
+        headers
+            .get("x-bundle-sha256")
+            .and_then(|value| value.to_str().ok()),
+        Some(format!("{:x}", Sha256::digest(&body)).as_str()),
+        "x-bundle-sha256 hashes the whole bundle"
+    );
+    assert_eq!(
+        headers
+            .get("content-length")
+            .and_then(|value| value.to_str().ok()),
+        Some(received_bytes.as_str()),
+        "the framing carries the whole bundle too"
+    );
 
     // The salvage flow: write the bundle, fetch every ref out of it.
     let bundle = temp.path().join("salvage.bundle");
@@ -210,6 +237,63 @@ async fn snapshot_streams_a_bundle_the_salvage_fetch_recovers() {
         "refs/remotes/run/heads/fabro/run/test",
     ]);
     assert_eq!(recovered, head, "the salvaged commit round-trips");
+}
+
+/// Work#1430's close condition: when `git bundle create` fails mid-write (the
+/// store cannot deliver its objects), the door answers a named 500 — never a
+/// 200 with a truncated bundle that looks like a good export.
+#[tokio::test]
+async fn a_failed_bundle_creation_answers_500_instead_of_a_truncated_200() {
+    let workspace = tempdir().unwrap();
+    let (_temp, settings, storage_dir) = temp_storage_settings();
+    let app =
+        fabro_server::test_support::build_test_router(test_app_state_with_options(settings, 5));
+    let run_id = create_run(&app, workspace.path()).await;
+    let (snapshots, _head, _source) =
+        plant_snapshot_repository(&storage_dir, &run_id, "invocation-0-scope-0.git");
+
+    // Break the store: with the pack gone, every ref points at objects git
+    // cannot read, so the bundle creation aborts mid-write.
+    let pack = snapshots
+        .join("invocation-0-scope-0.git")
+        .join("objects")
+        .join("pack");
+    for entry in std::fs::read_dir(&pack).expect("the pack directory lists") {
+        let path = entry.expect("a pack entry reads").path();
+        if path.is_file() {
+            std::fs::remove_file(&path).expect("the pack file removes");
+        }
+    }
+
+    let response = get_snapshot(&app, &run_id).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "GET /api/v1/runs/{run_id}/snapshot must refuse, not stream a partial bundle"
+    );
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_owned();
+    assert!(
+        content_type.starts_with("application/json"),
+        "the failure is an error response, not a truncated octet-stream: {content_type}"
+    );
+    let body = response_json(
+        response,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("GET /api/v1/runs/{run_id}/snapshot"),
+    )
+    .await;
+    assert!(
+        body["errors"][0]["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("git bundle"),
+        "the refusal names the bundle failure: {body}"
+    );
 }
 
 #[tokio::test]
