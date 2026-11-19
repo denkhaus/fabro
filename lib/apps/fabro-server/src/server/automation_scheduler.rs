@@ -798,6 +798,29 @@ pub(crate) async fn fire_scheduled_automation_run(
             }
         }
     }
+    // Gear admission gate (denkhaus/work#1436): before ANY run-creation
+    // work (environment resolution, checkout, materialization, sandbox),
+    // consult the gear's server-side worklist. Only a POSITIVE empty
+    // answer skips — a failed consult fires as today (fail-open: the
+    // gears are the line's recovery path, a flaky read must not wedge
+    // them; the error distinction is logged inside the gate). This kills
+    // the idle-slot lap itself (22-47s of sandbox create + cook + prune
+    // per empty slot, plus the cold-cook exposure on every new tip); the
+    // gear graphs keep their internal sweeps as the authoritative
+    // re-check. Manual/API fires stay unconditional (handler::automations).
+    if let super::automation_admission::AdmissionDecision::Skip(empty) =
+        super::automation_admission::admission_decision(state.as_ref(), &automation).await
+    {
+        info!(
+            automation_id = %automation_id,
+            trigger_id = %trigger_id,
+            workflow = %automation.workflow,
+            due_at = %due_at,
+            reason = %empty,
+            "Scheduled fire skipped: the gear's worklist is empty (work#1436 admission gate)"
+        );
+        return;
+    }
     let run_id = RunId::new();
     let environment_id = match handler::automations::resolve_automation_environment(
         state.as_ref(),
