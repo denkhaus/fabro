@@ -125,7 +125,7 @@ mod tests {
     #[test]
     fn a_blank_commit_refuses_teaching_the_sha() {
         let error = ValidatedRunPushResolution::try_from(FabroRunPushResolutionParams {
-            run:    "01TEST".to_string(),
+            run:    "01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
             commit: "  ".to_string(),
         })
         .expect_err("a blank commit must fail");
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn a_valid_pair_trims_both_values() {
         let validated = ValidatedRunPushResolution::try_from(FabroRunPushResolutionParams {
-            run:    " 01TEST ".to_string(),
+            run:    " 01ARZ3NDEKTSV4RRFFQ69G5FAV ".to_string(),
             commit: " abc123 ".to_string(),
         })
         .expect("a valid pair passes");

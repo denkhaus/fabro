@@ -1838,8 +1838,14 @@ mod tests {
         );
 
         // An unlocked item in the same project grants normally: the door
-        // is per item, never a project-wide stop.
-        store.grant(&request("denkhaus/work#2", run)).await.unwrap();
+        // is per item, never a project-wide stop. A second run does the
+        // granting — one run holds one claim, so `run` stays free for
+        // the unlock re-grant below.
+        let other_run = fabro_types::RunId::new();
+        store
+            .grant(&request("denkhaus/work#2", other_run))
+            .await
+            .unwrap();
 
         store.unlock_item("fabro", "denkhaus/work#1").await.unwrap();
         assert!(

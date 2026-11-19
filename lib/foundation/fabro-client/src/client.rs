@@ -5025,7 +5025,8 @@ mod tests {
 
     /// A minimal run row the typed `Run` accepts (every required field
     /// present, the rest defaulted), with the status kind selectable —
-    /// `"human_needed"` stands in for work#1437's server-side drift.
+    /// `"queued_by_a_newer_server"` stands in for work#1437's
+    /// server-side drift (a kind this build does not know).
     fn run_row_fixture(status_kind: &str) -> serde_json::Value {
         serde_json::json!({
             "id": "01JNQVR7M0EJ5GKAT2SC4ERS1Z",
@@ -5051,18 +5052,18 @@ mod tests {
     fn decode_run_rows_degrades_per_row_on_unknown_status_kind() {
         let listing = super::decode_run_rows(vec![
             run_row_fixture("running"),
-            run_row_fixture("human_needed"),
+            run_row_fixture("queued_by_a_newer_server"),
         ]);
 
         assert_eq!(listing.runs.len(), 1, "the known row must decode");
         assert_eq!(listing.undecodable.len(), 1, "the drifted row alone");
 
         let drifted = &listing.undecodable[0];
-        assert_eq!(drifted.status_kind(), Some("human_needed"));
+        assert_eq!(drifted.status_kind(), Some("queued_by_a_newer_server"));
         assert_eq!(drifted.run_id(), Some("01JNQVR7M0EJ5GKAT2SC4ERS1Z"));
         assert_eq!(drifted.title(), Some("t"));
         assert!(
-            drifted.error.contains("unknown variant `human_needed`"),
+            drifted.error.contains("unknown variant `queued_by_a_newer_server`"),
             "the serde verdict must travel: {}",
             drifted.error
         );

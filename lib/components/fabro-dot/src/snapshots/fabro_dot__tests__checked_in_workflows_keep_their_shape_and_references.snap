@@ -1,5 +1,6 @@
 ---
 source: lib/components/fabro-dot/src/tests.rs
+assertion_line: 256
 expression: report
 ---
 .fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=6 edges=13
@@ -20,7 +21,7 @@ expression: report
 .fabro/workflows/triager/workflow.fabro: Triager nodes=5 edges=7
   goal-inline
   file:prompt:prompts/triage.md@triage
-.fabro/workflows/watchdog/workflow.fabro: Watchdog nodes=4 edges=5
+.fabro/workflows/watchdog/workflow.fabro: Watchdog nodes=4 edges=4
   goal-inline
 test/dot-compatibility/acp-agent-chain.fabro: AcpAgentChain nodes=4 edges=3
   goal-inline

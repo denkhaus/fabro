@@ -71,6 +71,8 @@ fn help() {
       close     Close a work item with a reason
       update    Edit a work item's title and/or body
       lane      Assign a work item to a lane, or clear its lane (`--lane none`)
+      lock      Place the operator lock on a work item (blocks claiming; the lane stays untouched)
+      unlock    Lift the operator lock from a work item
       link      Link a work item to an observation record (ADR-0038 backfill)
       unlink    Remove a work-item observation link
       radius    Show a work item's closure radius: the open items linked to the observations of its runs (ADR-0038; read door ADR-0039 stage D)
@@ -190,8 +192,8 @@ fn list_renders_open_items_and_forwards_the_filters() {
     success: true
     exit_code: 0
     ----- stdout -----
-    KEY               PRIO  STATE  LABELS                   TITLE       
-     denkhaus/work#12  2     open   project:fabro,lane:loop  a lane item
+    KEY               PRIO  STATE  LOCK  LABELS                   TITLE       
+     denkhaus/work#12  2     open   -     project:fabro,lane:loop  a lane item
     ----- stderr -----
     ");
 
@@ -283,21 +285,24 @@ fn list_json_returns_the_items() {
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
     fabro_json_snapshot!(context.filters(), value, @r#"
-    [
-      {
-        "body": "a single-line body",
-        "itemKey": "denkhaus/work#12",
-        "labels": [
-          "project:fabro",
-          "lane:loop"
-        ],
-        "priority": 2,
-        "state": "open",
-        "title": "a lane item",
-        "updatedAt": "[TIMESTAMP]",
-        "url": "https://github.com/denkhaus/work#12"
-      }
-    ]
+    {
+      "data": [
+        {
+          "body": "a single-line body",
+          "itemKey": "denkhaus/work#12",
+          "labels": [
+            "project:fabro",
+            "lane:loop"
+          ],
+          "priority": 2,
+          "state": "open",
+          "title": "a lane item",
+          "updatedAt": "[TIMESTAMP]",
+          "url": "https://github.com/denkhaus/work#12"
+        }
+      ],
+      "total": null
+    }
     "#);
     mock.assert();
 }
@@ -335,6 +340,7 @@ fn show_resolves_a_bare_number_against_the_project_tracker() {
      state     open                                
      priority  2                                   
      labels    project:fabro,lane:loop             
+     lock      -                                   
      title     a lane item                         
      url       https://github.com/denkhaus/work#12 
      updated   2026-10-25T18:04:05+00:00
@@ -382,6 +388,7 @@ fn show_passes_a_legacy_id_through_without_a_project_lookup() {
      state     closed                             
      priority  2                                  
      labels    project:fabro,lane:loop            
+     lock      -                                  
      title     a migrated item                    
      url       https://github.com/denkhaus/work#6 
      updated   2026-10-25T18:04:05+00:00
