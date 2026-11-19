@@ -899,6 +899,23 @@ fn format_platform_record(ts: &str, record: &Value, styles: &Styles) -> Option<S
             };
             Some(format!("{ts}   {}", styles.dim.apply_to(line)))
         }
+        "run.branch_pushed" => {
+            let branch = record
+                .get("run_branch")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let sha = record
+                .get("head_sha")
+                .and_then(Value::as_str)
+                .map_or_else(String::new, short_sha);
+            let by = record.get("by_run").and_then(Value::as_str).unwrap_or("?");
+            Some(format!(
+                "{ts}   {}",
+                styles
+                    .dim
+                    .apply_to(format!("Resolution {sha} pushed: {branch} (by {by})"))
+            ))
+        }
         "work.claimed" => {
             let item = record
                 .get("item_key")

@@ -10,7 +10,7 @@ use fabro_types::{
     WorkItemComment,
 };
 
-use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, common, seeds};
+use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common, seeds};
 
 #[derive(Clone)]
 pub struct ClientBackend {
@@ -222,6 +222,24 @@ impl FabroToolBackend for ClientBackend {
             run:          merged.run_id,
             merged:       merged.merged,
             pull_request: merged.pull_request,
+        })
+    }
+
+    /// `fabro_run_push_resolution` (ADR-0047): the resolve push door —
+    /// the same push the CLI facade drives, the server transferring the
+    /// resolution objects itself and pushing the run's own branch with
+    /// its own credentials.
+    async fn push_run_resolution(
+        &self,
+        run_id: &fabro_types::RunId,
+        commit: &str,
+    ) -> anyhow::Result<RunPushResolutionResult> {
+        let pushed = self.client.push_run_resolution(run_id, commit).await?;
+        Ok(RunPushResolutionResult {
+            run:        pushed.run_id,
+            pushed:     pushed.pushed,
+            run_branch: pushed.run_branch,
+            head_sha:   pushed.head_sha,
         })
     }
 

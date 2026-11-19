@@ -1436,6 +1436,9 @@ pub(crate) enum RunVerb {
     /// Merge a merge-enabled run's pull request server-side (ADR-0039
     /// stage E — the merger's write door)
     Merge(RunMergeArgs),
+    /// Push a conflict resolution onto a merge-enabled run's own branch
+    /// (ADR-0047 — the merger's resolve push door)
+    PushResolution(RunPushResolutionArgs),
     /// Set a run's title — the CLI twin of the fabro_run_set_title
     /// agent tool (fabro-9711/ADR-0030); defaults to THIS run through
     /// the engine-bound FABRO_RUN_ID
@@ -1449,6 +1452,7 @@ impl RunCommands {
                 Some(RunVerb::Mark(_)) => "run mark",
                 Some(RunVerb::Queue(_)) => "run queue",
                 Some(RunVerb::Merge(_)) => "run merge",
+                Some(RunVerb::PushResolution(_)) => "run push-resolution",
                 Some(RunVerb::SetTitle(_)) => "run set-title",
                 None => "run",
             },
@@ -1495,6 +1499,22 @@ pub(crate) struct RunMergeArgs {
     /// pull request the adjudicator marked merge:enabled — the merger
     /// integrates, it never judges content
     pub(crate) run_id: String,
+}
+
+#[derive(Args)]
+pub(crate) struct RunPushResolutionArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// The TARGET run whose own branch receives the resolution: the run
+    /// must carry a pull request the adjudicator marked merge:enabled —
+    /// the door pushes only fabro/run/<id> for this run, and the commit
+    /// must sit on that branch in the calling merger run's checkout
+    pub(crate) run_id: String,
+
+    /// The resolution commit's sha (short or full), as committed on the
+    /// run branch in the calling merger run's checkout
+    pub(crate) commit: String,
 }
 
 #[derive(Args)]

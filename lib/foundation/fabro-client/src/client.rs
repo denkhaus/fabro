@@ -2134,6 +2134,31 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// The merger's resolve push door (ADR-0047): land a resolution
+    /// commit on the target run's own branch server-side. The server
+    /// enforces the merger workflow allowlist, the `fabro/run/<id>`
+    /// branch scope, and the fast-forward rule; a refused push surfaces
+    /// as an error carrying the door's refusal code.
+    pub async fn push_run_resolution(
+        &self,
+        run_id: &RunId,
+        commit: &str,
+    ) -> Result<types::RunPushResolutionResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .push_run_resolution()
+                    .id(run_id.to_string())
+                    .body(types::RunPushResolutionRequest {
+                        commit: commit.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// A run's observation records in seq order (ADR-0039 stage D read
     /// door): the facts its stages recorded, with the category that
     /// routes adjudication.

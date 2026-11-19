@@ -159,6 +159,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "run.branch_published")]
     #[strum(serialize = "run.branch_published")]
     RunBranchPublished,
+    #[serde(rename = "run.branch_pushed")]
+    #[strum(serialize = "run.branch_pushed")]
+    RunBranchPushed,
     #[serde(rename = "work.claimed")]
     #[strum(serialize = "work.claimed")]
     WorkClaimed,
@@ -235,6 +238,11 @@ pub enum PlatformRecord {
     /// it did not (fabro-ac40).
     #[serde(rename = "run.branch_published")]
     RunBranchPublished(RunBranchPublishedRecord),
+    /// The merger resolve door pushed a resolution commit onto the run's
+    /// own branch (ADR-0047): the run-stream audit of the push — one
+    /// record per push, naming the gear run that drove the door.
+    #[serde(rename = "run.branch_pushed")]
+    RunBranchPushed(RunBranchPushedRecord),
     /// The run's claim on one work item was granted (ADR-0032).
     #[serde(rename = "work.claimed")]
     WorkClaimed(WorkClaimedRecord),
@@ -334,6 +342,7 @@ impl PlatformRecord {
             Self::NotificationSent(_) => PlatformRecordKind::NotificationSent,
             Self::RunPaired(_) => PlatformRecordKind::RunPaired,
             Self::RunBranchPublished(_) => PlatformRecordKind::RunBranchPublished,
+            Self::RunBranchPushed(_) => PlatformRecordKind::RunBranchPushed,
             Self::WorkClaimed(_) => PlatformRecordKind::WorkClaimed,
             Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
             Self::WorkLanded(_) => PlatformRecordKind::WorkLanded,
@@ -373,6 +382,7 @@ impl PlatformRecord {
             | Self::PullRequestClosed
             | Self::RunPaired(_)
             | Self::RunBranchPublished(_)
+            | Self::RunBranchPushed(_)
             | Self::WorkClaimed(_)
             | Self::WorkReleased(_)
             | Self::WorkLanded(_)
@@ -760,6 +770,23 @@ pub struct RunBranchPublishedRecord {
     /// The final commit the publish pushes.
     pub head_sha:   String,
     pub outcome:    RunBranchPublishOutcome,
+}
+
+/// One push through the merger resolve door (ADR-0047): the server
+/// landed a resolution commit on the run's OWN branch, with the run's
+/// server-side credentials — the run-stream audit of the push, the
+/// capability-class record for the door (ADR-0019's second instance).
+/// Identity is the record's `(run_id, seq)` on the TARGET run's stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunBranchPushedRecord {
+    /// The branch the door pushed — always the run's own
+    /// `fabro/run/<id>`; the door refuses every other ref.
+    pub run_branch: String,
+    /// The resolution commit the door landed as the branch head.
+    pub head_sha:   String,
+    /// The gear run that drove the door (the merger run; the worker
+    /// principal's own run).
+    pub by_run:     RunId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1503,6 +1530,13 @@ mod tests {
                     run_branch: "fabro/run/01TEST".to_string(),
                     head_sha:   "abc123".to_string(),
                     outcome:    RunBranchPublishOutcome::Published,
+                })
+            }
+            PlatformRecordKind::RunBranchPushed => {
+                PlatformRecord::RunBranchPushed(RunBranchPushedRecord {
+                    run_branch: "fabro/run/01TEST".to_string(),
+                    head_sha:   "abc123".to_string(),
+                    by_run:     fixtures::RUN_2,
                 })
             }
         }

@@ -269,6 +269,20 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::run_merge_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME => {
+            let params =
+                parse_fabro_tool_args::<fabro_tool::FabroRunPushResolutionParams>(name, args)?;
+            // The resolve push door (ADR-0047): the agent pass lands a
+            // conflict resolution on the run's own branch — the server
+            // moves the objects and holds the credentials.
+            let result = fabro_tool::run_push_resolution(
+                Arc::clone(&services.backend),
+                fabro_tool::ValidatedRunPushResolution::try_from(params)?,
+            )
+            .await?;
+            let summary = fabro_tool::run_push_resolution_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_OBSERVATION_LIST_TOOL_NAME => {
             let params =
                 parse_fabro_tool_args::<fabro_tool::FabroObservationListParams>(name, args)?;

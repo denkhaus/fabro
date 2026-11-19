@@ -62,6 +62,7 @@ impl RunView {
             | PlatformRecord::NotificationSent(_)
             | PlatformRecord::RunPaired(_)
             | PlatformRecord::RunBranchPublished(_)
+            | PlatformRecord::RunBranchPushed(_)
             | PlatformRecord::SessionCapability(_) => {}
             PlatformRecord::WorkClaimed(record) => {
                 projection.current_work_item = Some(record.item_key.clone());

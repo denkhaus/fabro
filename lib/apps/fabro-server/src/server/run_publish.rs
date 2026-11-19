@@ -167,8 +167,10 @@ pub(crate) async fn find_snapshot_repository(dir: &Path, head_sha: &str) -> Opti
 
 /// Push `head_sha` from the snapshot repository to the origin under the
 /// run branch, authenticated through the credential helper so the token
-/// never appears in argv, the URL, or rendered errors.
-async fn push_snapshot_commit(
+/// never appears in argv, the URL, or rendered errors. Shared with the
+/// resolve push door, which pushes from its own scratch repository the
+/// same way (ADR-0047).
+pub(in crate::server) async fn push_snapshot_commit(
     repository: &Path,
     origin_url: &str,
     head_sha: &str,
@@ -199,15 +201,17 @@ async fn push_snapshot_commit(
 
 /// Why a push token could not be minted: the integration is not
 /// configured at all (a skip), or minting failed (a fault).
-enum TokenMint {
+pub(in crate::server) enum TokenMint {
     Unavailable,
     Failed(String),
 }
 
 /// The GitHub token a push authenticates with: the server's credentials
 /// resolve a bearer token scoped to the repository with contents write.
-/// Returns the normalized https origin beside it.
-async fn mint_push_token(
+/// Returns the normalized https origin beside it. Shared with the
+/// resolve push door (ADR-0047) — one credential source for every
+/// server-side push.
+pub(in crate::server) async fn mint_push_token(
     state: &AppState,
     origin_url: &str,
 ) -> Result<(String, String), TokenMint> {

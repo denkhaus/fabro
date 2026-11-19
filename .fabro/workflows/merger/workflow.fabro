@@ -91,11 +91,11 @@ digraph Merger {
         // the trunk, and the checkpoint envelope still judges every
         // staged path.
         x.tools="read_file,edit_file,grep,glob,shell",
-        // The integration toolbox: the merge door, the verdict write,
-        // the queue re-read, and the observation recorder (the presence
-        // contract — every agent session records its observations
-        // through the tool).
-        x.fabro_tools="fabro_run_merge,fabro_run_mark,fabro_run_queue,fabro_observation_record",
+        // The integration toolbox: the merge door, the resolve push
+        // door (ADR-0047), the verdict write, the queue re-read, and
+        // the observation recorder (the presence contract — every
+        // agent session records its observations through the tool).
+        x.fabro_tools="fabro_run_merge,fabro_run_push_resolution,fabro_run_mark,fabro_run_queue,fabro_observation_record",
         x.observations="required"
     ]
 
