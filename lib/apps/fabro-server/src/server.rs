@@ -167,6 +167,7 @@ use crate::{
     static_files, web_auth,
 };
 
+mod automation_admission;
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
 #[cfg(test)]
