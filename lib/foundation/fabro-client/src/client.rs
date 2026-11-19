@@ -47,6 +47,20 @@ const PULL_REQUEST_CREATION_POLL_DEADLINE: std::time::Duration = std::time::Dura
 
 type TransportFuture = BoxFuture<'static, Result<(fabro_http::HttpClient, String)>>;
 
+/// A run's snapshot bundle as `GET /runs/{id}/snapshot` serves it: the byte
+/// stream plus the export's integrity headers when the server declares them
+/// (`x-bundle-sha256`, `x-bundle-bytes`). The headers are optional because a
+/// server older than the header work answers the same door without them; a
+/// caller then establishes integrity locally instead (`git bundle verify`).
+pub struct SnapshotDownload {
+    /// The bundle's SHA-256 digest, when the server declares it.
+    pub sha256:         Option<String>,
+    /// The bundle's size in bytes, when the server declares it.
+    pub declared_bytes: Option<u64>,
+    /// The bundle's bytes.
+    pub stream:         Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>,
+}
+
 /// The live stream of a Petri run, as `GET /runs/{id}/attach` serves it:
 /// one `RunStreamItem` per `data:` frame, in `stream_seq` order.
 pub struct RunStreamItemStream {
@@ -2543,6 +2557,44 @@ impl Client {
             )
             .await?;
         convert_type(response.into_inner())
+    }
+
+    /// The live byte stream of `GET /runs/{id}/snapshot`: the run's snapshot
+    /// repository as a `git bundle` of all refs, for incremental writes to
+    /// disk (a bundle can be large; callers must not buffer it whole). The
+    /// integrity headers ride along when the server declares them; a server
+    /// older than the header work answers without them and the caller falls
+    /// back to verifying the saved bundle locally.
+    pub async fn download_run_snapshot(&self, run_id: &RunId) -> Result<SnapshotDownload> {
+        let response = self
+            .current_state()
+            .client
+            .get_run_snapshot()
+            .id(run_id.to_string())
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => return Err(classify_api_error(err).await.error),
+        };
+        let sha256 = response
+            .headers()
+            .get("x-bundle-sha256")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let declared_bytes = response
+            .headers()
+            .get("x-bundle-bytes")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse().ok());
+        let stream = response.into_inner().into_inner();
+        Ok(SnapshotDownload {
+            sha256,
+            declared_bytes,
+            stream: Box::pin(
+                stream.map(|chunk| chunk.map_err(anyhow::Error::new)),
+            ),
+        })
     }
 
     pub async fn get_run_logs(&self, run_id: &RunId) -> Result<Option<Vec<u8>>> {

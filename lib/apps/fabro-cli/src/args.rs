@@ -680,6 +680,25 @@ pub(crate) struct DumpArgs {
 }
 
 #[derive(Args)]
+pub(crate) struct SnapshotArgs {
+    #[command(flatten)]
+    pub(crate) server: ServerTargetArgs,
+
+    /// Run ID prefix or workflow name
+    pub(crate) run: String,
+
+    /// Output file for the git bundle (default:
+    /// fabro-snapshot-<run>.bundle in the current directory)
+    #[arg(long, short = 'o', visible_alias = "out")]
+    pub(crate) output: Option<PathBuf>,
+
+    /// Ref the exported bundle must carry, checked with `git bundle
+    /// list-heads` before the export is declared good
+    #[arg(long)]
+    pub(crate) r#ref: Option<String>,
+}
+
+#[derive(Args)]
 pub(crate) struct SecretListArgs;
 
 #[derive(Args)]
@@ -1616,6 +1635,8 @@ pub(crate) enum Commands {
     Artifact(ArtifactNamespace),
     /// Export a run's durable state to a directory
     Dump(DumpArgs),
+    /// Export a run's snapshot repository as a git bundle
+    Snapshot(SnapshotArgs),
     #[command(flatten)]
     RunsCmd(RunsCommands),
     /// List and test LLM models
@@ -1721,6 +1742,7 @@ impl Commands {
                 ArtifactCommand::Cp(_) => "artifact cp",
             },
             Self::Dump(_) => "dump",
+            Self::Snapshot(_) => "snapshot",
             Self::Exec(_) => "exec",
             Self::RunCmd(cmd) => cmd.name(),
             Self::Preflight(_) => "preflight",

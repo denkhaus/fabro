@@ -86,6 +86,7 @@ serde_yaml = "0.9"
 strum.workspace = true
 tempfile = "3"
 sha2.workspace = true
+hex.workspace = true
 object_store.workspace = true
 bytes.workspace = true
 tokio-util.workspace = true

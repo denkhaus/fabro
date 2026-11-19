@@ -13,7 +13,7 @@ pub use auth_store::{
 };
 pub use client::{
     Client, RewindRunResult, RunStreamItemStream, RunStreamPage, SessionEventStream,
-    TransportConnector, apply_bearer_token_auth,
+    SnapshotDownload, TransportConnector, apply_bearer_token_auth,
 };
 pub use credential::{Credential, CredentialFallback};
 pub use error::{
