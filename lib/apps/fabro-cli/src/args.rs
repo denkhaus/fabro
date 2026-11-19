@@ -7,7 +7,7 @@ use fabro_server::serve::DEFAULT_TCP_PORT;
 use fabro_static::EnvVars;
 use fabro_types::settings::cli::{OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::MergeStrategy;
-use fabro_types::{GitHubRepositorySlug, PermissionLevel};
+use fabro_types::{AskFabroCapability, GitHubRepositorySlug, PermissionLevel};
 use fabro_util::printer::Printer;
 use lithos_llm::catalog::ProviderId;
 use lithos_llm::types::ReasoningEffort;
@@ -876,16 +876,51 @@ pub(crate) struct AskArgs {
     #[command(flatten)]
     pub(crate) server: ServerTargetArgs,
 
-    /// Run ID prefix or workflow name
-    pub(crate) run: String,
+    /// Run ID prefix or workflow name anchoring the session. Omitted, the
+    /// newest live run anchors it — the run-less supervisor posture
+    /// (work#1453; the storage-level session stays run-anchored per
+    /// work#1468).
+    pub(crate) run: Option<String>,
 
-    /// Question to ask
-    #[arg(short = 'p', long = "prompt")]
-    pub(crate) prompt: String,
+    /// Question to ask. Required unless --session names an existing
+    /// conversation: that combination with --capability is the flip verb.
+    #[arg(short = 'p', long = "prompt", required_unless_present = "session")]
+    pub(crate) prompt: Option<String>,
 
     /// Optional model name
     #[arg(long)]
     pub(crate) model: Option<String>,
+
+    /// Existing session id to continue — a UI-started conversation
+    /// resumes here, and vice versa (the transcript is one)
+    #[arg(long, value_name = "SESSION_ID")]
+    pub(crate) session: Option<fabro_types::SessionId>,
+
+    /// Capability tier for the session: `readonly` (the default posture)
+    /// or `full` (the supervisor) — the server-enforced, audited flip the
+    /// web UI performs (ADR-0046)
+    #[arg(long, value_enum)]
+    pub(crate) capability: Option<CapabilityArg>,
+}
+
+/// Ask Fabro capability tier, as `--capability` spells it (work#1453).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub(crate) enum CapabilityArg {
+    /// The default posture: read-only registry tools only
+    #[value(name = "readonly")]
+    ReadOnly,
+    /// The supervisor posture: registry tools execute cross-run
+    #[value(name = "full")]
+    Full,
+}
+
+impl From<CapabilityArg> for AskFabroCapability {
+    fn from(value: CapabilityArg) -> Self {
+        match value {
+            CapabilityArg::ReadOnly => Self::ReadOnly,
+            CapabilityArg::Full => Self::FullAccess,
+        }
+    }
 }
 
 #[derive(Args)]

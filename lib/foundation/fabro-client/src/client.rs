@@ -768,6 +768,31 @@ impl Client {
         Ok(SessionEventStream::new(Box::pin(stream)))
     }
 
+    /// The Ask Fabro capability flip (ADR-0046, work#1453): the same
+    /// server-enforced, audited door the web UI performs, driven by the
+    /// CLI's own principal. The posture applies from the session's next
+    /// turn.
+    pub async fn set_session_capability(
+        &self,
+        session_id: SessionId,
+        capability: types::AskFabroCapability,
+    ) -> Result<types::SessionDetail> {
+        let response = self
+            .send_api(|client| {
+                let body = types::SetSessionCapabilityRequest { capability };
+                async move {
+                    client
+                        .set_session_capability()
+                        .id(session_id.to_string())
+                        .body(body)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Retrieves one canonical server-managed environment by ID.
     /// Reads one workspace directory of a run's sandbox: the run-tool
     /// `files_from` collection (fabro-4b29). Worker-token scoped on the
