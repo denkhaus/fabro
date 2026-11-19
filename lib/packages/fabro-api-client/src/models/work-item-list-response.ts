@@ -18,7 +18,7 @@
 import type { WorkItem } from './work-item';
 
 /**
- * Open work items of one project.
+ * One page of a project\'s work items.
  */
 export interface WorkItemListResponse {
     'data': Array<WorkItem>;
@@ -26,4 +26,8 @@ export interface WorkItemListResponse {
      * The number of items the active filters match, independent of paging (denkhaus/work#1296) — the tracker search\'s total_count on both arms. Null only when the provider has no counting read (test fakes, the null tracker).
      */
     'total': number | null;
+    /**
+     * The opaque next-page token (work#1476): pass it back as the `cursor` parameter for the following page. Null on the last page — a page that returned fewer items than `limit` is the last one, so a walker stops at the null cursor.
+     */
+    'nextCursor'?: string;
 }

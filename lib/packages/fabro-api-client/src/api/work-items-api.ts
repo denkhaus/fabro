@@ -54,6 +54,8 @@ import type { WorkItemLaneRequest } from '../models';
 // @ts-ignore
 import type { WorkItemListResponse } from '../models';
 // @ts-ignore
+import type { WorkItemLockRequest } from '../models';
+// @ts-ignore
 import type { WorkItemUpdateRequest } from '../models';
 // @ts-ignore
 import type { WorkObservationLinkRequest } from '../models';
@@ -474,15 +476,17 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
          * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
-         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
-         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
+         * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
+         * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks &#x60;cursor&#x60; instead.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'projectId' is not null or undefined
             assertParamExists('listWorkItems', 'projectId', projectId)
             const localVarPath = `/api/v1/projects/{projectId}/work-items`
@@ -522,6 +526,14 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
 
             if (sort !== undefined) {
                 localVarQueryParameter['sort'] = sort;
+            }
+
+            if (state !== undefined) {
+                localVarQueryParameter['state'] = state;
+            }
+
+            if (cursor !== undefined) {
+                localVarQueryParameter['cursor'] = cursor;
             }
 
             if (page !== undefined) {
@@ -569,6 +581,51 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             setSearchParams(localVarUrlObj, localVarQueryParameter);
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The item-lock door (denkhaus/work#1420): a locked item is not grantable by the claim pool or the grant door, regardless of its lane; the lane itself stays untouched. The lock has no TTL — it stands until an operator unlocks it. User-only: a run worker principal is refused (the lane-move posture). Refused with 409 while the item carries a live claim.
+         * @summary Place the operator lock on a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        lockWorkItem: async (projectId: string, workItemLockRequest: WorkItemLockRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('lockWorkItem', 'projectId', projectId)
+            // verify required parameter 'workItemLockRequest' is not null or undefined
+            assertParamExists('lockWorkItem', 'workItemLockRequest', workItemLockRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/lock`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workItemLockRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -838,6 +895,51 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             };
         },
         /**
+         * The lock door\'s lift (denkhaus/work#1420): the item becomes grantable again; the lane is untouched. Unlocking an unlocked item succeeds (the response just reports the item unlocked). User-only: a run worker principal is refused.
+         * @summary Lift the operator lock from a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        unlockWorkItem: async (projectId: string, workItemLockRequest: WorkItemLockRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('unlockWorkItem', 'projectId', projectId)
+            // verify required parameter 'workItemLockRequest' is not null or undefined
+            assertParamExists('unlockWorkItem', 'workItemLockRequest', workItemLockRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/unlock`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workItemLockRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
          * @summary Edit a work item\'s title and/or body in the project\'s tracker
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -1065,16 +1167,18 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
-         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
-         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
+         * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
+         * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks &#x60;cursor&#x60; instead.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, label, sort, page, options);
+        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -1089,6 +1193,20 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkProjects(options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.listWorkProjects']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The item-lock door (denkhaus/work#1420): a locked item is not grantable by the claim pool or the grant door, regardless of its lane; the lane itself stays untouched. The lock has no TTL — it stands until an operator unlocks it. User-only: a run worker principal is refused (the lane-move posture). Refused with 409 while the item carries a live claim.
+         * @summary Place the operator lock on a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async lockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.lockWorkItem(projectId, workItemLockRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.lockWorkItem']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1171,6 +1289,20 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.unlinkWorkItemObservation(projectId, workObservationLinkRequest, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.unlinkWorkItemObservation']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The lock door\'s lift (denkhaus/work#1420): the item becomes grantable again; the lane is untouched. Unlocking an unlocked item succeeds (the response just reports the item unlocked). User-only: a run worker principal is refused.
+         * @summary Lift the operator lock from a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async unlockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItem>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.unlockWorkItem(projectId, workItemLockRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.unlockWorkItem']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1312,16 +1444,18 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          * @summary List work items of a project (open, or text-searched)
          * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
          * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
-         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
+         * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
-         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
+         * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
+         * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
+         * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks &#x60;cursor&#x60; instead.
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
-            return localVarFp.listWorkItems(projectId, lane, query, limit, label, sort, page, options).then((request) => request(axios, basePath));
+        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
+            return localVarFp.listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns every configured work-item project, sorted by project id.
@@ -1331,6 +1465,17 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          */
         listWorkProjects(options?: RawAxiosRequestConfig): AxiosPromise<WorkProjectListResponse> {
             return localVarFp.listWorkProjects(options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The item-lock door (denkhaus/work#1420): a locked item is not grantable by the claim pool or the grant door, regardless of its lane; the lane itself stays untouched. The lock has no TTL — it stands until an operator unlocks it. User-only: a run worker principal is refused (the lane-move posture). Refused with 409 while the item carries a live claim.
+         * @summary Place the operator lock on a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        lockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+            return localVarFp.lockWorkItem(projectId, workItemLockRequest, options).then((request) => request(axios, basePath));
         },
         /**
          *
@@ -1395,6 +1540,17 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          */
         unlinkWorkItemObservation(projectId: string, workObservationLinkRequest: WorkObservationLinkRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkObservationUnlinkResponse> {
             return localVarFp.unlinkWorkItemObservation(projectId, workObservationLinkRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The lock door\'s lift (denkhaus/work#1420): the item becomes grantable again; the lane is untouched. Unlocking an unlocked item succeeds (the response just reports the item unlocked). User-only: a run worker principal is refused.
+         * @summary Lift the operator lock from a work item
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemLockRequest} workItemLockRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        unlockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItem> {
+            return localVarFp.unlockWorkItem(projectId, workItemLockRequest, options).then((request) => request(axios, basePath));
         },
         /**
          * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
@@ -1536,16 +1692,18 @@ export class WorkItemsApi extends BaseAPI {
      * @summary List work items of a project (open, or text-searched)
      * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
      * @param {string} [lane] Lane name; filters by the project\&#39;s lane label.
-     * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists OPEN items only, sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead.
+     * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
      * @param {number} [limit] Maximum items to return (1-100); also the page size.
      * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
      * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
-     * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks pages.
+     * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
+     * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
+     * @param {number} [page] 1-based results page of the listing or search (default 1); &#x60;limit&#x60; is the page size — a full census walks &#x60;cursor&#x60; instead.
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, page?: number, options?: RawAxiosRequestConfig) {
-        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, label, sort, page, options).then((request) => request(this.axios, this.basePath));
+    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1556,6 +1714,18 @@ export class WorkItemsApi extends BaseAPI {
      */
     public listWorkProjects(options?: RawAxiosRequestConfig) {
         return WorkItemsApiFp(this.configuration).listWorkProjects(options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The item-lock door (denkhaus/work#1420): a locked item is not grantable by the claim pool or the grant door, regardless of its lane; the lane itself stays untouched. The lock has no TTL — it stands until an operator unlocks it. User-only: a run worker principal is refused (the lane-move posture). Refused with 409 while the item carries a live claim.
+     * @summary Place the operator lock on a work item
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkItemLockRequest} workItemLockRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public lockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).lockWorkItem(projectId, workItemLockRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1629,6 +1799,18 @@ export class WorkItemsApi extends BaseAPI {
     }
 
     /**
+     * The lock door\'s lift (denkhaus/work#1420): the item becomes grantable again; the lane is untouched. Unlocking an unlocked item succeeds (the response just reports the item unlocked). User-only: a run worker principal is refused.
+     * @summary Lift the operator lock from a work item
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkItemLockRequest} workItemLockRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public unlockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).unlockWorkItem(projectId, workItemLockRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Spec corrections must reach every later reader (fabro-4c81 under ADR-0032): a planner correcting a rotted citation or superseded detail edits the item body itself, not just the run\'s brief.
      * @summary Edit a work item\'s title and/or body in the project\'s tracker
      * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
@@ -1660,3 +1842,9 @@ export const ListWorkItemsSortEnum = {
     UPDATED2: '-updated'
 } as const;
 export type ListWorkItemsSortEnum = typeof ListWorkItemsSortEnum[keyof typeof ListWorkItemsSortEnum];
+export const ListWorkItemsStateEnum = {
+    OPEN: 'open',
+    CLOSED: 'closed',
+    ALL: 'all'
+} as const;
+export type ListWorkItemsStateEnum = typeof ListWorkItemsStateEnum[keyof typeof ListWorkItemsStateEnum];

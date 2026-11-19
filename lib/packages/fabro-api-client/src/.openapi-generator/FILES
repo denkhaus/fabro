@@ -450,6 +450,8 @@ models/run-pair-status-response.ts
 models/run-prepare-settings.ts
 models/run-projection.ts
 models/run-provenance.ts
+models/run-push-resolution-request.ts
+models/run-push-resolution-response.ts
 models/run-question.ts
 models/run-queue-entry.ts
 models/run-queue-list.ts
@@ -641,6 +643,7 @@ models/work-item-comment.ts
 models/work-item-create-request.ts
 models/work-item-lane-request.ts
 models/work-item-list-response.ts
+models/work-item-lock-request.ts
 models/work-item-radius-response.ts
 models/work-item-update-request.ts
 models/work-item.ts

@@ -94,6 +94,10 @@ import type { RunOrchestrationMarkRequest } from '../models';
 // @ts-ignore
 import type { RunOrchestrationMarkResponse } from '../models';
 // @ts-ignore
+import type { RunPushResolutionRequest } from '../models';
+// @ts-ignore
+import type { RunPushResolutionResponse } from '../models';
+// @ts-ignore
 import type { RunQueueList } from '../models';
 // @ts-ignore
 import type { RunSandboxFileMap } from '../models';
@@ -1471,6 +1475,51 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * The merger\'s resolve push door (ADR-0047, denkhaus/work#1471): land a conflict-resolution commit on the target run\'s OWN branch (`fabro/run/<id>`) server-side. Authorization mirrors the merge door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger, and the TARGET must carry a pull request whose latest `merge` verdict is `enabled`. The branch scope is fixed server-side — the door pushes only `fabro/run/<id>` for the run named in the path; main, any other ref, and force pushes are refused. The commit\'s objects travel from the calling merger run\'s own sandbox checkout to the server as a git bundle (the engine-mediated transfer — the sandbox never holds forge credentials), and the server pushes with the same credentials `run_publish` uses, refusing a non-fast-forward push. One `run.branch_pushed` audit record lands in the target run\'s stream per push. The door is idempotent: a re-drive of an already-pushed commit answers 200.
+         * @summary Push a Resolution Commit to the Run\'s Branch
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunPushResolutionRequest} runPushResolutionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pushRunResolution: async (id: string, runPushResolutionRequest: RunPushResolutionRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('pushRunResolution', 'id', id)
+            // verify required parameter 'runPushResolutionRequest' is not null or undefined
+            assertParamExists('pushRunResolution', 'runPushResolutionRequest', runPushResolutionRequest)
+            const localVarPath = `/api/v1/runs/{id}/resolution`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(runPushResolutionRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
@@ -2628,6 +2677,20 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The merger\'s resolve push door (ADR-0047, denkhaus/work#1471): land a conflict-resolution commit on the target run\'s OWN branch (`fabro/run/<id>`) server-side. Authorization mirrors the merge door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger, and the TARGET must carry a pull request whose latest `merge` verdict is `enabled`. The branch scope is fixed server-side — the door pushes only `fabro/run/<id>` for the run named in the path; main, any other ref, and force pushes are refused. The commit\'s objects travel from the calling merger run\'s own sandbox checkout to the server as a git bundle (the engine-mediated transfer — the sandbox never holds forge credentials), and the server pushes with the same credentials `run_publish` uses, refusing a non-fast-forward push. One `run.branch_pushed` audit record lands in the target run\'s stream per push. The door is idempotent: a re-drive of an already-pushed commit answers 200.
+         * @summary Push a Resolution Commit to the Run\'s Branch
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunPushResolutionRequest} runPushResolutionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async pushRunResolution(id: string, runPushResolutionRequest: RunPushResolutionRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunPushResolutionResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.pushRunResolution(id, runPushResolutionRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.pushRunResolution']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
@@ -3196,6 +3259,17 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.pauseRun(id, options).then((request) => request(axios, basePath));
         },
         /**
+         * The merger\'s resolve push door (ADR-0047, denkhaus/work#1471): land a conflict-resolution commit on the target run\'s OWN branch (`fabro/run/<id>`) server-side. Authorization mirrors the merge door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger, and the TARGET must carry a pull request whose latest `merge` verdict is `enabled`. The branch scope is fixed server-side — the door pushes only `fabro/run/<id>` for the run named in the path; main, any other ref, and force pushes are refused. The commit\'s objects travel from the calling merger run\'s own sandbox checkout to the server as a git bundle (the engine-mediated transfer — the sandbox never holds forge credentials), and the server pushes with the same credentials `run_publish` uses, refusing a non-fast-forward push. One `run.branch_pushed` audit record lands in the target run\'s stream per push. The door is idempotent: a re-drive of an already-pushed commit answers 200.
+         * @summary Push a Resolution Commit to the Run\'s Branch
+         * @param {string} id Unique run identifier (ULID).
+         * @param {RunPushResolutionRequest} runPushResolutionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pushRunResolution(id: string, runPushResolutionRequest: RunPushResolutionRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunPushResolutionResponse> {
+            return localVarFp.pushRunResolution(id, runPushResolutionRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Validates and renders a workflow manifest as SVG without creating a run. The manifest is checked as `POST /validate` checks it; a workflow Petri refuses is not rendered.
          * @summary Render Workflow Graph
          * @param {RenderWorkflowGraphRequest} renderWorkflowGraphRequest
@@ -3738,6 +3812,18 @@ export class RunsApi extends BaseAPI {
      */
     public pauseRun(id: string, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).pauseRun(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The merger\'s resolve push door (ADR-0047, denkhaus/work#1471): land a conflict-resolution commit on the target run\'s OWN branch (`fabro/run/<id>`) server-side. Authorization mirrors the merge door: the caller\'s worker token names the WRITER run, the writer\'s workflow must be the merger, and the TARGET must carry a pull request whose latest `merge` verdict is `enabled`. The branch scope is fixed server-side — the door pushes only `fabro/run/<id>` for the run named in the path; main, any other ref, and force pushes are refused. The commit\'s objects travel from the calling merger run\'s own sandbox checkout to the server as a git bundle (the engine-mediated transfer — the sandbox never holds forge credentials), and the server pushes with the same credentials `run_publish` uses, refusing a non-fast-forward push. One `run.branch_pushed` audit record lands in the target run\'s stream per push. The door is idempotent: a re-drive of an already-pushed commit answers 200.
+     * @summary Push a Resolution Commit to the Run\'s Branch
+     * @param {string} id Unique run identifier (ULID).
+     * @param {RunPushResolutionRequest} runPushResolutionRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public pushRunResolution(id: string, runPushResolutionRequest: RunPushResolutionRequest, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).pushRunResolution(id, runPushResolutionRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

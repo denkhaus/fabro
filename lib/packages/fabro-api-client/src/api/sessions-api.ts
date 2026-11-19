@@ -324,6 +324,57 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
+         * The global Ask Fabro session index (ADR-0046): every session across all runs, with its run anchor, last activity and capability state. The global chat page\'s resume picker reads this door.
+         * @summary List all sessions
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {ListSessionsOrderEnum} [order]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessions: async (pageLimit?: number, pageOffset?: number, order?: ListSessionsOrderEnum, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            const localVarPath = `/api/v1/sessions`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
+
+            if (order !== undefined) {
+                localVarQueryParameter['order'] = order;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -509,6 +560,21 @@ export const SessionsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The global Ask Fabro session index (ADR-0046): every session across all runs, with its run anchor, last activity and capability state. The global chat page\'s resume picker reads this door.
+         * @summary List all sessions
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {ListSessionsOrderEnum} [order]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listSessions(pageLimit?: number, pageOffset?: number, order?: ListSessionsOrderEnum, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedSessionList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listSessions(pageLimit, pageOffset, order, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.listSessions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -614,6 +680,18 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listSessionEvents(id, sinceSeq, limit, options).then((request) => request(axios, basePath));
         },
         /**
+         * The global Ask Fabro session index (ADR-0046): every session across all runs, with its run anchor, last activity and capability state. The global chat page\'s resume picker reads this door.
+         * @summary List all sessions
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {ListSessionsOrderEnum} [order]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSessions(pageLimit?: number, pageOffset?: number, order?: ListSessionsOrderEnum, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedSessionList> {
+            return localVarFp.listSessions(pageLimit, pageOffset, order, options).then((request) => request(axios, basePath));
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -717,6 +795,19 @@ export class SessionsApi extends BaseAPI {
     }
 
     /**
+     * The global Ask Fabro session index (ADR-0046): every session across all runs, with its run anchor, last activity and capability state. The global chat page\'s resume picker reads this door.
+     * @summary List all sessions
+     * @param {number} [pageLimit]
+     * @param {number} [pageOffset]
+     * @param {ListSessionsOrderEnum} [order]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listSessions(pageLimit?: number, pageOffset?: number, order?: ListSessionsOrderEnum, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).listSessions(pageLimit, pageOffset, order, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
      * @summary Set the session\'s tool capability
      * @param {string} id
@@ -746,3 +837,8 @@ export const ListRunSessionsOrderEnum = {
     CREATED_DESC: 'created_desc'
 } as const;
 export type ListRunSessionsOrderEnum = typeof ListRunSessionsOrderEnum[keyof typeof ListRunSessionsOrderEnum];
+export const ListSessionsOrderEnum = {
+    UPDATED_DESC: 'updated_desc',
+    CREATED_DESC: 'created_desc'
+} as const;
+export type ListSessionsOrderEnum = typeof ListSessionsOrderEnum[keyof typeof ListSessionsOrderEnum];

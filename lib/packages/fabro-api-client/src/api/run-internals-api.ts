@@ -282,6 +282,46 @@ export const RunInternalsApiAxiosParamCreator = function (configuration?: Config
             };
         },
         /**
+         * Serves a `git bundle` (all refs) of the run\'s snapshot repository — the bare store the checkpoint hooks publish every workspace commit to (`refs/checkpoints/...`), which survives the run\'s terminal state and its pruned sandbox.  The bundle is created and checked BEFORE the response streams: a failed bundle answers a named 500 instead of a truncated 200. The complete bundle\'s SHA256 and byte count ride the response as an integrity proof (`X-Bundle-Sha256`, `X-Bundle-Bytes`); consumers must verify the bytes they receive against them, so a transfer cut mid-flight fails loudly instead of salvaging a corrupt bundle.  Runs currently have exactly one workspace (`invocation-0-scope-0`); a run with more than one snapshot repository is refused with a named conflict error instead of an ambiguous bundle. A pathological snapshot is refused up front with a clear error. Salvage flow: `fabro snapshot <run>` then `git fetch <bundle> \'refs/_*:refs/remotes/run/<id>/_*\'`.
+         * @summary Get Run Snapshot Bundle
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunSnapshot: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('getRunSnapshot', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/snapshot`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/octet-stream,application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Returns a byte-offset slice of a command stage output log. Bytes are base64-encoded and are not snapped to UTF-8 boundaries.
          * @summary Tail Command Log
          * @param {string} id Unique run identifier (ULID).
@@ -1143,6 +1183,19 @@ export const RunInternalsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Serves a `git bundle` (all refs) of the run\'s snapshot repository — the bare store the checkpoint hooks publish every workspace commit to (`refs/checkpoints/...`), which survives the run\'s terminal state and its pruned sandbox.  The bundle is created and checked BEFORE the response streams: a failed bundle answers a named 500 instead of a truncated 200. The complete bundle\'s SHA256 and byte count ride the response as an integrity proof (`X-Bundle-Sha256`, `X-Bundle-Bytes`); consumers must verify the bytes they receive against them, so a transfer cut mid-flight fails loudly instead of salvaging a corrupt bundle.  Runs currently have exactly one workspace (`invocation-0-scope-0`); a run with more than one snapshot repository is refused with a named conflict error instead of an ambiguous bundle. A pathological snapshot is refused up front with a clear error. Salvage flow: `fabro snapshot <run>` then `git fetch <bundle> \'refs/_*:refs/remotes/run/<id>/_*\'`.
+         * @summary Get Run Snapshot Bundle
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getRunSnapshot(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<File>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getRunSnapshot(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunInternalsApi.getRunSnapshot']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Returns a byte-offset slice of a command stage output log. Bytes are base64-encoded and are not snapped to UTF-8 boundaries.
          * @summary Tail Command Log
          * @param {string} id Unique run identifier (ULID).
@@ -1448,6 +1501,16 @@ export const RunInternalsApiFactory = function (configuration?: Configuration, b
             return localVarFp.getRunLogs(id, options).then((request) => request(axios, basePath));
         },
         /**
+         * Serves a `git bundle` (all refs) of the run\'s snapshot repository — the bare store the checkpoint hooks publish every workspace commit to (`refs/checkpoints/...`), which survives the run\'s terminal state and its pruned sandbox.  The bundle is created and checked BEFORE the response streams: a failed bundle answers a named 500 instead of a truncated 200. The complete bundle\'s SHA256 and byte count ride the response as an integrity proof (`X-Bundle-Sha256`, `X-Bundle-Bytes`); consumers must verify the bytes they receive against them, so a transfer cut mid-flight fails loudly instead of salvaging a corrupt bundle.  Runs currently have exactly one workspace (`invocation-0-scope-0`); a run with more than one snapshot repository is refused with a named conflict error instead of an ambiguous bundle. A pathological snapshot is refused up front with a clear error. Salvage flow: `fabro snapshot <run>` then `git fetch <bundle> \'refs/_*:refs/remotes/run/<id>/_*\'`.
+         * @summary Get Run Snapshot Bundle
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getRunSnapshot(id: string, options?: RawAxiosRequestConfig): AxiosPromise<File> {
+            return localVarFp.getRunSnapshot(id, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Returns a byte-offset slice of a command stage output log. Bytes are base64-encoded and are not snapped to UTF-8 boundaries.
          * @summary Tail Command Log
          * @param {string} id Unique run identifier (ULID).
@@ -1702,6 +1765,17 @@ export class RunInternalsApi extends BaseAPI {
      */
     public getRunLogs(id: string, options?: RawAxiosRequestConfig) {
         return RunInternalsApiFp(this.configuration).getRunLogs(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Serves a `git bundle` (all refs) of the run\'s snapshot repository — the bare store the checkpoint hooks publish every workspace commit to (`refs/checkpoints/...`), which survives the run\'s terminal state and its pruned sandbox.  The bundle is created and checked BEFORE the response streams: a failed bundle answers a named 500 instead of a truncated 200. The complete bundle\'s SHA256 and byte count ride the response as an integrity proof (`X-Bundle-Sha256`, `X-Bundle-Bytes`); consumers must verify the bytes they receive against them, so a transfer cut mid-flight fails loudly instead of salvaging a corrupt bundle.  Runs currently have exactly one workspace (`invocation-0-scope-0`); a run with more than one snapshot repository is refused with a named conflict error instead of an ambiguous bundle. A pathological snapshot is refused up front with a clear error. Salvage flow: `fabro snapshot <run>` then `git fetch <bundle> \'refs/_*:refs/remotes/run/<id>/_*\'`.
+     * @summary Get Run Snapshot Bundle
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getRunSnapshot(id: string, options?: RawAxiosRequestConfig) {
+        return RunInternalsApiFp(this.configuration).getRunSnapshot(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

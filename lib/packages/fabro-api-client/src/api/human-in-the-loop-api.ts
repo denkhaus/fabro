@@ -379,6 +379,53 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
+         * Downloads one directory of the run\'s sandbox as an uncompressed tar archive whose entries are relative to the requested path (work#1416\'s bulk transfer path — one round trip instead of one per file). The tar is built inside the sandbox and transferred as a single file; the request needs the sandbox\'s exec facet. Per-file downloads stay on `/sandbox/file`.
+         * @summary Download Sandbox Directory Archive
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSandboxArchive: async (id: string, path: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('getSandboxArchive', 'id', id)
+            // verify required parameter 'path' is not null or undefined
+            assertParamExists('getSandboxArchive', 'path', path)
+            const localVarPath = `/api/v1/runs/{id}/sandbox/archive`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (path !== undefined) {
+                localVarQueryParameter['path'] = path;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/octet-stream,application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Downloads a file from the run\'s sandbox environment.
          * @summary Download Sandbox File
          * @param {string} id Unique run identifier (ULID).
@@ -998,6 +1045,20 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Downloads one directory of the run\'s sandbox as an uncompressed tar archive whose entries are relative to the requested path (work#1416\'s bulk transfer path — one round trip instead of one per file). The tar is built inside the sandbox and transferred as a single file; the request needs the sandbox\'s exec facet. Per-file downloads stay on `/sandbox/file`.
+         * @summary Download Sandbox Directory Archive
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getSandboxArchive(id: string, path: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<File>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getSandboxArchive(id, path, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.getSandboxArchive']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Downloads a file from the run\'s sandbox environment.
          * @summary Download Sandbox File
          * @param {string} id Unique run identifier (ULID).
@@ -1241,6 +1302,17 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.getRunPairTranscript(id, pairId, sinceSeq, limit, options).then((request) => request(axios, basePath));
         },
         /**
+         * Downloads one directory of the run\'s sandbox as an uncompressed tar archive whose entries are relative to the requested path (work#1416\'s bulk transfer path — one round trip instead of one per file). The tar is built inside the sandbox and transferred as a single file; the request needs the sandbox\'s exec facet. Per-file downloads stay on `/sandbox/file`.
+         * @summary Download Sandbox Directory Archive
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSandboxArchive(id: string, path: string, options?: RawAxiosRequestConfig): AxiosPromise<File> {
+            return localVarFp.getSandboxArchive(id, path, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Downloads a file from the run\'s sandbox environment.
          * @summary Download Sandbox File
          * @param {string} id Unique run identifier (ULID).
@@ -1453,6 +1525,18 @@ export class HumanInTheLoopApi extends BaseAPI {
      */
     public getRunPairTranscript(id: string, pairId: string, sinceSeq?: number, limit?: number, options?: RawAxiosRequestConfig) {
         return HumanInTheLoopApiFp(this.configuration).getRunPairTranscript(id, pairId, sinceSeq, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Downloads one directory of the run\'s sandbox as an uncompressed tar archive whose entries are relative to the requested path (work#1416\'s bulk transfer path — one round trip instead of one per file). The tar is built inside the sandbox and transferred as a single file; the request needs the sandbox\'s exec facet. Per-file downloads stay on `/sandbox/file`.
+     * @summary Download Sandbox Directory Archive
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} path
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getSandboxArchive(id: string, path: string, options?: RawAxiosRequestConfig) {
+        return HumanInTheLoopApiFp(this.configuration).getSandboxArchive(id, path, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

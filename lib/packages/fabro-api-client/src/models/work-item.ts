@@ -32,4 +32,16 @@ export interface WorkItem {
     'priority': number;
     'url': string;
     'updatedAt'?: string;
+    /**
+     * When the tracker recorded the item\'s creation; absent when it names no creation time.
+     */
+    'createdAt'?: string;
+    /**
+     * When the tracker closed the item; null while it is open.
+     */
+    'closedAt'?: string;
+    /**
+     * The operator lock (denkhaus/work#1420): a locked item is not grantable by the claim pool or the grant door; the lane is untouched. The lock lives in the store, not the tracker, so the field is optional — the doors that overlay it (list, single-item reads, the lock and unlock doors) answer truthfully; a door that omits it makes no claim either way.
+     */
+    'locked'?: boolean;
 }
