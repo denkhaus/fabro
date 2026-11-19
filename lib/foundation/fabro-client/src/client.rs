@@ -2545,6 +2545,30 @@ impl Client {
         convert_type(response.into_inner())
     }
 
+    /// The live byte stream of `GET /runs/{id}/snapshot`: the run's snapshot
+    /// repository as a `git bundle` of all refs, for incremental writes to
+    /// disk (a bundle can be large; callers must not buffer it whole).
+    pub async fn download_run_snapshot(
+        &self,
+        run_id: &RunId,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<Bytes>> + Send>>> {
+        let response = self
+            .current_state()
+            .client
+            .get_run_snapshot()
+            .id(run_id.to_string())
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => return Err(classify_api_error(err).await.error),
+        };
+        let stream = response.into_inner().into_inner();
+        Ok(Box::pin(
+            stream.map(|chunk| chunk.map_err(anyhow::Error::new)),
+        ))
+    }
+
     pub async fn get_run_logs(&self, run_id: &RunId) -> Result<Option<Vec<u8>>> {
         let response = self
             .current_state()

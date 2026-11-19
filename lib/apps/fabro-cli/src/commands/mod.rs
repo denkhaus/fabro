@@ -25,6 +25,7 @@ pub(crate) mod sandbox;
 pub(crate) mod secret;
 pub(crate) mod seeds;
 pub(crate) mod server;
+pub(crate) mod snapshot;
 pub(crate) mod system;
 pub(crate) mod uninstall;
 pub(crate) mod upgrade;

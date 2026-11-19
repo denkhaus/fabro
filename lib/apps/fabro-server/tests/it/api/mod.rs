@@ -13,6 +13,7 @@ mod retry_latest;
 mod routing;
 mod run_channel;
 mod run_files;
+mod run_snapshot;
 mod run_wait;
 mod runs;
 mod sandbox_vnc;
