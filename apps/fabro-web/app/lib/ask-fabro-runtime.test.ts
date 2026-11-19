@@ -106,22 +106,6 @@ describe("applyTurnEvent", () => {
 });
 
 describe("createAskFabroAdapter", () => {
-  function ramSessionStore(initial: Record<string, string> = {}) {
-    const store: Record<string, string> = { ...initial };
-    return {
-      store,
-      persisted: {
-        read: (runId: string) => store[runId] ?? null,
-        write: (runId: string, sessionId: string) => {
-          store[runId] = sessionId;
-        },
-        clear: (runId: string) => {
-          delete store[runId];
-        },
-      },
-    };
-  }
-
   type StreamArgs = Parameters<
     NonNullable<Parameters<typeof createAskFabroAdapter>[0]["streamSessionTurnImpl"]>
   >[0];
@@ -149,15 +133,24 @@ describe("createAskFabroAdapter", () => {
     } as RunArgs;
   }
 
-  test("creates a session lazily on the first turn and persists its id", async () => {
+  async function drain(result: AsyncIterable<unknown>) {
+    if (!(Symbol.asyncIterator in result)) {
+      throw new Error("expected async iterator");
+    }
+    for await (const _ of result) {
+      // drain
+    }
+  }
+
+  test("creates a session lazily on the first turn and reports it", async () => {
     let createCount = 0;
     let lastCreateBody: { title?: string; model?: string } | null = null;
-    const { store, persisted } = ramSessionStore();
+    const createdIds: string[] = [];
 
     const adapter = createAskFabroAdapter({
       runId: "r_1",
       defaultModel: "claude-haiku-4-5",
-      persistedSession: persisted,
+      onSessionCreated: (id) => createdIds.push(id),
       createSession: async (_runId, body) => {
         createCount += 1;
         lastCreateBody = body;
@@ -172,27 +165,20 @@ describe("createAskFabroAdapter", () => {
     });
 
     const ctl = new AbortController();
-    const result = adapter.run(fakeRunArgs(ctl.signal, userMessages("Say hi")));
-    if (!(Symbol.asyncIterator in result)) {
-      throw new Error("expected async iterator");
-    }
-    for await (const _ of result) {
-      // drain
-    }
+    await drain(adapter.run(fakeRunArgs(ctl.signal, userMessages("Say hi"))));
 
     expect(createCount).toBe(1);
     expect(lastCreateBody).toEqual({ title: "Ask Fabro", model: "claude-haiku-4-5" });
-    expect(store["r_1"]).toBe("ses_new");
+    expect(createdIds).toEqual(["ses_new"]);
   });
 
-  test("reuses a cached session id across runs (no second createSession call)", async () => {
+  test("resumes an initialSessionId without creating (work#1452 resume seam)", async () => {
     let createCount = 0;
-    const { persisted } = ramSessionStore({ r_2: "ses_cached" });
     const submittedSessionIds: string[] = [];
 
     const adapter = createAskFabroAdapter({
       runId: "r_2",
-      persistedSession: persisted,
+      initialSessionId: "ses_cached",
       createSession: async () => {
         createCount += 1;
         return { id: "ses_should_not_be_called" };
@@ -204,13 +190,7 @@ describe("createAskFabroAdapter", () => {
     });
 
     const ctl = new AbortController();
-    const result = adapter.run(fakeRunArgs(ctl.signal, userMessages("hi")));
-    if (!(Symbol.asyncIterator in result)) {
-      throw new Error("expected async iterator");
-    }
-    for await (const _ of result) {
-      // drain
-    }
+    await drain(adapter.run(fakeRunArgs(ctl.signal, userMessages("hi"))));
 
     expect(createCount).toBe(0);
     expect(submittedSessionIds).toEqual(["ses_cached"]);

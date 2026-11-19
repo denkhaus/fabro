@@ -38,7 +38,9 @@ pub use platform_records::{
     WorkReleasedRecord,
 };
 pub use run_session_event_store::RunSessionEventStore;
-pub use run_session_record_store::{RunSessionRecordStore, StoredSessionRecord};
+pub use run_session_record_store::{
+    RunSessionRecordStore, StoredSessionRecord, StoredSessionRecordSummary,
+};
 pub use run_sessions::{ProjectedRunSession, project_run_session, project_run_sessions};
 pub use run_summary::{build_summary, projected_usage};
 pub use run_summary_store::{

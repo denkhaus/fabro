@@ -10,52 +10,19 @@ import {
 } from "./session-stream";
 import { ApiError, sessionsApi } from "./api-client";
 
-const SESSION_STORAGE_PREFIX = "fabro:ask-fabro-session:";
-
-function sessionStorageKey(runId: string): string {
-  return `${SESSION_STORAGE_PREFIX}${runId}`;
-}
-
-interface PersistedSessionState {
-  read(runId: string): string | null;
-  write(runId: string, sessionId: string): void;
-  clear(runId: string): void;
-}
-
-const defaultPersistedSessionState: PersistedSessionState = {
-  read(runId) {
-    if (typeof sessionStorage === "undefined") return null;
-    try {
-      return sessionStorage.getItem(sessionStorageKey(runId));
-    } catch {
-      return null;
-    }
-  },
-  write(runId, sessionId) {
-    if (typeof sessionStorage === "undefined") return;
-    try {
-      sessionStorage.setItem(sessionStorageKey(runId), sessionId);
-    } catch {
-      // ignore quota or privacy-mode failures; session will be recreated next time
-    }
-  },
-  clear(runId) {
-    if (typeof sessionStorage === "undefined") return;
-    try {
-      sessionStorage.removeItem(sessionStorageKey(runId));
-    } catch {
-      // best effort
-    }
-  },
-};
-
 export interface AskFabroAdapterOptions {
   /** Run ID this Ask Fabro session is scoped to. */
   runId: string;
+  /**
+   * Resume this session instead of creating one lazily (work#1452): the
+   * server-side session index is the truth a resume picker seeds this
+   * from — the per-run sessionStorage cache is retired.
+   */
+  initialSessionId?: string | null;
   /** Catalog model id used when creating a fresh session. */
   defaultModel?: string | null;
-  /** Override session persistence; defaults to `sessionStorage` keyed by run. */
-  persistedSession?: PersistedSessionState;
+  /** Called once when a fresh session is created, so the caller can track it. */
+  onSessionCreated?: (sessionId: string) => void;
   /** Override stream impl for tests. */
   streamSessionTurnImpl?: typeof streamSessionTurn;
   /** Override session API for tests. */
@@ -71,7 +38,7 @@ export interface AskFabroAdapterOptions {
  * assistant-ui runtime is given a snapshot after every event so users see
  * streaming text and tool-call cards in real time.
  */
-interface TurnAccumulator {
+export interface TurnAccumulator {
   /** Active text part index, if the last delta added/extended text. */
   activeTextIndex: number | null;
   parts: ThreadAssistantMessagePart[];
@@ -218,18 +185,18 @@ function lastUserText(
 /**
  * Build an assistant-ui `ChatModelAdapter` that talks to the Fabro Sessions
  * API. The adapter is parameterized by a `runId`; the session is created
- * lazily on the first turn (reusing a `sessionStorage`-cached id on reopen)
- * and turns are submitted via streamed SSE.
+ * lazily on the first turn (or resumed from `initialSessionId`, seeded from
+ * the server-side session index — work#1452) and turns are submitted via
+ * streamed SSE.
  */
 export function createAskFabroAdapter(
   options: AskFabroAdapterOptions,
 ): ChatModelAdapter {
-  const persisted = options.persistedSession ?? defaultPersistedSessionState;
   const streamImpl = options.streamSessionTurnImpl ?? streamSessionTurn;
   const createSession: CreateSession =
     options.createSession ?? defaultCreateSession;
 
-  let sessionId: string | null = persisted.read(options.runId);
+  let sessionId: string | null = options.initialSessionId ?? null;
 
   async function ensureSession(): Promise<string> {
     if (sessionId) return sessionId;
@@ -237,7 +204,7 @@ export function createAskFabroAdapter(
     if (options.defaultModel) body.model = options.defaultModel;
     const created = await createSession(options.runId, body);
     sessionId = created.id;
-    persisted.write(options.runId, sessionId);
+    options.onSessionCreated?.(sessionId);
     return sessionId;
   }
 
@@ -293,13 +260,12 @@ export function createAskFabroAdapter(
         }
       }
 
-      // Propagate any error from the stream task. If the cached session was
-      // pruned server-side, clear it so the next turn creates a fresh session.
+      // Propagate any error from the stream task. If the session was
+      // pruned server-side, forget it so the next turn creates a fresh one.
       try {
         await streamPromise;
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
-          persisted.clear(options.runId);
           sessionId = null;
         }
         throw error;

@@ -3097,6 +3097,14 @@ async fn delete_run_internal(
         .delete_for_run(id)
         .await
         .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
+    // The conversations' durable records die with their events (work#1452):
+    // without this the records orphaned above survive run deletion forever.
+    state
+        .stores
+        .session_records
+        .delete_for_run(id)
+        .await
+        .map_err(|err| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     match delete_outcome {
         SandboxDeleteOutcome::Preserved(response) => Ok(DeleteRunOutcome::Preserved(response)),
         SandboxDeleteOutcome::Cleaned => Ok(DeleteRunOutcome::Deleted),
