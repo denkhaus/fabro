@@ -14,7 +14,9 @@ import { categoryBadgeClass, workItemLinkClass, WORK_ITEM_LINK_STALE_TITLE } fro
  * server-resolved tracker URLs on linked items. The pager's total is
  * the server's EXACT count under the active filters (denkhaus/work#1296)
  * — the page-window estimate is only the skew fallback for an older
- * server. The linked items color by their LIVE state (#1298).
+ * server. The linked items color by their LIVE state (#1298). The
+ * triage filter carries `reviewed`, the State badge never wraps, and a
+ * pager change skeletons (denkhaus/work#1423).
  */
 
 export const handle = { wide: true };
@@ -67,7 +69,7 @@ const COLUMNS: Array<DataTableColumn<FeedRow>> = [
     header: "State",
     cell: (row) => (
       <span
-        className={`rounded-full border px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide ${TRIAGE_STYLE[row.triage] ?? "border-line text-fg-muted"}`}
+        className={`whitespace-nowrap rounded-full border px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide ${TRIAGE_STYLE[row.triage] ?? "border-line text-fg-muted"}`}
       >
         {row.triage.replace("_", " ")}
       </span>
@@ -135,6 +137,7 @@ const FILTERS: DataTableFilter[] = [
       { value: "filed", label: "filed" },
       { value: "in_progress", label: "in progress" },
       { value: "closed", label: "closed" },
+      { value: "reviewed", label: "reviewed" },
     ],
   },
   { key: "q", label: "Search", kind: "text", placeholder: "Text contains…" },
@@ -150,7 +153,7 @@ export default function ObservationsFeedView() {
       fetcher={async ({ page, limit, sort, filters }) => {
         const response = await observationsApi.listObservations(
           (filters.category as "painpoint" | "note") ?? undefined,
-          (filters.triage as "untriaged" | "filed" | "in_progress" | "closed") ?? undefined,
+          (filters.triage as "untriaged" | "filed" | "in_progress" | "closed" | "reviewed") ?? undefined,
           undefined,
           filters.q || undefined,
           (sort === "recorded" ? "recorded" : "-recorded") as "-recorded" | "recorded",

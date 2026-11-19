@@ -195,7 +195,15 @@ export function DataTable<Row extends { id: string }>({
               </tr>
             </thead>
             <tbody>
-              {isLoading && rows.length === 0
+              {/* The skeleton rides EVERY in-flight rows fetch
+                  (denkhaus/work#1423): a pager page or filter change
+                  skeletons over the stale rows instead of freezing them.
+                  keepPreviousData holds the old rows in `data`, so the
+                  old `rows.length === 0` gate hid the skeleton past the
+                  initial load; SWR's isLoading stays true for the new
+                  key until its own data lands, and false during a
+                  same-key revalidation — those keep the rows visible. */}
+              {isLoading
                 ? Array.from({ length: 5 }, (_, index) => (
                     <tr key={`skeleton-${index}`} className="border-b border-line last:border-b-0">
                       {columns.map((column) => (
