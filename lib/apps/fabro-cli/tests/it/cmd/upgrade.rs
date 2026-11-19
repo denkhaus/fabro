@@ -134,6 +134,9 @@ fn upgrade_dry_run_prefers_latest_stable_release_for_gh_backend() {
     let fake_bin = context.temp_dir.join("fake-bin");
     std::fs::create_dir_all(&fake_bin).unwrap();
 
+    // The test binary carries the workspace version (currently a `-fork`
+    // build), so the fork-aware door targets the fork repo (work#1465) and
+    // fork releases attach version-prefixed assets.
     let fake_gh = fake_bin.join("gh");
     std::fs::write(
         &fake_gh,
@@ -148,14 +151,19 @@ case "$1" in
     test "$2" = "status"
     ;;
   api)
-    test "$2" = "repos/fabro-sh/fabro/releases/latest"
-    test "$3" = "--jq"
-    test "$4" = ".tag_name"
-    echo "v999.0.0"
-    ;;
-  release)
-    test "$2" = "view"
-    echo "v999.0.1-alpha.1"
+    test "$2" = "repos/denkhaus/fabro/releases/latest"
+    echo '{"tag_name":"v999.0.0","assets":[
+      {"name":"fabro-0.999.0-aarch64-apple-darwin.tar.gz"},
+      {"name":"fabro-0.999.0-aarch64-apple-darwin.tar.gz.sha256"},
+      {"name":"fabro-0.999.0-x86_64-unknown-linux-gnu.tar.gz"},
+      {"name":"fabro-0.999.0-x86_64-unknown-linux-gnu.tar.gz.sha256"},
+      {"name":"fabro-0.999.0-aarch64-unknown-linux-gnu.tar.gz"},
+      {"name":"fabro-0.999.0-aarch64-unknown-linux-gnu.tar.gz.sha256"},
+      {"name":"fabro-0.999.0-x86_64-unknown-linux-musl.tar.gz"},
+      {"name":"fabro-0.999.0-x86_64-unknown-linux-musl.tar.gz.sha256"},
+      {"name":"fabro-0.999.0-aarch64-unknown-linux-musl.tar.gz"},
+      {"name":"fabro-0.999.0-aarch64-unknown-linux-musl.tar.gz.sha256"}
+    ]}'
     ;;
   *)
     echo "unexpected gh invocation: $*" >&2
@@ -199,6 +207,8 @@ esac
     Would upgrade fabro from [VERSION] to 999.0.0
       tag: v999.0.0
       target: [TARGET]
+      tarball: fabro-0.999.0-[TARGET].tar.gz
+      checksum: fabro-0.999.0-[TARGET].tar.gz.sha256
     ");
 }
 
