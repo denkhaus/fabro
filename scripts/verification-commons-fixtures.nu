@@ -135,6 +135,60 @@ def test-vendor-predicate []: nothing -> nothing {
     assert-eq (verification_commons vendor-surface-path? 'vendorx/petri/x') false 'a vendor-prefixed sibling directory is not the vendor surface'
 }
 
+# --- 1e. pure pins: the clap-surface -> help-snapshot rule (work#1429) ------
+#
+# The defect (the work#1361 finding): a clap-surface edit that changes
+# command help output mapped to a CODE-ONLY crate in verify's touched
+# slice — compile check only, the help snapshots never executed, and the
+# stale snapshot reds a later full run. The rule: a crate whose diff
+# touches args.rs/main.rs gains its cmd::*::help family in scope.
+
+def test-clap-surface-predicate []: nothing -> nothing {
+    assert-eq (verification_commons clap-surface-path? 'lib/apps/fabro-cli/src/args.rs') true 'args.rs is the clap surface'
+    assert-eq (verification_commons clap-surface-path? 'lib/apps/fabro-cli/src/main.rs') true 'main.rs is the clap surface'
+    assert-eq (verification_commons clap-surface-path? 'lib/apps/fabro-cli/src/args_tests.rs') false 'args_tests.rs is not the clap surface'
+    assert-eq (verification_commons clap-surface-path? 'lib/apps/fabro-cli/src/command_context.rs') false 'a non-surface source file is not the clap surface'
+    # Per-crate attribution through the shared crate extraction.
+    let paths = ['lib/apps/fabro-cli/src/args.rs']
+    assert-eq (verification_commons clap-surface-touched? $paths 'fabro-cli') true 'the owning crate is clap-touched'
+    assert-eq (verification_commons clap-surface-touched? $paths 'fabro-dot') false 'a sibling crate is not clap-touched'
+    assert-eq (verification_commons clap-surface-touched? ['lib/apps/fabro-cli/src/lib.rs'] 'fabro-cli') false 'a non-surface touch does not fire the rule'
+    assert-eq (verification_commons clap-surface-touched? ['vendor/petri/src/args.rs'] 'petri') false 'outside the workspace segments never attributes'
+}
+
+def test-help-snapshot-names []: nothing -> nothing {
+    let files = [
+        {file: 'lib/apps/fabro-cli/tests/it/cmd/fabro.rs', src: "#[test]\nfn help() { fabro_snapshot!(...) }"}
+        {file: 'lib/apps/fabro-cli/tests/it/cmd/ps.rs', src: "#[test]\nfn help() { ... }\n#[test]\nfn other() { ... }"}
+        {file: 'lib/apps/fabro-cli/tests/it/cmd/dump.rs', src: "#[test]\nfn dump_contents() { ... }"}
+        {file: 'lib/apps/fabro-cli/tests/it/cmd/wait.rs', src: "#[test]\nfn helper_setup() { ... }"}
+    ]
+    assert-eq (verification_commons help-snapshot-names $files) [
+        'cmd::fabro::help'
+        'cmd::ps::help'
+    ] 'help-snapshot names derive as cmd::<stem>::help; help-less files yield nothing'
+    assert-eq (verification_commons help-snapshot-names []) [] 'no cmd files -> no names'
+}
+
+def test-help-snapshot-scope-mapping []: nothing -> nothing {
+    # THE RULE (work#1429): a clap-surface touch in a crate's diff puts
+    # that crate's cmd::*::help family in scope. Real-tree arm: fabro-cli
+    # owns tests/it/cmd/ (binary `it`, module `cmd`).
+    let scope = (verification_commons crate-help-snapshot-scope ['lib/apps/fabro-cli/src/args.rs'] 'fabro-cli')
+    if ($scope | is-empty) {
+        fail 'work#1429 rule: an args.rs diff maps fabro-cli to a NON-EMPTY help-snapshot scope'
+    }
+    if (not ($scope | any {|n| ($n | str starts-with 'cmd::') and ($n | str ends-with '::help')})) {
+        fail $"work#1429 rule: every scope entry must name a cmd::*::help test, got ($scope | to json --raw)"
+    }
+    assert-eq $scope (verification_commons crate-help-snapshot-scope ['lib/apps/fabro-cli/src/main.rs'] 'fabro-cli') 'the scope is deterministic across clap-surface files'
+    assert-eq (verification_commons crate-help-snapshot-scope ['lib/apps/fabro-cli/src/command_context.rs'] 'fabro-cli') [] 'a non-clap diff adds no scope'
+    # A clap-surface crate WITHOUT the cmd test family maps to [] — a
+    # no-op, never a zero-match filter (the zero-selection guard keeps
+    # its meaning, fabro-bdff).
+    assert-eq (verification_commons crate-help-snapshot-scope ['lib/foundation/fabro-types/src/main.rs'] 'fabro-types') [] 'a crate without cmd tests adds no scope'
+}
+
 def test-first-cfg-line []: nothing -> nothing {
     let content = [
         'use std::fmt;'
@@ -406,6 +460,10 @@ def test-no-mirror-regrows []: nothing -> nothing {
         'def is-test-file'
         'def is-inline-test-diff'
         'def first-cfg-line'
+        'def clap-surface-path?'
+        'def clap-surface-touched?'
+        'def help-snapshot-names'
+        'def crate-help-snapshot-scope'
     ]
     for pair in [['verify.nu' $VERIFY_SRC] ['qualitygate.nu' $QUALITYGATE_SRC]] {
         for marker in $def_markers {
@@ -426,6 +484,8 @@ def test-no-mirror-regrows []: nothing -> nothing {
         "str starts-with 'apps/fabro-web/'"
         "str starts-with 'lib/packages/'"
         "str starts-with 'vendor/'"
+        "str ends-with '/args.rs'"
+        "str ends-with '/main.rs'"
     ]
     for pair in [
         ['verify.nu' $VERIFY_SRC]
@@ -462,6 +522,18 @@ def test-verify-feeds-combined-streams []: nothing -> nothing {
     assert-contains $VERIFY_SRC 'nextest-filter-verdict $res.exit_code ($res.stdout + $res.stderr)' 'verify.nu feeds the combined streams to the verdict'
 }
 
+def test-verify-attaches-help-snapshot-scope []: nothing -> nothing {
+    # The work#1429 rule must be CONSUMED, not just defined: verify.nu
+    # derives the help-snapshot scope through the module (never re-derives
+    # per-recipe), carries it on the touched record, and attaches it in
+    # BOTH selection arms — the code-only compile-check lane (the defect
+    # path) and the added-tests name-filter lane. The snapshot tests
+    # themselves run tonight's lanes; this pins the wiring.
+    assert-contains $VERIFY_SRC 'crate-help-snapshot-scope' 'verify.nu derives the help-snapshot scope through the module'
+    assert-contains $VERIFY_SRC 'help_scope' 'verify.nu carries the help-snapshot scope on the touched record'
+    assert-contains $VERIFY_SRC 'help-names-for' 'verify.nu attaches the scope in both selection arms'
+}
+
 def main []: nothing -> nothing {
     test-run-id-parse
     test-subject-mark
@@ -469,6 +541,9 @@ def main []: nothing -> nothing {
     test-test-file-classification
     test-web-predicate
     test-vendor-predicate
+    test-clap-surface-predicate
+    test-help-snapshot-names
+    test-help-snapshot-scope-mapping
     test-first-cfg-line
     test-summary-parse-combined
     test-verdict-split
@@ -482,5 +557,6 @@ def main []: nothing -> nothing {
     test-no-mirror-regrows
     test-run-anchor-delegates
     test-verify-feeds-combined-streams
+    test-verify-attaches-help-snapshot-scope
     print 'verification-commons: all pins green'
 }

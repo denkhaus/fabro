@@ -18,6 +18,9 @@
 #   - test-file / inline-cfg(test) classification (fabro-2f70);
 #   - the web-surface predicate (work#1304);
 #   - the vendor-surface predicate (denkhaus/work#1444);
+#   - the clap-surface predicate and the help-snapshot scope rule
+#     (denkhaus/work#1429): args.rs/main.rs in a crate's diff put that
+#     crate's cmd::*::help family in its nextest scope;
 #   - the nextest Summary parser with the work#1424/#1432 verdict
 #     distinction: "0 tests matched the filter" is a legit gate FAIL,
 #     "output unparseable" is a tooling error — never a gate verdict.
@@ -250,6 +253,57 @@ export def web-surface-path? [p: string]: nothing -> bool {
 # predicate and gates `just vendor-pins`.
 export def vendor-surface-path? [p: string]: nothing -> bool {
     $p | str starts-with 'vendor/'
+}
+
+# The clap surface (denkhaus/work#1429): a crate's arg-surface source
+# files — args.rs (the clap Parser/Subcommand definitions) and main.rs
+# (the binary entry whose --help output the help snapshots pin). A diff
+# touching either can change ANY command's help output, so the owning
+# crate's help-snapshot-bearing tests must join its nextest scope: an
+# args.rs-only diff used to verify as a bare compile check, and a stale
+# help snapshot landed silently (the work#1361 finding).
+export def clap-surface-path? [p: string]: nothing -> bool {
+    ($p | str ends-with '/args.rs') or ($p | str ends-with '/main.rs')
+}
+
+# Pure: whether THIS crate's touched paths include a clap-surface file
+# (per-crate attribution through the shared crate extraction; paths
+# outside the workspace segments never attribute).
+export def clap-surface-touched? [paths: list<string>, crate: string]: nothing -> bool {
+    $paths | any {|p| ((crate-of-path $p) == $crate) and (clap-surface-path? $p)}
+}
+
+# Pure: the help-snapshot-bearing test names for a crate's
+# `tests/it/cmd/` files. The path shape (binary `it`, module `cmd`) names
+# the nextest test `cmd::<stem>::help`; a file whose source declares no
+# `fn help()` test carries no help snapshot and yields no name (the
+# `()` suffix keeps a `fn helper…` declaration from matching). Inputs are
+# paths plus their sources, so the mapping stays battery-testable
+# without a checkout. Exact full names, in input order.
+export def help-snapshot-names [cmd_files: table]: nothing -> list<string> {
+    $cmd_files
+    | where {|r| $r.src | str contains 'fn help()'}
+    | each {|r|
+        let stem = ($r.file | parse --regex 'cmd/(?P<stem>[^/]+)\.rs$' | get -o stem.0)
+        if $stem == null { '' } else { ('cmd::' + $stem + '::help') }
+    }
+    | where {|n| $n != ''}
+}
+
+# The repo root through the module's own location (scripts/lib/ is two
+# levels down): makes the scope walk CWD-independent for every consumer.
+const REPO_ROOT = (path self | path dirname | path dirname | path dirname)
+
+# The ONE rule site (denkhaus/work#1429): a crate's help-snapshot scope
+# from its touched paths. [] when the diff does not touch the crate's
+# clap surface OR the crate carries no help-snapshot-bearing tests —
+# crates without a tests/it/cmd/ family map to [] (a no-op, never a
+# zero-match filter; the zero-selection guard keeps its meaning).
+export def crate-help-snapshot-scope [touched: list<string>, crate: string]: nothing -> list<string> {
+    if (not (clap-surface-touched? $touched $crate)) { return [] }
+    let files = (glob ($REPO_ROOT | path join 'lib' '*' $crate 'tests' 'it' 'cmd' '*.rs'))
+    if ($files | is-empty) { return [] }
+    help-snapshot-names ($files | each {|f| ({file: $f, src: (open --raw $f)}) })
 }
 
 # Classification of a nextest display (work#1424 / work#1432). Parse the
