@@ -782,65 +782,80 @@ async fn get_sandbox_archive(
             Err(response) => return response,
         };
     let path = resolve_path(&params.path, &record.runtime.working_directory);
-    let archive_remote = format!("/tmp/fabro-archive-{}.tar", uuid::Uuid::new_v4().simple());
+    match fetch_sandbox_archive(sandbox.as_ref(), &path).await {
+        Ok(bytes) => octet_stream_response(bytes.into()),
+        Err(error) => error.into_response(),
+    }
+}
 
+/// Tars one directory inside the sandbox and transfers the single archive
+/// (work#1416): argv-only `tar` over the exec facet — no shell string, no
+/// quoting surface — one fs download, and a best-effort `rm` on every
+/// exit. Three round trips total instead of one per file, so a recursive
+/// `fabro cp` stays usable at source-tree scale. Extracted from the
+/// handler so the orchestration is testable against a scripted sandbox.
+async fn fetch_sandbox_archive(sandbox: &dyn Sandbox, path: &str) -> Result<Vec<u8>, ApiError> {
+    let archive_remote = format!("/tmp/fabro-archive-{}.tar", uuid::Uuid::new_v4().simple());
     // Tar first, transfer second, clean up always: every exit below
     // removes the in-sandbox archive before returning.
-    let bytes = async {
-        let spec = ExecSpec::new("tar")
-            .arg("-cf")
-            .arg(&archive_remote)
-            .arg("-C")
-            .arg(&path)
-            .arg(".");
-        let outcome = match sandbox.exec().run(&spec).await {
-            Ok(outcome) => outcome,
-            Err(err) => {
-                return Err(ApiError::new(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    display_for_log(&err, &SecretRedactor),
-                )
-                .into_response());
-            }
-        };
-        if !outcome.success() {
-            // A missing tar binary or a bad path names its cause in stderr.
-            let stderr = String::from_utf8_lossy(&outcome.stderr).trim().to_string();
-            let detail = if stderr.is_empty() {
-                format!("Tarring '{path}' inside the sandbox failed.")
-            } else {
-                format!("Tarring '{path}' inside the sandbox failed: {stderr}")
-            };
-            return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, detail).into_response());
-        }
-        let temp = match NamedTempFile::new() {
-            Ok(temp) => temp,
-            Err(err) => {
-                return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                    .into_response());
-            }
-        };
-        if let Err(err) = sandbox.fs().download(&archive_remote, temp.path()).await {
+    let result = build_sandbox_archive(sandbox, path, &archive_remote).await;
+    remove_sandbox_archive(sandbox, &archive_remote).await;
+    result
+}
+
+/// The tar-and-transfer steps behind [`fetch_sandbox_archive`], before
+/// cleanup: entries land in the archive relative to the requested path.
+async fn build_sandbox_archive(
+    sandbox: &dyn Sandbox,
+    path: &str,
+    archive_remote: &str,
+) -> Result<Vec<u8>, ApiError> {
+    let spec = ExecSpec::new("tar")
+        .arg("-cf")
+        .arg(archive_remote)
+        .arg("-C")
+        .arg(path)
+        .arg(".");
+    let outcome = match sandbox.exec().run(&spec).await {
+        Ok(outcome) => outcome,
+        Err(err) => {
             return Err(ApiError::new(
-                StatusCode::NOT_FOUND,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 display_for_log(&err, &SecretRedactor),
-            )
-            .into_response());
+            ));
         }
-        match fs::read(temp.path()).await {
-            Ok(bytes) => Ok(bytes),
-            Err(err) => Err(ApiError::new(
+    };
+    if !outcome.success() {
+        // A missing tar binary or a bad path names its cause in stderr.
+        let stderr = String::from_utf8_lossy(&outcome.stderr).trim().to_string();
+        let detail = if stderr.is_empty() {
+            format!("Tarring '{path}' inside the sandbox failed.")
+        } else {
+            format!("Tarring '{path}' inside the sandbox failed: {stderr}")
+        };
+        return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, detail));
+    }
+    let temp = match NamedTempFile::new() {
+        Ok(temp) => temp,
+        Err(err) => {
+            return Err(ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 err.to_string(),
-            )
-            .into_response()),
+            ));
         }
+    };
+    if let Err(err) = sandbox.fs().download(archive_remote, temp.path()).await {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            display_for_log(&err, &SecretRedactor),
+        ));
     }
-    .await;
-    remove_sandbox_archive(sandbox.as_ref(), &archive_remote).await;
-    match bytes {
-        Ok(bytes) => octet_stream_response(bytes.into()),
-        Err(response) => response,
+    match fs::read(temp.path()).await {
+        Ok(bytes) => Ok(bytes),
+        Err(err) => Err(ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            err.to_string(),
+        )),
     }
 }
 
@@ -944,6 +959,9 @@ async fn load_run_sandbox_instance(
 mod tests {
     use axum::http::{HeaderMap, HeaderValue};
     use futures_util::FutureExt;
+    use pebble_coding_agent::sandbox_driver::test_support::{
+        MockSandbox, ScriptedExec, ScriptedSandbox,
+    };
 
     use super::*;
 
@@ -1169,6 +1187,119 @@ mod tests {
             url,
             "https://6080-preview.example.test/vnc.html?token=abc&autoconnect=true&resize=scale"
         );
+    }
+
+    /// Whether an argv element is one of this handler's archive paths.
+    fn is_archive_arg(arg: &str) -> bool {
+        arg.starts_with("/tmp/fabro-archive-")
+            && std::path::Path::new(arg)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("tar"))
+    }
+
+    /// Answers `tar` invocations by seeding the archive they name, so the
+    /// download facet finds the bytes a real sandbox's tar would have
+    /// produced; everything else falls through to the default.
+    fn answer_tar_with_archive(driver: &Arc<ScriptedSandbox>, payload: &[u8]) {
+        let driver = Arc::clone(driver);
+        let payload = payload.to_vec();
+        let seeding_driver = Arc::clone(&driver);
+        driver.scripted_exec().respond_with(move |spec| {
+            if spec.program != "tar" {
+                return None;
+            }
+            let archive = spec
+                .args
+                .iter()
+                .find(|arg| is_archive_arg(arg))
+                .cloned()
+                .expect("the tar spec names its archive");
+            seeding_driver.memory_fs().insert(&archive, payload.clone());
+            Some(ScriptedExec::ok(""))
+        });
+    }
+
+    fn archive_path_of(spec: &sandbox_driver::ExecSpec) -> String {
+        spec.args
+            .iter()
+            .find(|arg| is_archive_arg(arg))
+            .cloned()
+            .expect("the spec names its archive")
+    }
+
+    #[tokio::test]
+    async fn sandbox_archive_tars_argv_only_transfers_once_and_cleans_up() {
+        let mock = MockSandbox::linux();
+        let driver = mock.driver();
+        let payload = b"the-tar-bytes".to_vec();
+        answer_tar_with_archive(&driver, &payload);
+
+        let bytes = fetch_sandbox_archive(&*mock.handle(), "/home/test/lib")
+            .await
+            .expect("the archive fetch succeeds");
+
+        // One transfer: the exact bytes the in-sandbox tar produced.
+        assert_eq!(bytes, payload);
+        // Two sandbox commands, and only two: the tar and the cleanup rm —
+        // never one exec per file.
+        let recorded = driver.scripted_exec().recorded();
+        assert_eq!(recorded.len(), 2, "commands: {recorded:?}");
+        assert_eq!(recorded[0].program, "tar");
+        assert_eq!(
+            recorded[0].args,
+            vec![
+                "-cf".to_string(),
+                archive_path_of(&recorded[0]),
+                "-C".to_string(),
+                "/home/test/lib".to_string(),
+                ".".to_string(),
+            ],
+            "the tar runs argv-only, no shell string"
+        );
+        assert_eq!(recorded[1].program, "rm");
+        assert_eq!(
+            recorded[1].args,
+            vec!["-f".to_string(), archive_path_of(&recorded[0])],
+            "the rm removes exactly the archive the tar created"
+        );
+    }
+
+    #[tokio::test]
+    async fn sandbox_archive_surfaces_tar_failure_and_still_cleans_up() {
+        let mock = MockSandbox::linux();
+        let driver = mock.driver();
+        driver.scripted_exec().respond_with(|spec| {
+            (spec.program == "tar").then(|| ScriptedExec::failed(1, "tar: cannot stat 'nope'"))
+        });
+
+        let error = fetch_sandbox_archive(&*mock.handle(), "/home/test/nope")
+            .await
+            .expect_err("a failed tar is an error");
+
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        // The cleanup rm ran even though the tar failed.
+        let recorded = driver.scripted_exec().recorded();
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(recorded[1].program, "rm");
+    }
+
+    #[tokio::test]
+    async fn sandbox_archive_maps_a_missing_transfer_to_404() {
+        let mock = MockSandbox::default();
+        let driver = mock.driver();
+
+        // The default exec result answers the tar with success, but no
+        // archive is ever seeded, so the download finds nothing.
+        let error = fetch_sandbox_archive(&*mock.handle(), "/work/empty")
+            .await
+            .expect_err("a missing archive download is an error");
+
+        let response = error.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let recorded = driver.scripted_exec().recorded();
+        assert_eq!(recorded.len(), 2, "the cleanup rm still runs");
+        assert_eq!(recorded[1].program, "rm");
     }
 }
 

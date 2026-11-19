@@ -165,11 +165,24 @@ async fn download_recursive(
     let archive = client.get_sandbox_archive(run_id, remote_path).await?;
     info!(bytes = archive.len(), path = %remote_path, "Fetched sandbox archive");
 
-    // The archive's entries are relative to the copied directory, so
-    // unpacking under `local_path` preserves the per-file layout of the
-    // old download loop. `unpack_in` ignores the leading `./` a tar of
-    // `.` produces and refuses `..` traversal.
-    let mut tar_archive = tar::Archive::new(archive.as_slice());
+    // `unpack_in` canonicalizes its destination, so the target directory
+    // must exist before the first entry unpacks.
+    fs::create_dir_all(local_path)
+        .await
+        .with_context(|| format!("Failed to create {}", local_path.display()))?;
+    let file_count = untar_archive(&archive, local_path)?;
+    debug!(count = file_count, "Recursive download complete");
+    Ok(file_count)
+}
+
+/// Unpacks a sandbox archive under `local_path` and returns the number of
+/// regular files it contained (work#1416). The archive's entries are
+/// relative to the copied directory, so unpacking under `local_path`
+/// preserves the per-file layout of the old per-file download loop.
+/// `unpack_in` ignores the leading `./` a tar of `.` produces and refuses
+/// `..` traversal.
+fn untar_archive(archive: &[u8], local_path: &Path) -> Result<usize> {
+    let mut tar_archive = tar::Archive::new(archive);
     let mut file_count = 0usize;
     for entry in tar_archive
         .entries()
@@ -191,7 +204,6 @@ async fn download_recursive(
             )
         })?;
     }
-    debug!(count = file_count, "Recursive download complete");
     Ok(file_count)
 }
 
@@ -229,6 +241,8 @@ async fn upload_recursive(
 
 #[cfg(test)]
 mod tests {
+    use tokio::fs;
+
     use super::*;
 
     #[test]
@@ -272,5 +286,95 @@ mod tests {
             err.to_string()
                 .contains("Cannot copy between two sandboxes")
         );
+    }
+
+    /// A small in-memory tar with `./`-prefixed entries, the shape the
+    /// server's in-sandbox `tar -C <dir> .` produces.
+    fn sandbox_tar(entries: &[(&str, &str)]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (name, content) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, name, content.as_bytes())
+                .unwrap();
+        }
+        builder.into_inner().unwrap()
+    }
+
+    #[tokio::test]
+    async fn untar_archive_preserves_layout_and_counts_regular_files() {
+        let workspace = tempfile::tempdir().unwrap();
+        let archive = sandbox_tar(&[
+            ("./src/main.rs", "fn main() {}"),
+            ("./README.md", "hello"),
+            ("./src/nested/deep.rs", "pub fn f() {}"),
+        ]);
+
+        let count = untar_archive(&archive, workspace.path()).unwrap();
+
+        assert_eq!(count, 3);
+        assert_eq!(
+            fs::read_to_string(workspace.path().join("src/main.rs"))
+                .await
+                .unwrap(),
+            "fn main() {}"
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.path().join("README.md"))
+                .await
+                .unwrap(),
+            "hello"
+        );
+        assert_eq!(
+            fs::read_to_string(workspace.path().join("src/nested/deep.rs"))
+                .await
+                .unwrap(),
+            "pub fn f() {}"
+        );
+    }
+
+    #[tokio::test]
+    async fn untar_archive_refuses_traversal_entries() {
+        let workspace = tempfile::tempdir().unwrap();
+        let archive = raw_traversal_tar("../escape.txt", "outside");
+
+        let count = untar_archive(&archive, workspace.path()).unwrap();
+
+        assert_eq!(count, 1, "the file is counted, never unpacked outside");
+        assert!(
+            !fs::try_exists(workspace.path().join("../escape.txt"))
+                .await
+                .unwrap(),
+            "a traversal entry must not escape the unpack root"
+        );
+    }
+
+    /// A one-entry GNU tar whose member name is a traversal path. Built
+    /// from raw header bytes because `tar::Builder` refuses `..` member
+    /// names — the unpack side must refuse them on its own.
+    fn raw_traversal_tar(name: &str, content: &str) -> Vec<u8> {
+        let mut header = [0u8; 512];
+        header[..name.len()].copy_from_slice(name.as_bytes());
+        header[100..108].copy_from_slice(b"0000644\0");
+        header[108..116].copy_from_slice(b"0000000\0");
+        header[116..124].copy_from_slice(b"0000000\0");
+        let size = format!("{:011o}\0", content.len());
+        header[124..136].copy_from_slice(size.as_bytes());
+        header[136..148].copy_from_slice(b"00000000000\0");
+        header[148..156].copy_from_slice(b"        ");
+        header[156] = b'0';
+        header[257..262].copy_from_slice(b"ustar");
+        header[263..265].copy_from_slice(b"00");
+        let checksum: u32 = header.iter().map(|&byte| u32::from(byte)).sum();
+        header[148..156].copy_from_slice(format!("{checksum:06o}\0 ").as_bytes());
+
+        let mut archive = header.to_vec();
+        archive.extend_from_slice(content.as_bytes());
+        archive.extend(std::iter::repeat_n(0, 512 - content.len()));
+        archive.extend(std::iter::repeat_n(0, 1024));
+        archive
     }
 }
