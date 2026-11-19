@@ -29,9 +29,9 @@ use std::str::FromStr as _;
 use std::sync::Arc;
 
 use fabro_types::{
-    BlobHash, DiffSummary, GitIdentity, OrchestrationField, OrchestrationVerdict, PairId,
-    PairTarget, Principal, PullRequestCreationId, PullRequestLink, RunControlAction, RunId,
-    RunNoticeLevel, RunSpec, RunStatus, SandboxProviderKind,
+    AskFabroCapability, BlobHash, DiffSummary, GitIdentity, OrchestrationField,
+    OrchestrationVerdict, PairId, PairTarget, Principal, PullRequestCreationId, PullRequestLink,
+    RunControlAction, RunId, RunNoticeLevel, RunSpec, RunStatus, SandboxProviderKind, SessionId,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnection, SqliteRow};
@@ -177,6 +177,9 @@ pub enum PlatformRecordKind {
     #[serde(rename = "sandbox.reaped")]
     #[strum(serialize = "sandbox.reaped")]
     SandboxReaped,
+    #[serde(rename = "session.capability")]
+    #[strum(serialize = "session.capability")]
+    SessionCapability,
 }
 
 /// One platform record, tagged by `kind` on the wire.
@@ -294,6 +297,13 @@ pub enum PlatformRecord {
     /// candidates read.
     #[serde(rename = "sandbox.reaped")]
     SandboxReaped(SandboxReapedRecord),
+    /// An Ask Fabro session's tool capability changed (ADR-0046): an
+    /// authenticated principal flipped the session between `read_only`
+    /// and `full_access`. This record is the run-stream audit of the
+    /// flip; the per-session posture itself is the session's own
+    /// `run.session.capability.changed` event.
+    #[serde(rename = "session.capability")]
+    SessionCapability(SessionCapabilityRecord),
 }
 
 impl PlatformRecord {
@@ -328,6 +338,7 @@ impl PlatformRecord {
             Self::WorkReleased(_) => PlatformRecordKind::WorkReleased,
             Self::WorkLanded(_) => PlatformRecordKind::WorkLanded,
             Self::ObservationRecorded(_) => PlatformRecordKind::ObservationRecorded,
+            Self::SessionCapability(_) => PlatformRecordKind::SessionCapability,
             Self::RunOrchestration(_) => PlatformRecordKind::RunOrchestration,
             Self::SandboxReaped(_) => PlatformRecordKind::SandboxReaped,
         }
@@ -367,7 +378,8 @@ impl PlatformRecord {
             | Self::WorkLanded(_)
             | Self::ObservationRecorded(_)
             | Self::RunOrchestration(_)
-            | Self::SandboxReaped(_) => None,
+            | Self::SandboxReaped(_)
+            | Self::SessionCapability(_) => None,
         }
     }
 }
@@ -557,6 +569,20 @@ pub struct SandboxReapedRecord {
     pub provider_id: String,
     /// Why the arm took it: the age floor or the disk brake.
     pub reason:      SandboxReapReason,
+}
+
+/// An Ask Fabro session's tool capability changed (ADR-0046). Identity is
+/// the record's `(run_id, seq)`; the session the flip belongs to is named
+/// by `session_id`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionCapabilityRecord {
+    /// The Ask Fabro session whose capability changed.
+    pub session_id: SessionId,
+    /// The posture the session moved to.
+    pub capability: AskFabroCapability,
+    /// Who flipped the session, as the principal's login.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor:      Option<String>,
 }
 
 /// How long one observation entry may be — enforced at the append
@@ -1311,6 +1337,15 @@ mod tests {
                     provider:    SandboxProviderKind::DOCKER,
                     provider_id: "petri-env-fixture".to_string(),
                     reason:      SandboxReapReason::TerminalAge,
+                })
+            }
+            PlatformRecordKind::SessionCapability => {
+                PlatformRecord::SessionCapability(SessionCapabilityRecord {
+                    session_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                        .parse()
+                        .expect("a parseable session id"),
+                    capability: fabro_types::AskFabroCapability::FullAccess,
+                    actor:      Some("octocat".to_string()),
                 })
             }
             PlatformRecordKind::ObservationRecorded => {

@@ -496,3 +496,188 @@ fn assert_session_metadata_only(value: &serde_json::Value) {
         );
     }
 }
+
+/// The server-enforced capability flip (ADR-0046, work#1451): a worker
+/// token cannot flip a session; an authenticated user can. The flip
+/// persists on the session (its `run.session.capability.changed` event),
+/// audits into the run stream (the `session.capability` platform record,
+/// observable via run events), and the latest flip wins.
+#[tokio::test]
+async fn capability_flip_requires_a_user_persists_per_session_and_audits_into_the_run_stream() {
+    let state = test_app_state();
+    let app = fabro_server::test_support::build_test_router(state.clone());
+    let (run_id, _run_id_workspace) = create_run(&app).await;
+    let created = create_session(&app, &run_id, "Ask Fabro").await;
+    let session_id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        created["capability"], "read_only",
+        "a new session starts in the read-only posture"
+    );
+
+    // A worker token (the stage agent's fabro_ask caller) is not the
+    // elevated principal the flip requires.
+    let worker_token = state.test_issue_worker_token(&run_id.parse().unwrap());
+    let worker_flip = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/sessions/{session_id}/capability")))
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {worker_token}"))
+        .body(Body::from(r#"{"capability":"full_access"}"#))
+        .expect("worker flip request should build");
+    response_status(
+        app.clone().oneshot(worker_flip).await.unwrap(),
+        StatusCode::UNAUTHORIZED,
+        "worker-token capability flip",
+    )
+    .await;
+
+    // The user flip succeeds and the response carries the new posture.
+    let user_flip = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/sessions/{session_id}/capability")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"capability":"full_access"}"#))
+        .expect("user flip request should build");
+    let flipped = response_json(
+        app.clone().oneshot(user_flip).await.unwrap(),
+        StatusCode::OK,
+        "user capability flip",
+    )
+    .await;
+    assert_eq!(flipped["capability"], "full_access");
+
+    // Per-session persistence: the session detail and the session's own
+    // event stream both carry the change.
+    let get_session = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/sessions/{session_id}")))
+        .body(Body::empty())
+        .expect("get-session request should build");
+    let detail = response_json(
+        app.clone().oneshot(get_session).await.unwrap(),
+        StatusCode::OK,
+        format!("GET /api/v1/sessions/{session_id}"),
+    )
+    .await;
+    assert_eq!(detail["capability"], "full_access");
+
+    let session_events = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/sessions/{session_id}/events")))
+        .body(Body::empty())
+        .expect("session-events request should build");
+    let events = response_json(
+        app.clone().oneshot(session_events).await.unwrap(),
+        StatusCode::OK,
+        format!("GET /api/v1/sessions/{session_id}/events"),
+    )
+    .await;
+    let capability_events: Vec<_> = events["data"]
+        .as_array()
+        .expect("events response should include data")
+        .iter()
+        .filter(|event| event["event"] == "run.session.capability.changed")
+        .collect();
+    assert_eq!(capability_events.len(), 1);
+    assert_eq!(
+        capability_events[0]["properties"]["capability"], "full_access",
+        "the session event names the posture it moved to"
+    );
+
+    // The run-stream audit: observable via run events.
+    let run_events = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/runs/{run_id}/events")))
+        .body(Body::empty())
+        .expect("run-events request should build");
+    let stream = response_json(
+        app.clone().oneshot(run_events).await.unwrap(),
+        StatusCode::OK,
+        format!("GET /api/v1/runs/{run_id}/events"),
+    )
+    .await;
+    let capability_records: Vec<_> = stream["data"]
+        .as_array()
+        .expect("run stream should include data")
+        .iter()
+        .filter(|item| {
+            item["kind"] == "platform" && item["item"]["record"]["kind"] == "session.capability"
+        })
+        .collect();
+    assert_eq!(
+        capability_records.len(),
+        1,
+        "the flip audits into the run stream exactly once"
+    );
+    assert_eq!(
+        capability_records[0]["item"]["record"]["session_id"],
+        session_id
+    );
+    assert_eq!(
+        capability_records[0]["item"]["record"]["capability"],
+        "full_access"
+    );
+
+    // The latest flip wins: flipping back moves the session to read-only.
+    let flip_back = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/sessions/{session_id}/capability")))
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"capability":"read_only"}"#))
+        .expect("flip-back request should build");
+    let flipped_back = response_json(
+        app.clone().oneshot(flip_back).await.unwrap(),
+        StatusCode::OK,
+        "capability flip back to read-only",
+    )
+    .await;
+    assert_eq!(flipped_back["capability"], "read_only");
+}
+
+/// ADR-0046 scope 3: at full access the ask session's worker token stops
+/// being rejected on cross-run run-scoped routes — the supervisor
+/// capability widens what was a run-pinned rejection — while a plain
+/// run worker stays scoped to its own run.
+#[tokio::test]
+async fn supervisor_worker_scope_widens_run_scoped_reads_across_runs() {
+    let state = test_app_state();
+    let app = fabro_server::test_support::build_test_router(state.clone());
+    let (first_run, _first_workspace) = create_run(&app).await;
+    let (second_run, _second_workspace) = create_run(&app).await;
+    let first: fabro_types::RunId = first_run.parse().unwrap();
+
+    let logs_of_second = |token: String| {
+        let app = app.clone();
+        let second_run = second_run.clone();
+        async move {
+            let request = Request::builder()
+                .method("GET")
+                .uri(api(&format!("/runs/{second_run}/logs")))
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .expect("run-logs request should build");
+            app.oneshot(request).await.unwrap()
+        }
+    };
+
+    // A plain run worker is pinned to its own run: the foreign run's
+    // route refuses it.
+    let plain = state.test_issue_worker_token(&first);
+    let response = logs_of_second(plain).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "a plain worker stays run-scoped"
+    );
+
+    // The supervisor capability (a full-access ask session's backend)
+    // passes the run-scoped guard on the foreign run: the route answers
+    // for the run itself (here: no log file), not with a scope refusal.
+    let supervisor = state.test_issue_worker_token_supervisor(&first);
+    let response = logs_of_second(supervisor).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::NOT_FOUND,
+        "the supervisor scope passes the run-scoped guard cross-run"
+    );
+}

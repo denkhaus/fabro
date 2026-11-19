@@ -16,16 +16,22 @@ use fabro_api::types::{
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
 use fabro_redact::SecretRedactor;
-use fabro_store::{ProjectedRunSession, project_run_session, project_run_sessions};
+use fabro_store::{
+    PlatformRecord, ProjectedRunSession, SessionCapabilityRecord, project_run_session,
+    project_run_sessions,
+};
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::session_event::{
-    SessionAssistantDeltaProps, SessionAssistantMessageProps, SessionCreatedProps,
-    SessionToolCallCompletedProps, SessionToolCallStartedProps, SessionTurnFailedCode,
-    SessionTurnFailedProps, SessionTurnInterruptedProps, SessionTurnStartedProps,
-    SessionTurnSucceededProps, SessionUserMessageProps,
+    SessionAssistantDeltaProps, SessionAssistantMessageProps, SessionCapabilityChangedProps,
+    SessionCreatedProps, SessionToolCallCompletedProps, SessionToolCallStartedProps,
+    SessionTurnFailedCode, SessionTurnFailedProps, SessionTurnInterruptedProps,
+    SessionTurnStartedProps, SessionTurnSucceededProps, SessionUserMessageProps,
 };
 use fabro_types::settings::ModelRef as SettingsModelRef;
-use fabro_types::{RunId, SessionDetail, SessionEvent, SessionEventBody, SessionId, TurnId};
+use fabro_types::{
+    AskFabroCapability, RunId, SessionDetail, SessionEvent, SessionEventBody, SessionId,
+    SetSessionCapabilityRequest, TurnId,
+};
 use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use lithos_llm::catalog::ProviderId;
@@ -47,7 +53,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
 use super::super::session_runtime::{InterruptTurnError, SessionTurnLease, StartTurnError};
-use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path};
+use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path, run_records};
 use crate::error::ApiError;
 use crate::principal_middleware::{RequiredRunToolActor, RequiredUser};
 use crate::sandbox_access;
@@ -56,6 +62,7 @@ use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
 const SESSION_SSE_BUFFER_CAPACITY: usize = 1024;
 
 const ASK_FABRO_SYSTEM_PROMPT: &str = include_str!("prompts/ask_fabro.md.j2");
+const ASK_FABRO_SUPERVISOR_PROMPT: &str = include_str!("prompts/ask_fabro_supervisor.md.j2");
 
 const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
@@ -63,6 +70,36 @@ const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     // The live tracker for dedupe (fabro-d6de): recommendations that
     // duplicate an open seed are the analyst's loudest failure class.
     fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
+];
+
+/// The widened run-tool registry of a full-access Ask Fabro session
+/// (ADR-0046 scope 1): run control, the work tracker, observations, and
+/// the cross-run inspection set — granted on top of the read-only set.
+pub(super) const ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES: &[&str] = &[
+    // Run control.
+    fabro_tool::FABRO_RUN_MARK_TOOL_NAME,
+    fabro_tool::FABRO_RUN_MERGE_TOOL_NAME,
+    fabro_tool::FABRO_RUN_CREATE_TOOL_NAME,
+    // The work tracker.
+    fabro_tool::FABRO_WORK_LIST_TOOL_NAME,
+    fabro_tool::FABRO_WORK_SHOW_TOOL_NAME,
+    fabro_tool::FABRO_WORK_CREATE_TOOL_NAME,
+    fabro_tool::FABRO_WORK_CLOSE_TOOL_NAME,
+    fabro_tool::FABRO_WORK_UPDATE_TOOL_NAME,
+    fabro_tool::FABRO_WORK_COMMENTS_TOOL_NAME,
+    fabro_tool::FABRO_WORK_NEXT_TOOL_NAME,
+    fabro_tool::FABRO_WORK_RADIUS_TOOL_NAME,
+    fabro_tool::FABRO_WORK_RELEASE_TOOL_NAME,
+    // Observations.
+    fabro_tool::FABRO_OBSERVATION_RECORD_TOOL_NAME,
+    fabro_tool::FABRO_OBSERVATION_FEED_TOOL_NAME,
+    fabro_tool::FABRO_OBSERVATION_LIST_TOOL_NAME,
+    // Cross-run inspection and steering.
+    fabro_tool::FABRO_RUN_QUEUE_TOOL_NAME,
+    fabro_tool::FABRO_RUN_SEARCH_TOOL_NAME,
+    fabro_tool::FABRO_RUN_WAIT_TOOL_NAME,
+    fabro_tool::FABRO_BLOB_TOOL_NAME,
+    fabro_tool::FABRO_RUN_INTERACT_TOOL_NAME,
 ];
 
 type SessionSseSender = mpsc::Sender<Result<Event, Infallible>>;
@@ -79,6 +116,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         )
         .route("/sessions/{id}/events", get(list_session_events))
         .route("/sessions/{id}/attach", get(attach_session_events))
+        .route(
+            "/sessions/{id}/capability",
+            post(set_session_capability).fallback(session_method_not_found),
+        )
         .route(
             "/sessions/{id}/turns",
             post(submit_turn).fallback(session_method_not_found),
@@ -231,6 +272,77 @@ async fn get_session(
 
 async fn session_method_not_found() -> Response {
     StatusCode::NOT_FOUND.into_response()
+}
+
+/// The server-enforced capability flip (ADR-0046 scope 2): only an
+/// authenticated user principal may flip an Ask Fabro session between
+/// `read_only` and `full_access` — a worker token (the stage agent's
+/// `fabro_ask` caller) is refused. The flip persists as the session's
+/// `run.session.capability.changed` event and audits into the run stream
+/// as a `session.capability` platform record; a turn already in flight
+/// keeps the posture it was built under, and the next turn rebuilds the
+/// agent under the new one.
+async fn set_session_capability(
+    actor: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Json(request): Json<SetSessionCapabilityRequest>,
+) -> Response {
+    let session_id = match parse_session_id(&id) {
+        Ok(id) => id,
+        Err(err) => return err.into_response(),
+    };
+    let (run_id, session) = match load_session(&state, session_id).await {
+        Ok(context) => context,
+        Err(response) => return response,
+    };
+    if session.record.capability == request.capability {
+        return Json(SessionDetail::new(session.record, session.last_seq)).into_response();
+    }
+    let actor_login = Some(actor.0.login.clone());
+    // The run-stream audit: appended through the server's one record door
+    // so the projector wakes and `GET /runs/{id}/events` serves it.
+    let record = PlatformRecord::SessionCapability(SessionCapabilityRecord {
+        session_id,
+        capability: request.capability,
+        actor: actor_login.clone(),
+    });
+    if let Err(err) = run_records::append(&state, run_id, record).await {
+        error!(
+            error = %err,
+            run_id = %run_id,
+            session_id = %session_id,
+            "Failed to append the session capability record"
+        );
+        return ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to record the capability change: {err}"),
+        )
+        .into_response();
+    }
+    let now = Utc::now();
+    let event = match append_run_session_event(
+        &state,
+        run_id,
+        session_id,
+        SessionEventBody::CapabilityChanged(SessionCapabilityChangedProps {
+            capability: request.capability,
+            actor:      actor_login,
+        }),
+        now,
+    )
+    .await
+    {
+        Ok(event) => event,
+        Err(err) => return store_error(&err).into_response(),
+    };
+    // The cached agent was built under the old posture; drop it so the
+    // next turn rebuilds under the new capability.
+    state.session_runtimes().invalidate_agent(session_id).await;
+    let mut record = session.record;
+    record.capability = request.capability;
+    record.updated_at = now;
+    Json(SessionDetail::new(record, event.seq)).into_response()
 }
 
 /// Query parameters for `/sessions/{id}/events`: the first sequence number
@@ -802,12 +914,21 @@ async fn build_agent(
     // session stays read-only: the permission middleware denies every tool
     // outside the allowed list, so the broader transport scope cannot be
     // reached through the analyst.
-    let worker_token = issue_worker_token_with_scopes(
-        state.worker_token_keys(),
-        &run_id,
-        WorkerScopeSet::run_worker_with_agent_run_tools(),
-    )
-    .map_err(|_| AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token")))?;
+    //
+    // A full-access session (ADR-0046) is the supervisor: its token carries
+    // the agent:supervisor capability and its backend drops the run-scope
+    // pin, so cross-run tool calls stop being rejected — the conversation's
+    // own run stays the anchor `current_run_id` names.
+    let capability = session.record.capability;
+    let scopes = if capability == AskFabroCapability::FullAccess {
+        WorkerScopeSet::run_worker_supervisor()
+    } else {
+        WorkerScopeSet::run_worker_with_agent_run_tools()
+    };
+    let worker_token = issue_worker_token_with_scopes(state.worker_token_keys(), &run_id, scopes)
+        .map_err(|_| {
+        AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token"))
+    })?;
     let target = state
         .self_server_target()
         .map_err(AskFabroBuildError::Agent)?;
@@ -817,9 +938,10 @@ async fn build_agent(
         .connect()
         .await
         .map_err(AskFabroBuildError::Agent)?;
-    let backend = ClientBackend::new(Arc::new(api_client))
-        .with_run_scope(run_id)
-        .with_run_seeds(seeds_source);
+    let mut backend = ClientBackend::new(Arc::new(api_client)).with_run_seeds(seeds_source);
+    if capability == AskFabroCapability::ReadOnly {
+        backend = backend.with_run_scope(run_id);
+    }
     let services = FabroRunToolServices {
         backend:        Arc::new(backend),
         current_run_id: run_id,
@@ -828,7 +950,11 @@ async fn build_agent(
         // either.
         stage:          None,
     };
-    let mut ask_tools = register_named_fabro_run_tools(&services, ASK_FABRO_RUN_TOOL_NAMES);
+    let mut tool_names = ASK_FABRO_RUN_TOOL_NAMES.to_vec();
+    if capability == AskFabroCapability::FullAccess {
+        tool_names.extend_from_slice(ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES);
+    }
+    let mut ask_tools = register_named_fabro_run_tools(&services, &tool_names);
     // Fork feature (fabro-43cf): the analyst also reads the embedded
     // platform docs corpus — the target run's checkout is a foreign repo
     // to Fabro's own docs.
@@ -874,12 +1000,13 @@ async fn build_agent(
     };
     let agent = builder
         .tools(ask_tools)
-        // The read-only policy hides and refuses every other tool, so the
-        // agent gets exactly the read tools and the two run tools.
+        // The capability-stateful policy hides and refuses every other
+        // tool: read-only gets exactly the read tools and the two run
+        // tools; full access adds the supervisor registry (ADR-0046).
         .tool_middleware(Arc::new(PermissionMiddleware::new(Arc::new(
-            AskFabroToolPolicy,
+            AskFabroToolPolicy { capability },
         ))))
-        .system_prompt_transform(Arc::new(AskFabroPrompt))
+        .system_prompt_transform(Arc::new(AskFabroPrompt { capability }))
         .redactor(Arc::new(SecretRedactor))
         .build()
         .await
@@ -1030,9 +1157,14 @@ fn session_selection_error(error: &ModelSelectionError) -> ApiError {
     ApiError::bad_request(error.to_string())
 }
 
-/// Ask Fabro reads. Every write, shell, web, and run-control tool is hidden
-/// from the model and refused if called anyway.
-struct AskFabroToolPolicy;
+/// The Ask Fabro tool policy, capability-stateful (ADR-0046): read-only
+/// hides every write, shell, web, and run-control tool from the model and
+/// refuses them if called anyway; full access (the supervisor) adds the
+/// widened run-tool registry while sandbox writes, shell, and web stay
+/// denied.
+pub(super) struct AskFabroToolPolicy {
+    pub(super) capability: AskFabroCapability,
+}
 
 impl ToolPermissionPolicy for AskFabroToolPolicy {
     fn permission(
@@ -1040,46 +1172,65 @@ impl ToolPermissionPolicy for AskFabroToolPolicy {
         _session: &pebble_coding_agent::SessionScope,
         tool: &pebble_agent::ToolDescriptor,
     ) -> ToolPermission {
-        if ask_fabro_allows_tool(tool.id().as_str()) {
+        if ask_fabro_allows_tool(tool.id().as_str(), self.capability) {
             ToolPermission::Allow
         } else {
-            ToolPermission::Deny {
-                reason: "denied by tool access policy: Ask Fabro is read-only".to_string(),
-            }
+            let reason = match self.capability {
+                AskFabroCapability::ReadOnly => {
+                    "denied by tool access policy: Ask Fabro is read-only".to_string()
+                }
+                AskFabroCapability::FullAccess => {
+                    "denied by tool access policy: Ask Fabro supervisor allows only the granted \
+                     run tools"
+                        .to_string()
+                }
+            };
+            ToolPermission::Deny { reason }
         }
     }
 }
 
-/// Whether Ask Fabro may call `tool_name`, resolved through the canonical
-/// name so a profile with its own vocabulary (the Kimi profile uses
-/// `Read`/`Grep`/`Glob`) is not denied its whole tool set.
-fn ask_fabro_allows_tool(tool_name: &str) -> bool {
+/// Whether Ask Fabro may call `tool_name` under `capability`, resolved
+/// through the canonical name so a profile with its own vocabulary (the
+/// Kimi profile uses `Read`/`Grep`/`Glob`) is not denied its whole tool
+/// set.
+pub(super) fn ask_fabro_allows_tool(tool_name: &str, capability: AskFabroCapability) -> bool {
     match canonical_tool_name(tool_name) {
         "read_file" | "grep" | "glob" => true,
         name => {
             ASK_FABRO_RUN_TOOL_NAMES.contains(&name)
+                || (capability == AskFabroCapability::FullAccess
+                    && ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES.contains(&name))
                 || name == super::fork_ask_docs::FORK_ASK_DOCS_TOOL_NAME
         }
     }
 }
 
-/// The Ask Fabro system prompt: the analyst contract plus the environment
-/// block and the tools the policy lets through.
-struct AskFabroPrompt;
+/// The Ask Fabro system prompt, capability-stateful (ADR-0046): read-only
+/// keeps the analyst contract; full access replaces it with the supervisor
+/// prompt, which mandates the in-turn soft confirm before `run_merge`.
+struct AskFabroPrompt {
+    capability: AskFabroCapability,
+}
 
 impl SystemPromptTransform for AskFabroPrompt {
     fn transform(&self, context: SystemPromptContext<'_>) -> SystemPromptDecision {
-        SystemPromptDecision::Replace(build_ask_fabro_system_prompt(
-            context.environment(),
-            context.tools(),
-        ))
+        let prompt = match self.capability {
+            AskFabroCapability::ReadOnly => {
+                build_ask_fabro_system_prompt(context.environment(), context.tools())
+            }
+            AskFabroCapability::FullAccess => {
+                build_ask_fabro_supervisor_system_prompt(context.environment(), context.tools())
+            }
+        };
+        SystemPromptDecision::Replace(prompt)
     }
 }
 
-fn render_ask_fabro_tool_guidance(tools: &[ToolSummary]) -> String {
+fn render_ask_fabro_tool_guidance(tools: &[ToolSummary], capability: AskFabroCapability) -> String {
     let mut tools: Vec<&ToolSummary> = tools
         .iter()
-        .filter(|tool| ask_fabro_allows_tool(&tool.name))
+        .filter(|tool| ask_fabro_allows_tool(&tool.name, capability))
         .collect();
     tools.sort_by(|left, right| left.name.cmp(&right.name));
     tools
@@ -1110,7 +1261,13 @@ fn render_ask_fabro_env_block(environment: &EnvContext) -> String {
     lines.join("\n")
 }
 
-fn build_ask_fabro_system_prompt(environment: &EnvContext, tools: &[ToolSummary]) -> String {
+fn render_ask_fabro_prompt(
+    template_name: &str,
+    template: &str,
+    environment: &EnvContext,
+    tools: &[ToolSummary],
+    capability: AskFabroCapability,
+) -> String {
     // `tool_guidance` is passed as a template variable rather than interpolated
     // into the template text: it carries tool names and descriptions that can
     // come from MCP servers, and MiniJinja does not re-render substituted
@@ -1122,12 +1279,38 @@ fn build_ask_fabro_system_prompt(environment: &EnvContext, tools: &[ToolSummary]
         ),
         (
             "tool_guidance".to_string(),
-            toml::Value::String(render_ask_fabro_tool_guidance(tools)),
+            toml::Value::String(render_ask_fabro_tool_guidance(tools, capability)),
         ),
     ]);
     let ctx = fabro_template::TemplateContext::new().with_inputs(inputs);
-    fabro_template::render_named("ask_fabro.md.j2", ASK_FABRO_SYSTEM_PROMPT, &ctx)
+    fabro_template::render_named(template_name, template, &ctx)
         .unwrap_or_else(|err| panic!("embedded Ask Fabro prompt failed to render: {err}"))
+}
+
+pub(super) fn build_ask_fabro_system_prompt(
+    environment: &EnvContext,
+    tools: &[ToolSummary],
+) -> String {
+    render_ask_fabro_prompt(
+        "ask_fabro.md.j2",
+        ASK_FABRO_SYSTEM_PROMPT,
+        environment,
+        tools,
+        AskFabroCapability::ReadOnly,
+    )
+}
+
+pub(super) fn build_ask_fabro_supervisor_system_prompt(
+    environment: &EnvContext,
+    tools: &[ToolSummary],
+) -> String {
+    render_ask_fabro_prompt(
+        "ask_fabro_supervisor.md.j2",
+        ASK_FABRO_SUPERVISOR_PROMPT,
+        environment,
+        tools,
+        AskFabroCapability::FullAccess,
+    )
 }
 
 fn build_ask_fabro_run_snapshot(projection: &fabro_types::RunProjection, run_id: RunId) -> String {
@@ -1756,10 +1939,13 @@ enabled = true
             // policy would silently strip the seeds tool from ask sessions.
             fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
         ] {
-            assert!(ask_fabro_allows_tool(tool_name), "{tool_name}");
+            assert!(
+                ask_fabro_allows_tool(tool_name, AskFabroCapability::ReadOnly),
+                "{tool_name}"
+            );
         }
         // A profile vocabulary alias resolves to its canonical tool.
-        assert!(ask_fabro_allows_tool("Read"));
+        assert!(ask_fabro_allows_tool("Read", AskFabroCapability::ReadOnly));
 
         for tool_name in [
             "write_file",
@@ -1771,7 +1957,10 @@ enabled = true
             fabro_tool::FABRO_RUN_INTERACT_TOOL_NAME,
             fabro_tool::FABRO_RUN_PAIR_TOOL_NAME,
         ] {
-            assert!(!ask_fabro_allows_tool(tool_name), "{tool_name}");
+            assert!(
+                !ask_fabro_allows_tool(tool_name, AskFabroCapability::ReadOnly),
+                "{tool_name}"
+            );
         }
     }
 
@@ -1792,10 +1981,16 @@ enabled = true
         };
 
         assert_eq!(
-            AskFabroToolPolicy.permission(&scope, &descriptor("read_file")),
+            AskFabroToolPolicy {
+                capability: AskFabroCapability::ReadOnly,
+            }
+            .permission(&scope, &descriptor("read_file")),
             ToolPermission::Allow
         );
-        match AskFabroToolPolicy.permission(&scope, &descriptor("shell")) {
+        let read_only_policy = AskFabroToolPolicy {
+            capability: AskFabroCapability::ReadOnly,
+        };
+        match read_only_policy.permission(&scope, &descriptor("shell")) {
             ToolPermission::Deny { reason } => {
                 assert!(reason.contains("denied by tool access policy"), "{reason}");
             }

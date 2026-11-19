@@ -13,6 +13,8 @@ mod completions;
 mod environments;
 pub(in crate::server) mod events;
 mod fork_ask_docs;
+#[cfg(test)]
+mod fork_ask_supervisor_tests;
 pub(in crate::server) mod graph;
 pub(in crate::server) mod lifecycle;
 pub(crate) mod lineage;

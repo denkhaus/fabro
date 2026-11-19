@@ -11,7 +11,7 @@ use lithos_llm::catalog::ProviderId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{RunId, SessionId, TurnId};
+use crate::{AskFabroCapability, RunId, SessionId, TurnId};
 
 /// One recorded event of a session.
 ///
@@ -42,6 +42,8 @@ impl SessionEvent {
 pub enum SessionEventBody {
     #[serde(rename = "run.session.created")]
     Created(SessionCreatedProps),
+    #[serde(rename = "run.session.capability.changed")]
+    CapabilityChanged(SessionCapabilityChangedProps),
     #[serde(rename = "run.session.turn.started")]
     TurnStarted(SessionTurnStartedProps),
     #[serde(rename = "run.session.user_message")]
@@ -67,6 +69,7 @@ impl SessionEventBody {
     pub fn event_name(&self) -> &'static str {
         match self {
             Self::Created(_) => "run.session.created",
+            Self::CapabilityChanged(_) => "run.session.capability.changed",
             Self::TurnStarted(_) => "run.session.turn.started",
             Self::UserMessage(_) => "run.session.user_message",
             Self::AssistantDelta(_) => "run.session.assistant_delta",
@@ -79,11 +82,12 @@ impl SessionEventBody {
         }
     }
 
-    /// The turn the event belongs to; `None` for the session's creation.
+    /// The turn the event belongs to; `None` for the session's creation and
+    /// its capability changes.
     #[must_use]
     pub fn turn_id(&self) -> Option<TurnId> {
         match self {
-            Self::Created(_) => None,
+            Self::Created(_) | Self::CapabilityChanged(_) => None,
             Self::TurnStarted(props) => Some(props.turn_id),
             Self::UserMessage(props) => Some(props.turn_id),
             Self::AssistantDelta(props) => Some(props.turn_id),
@@ -114,6 +118,18 @@ pub struct SessionCreatedProps {
     pub model:    Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<ProviderId>,
+}
+
+/// An Ask Fabro session's tool capability changed (ADR-0046): the
+/// per-session persistence of a flip an authenticated principal made —
+/// the run-stream audit of the same flip is the `session.capability`
+/// platform record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionCapabilityChangedProps {
+    pub capability: AskFabroCapability,
+    /// Who flipped the session, as the principal's login.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor:      Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

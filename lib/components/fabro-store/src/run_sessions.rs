@@ -58,6 +58,15 @@ impl RunSessionProjection {
                         last_seq: event.seq,
                     });
                 }
+                SessionEventBody::CapabilityChanged(props) => {
+                    if let Some(session) = self.sessions.get_mut(&session_id) {
+                        session.last_seq = event.seq;
+                        // The LATEST capability event wins: a flip back to
+                        // read-only must transition the posture back.
+                        session.record.capability = props.capability;
+                        session.record.updated_at = event.ts;
+                    }
+                }
                 SessionEventBody::TurnStarted(props) => {
                     if let Some(session) = self.sessions.get_mut(&session_id) {
                         session.last_seq = event.seq;
@@ -230,6 +239,51 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].status, fabro_types::SessionStatus::Failed);
         assert!(summaries[0].active_turn.is_none());
+    }
+
+    /// ADR-0046: a session without a capability event projects read-only;
+    /// the LATEST capability event wins, so a flip back transitions the
+    /// posture back.
+    #[test]
+    fn projection_folds_the_latest_session_capability() {
+        use fabro_types::AskFabroCapability;
+        use fabro_types::session_event::SessionCapabilityChangedProps;
+
+        let session_id = fabro_types::SessionId::new();
+        let events = vec![
+            event(
+                1,
+                session_id,
+                SessionEventBody::Created(SessionCreatedProps {
+                    title:    Some("Ask".to_string()),
+                    model:    None,
+                    provider: None,
+                }),
+            ),
+            event(
+                2,
+                session_id,
+                SessionEventBody::CapabilityChanged(SessionCapabilityChangedProps {
+                    capability: AskFabroCapability::FullAccess,
+                    actor:      Some("octocat".to_string()),
+                }),
+            ),
+        ];
+        let projected = project_run_session(session_id, &events).unwrap();
+        assert_eq!(projected.record.capability, AskFabroCapability::FullAccess);
+        assert_eq!(projected.last_seq, 2);
+
+        let events = [events, vec![event(
+            3,
+            session_id,
+            SessionEventBody::CapabilityChanged(SessionCapabilityChangedProps {
+                capability: AskFabroCapability::ReadOnly,
+                actor:      Some("octocat".to_string()),
+            }),
+        )]]
+        .concat();
+        let projected = project_run_session(session_id, &events).unwrap();
+        assert_eq!(projected.record.capability, AskFabroCapability::ReadOnly);
     }
 
     #[test]

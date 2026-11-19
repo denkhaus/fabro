@@ -27,6 +27,37 @@ impl SessionStatus {
     }
 }
 
+/// An Ask Fabro session's tool capability (ADR-0046): `read_only` is the
+/// posture every session starts in; `full_access` is the supervisor mode a
+/// authenticated principal flips the session into — the widened run-tool
+/// registry, the supervisor prompt, and cross-run reads.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Display,
+    EnumString,
+    IntoStaticStr,
+)]
+#[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum AskFabroCapability {
+    #[default]
+    ReadOnly,
+    FullAccess,
+}
+
+impl AskFabroCapability {
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionTurn {
     pub id:         TurnId,
@@ -46,6 +77,11 @@ pub struct RunSessionMetadata {
     pub provider:    Option<ProviderId>,
     #[serde(default)]
     pub active_turn: Option<SessionTurn>,
+    /// The session's tool capability (ADR-0046); a session without a
+    /// capability-change event has never left the default read-only
+    /// posture.
+    #[serde(default)]
+    pub capability:  AskFabroCapability,
     pub created_at:  DateTime<Utc>,
     pub updated_at:  DateTime<Utc>,
 }
@@ -60,6 +96,7 @@ impl RunSessionMetadata {
             model: None,
             provider: None,
             active_turn: None,
+            capability: AskFabroCapability::ReadOnly,
             created_at: now,
             updated_at: now,
         }
@@ -77,6 +114,8 @@ pub struct SessionSummary {
     pub provider:    Option<ProviderId>,
     #[serde(default)]
     pub active_turn: Option<SessionTurn>,
+    #[serde(default)]
+    pub capability:  AskFabroCapability,
     pub created_at:  DateTime<Utc>,
     pub updated_at:  DateTime<Utc>,
 }
@@ -91,10 +130,18 @@ impl From<&RunSessionMetadata> for SessionSummary {
             model:       record.model.clone(),
             provider:    record.provider.clone(),
             active_turn: record.active_turn.clone(),
+            capability:  record.capability,
             created_at:  record.created_at,
             updated_at:  record.updated_at,
         }
     }
+}
+
+/// The body of the session capability flip (ADR-0046): the posture to
+/// move the session to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetSessionCapabilityRequest {
+    pub capability: AskFabroCapability,
 }
 
 /// Session metadata plus the event-log position the projection was read at.

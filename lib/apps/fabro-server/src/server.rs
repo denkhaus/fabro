@@ -1368,6 +1368,17 @@ impl AppState {
         )
         .expect("a test worker token signs")
     }
+
+    /// A worker token for `run_id` with the supervisor capability
+    /// (ADR-0046), as a full-access ask session's backend carries.
+    pub fn test_issue_worker_token_supervisor(&self, run_id: &RunId) -> String {
+        issue_worker_token_with_scopes(
+            &self.worker_tokens,
+            run_id,
+            WorkerScopeSet::run_worker_supervisor(),
+        )
+        .expect("a test worker token signs")
+    }
 }
 
 impl AppState {

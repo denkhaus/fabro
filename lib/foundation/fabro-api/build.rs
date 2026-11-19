@@ -868,6 +868,12 @@ fn main() {
         ("TurnId", "fabro_types::TurnId", &[]),
         ("SessionStatus", "fabro_types::SessionStatus", &[]),
         ("SessionTurn", "fabro_types::SessionTurn", &[]),
+        ("AskFabroCapability", "fabro_types::AskFabroCapability", &[]),
+        (
+            "SetSessionCapabilityRequest",
+            "fabro_types::SetSessionCapabilityRequest",
+            &[],
+        ),
         ("RunSessionMetadata", "fabro_types::RunSessionMetadata", &[]),
         ("SessionSummary", "fabro_types::SessionSummary", &[]),
         ("SessionDetail", "fabro_types::SessionDetail", &[]),
