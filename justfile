@@ -125,10 +125,16 @@ host-release host port arch='amd64' sha='':
       sha_arg="{{ sha }}"
       tmpdir=$(mktemp -d)
       scp -P {{ port }} "{{ host }}:$artifact" "$tmpdir/" >/dev/null
+      # The .sha256 asset (work#1465's release-side arm): the fabro
+      # upgrade door downloads `{tarball}.sha256` and verifies the
+      # download against it. Computed HERE from the file we actually
+      # upload, never from the host log line (verify-never-assume).
+      tarball="$tmpdir/$(basename "$artifact")"
+      (cd "$tmpdir" && sha256sum "$(basename "$artifact")" > "$(basename "$artifact").sha256")
       gh release view "$version" --repo denkhaus/fabro >/dev/null 2>&1 \
         || gh release create "$version" --repo denkhaus/fabro --target "$(git rev-parse HEAD)" --title "$version" --notes "Release $version. The CLI ships as the static musl binary attached below (work#1335)."
-      gh release upload "$version" "$tmpdir/$(basename "$artifact")" --repo denkhaus/fabro --clobber
-      echo "release binary attached: $version/$(basename "$artifact")"
+      gh release upload "$version" "$tarball" "$tarball.sha256" --repo denkhaus/fabro --clobber
+      echo "release binary attached: $version/$(basename "$artifact") (+ .sha256)"
       rm -rf "$tmpdir"
       ssh -p {{ port }} {{ host }} "rm -f '$artifact'"
     else

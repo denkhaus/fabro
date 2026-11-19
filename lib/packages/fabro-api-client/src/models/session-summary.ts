@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AskFabroCapability } from './ask-fabro-capability';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { SessionStatus } from './session-status';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -40,6 +43,7 @@ export interface SessionSummary {
      */
     'provider'?: string | null;
     'active_turn': SessionTurn | null;
+    'capability'?: AskFabroCapability;
     'created_at': string;
     'updated_at': string;
 }
