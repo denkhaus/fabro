@@ -25,11 +25,11 @@
 vendor = "vendor/petri"
 fork = "denkhaus/petri"
 branch = "fabro"
-fork_sha = "8b4978743f307d89fea985bb988110b2e98c4f60"
+fork_sha = "d0ac33970ae93f92cd1865127968cef317966217"
 upstream = "lithoscomputer/petri"
 upstream_sha = "e46845bd0139dd04e9e795d3201b5b9b4b8b1026"
-tree_sha = "20681830b369bebb9357ac9709ef427d2291932b"
-content_sha256 = "b7ec8e95f9f1a46340753737d76112a583a5b59017abe91c834f577149d2edbe"
+tree_sha = "315866917c061cb889858c9b0a4d2c0a2cdff70b"
+content_sha256 = "12c3e095e1a9c624884a50002e382683fa05200b47f1a7b2ec69926daa11e6b5"
 files = 935
 crates = [
     "petri-attractor-steps",
@@ -48,7 +48,7 @@ crates = [
     "petri-store",
     "petri-testkit",
 ]
-imported = "2026-11-18"
+imported = "2026-11-19"
 [pebble]
 vendor = "vendor/pebble"
 fork = "denkhaus/pebble"
@@ -69,11 +69,11 @@ imported = "2026-10-24"
 vendor = "vendor/sandbox-driver"
 fork = "denkhaus/sandbox-driver"
 branch = "fabro"
-fork_sha = "035ab83a4b2aae8ba18193f21a2caf535c7cab33"
+fork_sha = "d28cabbae99cec45bd8b625612db03109c5cc0b1"
 upstream = "lithoscomputer/sandbox-driver"
 upstream_sha = "90b0d825767105d4b42e59fdbd116c4d66b87d83"
-tree_sha = "9bbfba36028fbeaba7de43ca7b32929bd6206b79"
-content_sha256 = "8accab1c01af4dee609d4913588d97d6fbf846cfcc5d2e5cb6e865dd007e3973"
+tree_sha = "cbee5d19ad6890fcf7f5e339c6138f6fab8d1be3"
+content_sha256 = "d1a979b850ec3342d24da0aba3ed8ed1d89bbc6eac3843568ff204dff404f348"
 files = 248
 crates = [
     "sandbox-driver",
@@ -85,4 +85,4 @@ crates = [
     "sandbox-driver-protocol",
     "sandbox-driver-testing",
 ]
-imported = "2026-11-18"
+imported = "2026-11-19"
