@@ -28,7 +28,27 @@ use crate::shared::print_json_pretty;
 
 // ── Download backend abstraction ───────────────────────────────────────────
 
+/// Upstream repository. `release_repo()` falls back here when the running
+/// version carries no `-fork` pre-release suffix.
 const GITHUB_REPO: &str = "fabro-sh/fabro";
+
+/// Repository hosting the fork's `-fork.N` releases (work#1465).
+const FORK_GITHUB_REPO: &str = "denkhaus/fabro";
+
+/// Resolve the GitHub repository the upgrade door targets (work#1465).
+///
+/// Fork builds carry a `-fork.N` suffix in their version
+/// (`0.362.0-fork.42-a08b4c3111e7`) and release into `denkhaus/fabro`,
+/// while upstream builds release into [`GITHUB_REPO`]. The running version
+/// string decides, so the door reaches the fork's releases for fork builds
+/// and keeps working against upstream for upstream consumers.
+fn release_repo() -> &'static str {
+    if env!("CARGO_PKG_VERSION").contains("-fork") {
+        FORK_GITHUB_REPO
+    } else {
+        GITHUB_REPO
+    }
+}
 
 enum Backend {
     Gh,
@@ -132,16 +152,15 @@ async fn fetch_tap_version(
 }
 
 impl Backend {
-    async fn fetch_latest_release_tag(&self) -> Result<String> {
+    /// Fetch the latest published release together with its attached asset
+    /// names (work#1465: the assets ride along so the exact version-prefixed
+    /// asset names of fork releases can be resolved before downloading).
+    async fn fetch_latest_release(&self) -> Result<ReleaseSummary> {
+        let repo = release_repo();
         match self {
             Self::Gh => {
                 let output = TokioCommand::new("gh")
-                    .args([
-                        "api",
-                        &format!("repos/{GITHUB_REPO}/releases/latest"),
-                        "--jq",
-                        ".tag_name",
-                    ])
+                    .args(["api", &format!("repos/{repo}/releases/latest")])
                     .output()
                     .await
                     .context("failed to run `gh api repos/.../releases/latest`")?;
@@ -149,10 +168,12 @@ impl Backend {
                     let stderr = String::from_utf8_lossy(&output.stderr);
                     bail!("gh api repos/.../releases/latest failed: {stderr}");
                 }
-                Ok(String::from_utf8(output.stdout)?.trim().to_string())
+                let release: ReleaseSummary = serde_json::from_slice(&output.stdout)
+                    .context("failed to parse gh latest release JSON")?;
+                Ok(release)
             }
             Self::Http(client) => {
-                let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/latest");
+                let url = format!("https://api.github.com/repos/{repo}/releases/latest");
                 let resp = client
                     .get(&url)
                     .send()
@@ -164,20 +185,57 @@ impl Backend {
                         resp.status()
                     );
                 }
-                let json: serde_json::Value = resp.json().await?;
-                let tag = json["tag_name"]
-                    .as_str()
-                    .context("missing tag_name in GitHub API response")?;
-                Ok(tag.to_string())
+                let release: ReleaseSummary = resp.json().await?;
+                Ok(release)
+            }
+        }
+    }
+
+    /// Fetch a single release by tag, with its attached asset names
+    /// (work#1465: the `--version` path resolves assets from the release
+    /// instead of deriving version-less asset names).
+    async fn fetch_release_by_tag(&self, tag: &str) -> Result<ReleaseSummary> {
+        let repo = release_repo();
+        match self {
+            Self::Gh => {
+                let output = TokioCommand::new("gh")
+                    .args(["api", &format!("repos/{repo}/releases/tags/{tag}")])
+                    .output()
+                    .await
+                    .context("failed to run `gh api repos/.../releases/tags/...`")?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    bail!("gh api repos/.../releases/tags/... failed: {stderr}");
+                }
+                let release: ReleaseSummary = serde_json::from_slice(&output.stdout)
+                    .context("failed to parse gh release JSON")?;
+                Ok(release)
+            }
+            Self::Http(client) => {
+                let url = format!("https://api.github.com/repos/{repo}/releases/tags/{tag}");
+                let resp =
+                    client.get(&url).send().await.with_context(|| {
+                        format!("failed to fetch release {tag} from GitHub API")
+                    })?;
+                if !resp.status().is_success() {
+                    bail!(
+                        "GitHub API returned status {} when fetching release {tag} \
+                         (pass the exact release tag)",
+                        resp.status()
+                    );
+                }
+                let release: ReleaseSummary = resp.json().await?;
+                Ok(release)
             }
         }
     }
 
     async fn fetch_releases(&self) -> Result<Vec<ReleaseSummary>> {
+        let repo = release_repo();
         match self {
             Self::Gh => {
                 let output = TokioCommand::new("gh")
-                    .args(["api", &format!("repos/{GITHUB_REPO}/releases")])
+                    .args(["api", &format!("repos/{repo}/releases")])
                     .output()
                     .await
                     .context("failed to run `gh api repos/.../releases`")?;
@@ -190,7 +248,7 @@ impl Backend {
                 Ok(releases)
             }
             Self::Http(client) => {
-                let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases");
+                let url = format!("https://api.github.com/repos/{repo}/releases");
                 let resp = client
                     .get(&url)
                     .send()
@@ -210,6 +268,7 @@ impl Backend {
 
     async fn download_release(&self, tag: &str, asset: &str, dest_dir: &Path) -> Result<PathBuf> {
         let dest = dest_dir.join(asset);
+        let repo = release_repo();
         match self {
             Self::Gh => {
                 let status = TokioCommand::new("gh")
@@ -218,7 +277,7 @@ impl Backend {
                         "download",
                         tag,
                         "--repo",
-                        GITHUB_REPO,
+                        repo,
                         "--pattern",
                         asset,
                         "--dir",
@@ -233,8 +292,7 @@ impl Backend {
                 }
             }
             Self::Http(client) => {
-                let url =
-                    format!("https://github.com/{GITHUB_REPO}/releases/download/{tag}/{asset}");
+                let url = format!("https://github.com/{repo}/releases/download/{tag}/{asset}");
                 let resp = client
                     .get(&url)
                     .send()
@@ -350,13 +408,70 @@ fn parse_version_from_tag(tag: &str) -> Result<Version> {
     Version::parse(stripped).with_context(|| format!("invalid version: {tag}"))
 }
 
-// ── Release listing (for --prerelease) ─────────────────────────────────────
+/// True when a version is a fork build: its pre-release starts with the
+/// `fork` identifier (`0.362.0-fork.42-a08b4c3111e7`), as published by the
+/// fork release pipeline (work#1465).
+fn is_fork_version(v: &Version) -> bool {
+    v.pre.split('.').next() == Some("fork")
+}
+
+/// The numeric fork revision of a fork build (`42` in
+/// `0.362.0-fork.42-a08b4c3111e7`), or `None` when absent or unparsable.
+fn fork_number(v: &Version) -> Option<u64> {
+    let id = v.pre.split('.').nth(1)?;
+    let digits: String = id.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse::<u64>().ok()
+}
+
+/// Compare a candidate release version against the running version with
+/// fork awareness (work#1465).
+///
+/// - Both fork builds: the base version decides; on equal bases the fork number
+///   decides numerically (so `fork.10` > `fork.9`). Equal fork numbers order
+///   `Equal`: the sha tail on fork tags identifies the build, not a newer
+///   version, and plain semver would misread a sha'd tag as older than the
+///   sha-less installed version. Builds whose fork number is missing or
+///   unparsable fall back to plain semver order.
+/// - Every other pairing (upstream vs upstream, or the mixed fork vs upstream
+///   case): plain semver order — today's behavior. Mixed pairings additionally
+///   surface a warning at the call site.
+fn compare_release_versions(target: &Version, current: &Version) -> std::cmp::Ordering {
+    if !is_fork_version(target) || !is_fork_version(current) {
+        return target.cmp(current);
+    }
+    let base = (target.major, target.minor, target.patch).cmp(&(
+        current.major,
+        current.minor,
+        current.patch,
+    ));
+    if base != std::cmp::Ordering::Equal {
+        return base;
+    }
+    match (fork_number(target), fork_number(current)) {
+        (Some(a), Some(b)) if a != b => a.cmp(&b),
+        (Some(_), Some(_)) => std::cmp::Ordering::Equal,
+        _ => target.cmp(current),
+    }
+}
+
+// ── Release payloads (listing + selection) ─────────────────────────────────
+
+/// One asset attached to a release (GitHub releases JSON `assets[].name`),
+/// kept so the door can resolve the version-prefixed asset names fork
+/// releases attach (work#1465).
+#[derive(serde::Deserialize)]
+struct AssetSummary {
+    name: String,
+}
 
 #[derive(serde::Deserialize)]
 struct ReleaseSummary {
     tag_name: String,
     #[serde(default)]
     draft:    bool,
+    /// Assets attached to the release; empty for payloads that omit them.
+    #[serde(default)]
+    assets:   Vec<AssetSummary>,
 }
 
 /// Pick the `tag_name` with the highest semver from `releases`, skipping
@@ -373,6 +488,48 @@ fn pick_latest_tag(releases: &[ReleaseSummary]) -> Option<String> {
         })
         .max_by(|a, b| a.0.cmp(&b.0))
         .map(|(_, tag)| tag.clone())
+}
+
+/// Resolve the exact asset names to download from the chosen release's
+/// asset list (work#1465).
+///
+/// Fork releases attach version-prefixed assets
+/// (`fabro-<version>-<triple>.tar.gz`) while upstream releases attach
+/// version-less ones (`fabro-<triple>.tar.gz`); both end with
+/// `-<triple>.tar.gz`, so a suffix match resolves the exact asset for
+/// either flavor without knowing the version up front. The checksum is the
+/// exact `<tarball>.sha256` sibling asset and is optional: releases may
+/// ship without one (work#1465).
+fn resolve_asset_names(
+    tag: &str,
+    assets: &[AssetSummary],
+    triple: &str,
+) -> Result<(String, Option<String>)> {
+    let tarball_suffix = format!("-{triple}.tar.gz");
+    let candidates: Vec<&str> = assets
+        .iter()
+        .map(|asset| asset.name.as_str())
+        .filter(|name| name.ends_with(&tarball_suffix))
+        .collect();
+    let tarball = match candidates.as_slice() {
+        [] => bail!(
+            "release {tag} carries no tarball asset for {triple} (attached assets: {:?})",
+            assets
+                .iter()
+                .map(|asset| asset.name.as_str())
+                .collect::<Vec<_>>()
+        ),
+        [only] => (*only).to_string(),
+        [..] => {
+            bail!("release {tag} carries multiple tarball candidates for {triple}: {candidates:?}")
+        }
+    };
+    let checksum_name = format!("{tarball}.sha256");
+    let checksum = assets
+        .iter()
+        .any(|asset| asset.name == checksum_name)
+        .then_some(checksum_name);
+    Ok((tarball, checksum))
 }
 
 // ── SHA256 verification ────────────────────────────────────────────────────
@@ -459,26 +616,51 @@ pub(crate) async fn run_upgrade(args: UpgradeArgs, ctx: &CommandContext) -> Resu
     let current =
         Version::parse(env!("CARGO_PKG_VERSION")).context("failed to parse current version")?;
 
-    // Determine target version
-    let (target, tag) = if let Some(ref v) = args.version {
+    // Determine target version. The release's asset list travels with the
+    // selection so the download can use the exact asset names (work#1465:
+    // fork releases version-prefix their assets). Fork release tags carry
+    // no `v` prefix, so `--version` only prefixes one for upstream builds.
+    // For `--version` the release fetch is deferred past the version gate
+    // below: the "already on version" short-circuit must keep working
+    // without the network.
+    let (tag, version_assets) = if let Some(ref v) = args.version {
         let version = parse_version_from_tag(v)?;
-        let tag = format!("v{version}");
-        (version, tag)
-    } else {
-        let tag = if args.prerelease {
-            match pick_latest_tag(&backend.fetch_releases().await?) {
-                Some(t) => t,
-                None => backend.fetch_latest_release_tag().await?,
-            }
+        let tag = if is_fork_version(&version) {
+            version.to_string()
         } else {
-            backend.fetch_latest_release_tag().await?
+            format!("v{version}")
         };
-        let version = parse_version_from_tag(&tag)?;
-        (version, tag)
+        (tag, None)
+    } else if args.prerelease {
+        let releases = backend.fetch_releases().await?;
+        if let Some(tag) = pick_latest_tag(&releases) {
+            let assets = releases
+                .into_iter()
+                .find(|release| release.tag_name == tag)
+                .map(|release| release.assets)
+                .unwrap_or_default();
+            (tag, Some(assets))
+        } else {
+            let release = backend.fetch_latest_release().await?;
+            (release.tag_name, Some(release.assets))
+        }
+    } else {
+        let release = backend.fetch_latest_release().await?;
+        (release.tag_name, Some(release.assets))
     };
+    let target = parse_version_from_tag(&tag)?;
 
-    // Downgrade protection
-    match target.cmp(&current) {
+    // Downgrade protection (fork-aware, work#1465)
+    let mixed = is_fork_version(&target) != is_fork_version(&current);
+    let ordering = compare_release_versions(&target, &current);
+    if ordering == std::cmp::Ordering::Less && mixed {
+        fabro_util::printerr!(
+            printer,
+            "Warning: comparing fork build {target} against non-fork version {current}; using \
+             plain semver order (work#1465)"
+        );
+    }
+    match ordering {
         std::cmp::Ordering::Less => {
             if args.version.is_none() {
                 bail!(
@@ -513,24 +695,43 @@ pub(crate) async fn run_upgrade(args: UpgradeArgs, ctx: &CommandContext) -> Resu
         _ => {}
     }
 
+    // Resolve the exact asset names for this platform before the dry-run
+    // so it proves the real fork asset resolution (work#1465). The
+    // `--version` path fetches the tagged release here, past the version
+    // gate above.
+    let release_assets = match version_assets {
+        Some(assets) => assets,
+        None => backend.fetch_release_by_tag(&tag).await?.assets,
+    };
+    let triple = detect_target()?;
+    let (tarball_name, checksum_name) = resolve_asset_names(&tag, &release_assets, triple)?;
+
     if args.dry_run {
         if cli.output.format == OutputFormat::Json {
             print_json_pretty(&serde_json::json!({
                 "previous_version": current.to_string(),
                 "installed_version": target.to_string(),
                 "dry_run": true,
+                "tag": tag,
+                "tarball_asset": tarball_name,
+                "checksum_asset": checksum_name,
             }))?;
         } else {
             fabro_util::printerr!(printer, "Would upgrade fabro from {current} to {target}");
             fabro_util::printerr!(printer, "  tag: {tag}");
-            fabro_util::printerr!(printer, "  target: {}", detect_target()?);
+            fabro_util::printerr!(printer, "  target: {triple}");
+            fabro_util::printerr!(printer, "  tarball: {tarball_name}");
+            if let Some(ref name) = checksum_name {
+                fabro_util::printerr!(printer, "  checksum: {name}");
+            } else {
+                fabro_util::printerr!(
+                    printer,
+                    "  checksum: <none attached; verification will be skipped>"
+                );
+            }
         }
         return Ok(());
     }
-
-    let triple = detect_target()?;
-    let tarball_name = format!("fabro-{triple}.tar.gz");
-    let checksum_name = format!("{tarball_name}.sha256");
 
     let exe_dir = current_exe
         .parent()
@@ -540,18 +741,34 @@ pub(crate) async fn run_upgrade(args: UpgradeArgs, ctx: &CommandContext) -> Resu
         .or_else(|_| tempfile::tempdir())
         .context("failed to create temp directory")?;
 
-    // Download tarball and checksum in parallel
+    // Download tarball and checksum in parallel; a release without a
+    // checksum asset upgrades unverified with a loud warning (work#1465).
     fabro_util::printerr!(printer, "Downloading fabro {target}...");
-    let (tarball_path, checksum_path) = tokio::try_join!(
-        backend.download_release(&tag, &tarball_name, tmp_dir.path()),
-        backend.download_release(&tag, &checksum_name, tmp_dir.path()),
-    )?;
+    let (tarball_path, checksum_path) = if let Some(ref checksum) = checksum_name {
+        let (tarball_path, checksum_path) = tokio::try_join!(
+            backend.download_release(&tag, &tarball_name, tmp_dir.path()),
+            backend.download_release(&tag, checksum, tmp_dir.path()),
+        )?;
+        (tarball_path, Some(checksum_path))
+    } else {
+        fabro_util::printerr!(
+            printer,
+            "Warning: release {tag} ships no .sha256 checksum asset; skipping checksum \
+             verification (work#1465)"
+        );
+        let tarball_path = backend
+            .download_release(&tag, &tarball_name, tmp_dir.path())
+            .await?;
+        (tarball_path, None)
+    };
 
     // Verify SHA256 using streaming hash
-    let checksum_content = fs::read_to_string(&checksum_path)
-        .with_context(|| format!("reading checksum file {}", checksum_path.display()))?;
-    verify_checksum(&tarball_path, &checksum_content)?;
-    debug!("SHA256 checksum verified");
+    if let Some(checksum_path) = checksum_path.as_ref() {
+        let checksum_content = fs::read_to_string(checksum_path)
+            .with_context(|| format!("reading checksum file {}", checksum_path.display()))?;
+        verify_checksum(&tarball_path, &checksum_content)?;
+        debug!("SHA256 checksum verified");
+    }
 
     // Extract tarball
     let status = TokioCommand::new("tar")
@@ -677,7 +894,7 @@ async fn check_and_print_notice(printer: Printer) -> Result<()> {
     if let Some(state) = UpgradeCheckState::load(&state_path) {
         if state.is_usable_for(source) {
             if let Ok(latest) = Version::parse(&state.latest_version) {
-                if latest > current {
+                if compare_release_versions(&latest, &current) == std::cmp::Ordering::Greater {
                     print_notice(&current, &latest, source, printer);
                 }
             }
@@ -704,8 +921,8 @@ async fn check_and_print_notice(printer: Printer) -> Result<()> {
         }
         InstallSource::Tarball => {
             let backend = select_backend().await?;
-            let tag = backend.fetch_latest_release_tag().await?;
-            parse_version_from_tag(&tag)?
+            let release = backend.fetch_latest_release().await?;
+            parse_version_from_tag(&release.tag_name)?
         }
     };
 
@@ -720,7 +937,7 @@ async fn check_and_print_notice(printer: Printer) -> Result<()> {
     };
     let _ = state.save(&state_path);
 
-    if latest > current {
+    if compare_release_versions(&latest, &current) == std::cmp::Ordering::Greater {
         print_notice(&current, &latest, source, printer);
     }
 
@@ -908,6 +1125,7 @@ mod tests {
         ReleaseSummary {
             tag_name: tag.to_string(),
             draft,
+            assets: Vec::new(),
         }
     }
 
@@ -1224,5 +1442,197 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.to_string().contains("Homebrew"));
+    }
+
+    // -- Fork-aware repo selection (work#1465) --
+
+    #[test]
+    fn release_repo_targets_fork_repo_for_fork_builds() {
+        // The selection rule is compile-time: fork builds (version carries
+        // `-fork`) target the fork repo, upstream builds stay upstream.
+        let expected = if env!("CARGO_PKG_VERSION").contains("-fork") {
+            FORK_GITHUB_REPO
+        } else {
+            GITHUB_REPO
+        };
+        assert_eq!(release_repo(), expected);
+        // Pin the two repos themselves so a rename cannot slip silently.
+        assert_eq!(FORK_GITHUB_REPO, "denkhaus/fabro");
+        assert_eq!(GITHUB_REPO, "fabro-sh/fabro");
+    }
+
+    // -- Fork version parsing (work#1465) --
+
+    #[test]
+    fn is_fork_version_detects_fork_prerelease() {
+        assert!(is_fork_version(&Version::parse("0.362.0-fork.42").unwrap()));
+        assert!(is_fork_version(
+            &Version::parse("0.362.0-fork.42-a08b4c3111e7").unwrap()
+        ));
+        assert!(!is_fork_version(&Version::parse("0.362.0").unwrap()));
+        assert!(!is_fork_version(
+            &Version::parse("0.205.0-nightly.0").unwrap()
+        ));
+    }
+
+    #[test]
+    fn fork_number_extracts_numeric_revision() {
+        assert_eq!(
+            fork_number(&Version::parse("0.362.0-fork.42").unwrap()),
+            Some(42)
+        );
+        assert_eq!(
+            fork_number(&Version::parse("0.362.0-fork.10-a08b4c3111e7").unwrap()),
+            Some(10)
+        );
+        assert_eq!(fork_number(&Version::parse("0.362.0-fork").unwrap()), None);
+        assert_eq!(fork_number(&Version::parse("0.362.0").unwrap()), None);
+    }
+
+    // -- Fork-aware version comparison (work#1465) --
+
+    #[test]
+    fn compare_orders_fork_numbers_numerically() {
+        let newer = Version::parse("0.362.0-fork.10").unwrap();
+        let older = Version::parse("0.362.0-fork.9").unwrap();
+        assert_eq!(
+            compare_release_versions(&newer, &older),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_release_versions(&older, &newer),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn compare_equal_fork_numbers_with_sha_tail_is_equal() {
+        // The sha tail identifies the build, not a newer version; plain
+        // semver would order the sha'd tag as older than the sha-less one.
+        let tagged = Version::parse("0.362.0-fork.42-a08b4c3111e7").unwrap();
+        let installed = Version::parse("0.362.0-fork.42").unwrap();
+        assert_eq!(
+            compare_release_versions(&tagged, &installed),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            compare_release_versions(&installed, &tagged),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn compare_orders_fork_builds_by_base_version_first() {
+        let newer_base = Version::parse("0.363.0-fork.1").unwrap();
+        let older_base = Version::parse("0.362.0-fork.99").unwrap();
+        assert_eq!(
+            compare_release_versions(&newer_base, &older_base),
+            std::cmp::Ordering::Greater
+        );
+    }
+
+    #[test]
+    fn compare_mixed_pairs_keep_plain_semver_order() {
+        let fork = Version::parse("0.362.0-fork.42").unwrap();
+        let upstream = Version::parse("0.361.0").unwrap();
+        assert_eq!(
+            compare_release_versions(&fork, &upstream),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_release_versions(&upstream, &fork),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn compare_unparsable_fork_number_falls_back_to_plain_semver() {
+        let shaless = Version::parse("0.362.0-fork").unwrap();
+        let numbered = Version::parse("0.362.0-fork.1").unwrap();
+        // Plain semver: `fork.1` pre-release sorts after bare `fork`.
+        assert_eq!(
+            compare_release_versions(&numbered, &shaless),
+            numbered.cmp(&shaless)
+        );
+    }
+
+    // -- Asset-name resolution (work#1465) --
+
+    fn assets(names: &[&str]) -> Vec<AssetSummary> {
+        names
+            .iter()
+            .map(|name| AssetSummary {
+                name: (*name).to_string(),
+            })
+            .collect()
+    }
+
+    const TEST_TRIPLE: &str = "x86_64-unknown-linux-gnu";
+
+    #[test]
+    fn resolve_asset_names_matches_fork_version_prefixed_tarball() {
+        let list = assets(&[
+            "fabro-0.362.0-fork.42-x86_64-unknown-linux-gnu.tar.gz",
+            "fabro-0.362.0-fork.42-x86_64-unknown-linux-gnu.tar.gz.sha256",
+            "fabro-0.362.0-fork.42-aarch64-apple-darwin.tar.gz",
+        ]);
+        let (tarball, checksum) =
+            resolve_asset_names("0.362.0-fork.42-a08b4c3111e7", &list, TEST_TRIPLE).unwrap();
+        assert_eq!(
+            tarball,
+            "fabro-0.362.0-fork.42-x86_64-unknown-linux-gnu.tar.gz"
+        );
+        assert_eq!(
+            checksum.as_deref(),
+            Some("fabro-0.362.0-fork.42-x86_64-unknown-linux-gnu.tar.gz.sha256")
+        );
+    }
+
+    #[test]
+    fn resolve_asset_names_matches_upstream_version_less_tarball() {
+        let list = assets(&[
+            "fabro-x86_64-unknown-linux-gnu.tar.gz",
+            "fabro-x86_64-unknown-linux-gnu.tar.gz.sha256",
+        ]);
+        let (tarball, checksum) = resolve_asset_names("v0.254.0", &list, TEST_TRIPLE).unwrap();
+        assert_eq!(tarball, "fabro-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(
+            checksum.as_deref(),
+            Some("fabro-x86_64-unknown-linux-gnu.tar.gz.sha256")
+        );
+    }
+
+    #[test]
+    fn resolve_asset_names_returns_none_checksum_when_sibling_absent() {
+        let list = assets(&["fabro-0.362.0-fork.41-x86_64-unknown-linux-gnu.tar.gz"]);
+        let (tarball, checksum) = resolve_asset_names("tag", &list, TEST_TRIPLE).unwrap();
+        assert_eq!(
+            tarball,
+            "fabro-0.362.0-fork.41-x86_64-unknown-linux-gnu.tar.gz"
+        );
+        assert_eq!(checksum, None);
+    }
+
+    #[test]
+    fn resolve_asset_names_errors_when_no_tarball_for_triple() {
+        let list = assets(&["fabro-0.362.0-fork.42-aarch64-apple-darwin.tar.gz"]);
+        let err = resolve_asset_names("tag", &list, TEST_TRIPLE).unwrap_err();
+        assert!(
+            err.to_string().contains("no tarball asset"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn resolve_asset_names_errors_on_multiple_tarball_candidates() {
+        let list = assets(&[
+            "fabro-0.362.0-fork.42-x86_64-unknown-linux-gnu.tar.gz",
+            "fabro-0.361.0-fork.41-x86_64-unknown-linux-gnu.tar.gz",
+        ]);
+        let err = resolve_asset_names("tag", &list, TEST_TRIPLE).unwrap_err();
+        assert!(
+            err.to_string().contains("multiple tarball candidates"),
+            "unexpected error: {err}"
+        );
     }
 }
