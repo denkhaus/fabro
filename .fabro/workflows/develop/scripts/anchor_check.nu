@@ -294,3 +294,45 @@ export def lane-surface-risk? [desc: string, lane: string]: nothing -> bool {
     $tokens | any {|t| $desc | str contains $t}
 }
 
+# ── Partially-landed advisory (denkhaus/work#1433) ─────────────────────
+# The incidental-land signal: a body that names a concrete anchor as
+# `path:line` WITH the criterion content quoted ("at projection.rs:210
+# 'fn fold_triage_migrations'") while the merge target already carries
+# that file with DIFFERENT content — another change landed the criterion
+# in a drifted form, and the preflight would otherwise report a bare
+# "clean" (clean-miss) or bare anchor-rot noise while the implementer
+# burns the lap re-deriving the landed state by hand.
+#   partially-landed-flags  per-anchor probe over quote-paired path:line
+#                           citations ONLY (unquoted test-name tokens are
+#                           the false-positive class and stay out);
+#                           fires {path, line, status: "content_drift"}
+#                           when the quoted criterion content is ABSENT
+#                           from the base's copy of the file.
+# Fail-open hard rule: a path that does not resolve in the worktree (the
+# anchor-rot arms' business), a file absent from the base, and ANY git
+# failure all yield no flag — the advisory narrows, never invents. The
+# base probe greps the WHOLE base file, not the cited range: a criterion
+# that landed at shifted lines is line rot (anchor_flags' business), not
+# content drift.
+export def base-file-content [base: string, full: string, root: string]: nothing -> any {
+    let rel = (try { $full | path relative-to $root } catch { return null })
+    let probe = (try { do { git -C $root show $"($base):($rel)" } | complete } catch { null })
+    if $probe == null { return null }
+    if $probe.exit_code != 0 { return null }
+    $probe.stdout
+}
+
+export def partially-landed-flags [desc: string, base: string, root: string]: nothing -> list {
+    extract-anchors $desc
+    | where {|a| not ($a.claim | is-empty)}
+    | each {|a|
+        let resolved = (resolve-anchor-path $a.path $root)
+        if $resolved == null { null } else {
+            let content = (base-file-content $base $resolved.full $root)
+            if $content == null { null } else if ((norm-ws $content) | str contains (norm-ws $a.claim)) { null } else {
+                {path: $a.path, line: $a.start, status: "content_drift"}
+            }
+        }
+    }
+    | compact
+}

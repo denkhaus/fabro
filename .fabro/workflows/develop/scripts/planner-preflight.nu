@@ -107,6 +107,17 @@
 #     pattern: a brief containing `just qualitygate` or its
 #     byte-equivalent body fails validation and burns an output retry,
 #     never passes silently.
+#   arm 5 (denkhaus/work#1433): partially-landed advisory — quote-paired
+#     body anchors (path:line + quoted criterion content) are probed
+#     against the MERGE TARGET (git show $base:path via anchor_check.nu
+#     partially-landed-flags); a file present with the criterion content
+#     ABSENT fires partially_landed/content_drift — the incidental-land
+#     signal (work#1421 class: an unrelated run's commit landed the
+#     demanded criterion, the verdict read "clean", the planner sent the
+#     implementer into partially-landed work anyway). ADVISORY only: the
+#     verdict never changes, nothing closes or routes; fail-open —
+#     unresolved paths, base-missing files, and any git failure yield no
+#     flags (degraded stays degraded).
 
 # Anchor verification helpers (fabro-7daf): cited file:line anchors in
 # seed descriptions are checked against the current worktree so rotted
@@ -306,6 +317,12 @@ def stranded-flags [desc: string, base: string, refs_fetched: bool]: nothing -> 
 # ADVISORY in both directions: a body mention is not proof (the foreign
 # path may be cited as BASIS while the primary fix surface is in-lane) —
 # the planner verifies the primary surface before claiming.
+# Partially-landed advisory (denkhaus/work#1433): partially_landed is
+# true when any quote-paired body anchor's criterion content is ABSENT
+# from the merge target's copy of the file (content_drift rows in
+# partially_landed_flags) — the incidental-land reading of drift; the
+# verdict itself is NEVER changed by it, and every git failure degrades
+# to no flags (fail-open).
 
 def row [v: record, desc: string, root: string, claims: list, base: string, refs_fetched: bool, lane: string] {
     let m = ($v.implementation_matches? | default [] | first | default {})
@@ -319,6 +336,10 @@ def row [v: record, desc: string, root: string, claims: list, base: string, refs
     # Stranded-implementation scan (arm 4): try/catch is the fail-open
     # hard rule — an arm crash degrades to zero flags, never blocks.
     let sflags = (try { stranded-flags $desc $base $refs_fetched } catch { [] })
+    # Partially-landed advisory (arm 5, denkhaus/work#1433): same
+    # fail-open hard rule — an arm crash or a git failure degrades to
+    # zero flags, never a verdict change, never a block.
+    let pl = (try { partially-landed-flags $desc $base $root } catch { [] })
     # in-flight is advisory: never marked for candidates whose
     # implementation already landed (the duplicate close path owns them).
     let hit = (if $v.verdict == "duplicate" { null } else { $claims | where {|c| $c.seed == $v.seed} | first | default null })
@@ -341,6 +362,8 @@ def row [v: record, desc: string, root: string, claims: list, base: string, refs
      in_flight_run: (if $hit == null { null } else { $hit.run}),
      salvage_ok: (($sflags | length) == 0),
      salvage_flags: $sflags,
+     partially_landed: (($pl | length) > 0),
+     partially_landed_flags: $pl,
      envelope_risk: (lane-surface-risk? $desc $lane)}
 }
 
@@ -408,6 +431,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
         let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before implementing; loop-asset-only or external-tool items are DIRECT WORK (route Blocked naming the misroute)"}
         let basis_legend = {basis_commit: "advisory: the body's Basis-line commit sha. basis_commit_resolves=false means the commit is unreachable in this object DB (squash-merged run branches strand their basis commits) — NOT a stale-basis verdict: adjudicate the basis via its files/worktree, never probe for the sha; null = no sha in body or tooling fail-open"}
         let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing, already_in_base, branch_missing, or pointer_missing (resolve the implementer commit BEFORE implementing)"}
+        let pl_legend = {partially_landed: "advisory (denkhaus/work#1433): a body anchor's quoted criterion content is ABSENT from the file as the merge target carries it — the criterion may already be landed by an unrelated change in a drifted form (or the citation rotted): grep the target before implementing; the planner judges, nothing closes mechanically"}
         let report = {mode: "checked",
                       run_id: ($run_id | default null),
                       item: $key,
@@ -416,7 +440,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
                       # surfaces (the misroute detector); the develop
                       # default stays "fabro" (loop-asset risk).
                       candidates: [(row $verdict $body ($SCRIPT_DIR | path join '../../../..') [] $base false $assignee)],
-                      legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $salvage_legend),
+                      legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $salvage_legend | merge $pl_legend),
                       degraded_reason: (if $verdict.verdict == "degraded" { "dup-run-check degraded (fail-open)" } else { null })}
         {"outcome": "succeeded",
          "preferred_next_label": "Preflight done",
@@ -512,10 +536,14 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
     # pointer problem to its planner action so the table stays
     # self-interpreting (the fabro-ead4 legend contract).
     let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing (pointer cites a commit that no longer resolves), already_in_base (the salvage landed on the merge target; the ALREADY LANDED two-branch-rule arm owns the seed), branch_missing (salvage-source run branch no longer fetched), or pointer_missing (salvage-source run branch cited without the canonical 'salvage: git show <commit> on branch <branch>' bullet — resolve the implementer commit BEFORE shipping the brief)"}
+    # arm 5 (denkhaus/work#1433) partially_landed legend: the table stays
+    # self-interpreting (the fabro-ead4 legend contract) — drift names the
+    # incidental-land suspicion, never a verdict.
+    let pl_legend = {partially_landed: "advisory (denkhaus/work#1433): a body anchor's quoted criterion content is ABSENT from the file as the merge target carries it — the criterion may already be landed by an unrelated change in a drifted form (or the citation rotted): grep the target before implementing; the planner judges, nothing closes mechanically"}
     let report = {mode: $mode,
                   run_id: ($run_id | default null),
                   candidates: ($verdicts | enumerate | each {|e| row $e.item ($cdesc | get -o $e.index | default "") ($SCRIPT_DIR | path join '../../../..') ($inflight.claims | default []) $base ($inflight.fetched? | default false) $assignee}),
-                  legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $mention_legend | merge $salvage_legend),
+                  legend: ($legend | merge $envelope_legend | merge $basis_legend | merge $mention_legend | merge $salvage_legend | merge $pl_legend),
                   degraded_reason: (if ($degraded_reason | is-empty) { null } else { $degraded_reason }),
                   in_flight_note: ($inflight.note? | default null)}
     {"outcome": "succeeded",

@@ -93,6 +93,8 @@ def main [] {
         let cand = ($rep.context_updates | get 'output.preflight' | get candidates | first)
         expect '9: degraded anchors_ok' $cand.anchors_ok true
         expect '9: degraded anchor_flags empty' ($cand.anchor_flags | length) 0
+        expect '9: degraded partially_landed false' $cand.partially_landed false
+        expect '9: degraded partially_landed_flags empty' ($cand.partially_landed_flags | length) 0
         # (10) fabro-9ec3 arm 1: bare path-only citations are extracted
         # (slash-bearing only — top-level names like doc.md stay out to
         # avoid file-extension noise).
@@ -162,6 +164,41 @@ def main [] {
         expect '16: loop lane silent on loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu and justfile' 'loop') false
         expect '16: product lane still flags loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu' 'fabro') true
         expect '16: empty body flags nothing' (lane-surface-risk? '' 'loop') false
+
+        # (17) Partially-landed advisory (denkhaus/work#1433): a
+        # claim-bearing body anchor whose path EXISTS in the merge target
+        # with DIFFERENT content fires content_drift — the incidental-land
+        # signal (another change landed the criterion in a drifted form).
+        # The no-drift control (criterion content present in the target)
+        # stays clean; a path absent from the target and a non-git root
+        # fail open (no flags, no crash). End-to-end: the preflight row
+        # carries partially_landed/partially_landed_flags while the
+        # verdict and route stay untouched (advisory-only contract).
+        mkdir plrepo
+        cd plrepo
+        git init -q .
+        ["criterion alpha landed" "filler two" "filler three"] | save -f pl_pkg.rs
+        git add pl_pkg.rs
+        git -c user.name=battery -c user.email=battery@example.invalid commit -q -m 'init'
+        let drift = (partially-landed-flags "pl_pkg.rs:1 lands 'criterion alpha never landed anywhere'" "HEAD" $env.PWD)
+        expect '17: drift advisory fires' ($drift | get status) ['content_drift']
+        expect '17: drift flag names the anchor' ($drift | first | get path) 'pl_pkg.rs'
+        expect '17: drift flag names the line' ($drift | first | get line) 1
+        expect '17: no-drift control stays clean' (partially-landed-flags "pl_pkg.rs:1 states 'criterion alpha landed'" "HEAD" $env.PWD) []
+        "uncommitted criterion probe" | save -f uncommitted.rs
+        expect '17: path absent from target fails open' (partially-landed-flags "uncommitted.rs:1 has 'uncommitted criterion probe'" "HEAD" $env.PWD) []
+        cd $scratch
+        expect '17: non-git root fails open' (partially-landed-flags "pkg/a.rs:10 has 'line 10 content'" "HEAD" $scratch) []
+        let plfile = ($scratch | path join 'pladv-candidates.json')
+        [{id: 'fabro-pladv', description: "README.md:1 cites 'ZZPL ADVISORY PROBE MARKER QQ'"}] | save -f $plfile
+        let out17 = (do { nu $pre --base HEAD --candidates-file $plfile } | complete)
+        expect '17: e2e exit code' $out17.exit_code 0
+        let rep17 = ($out17.stdout | lines | last | from json)
+        let cand17 = ($rep17.context_updates | get 'output.preflight' | get candidates | first)
+        expect '17: e2e drift advisory fires on the row' $cand17.partially_landed true
+        expect '17: e2e drift flag class' ($cand17.partially_landed_flags | get status) ['content_drift']
+        expect '17: e2e verdict advisory-untouched' $cand17.verdict 'degraded'
+        expect '17: e2e route advisory-untouched' $rep17.preferred_next_label 'Preflight done'
     } finally {
         cd $home_dir
         rm -rf $scratch
