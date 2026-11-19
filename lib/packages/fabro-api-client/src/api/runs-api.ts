@@ -1351,6 +1351,86 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
+         * Parks a failed or human_needed run as `blocked` with reason `owner_pending` (work#1345): the owner\'s drag into the blocked column signals retry intent. While parked the run is non-terminal and its work-item claim holds — no other run can pick the item. The park clears on a disposition (retry, retry-latest, archive) or through the reverse gesture. Returns 409 if the run is not failed or human_needed, or is archived.
+         * @summary Owner Park Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ownerParkRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('ownerParkRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/owner-park`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Clears an owner park (work#1345): restores the terminal verdict the park deferred (`failed` with its recorded failure reason, or `human_needed`), releasing the pinned work-item claim back to the normal terminal flow. Returns 409 if the run is not owner-parked.
+         * @summary Owner Unpark Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ownerUnparkRun: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('ownerUnparkRun', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/owner-unpark`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Pauses a running run. Returns 409 if the run is not running.
          * @summary Pause Run
          * @param {string} id Unique run identifier (ULID).
@@ -2509,6 +2589,32 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Parks a failed or human_needed run as `blocked` with reason `owner_pending` (work#1345): the owner\'s drag into the blocked column signals retry intent. While parked the run is non-terminal and its work-item claim holds — no other run can pick the item. The park clears on a disposition (retry, retry-latest, archive) or through the reverse gesture. Returns 409 if the run is not failed or human_needed, or is archived.
+         * @summary Owner Park Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async ownerParkRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.ownerParkRun(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.ownerParkRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Clears an owner park (work#1345): restores the terminal verdict the park deferred (`failed` with its recorded failure reason, or `human_needed`), releasing the pinned work-item claim back to the normal terminal flow. Returns 409 if the run is not owner-parked.
+         * @summary Owner Unpark Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async ownerUnparkRun(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<Run>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.ownerUnparkRun(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['RunsApi.ownerUnparkRun']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Pauses a running run. Returns 409 if the run is not running.
          * @summary Pause Run
          * @param {string} id Unique run identifier (ULID).
@@ -3060,6 +3166,26 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.mergeRunPullRequest(id, mergeRunPullRequestRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Parks a failed or human_needed run as `blocked` with reason `owner_pending` (work#1345): the owner\'s drag into the blocked column signals retry intent. While parked the run is non-terminal and its work-item claim holds — no other run can pick the item. The park clears on a disposition (retry, retry-latest, archive) or through the reverse gesture. Returns 409 if the run is not failed or human_needed, or is archived.
+         * @summary Owner Park Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ownerParkRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.ownerParkRun(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Clears an owner park (work#1345): restores the terminal verdict the park deferred (`failed` with its recorded failure reason, or `human_needed`), releasing the pinned work-item claim back to the normal terminal flow. Returns 409 if the run is not owner-parked.
+         * @summary Owner Unpark Run
+         * @param {string} id Unique run identifier (ULID).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        ownerUnparkRun(id: string, options?: RawAxiosRequestConfig): AxiosPromise<Run> {
+            return localVarFp.ownerUnparkRun(id, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Pauses a running run. Returns 409 if the run is not running.
          * @summary Pause Run
          * @param {string} id Unique run identifier (ULID).
@@ -3579,6 +3705,28 @@ export class RunsApi extends BaseAPI {
      */
     public mergeRunPullRequest(id: string, mergeRunPullRequestRequest: MergeRunPullRequestRequest, options?: RawAxiosRequestConfig) {
         return RunsApiFp(this.configuration).mergeRunPullRequest(id, mergeRunPullRequestRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Parks a failed or human_needed run as `blocked` with reason `owner_pending` (work#1345): the owner\'s drag into the blocked column signals retry intent. While parked the run is non-terminal and its work-item claim holds — no other run can pick the item. The park clears on a disposition (retry, retry-latest, archive) or through the reverse gesture. Returns 409 if the run is not failed or human_needed, or is archived.
+     * @summary Owner Park Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public ownerParkRun(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).ownerParkRun(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Clears an owner park (work#1345): restores the terminal verdict the park deferred (`failed` with its recorded failure reason, or `human_needed`), releasing the pinned work-item claim back to the normal terminal flow. Returns 409 if the run is not owner-parked.
+     * @summary Owner Unpark Run
+     * @param {string} id Unique run identifier (ULID).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public ownerUnparkRun(id: string, options?: RawAxiosRequestConfig) {
+        return RunsApiFp(this.configuration).ownerUnparkRun(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
