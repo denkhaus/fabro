@@ -5,7 +5,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use fabro_types::{Run, RunId, RunStatus};
 
-use crate::server_client::Client;
+use crate::server_client::{Client, RunListing, UndecodableRunRow};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServerRunInfo {
@@ -123,24 +123,29 @@ impl ServerRunInfo {
 
 pub(crate) struct ServerRunLookup {
     runs: Vec<ServerRunInfo>,
+    /// Rows the CLI could not decode (server schema drift, work#1437):
+    /// carried alongside the decoded runs so the listing can render
+    /// them as placeholders instead of failing whole.
+    undecodable: Vec<UndecodableRunRow>,
 }
 
 impl ServerRunLookup {
     pub(crate) async fn from_client(client: Arc<Client>) -> Result<Self> {
-        let runs = client.list_store_runs().await?;
-        Ok(Self::from_runs(runs))
+        let listing = client.list_store_runs_lenient().await?;
+        Ok(Self::from_listing(listing))
     }
 
     pub(crate) async fn from_client_by_parent(
         client: Arc<Client>,
         parent_id: RunId,
     ) -> Result<Self> {
-        let runs = client.list_store_runs_by_parent(parent_id).await?;
-        Ok(Self::from_runs(runs))
+        let listing = client.list_store_runs_lenient_by_parent(parent_id).await?;
+        Ok(Self::from_listing(listing))
     }
 
-    fn from_runs(runs: Vec<Run>) -> Self {
-        let mut runs = runs
+    fn from_listing(listing: RunListing) -> Self {
+        let mut runs = listing
+            .runs
             .into_iter()
             .map(ServerRunInfo::from_run)
             .collect::<Vec<_>>();
@@ -149,11 +154,20 @@ impl ServerRunLookup {
                 .cmp(&a.start_time_dt())
                 .then_with(|| b.run_id().cmp(&a.run_id()))
         });
-        Self { runs }
+        Self {
+            runs,
+            undecodable: listing.undecodable,
+        }
     }
 
     pub(crate) fn runs(&self) -> &[ServerRunInfo] {
         &self.runs
+    }
+
+    /// The rows the server sent that this CLI could not decode: render
+    /// them as placeholders instead of erroring the whole listing.
+    pub(crate) fn undecodable_runs(&self) -> &[UndecodableRunRow] {
+        &self.undecodable
     }
 }
 
