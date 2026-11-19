@@ -209,6 +209,7 @@ pub(crate) mod resource_sampler;
 pub(crate) mod run_channel;
 mod run_publish;
 pub(crate) mod run_records;
+mod run_terminal_cleanup;
 mod session_runtime;
 pub(crate) mod stream_follower;
 mod tracker_token_cache;
@@ -226,6 +227,7 @@ pub(in crate::server) use handler::graph::{
 pub(in crate::server) use handler::system::validate_github_slug;
 pub(crate) use pull_request_supervisor::spawn_pull_request_creation_supervisor;
 pub(crate) use run_publish::spawn_run_publish_supervisor;
+pub(crate) use run_terminal_cleanup::spawn_run_terminal_cleanup_supervisor;
 use session_runtime::SessionRuntimeManager;
 
 pub(crate) type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;

@@ -38,7 +38,7 @@ use crate::server::{
     build_router_with_options, reconcile_incomplete_runs_on_startup, shutdown_active_workers,
     spawn_automation_scheduler, spawn_pull_request_creation_supervisor,
     spawn_run_publish_supervisor, spawn_run_retention_supervisor, spawn_run_stall_watchdog,
-    spawn_scheduler,
+    spawn_run_terminal_cleanup_supervisor, spawn_scheduler,
 };
 use crate::server_secrets::{ServerSecrets, process_env_snapshot};
 use crate::startup::{resolve_startup, validate_startup_configuration};
@@ -782,6 +782,7 @@ where
     let pull_request_creation_supervisor =
         spawn_pull_request_creation_supervisor(Arc::clone(&state));
     spawn_run_publish_supervisor(Arc::clone(&state));
+    spawn_run_terminal_cleanup_supervisor(Arc::clone(&state));
     let work_reconciler = server::work_reconciler::spawn(Arc::clone(&state));
     spawn_run_retention_supervisor(Arc::clone(&state));
     spawn_run_stall_watchdog(Arc::clone(&state));

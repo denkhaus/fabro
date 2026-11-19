@@ -9,12 +9,18 @@ use super::maps::ReplaceMap;
 #[serde(deny_unknown_fields)]
 pub struct WorkflowLayer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name:        Option<String>,
+    pub name:             Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub description:      Option<String>,
     /// Optional override for the default `workflow.fabro` graph path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub graph:       Option<String>,
+    pub graph:            Option<String>,
     #[serde(default, skip_serializing_if = "ReplaceMap::is_empty")]
-    pub metadata:    ReplaceMap<String>,
+    pub metadata:         ReplaceMap<String>,
+    /// The command the server executes in the run's sandbox when the run
+    /// turns terminal, before the sandbox is released (work#1478). A shell
+    /// line, run through `bash -c` from the run's workspace; the server
+    /// only warns on failure. Unset: no cleanup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_cleanup: Option<String>,
 }

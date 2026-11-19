@@ -47,6 +47,7 @@ goal = "Implement the login feature"
 |---|---|---|
 | `_version` | No (defaults to `1`) | Schema version. Must be `1` in the first pass. |
 | `[workflow].graph` | No | Path to the Graphviz workflow file, relative to the TOML file's directory. Defaults to `workflow.fabro`. |
+| `[workflow].terminal_cleanup` | No | Shell line the server executes in the run's sandbox when the run turns terminal and the sandbox is still reachable — before the container is released. Run through `bash -c` from the run's working directory with a 300s timeout; cleanup errors are server-side warnings and never change the run's terminal status. Workflows without the key get no cleanup. Declare a bounded, whitelisted script (for example `.fabro/scripts/run-cleanup.nu`), never an ad-hoc command. |
 | `[run].goal` | No | What the workflow should accomplish. Passed to agents and available via `--goal` CLI flag or Graphviz graph `goal` attribute. |
 
 Goal precedence: CLI `--goal` or `--goal-file` > `[run].goal` > Graphviz graph
