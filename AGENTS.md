@@ -24,6 +24,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Every time stated in a chat reply is Europe/Berlin (user directive
   2026-10-22); convert UTC/server times before reporting.
 
+## Tool quirks
+
+- The harness `edit_file` tool silently fails to match any `old_string`
+  containing a backtick (work#1467) — the wrapping happens in the agent
+  harness, not in repo content. Anchor edits on backtick-free lines:
+  split the replacement into two backtick-free edits, or rewrite the
+  whole file with `write_file` for template-literal-heavy spots.
+
 ## Build and test commands
 
 One-shot verification: `just verify [stage]` (scripts/verify.nu)
