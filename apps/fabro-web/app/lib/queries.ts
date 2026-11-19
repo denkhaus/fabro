@@ -64,12 +64,17 @@ import {
   runOutputsApi,
   runsApi,
   secretsApi,
+  sessionsApi,
   settingsApi,
   systemApi,
   variablesApi,
   workflowsApi,
   type PaginatedEnvelope,
 } from "./api-client";
+import { listAllAskSessions, type AskSessionSummary } from "./ask-index";
+import { loadSessionTranscript } from "./ask-transcript";
+import type { SessionSummary } from "@qltysh/fabro-api-client";
+import type { ThreadMessageLike } from "@assistant-ui/react";
 import {
   queryKeys,
   runFileScopeSelection,
@@ -600,5 +605,45 @@ export function useVariable(name: string | undefined) {
   return useSWR<Variable | null>(
     name ? queryKeys.variables.detail(name) : null,
     () => apiNullableData(() => variablesApi.getVariable(name!)),
+  );
+}
+
+/** The global Ask Fabro session index (ADR-0046, work#1452). */
+export function useAskSessionIndex(enabled = true) {
+  return useSWR<AskSessionSummary[]>(
+    enabled ? queryKeys.ask.index() : null,
+    () => listAllAskSessions(),
+    { refreshInterval: 15_000 },
+  );
+}
+
+/** A run's Ask Fabro sessions, newest activity first (the docked chat's
+ * resume source — the server-side index is the truth, work#1452). */
+export function useRunAskSessions(runId: string | null) {
+  return useSWR<PaginatedEnvelope<SessionSummary>>(
+    runId ? queryKeys.ask.runSessions(runId) : null,
+    () => apiData(() => sessionsApi.listRunSessions(runId!, 50)),
+  );
+}
+
+/** A session's recorded transcript folded into thread messages. */
+export function useAskSessionTranscript(sessionId: string | null) {
+  return useSWR<ThreadMessageLike[]>(
+    sessionId ? queryKeys.ask.transcript(sessionId) : null,
+    () => loadSessionTranscript(sessionId!),
+    { revalidateOnFocus: false, revalidateIfStale: false },
+  );
+}
+
+/** The most recently listed run id — the run a brand-new global
+ * conversation anchors to (the conversation determines the context; the
+ * page itself stays runless). */
+export function useLatestRunId() {
+  return useSWR<string | null>(
+    queryKeys.runs.page({ limit: 1 }),
+    async () => {
+      const page = await apiData(() => runsApi.listRuns(1));
+      return page.data[0]?.id ?? null;
+    },
   );
 }

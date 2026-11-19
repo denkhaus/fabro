@@ -1,20 +1,8 @@
-import { useMemo, useRef, useState } from "react";
-import {
-  AssistantRuntimeProvider,
-  useLocalRuntime,
-} from "@assistant-ui/react";
-import { Thread, makeMarkdownText } from "@assistant-ui/react-ui";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import remarkGfm from "remark-gfm";
+import { useRef, useState } from "react";
+import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
-import { createAskFabroAdapter } from "../../lib/ask-fabro-runtime";
-import SidebarComposer from "./sidebar-composer";
-import SidebarWelcome from "./sidebar-welcome";
-import ToolCallSummary from "./tool-call-summary";
-
-// remark-gfm enables GitHub-flavored Markdown so the agent's tables, task
-// lists, and strikethrough render instead of leaking as raw `|` syntax.
-const MarkdownText = makeMarkdownText({ remarkPlugins: [remarkGfm] });
+import AskFabroConversation from "./ask-fabro-conversation";
+import { useRunAskSessions } from "../../lib/queries";
 
 /** Default (and minimum) width of the docked sidebar in px. */
 export const SIDEBAR_WIDTH = 420;
@@ -24,17 +12,23 @@ const SIDEBAR_MAX_WIDTH = SIDEBAR_WIDTH * 2;
 
 /**
  * Right-docked "Ask Fabro" assistant panel. An animated-width column that
- * collapses to zero when closed; renders assistant-ui's `<Thread>` with a
- * stripped composer scoped to the narrow column via the `.ask-fabro-sidebar`
+ * collapses to zero when closed; renders assistant-ui's Thread with a
+ * stripped composer scoped to the narrow column via the .ask-fabro-sidebar
  * CSS in app.css.
  *
- * The sidebar is parameterized by `runId`: the agent's session is scoped to
+ * The sidebar is parameterized by runId: the agent's session is scoped to
  * that run (and only that run; the server enforces this via the same-run
  * worker token attached to the session's run-control tools).
  *
- * `width` is owned by the run detail page so it can publish the value to the
- * layout context; the left-edge handle here drags it between `SIDEBAR_WIDTH`
- * and `SIDEBAR_MAX_WIDTH`.
+ * Session continuity (work#1452): the run's most recently active session is
+ * resumed from the server-side session index — the per-run sessionStorage
+ * cache is retired — and the header's "new conversation" affordance is the
+ * conversation reset door: it starts a fresh session while the old one
+ * stays readable in the global index.
+ *
+ * width is owned by the run detail page so it can publish the value to the
+ * layout context; the left-edge handle here drags it between SIDEBAR_WIDTH
+ * and SIDEBAR_MAX_WIDTH.
  */
 export default function AskFabroSidebar({
   isOpen,
@@ -53,11 +47,11 @@ export default function AskFabroSidebar({
   onWidthChange: (width: number) => void;
   onResizeActiveChange: (active: boolean) => void;
 }) {
-  const adapter = useMemo(
-    () => createAskFabroAdapter({ runId, defaultModel }),
-    [runId, defaultModel],
-  );
-  const runtime = useLocalRuntime(adapter);
+  // The conversation reset door: fresh swaps the resumed session for a
+  // brand-new one (lazily created on its first turn).
+  const [fresh, setFresh] = useState(false);
+  const resume = useRunAskSessions(fresh ? null : runId);
+  const resumedSessionId = fresh ? null : resume.data?.data[0]?.id ?? null;
 
   const [isDragging, setIsDragging] = useState(false);
   // Pointer X and width captured at drag start, so each move resolves to an
@@ -128,7 +122,17 @@ export default function AskFabroSidebar({
             }`}
           />
         </div>
-        <header className="flex h-12 shrink-0 items-center justify-end px-2">
+        <header className="flex h-12 shrink-0 items-center justify-end gap-1 px-2">
+          <button
+            type="button"
+            onClick={() => setFresh(true)}
+            disabled={fresh}
+            aria-label="Start a new conversation"
+            title="New conversation (the current one stays in the global chat's list)"
+            className="inline-flex size-8 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-overlay hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ArrowPathIcon className="size-4" />
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -138,20 +142,20 @@ export default function AskFabroSidebar({
             <XMarkIcon className="size-4" />
           </button>
         </header>
+
         <div className="min-h-0 flex-1">
-          <AssistantRuntimeProvider runtime={runtime}>
-            <Thread
-              components={{ Composer: SidebarComposer, ThreadWelcome: SidebarWelcome }}
-              assistantMessage={{
-                components: { Text: MarkdownText, ToolFallback: ToolCallSummary },
-                allowCopy: false,
-                allowReload: false,
-                allowSpeak: false,
-                allowFeedbackPositive: false,
-                allowFeedbackNegative: false,
-              }}
+          {fresh || !resume.isLoading ? (
+            <AskFabroConversation
+              key={resumedSessionId ?? "new"}
+              runId={runId}
+              initialSessionId={resumedSessionId}
+              defaultModel={defaultModel}
             />
-          </AssistantRuntimeProvider>
+          ) : (
+            <div className="flex h-full items-center justify-center px-4 text-sm text-fg-3">
+              Resuming conversation…
+            </div>
+          )}
         </div>
       </div>
     </aside>

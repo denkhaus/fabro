@@ -7,8 +7,9 @@
 # toml, plus .fabro/scripts/*.nu):
 #   1. every seed-id literal — short `fabro-<4>` and family
 #      `fabro-<prefix>-<hex>` shapes, via the shared `lib/seed_id.nu`
-#      predicate — resolves in the tracker (`seeds show`); an
-#      unresolvable id is provenance rot. Errors.
+#      predicate — resolves in the tracker (the migrated `seeds:<id>`
+#      legacy-label census on denkhaus/work, read through gh);
+#      an unresolvable id is provenance rot. Errors.
 #   2. every `justfile:<line>` anchor must point at a NON-comment line —
 #      a comment line means the anchor drifted (the planner qualitygate
 #      anchor rot class). Errors.

@@ -135,6 +135,24 @@ ORDER BY session_id ASC, seq ASC
         rows.iter().map(event_from_row).collect()
     }
 
+    /// The projection-relevant events of EVERY session, across all runs
+    /// (denkhaus/work#1452's global index door): every event but the
+    /// streaming `assistant_delta` frames, which carry the bulk of the
+    /// volume and nothing the session projection folds.
+    pub async fn list_all_sessions(&self) -> Result<Vec<SessionEvent>> {
+        let rows = sqlx::query(
+            r"
+SELECT session_id, seq, run_id, event_name, recorded_at_ms, properties_json
+FROM run_session_events
+WHERE event_name != 'run.session.assistant_delta'
+ORDER BY session_id ASC, seq ASC
+",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(event_from_row).collect()
+    }
+
     /// The sequence number of the session's latest event, if it has any.
     pub async fn last_seq(&self, session_id: SessionId) -> Result<Option<u32>> {
         let last_seq: Option<i64> =
@@ -320,6 +338,60 @@ mod tests {
         );
         assert_eq!(store.owner(first).await.unwrap(), None);
         assert_eq!(store.owner(second).await.unwrap(), Some(fixtures::RUN_2));
+    }
+
+    /// The global index door (denkhaus/work#1452): `list_all_sessions`
+    /// serves every run's projection-relevant events and skips only the
+    /// streaming delta frames.
+    #[tokio::test]
+    async fn list_all_sessions_spans_runs_and_skips_delta_frames() {
+        let store = store();
+        let mine = SessionId::new();
+        let other = SessionId::new();
+        let turn_id = TurnId::new();
+        let ts = Utc::now();
+        store
+            .append(fixtures::RUN_1, mine, created(), ts)
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_1, mine, turn_started(turn_id), ts)
+            .await
+            .unwrap();
+        store
+            .append(
+                fixtures::RUN_1,
+                mine,
+                SessionEventBody::AssistantDelta(SessionAssistantDeltaProps {
+                    turn_id,
+                    delta: "streaming bulk".to_string(),
+                }),
+                ts,
+            )
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_2, other, created(), ts)
+            .await
+            .unwrap();
+
+        let events = store.list_all_sessions().await.unwrap();
+        assert_eq!(events.len(), 3, "the delta frame is skipped");
+        assert!(
+            events
+                .iter()
+                .all(|event| event.body.event_name() != "run.session.assistant_delta")
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event.session_id == mine && event.run_id == fixtures::RUN_1)
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| event.session_id == other && event.run_id == fixtures::RUN_2)
+        );
     }
 
     #[tokio::test]

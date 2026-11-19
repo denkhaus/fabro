@@ -12,6 +12,11 @@
 #                 (or name extraction comes up empty — fail-safe); a compile
 #                 check for code-touched-only crates. Never the gate, never
 #                 the workspace suite (the deterministic tester owns both).
+#                 Plus the help-snapshot rule (work#1429): when the diff
+#                 touches a crate's clap surface (args.rs/main.rs), that
+#                 crate's cmd::*::help family joins its nextest selection
+#                 — a clap edit that moves help output can no longer pass
+#                 verify without executing the snapshots.
 #                 Plus the fabro-web lane (work#1304): when the diff touches
 #                 apps/fabro-web/** or lib/packages/** (the bun workspace
 #                 members), the web surface runs typecheck + tests. Its
@@ -25,7 +30,8 @@
 # Touched-crate + base detection come from the shared verification
 # commons (denkhaus/work#1445): the run-id parse, run-base (checkpoint
 # hit + the work#1427 journal fallback), crate extraction, test-file /
-# inline-cfg(test) classification, web-surface predicate, and the
+# inline-cfg(test) classification, web-surface predicate, vendor-surface
+# predicate, clap-surface/help-snapshot scope (work#1429), and the
 # nextest Summary parser all live ONCE in scripts/lib/verification_
 # commons.nu — this script keeps stage dispatch + tier policy only.
 # The stage comes from the engine-injected FABRO_STAGE env (fabro-6e7f /
@@ -77,6 +83,11 @@ def output-tail [text: string, bound: int] {
 # Crates touched by the diff, split into {code: [...], tests: [...]}:
 # `tests` = crates with at least one test-file change, `code` = every
 # touched crate (tests included — fmt/clippy cover them too).
+# `help_scope` (work#1429): per-crate help-snapshot test names for every
+# crate whose diff touches the clap surface (args.rs/main.rs). The rule
+# lives ONCE in the module (crate-help-snapshot-scope); this composition
+# only carries the result — a crate without a help-snapshot family drops
+# out (no-op, never a zero-match filter).
 def touched [] {
     let run = (run-base '' --origin-branch --checkpoint-pick 'latest')
     let base = $run.base
@@ -86,12 +97,20 @@ def touched [] {
     let test_files = ($crate_paths
         | where {|p| (is-test-file $p) or (is-inline-test-diff $base $p) })
     let test_crates = (crates-from-paths $test_files)
+    # The clap surface (work#1429): the owning crate's cmd::*::help
+    # family joins its nextest selection.
+    let help_scope = ($paths
+        | where {|p| clap-surface-path? $p}
+        | each {|p| crate-of-path $p}
+        | uniq
+        | each {|c| ({crate: $c, names: (crate-help-snapshot-scope $paths $c)}) }
+        | where {|r| ($r.names | is-not-empty)})
     # The web surface (work#1304): the bun workspace members, via the
     # shared predicate. lib/packages counts — fabro-api-client is
     # workspace:*-consumed by the web app, so its diffs verify through
     # the web suite too.
     let web = ($paths | any {|p| web-surface-path? $p})
-    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, web: $web}
+    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, help_scope: $help_scope, web: $web}
 }
 
 # Test function names declared under a test attribute in a file's Rust
@@ -150,6 +169,48 @@ def test-mode-for [base: string, files: list<string>] {
     {mode: 'names', names: $flat}
 }
 
+# This crate's entry from the work#1429 help-snapshot scope ([] when the
+# crate has none — e.g. a clap-surface diff in a crate without a
+# tests/it/cmd/ family). The flatten matters: `get` on a table is
+# column-oriented, so a one-row lookup yields list<list<string>> — the
+# nextest spread and the expected count need the flat name list.
+def help-names-for [help_scope: table, crate: string] {
+    $help_scope | where {|h| $h.crate == $crate} | get -o names | default [] | flatten
+}
+
+# The by-name nextest tier, shared by the added-tests slice (fabro-7f58)
+# and the work#1429 help-snapshot slices: verdict-classified (work#1424/
+# work#1432), FAIL exits 1, tool-error exits 3 — never a silent green.
+def nextest-names-tier [crate: string, names: list<string>, label: string] {
+    print $"== nextest -p ($crate) \(($label): ($names | str join ', '))=="
+    let t0 = (date now)
+    let res = (do { ^cargo nextest run -p $crate --no-fail-fast --retries 2 ...$names } | complete)
+    let secs = (((date now) - $t0) / 1sec | math round)
+    # Zero-selection guard (fabro-bdff), classified by the shared
+    # verdict (work#1424/work#1432). The summary travels on STDERR —
+    # the verdict parses the COMBINED streams. Two different reds:
+    #   FAIL (exit 1)      — a real test verdict: non-zero exit, or
+    #                      the filter matched fewer tests than
+    #                      extracted ("0 tests matched the filter"
+    #                      included);
+    #   TOOL-ERROR (exit 3) — the display has no Summary line at
+    #                      all: the tool broke; NOT a gate verdict.
+    let verdict = (nextest-filter-verdict $res.exit_code ($res.stdout + $res.stderr) ($names | length))
+    if $verdict.verdict == 'tool-error' {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print "verify: TOOL-ERROR nextest — output unparseable (no Summary line in stdout+stderr): tooling failure, not a gate verdict (work#1424/#1432)"
+        $env.LAST_VERIFY_FAIL = "nextest-tool-error"
+        exit 3
+    }
+    if $verdict.verdict == 'fail' {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print $"verify: FAIL nextest ($crate) \(name filter: ($verdict.reason)\)"
+        $env.LAST_VERIFY_FAIL = "nextest"
+        exit 1
+    }
+    print $"verify: PASS nextest ($crate) \(($secs)s\)"
+}
+
 # The TS lane itself (work#1304): cold-start install when node_modules is
 # absent, then typecheck and the package test script (`bun run test` =
 # `bun test --parallel`). First red exits — the Rust lanes' FAIL shape
@@ -199,6 +260,11 @@ def stage-implementer [] {
         print "verify: checkpoint and journal detection both missed — last-resort HEAD^ base"
     }
     print $"verify: code-touched=($t.code | str join ', ') test-file-touched=($t.tests | str join ', ')"
+    if ($t.help_scope | is-not-empty) {
+        # work#1429 observability: WHICH crates gained the help-snapshot
+        # scope and how many of their cmd::*::help tests ride the lane.
+        print $"verify: clap-surface diff \(args.rs/main.rs, work#1429\) — help-snapshot tests in scope for: ($t.help_scope | get crate | str join ', ')"
+    }
     if $t.web {
         print $"verify: web surface touched \(($WEB_DIR), lib/packages\)"
     }
@@ -245,38 +311,29 @@ def stage-implementer [] {
             exit 1
         }
         print $"verify: PASS compile ($c)"
+        # work#1429: a code-only clap-surface diff used to end HERE — the
+        # help snapshots never executed, and a stale help snapshot landed
+        # silently (the work#1361 finding). The owning crate's
+        # cmd::*::help family joins the lane instead.
+        let help_names = (help-names-for $t.help_scope $c)
+        if ($help_names | is-not-empty) {
+            nextest-names-tier $c $help_names 'help-snapshot tests, clap-surface diff (work#1429)'
+        }
     }
     for c in $t.tests {
         let files = ($t.test_files | where {|p| (crate-of-path $p) == $c })
         let tm = (test-mode-for $t.base $files)
         if $tm.mode == 'names' {
-            print $"== nextest -p ($c) \(added tests by name filter: ($tm.names | str join ', '))=="
-            let t0 = (date now)
-            let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 ...$tm.names } | complete)
-            let secs = (((date now) - $t0) / 1sec | math round)
-            # Zero-selection guard (fabro-bdff), classified by the shared
-            # verdict (work#1424/work#1432). The summary travels on STDERR —
-            # the verdict parses the COMBINED streams. Two different reds:
-            #   FAIL (exit 1)      — a real test verdict: non-zero exit, or
-            #                      the filter matched fewer tests than
-            #                      extracted ("0 tests matched the filter"
-            #                      included);
-            #   TOOL-ERROR (exit 3) — the display has no Summary line at
-            #                      all: the tool broke; NOT a gate verdict.
-            let verdict = (nextest-filter-verdict $res.exit_code ($res.stdout + $res.stderr) ($tm.names | length))
-            if $verdict.verdict == 'tool-error' {
-                print (output-tail ($res.stdout + $res.stderr) 3000)
-                print "verify: TOOL-ERROR nextest — output unparseable (no Summary line in stdout+stderr): tooling failure, not a gate verdict (work#1424/#1432)"
-                $env.LAST_VERIFY_FAIL = "nextest-tool-error"
-                exit 3
+            nextest-names-tier $c $tm.names 'added tests by name filter'
+            # work#1429: the clap surface moved in a crate whose diff also
+            # ADDS test files — the help-snapshot family runs as its own
+            # slice (separate filters, so the added-tests verdict keeps
+            # its extracted-name accounting). A full-suite crate already
+            # covers the family, so it gains nothing here.
+            let help_names = (help-names-for $t.help_scope $c)
+            if ($help_names | is-not-empty) {
+                nextest-names-tier $c $help_names 'help-snapshot tests, clap-surface diff (work#1429)'
             }
-            if $verdict.verdict == 'fail' {
-                print (output-tail ($res.stdout + $res.stderr) 3000)
-                print $"verify: FAIL nextest ($c) \(name filter: ($verdict.reason)\)"
-                $env.LAST_VERIFY_FAIL = "nextest"
-                exit 1
-            }
-            print $"verify: PASS nextest ($c) \(($secs)s\)"
         } else {
             print $"== nextest -p ($c) — full crate suite: ($tm.reason) =="
             # --retries 2: a load-bound host (a sibling build, a bench)

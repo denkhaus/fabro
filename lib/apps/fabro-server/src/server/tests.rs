@@ -10087,6 +10087,74 @@ async fn delete_run_removes_durable_run() {
     assert_status!(response, StatusCode::NOT_FOUND).await;
 }
 
+/// The deletion chain (work#1452): a run's session RECORDS die with the
+/// run, beside their events — before this they orphaned forever.
+#[tokio::test]
+async fn delete_run_removes_the_runs_session_records() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let req = Request::builder()
+        .method("POST")
+        .uri(api("/runs"))
+        .header("content-type", "application/json")
+        .body(intent_body(&app, MINIMAL_DOT).await)
+        .unwrap();
+    let response = app.clone().oneshot(req).await.unwrap();
+    let body = body_json(response.into_body()).await;
+    let run_id: RunId = body["id"].as_str().unwrap().parse().unwrap();
+
+    let session_id = fabro_types::SessionId::new();
+    let record =
+        pebble_coding_agent::state::SessionRecord::new(pebble_coding_agent::SessionScope::root(
+            pebble_coding_agent::SessionId::new(session_id.to_string()),
+        ));
+    state
+        .stores
+        .session_records
+        .put(session_id, run_id, &record, Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(
+        state
+            .stores
+            .session_records
+            .list_for_run(run_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(api(&format!("/runs/{run_id}?force=true")))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    assert_status!(response, StatusCode::NO_CONTENT).await;
+
+    assert!(
+        state
+            .stores
+            .session_records
+            .list_for_run(run_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the run's session records die with the run"
+    );
+    assert!(
+        state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
 #[tokio::test]
 async fn delete_active_run_requires_force() {
     let state = test_app_state();
@@ -11946,5 +12014,81 @@ fn an_unsettled_run_takes_the_stores_status_or_a_termination_at_worker_exit() {
         status_after_worker_exit(parked, RunStatus::Running, false),
         parked,
         "the live park wins over a stale running store status"
+    );
+}
+
+/// The global session index door (ADR-0046, work#1452): `GET /api/v1/sessions`
+/// lists sessions across ALL runs with their run anchor, last activity and
+/// capability state — no run in the URL, the conversation determines the
+/// context.
+#[tokio::test]
+async fn list_sessions_returns_the_global_index_across_runs() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let first = fabro_types::SessionId::new();
+    let second = fabro_types::SessionId::new();
+    let ts = Utc::now();
+    let created = || {
+        fabro_types::SessionEventBody::Created(fabro_types::session_event::SessionCreatedProps {
+            title:    Some("Ask Fabro".to_string()),
+            model:    None,
+            provider: None,
+        })
+    };
+    state
+        .stores
+        .session_events
+        .append(fixtures::RUN_1, first, created(), ts)
+        .await
+        .unwrap();
+    state
+        .stores
+        .session_events
+        .append(fixtures::RUN_2, second, created(), ts)
+        .await
+        .unwrap();
+    state
+        .stores
+        .session_events
+        .append(
+            fixtures::RUN_2,
+            second,
+            fabro_types::SessionEventBody::CapabilityChanged(
+                fabro_types::session_event::SessionCapabilityChangedProps {
+                    capability: fabro_types::AskFabroCapability::FullAccess,
+                    actor:      Some("dev".to_string()),
+                },
+            ),
+            ts + ChronoDuration::minutes(1),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(api("/sessions"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    let data = body["data"].as_array().expect("session list");
+    assert_eq!(data.len(), 2, "both runs' sessions appear: {body}");
+    let by_run: HashMap<String, &serde_json::Value> = data
+        .iter()
+        .map(|session| (session["run_id"].as_str().unwrap().to_string(), session))
+        .collect();
+    assert_eq!(by_run.len(), 2, "each session carries its run anchor");
+    let full_access = data
+        .iter()
+        .find(|session| session["capability"] == "full_access")
+        .expect("the capability state travels with the index");
+    assert_eq!(
+        full_access["run_id"].as_str().unwrap(),
+        fixtures::RUN_2.to_string()
     );
 }

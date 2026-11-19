@@ -5,10 +5,10 @@
 # (.fabro/scripts/salvage-sweep-smoke.nu). No main here by design —
 # sourcing a file that defines one makes nu run it after the caller.
 
-# Shared seed-id predicate (lib/seed_id.nu): tracker-hunk ids and the
-# goal's affected seed use the one accept-set — short and family shapes.
-# (`use`, not `source`: this file is itself sourced by the sweep CLI and
-# its smoke battery, and nu allows no nested `source`.)
+# Shared item-id predicate (lib/seed_id.nu): the goal's affected item uses
+# the one accept-set — short and family shapes. (`use`, not `source`: this
+# file is itself sourced by the sweep CLI and its smoke battery, and nu
+# allows no nested `source`.)
 use lib/seed_id.nu seed-ids-in
 
 # The terminal status kinds live in lib/terminal_status.nu (work#1446,
@@ -18,7 +18,7 @@ use lib/seed_id.nu seed-ids-in
 
 # A patch is noteworthy when it changes more than this many lines, or adds
 # any new file - counted over lines that touch REAL work (the run's own
-# journal and a tracker REWRITE never count).
+# journal never counts).
 const CHANGED_LINE_THRESHOLD = 20
 
 # Bookkeeping path prefixes whose changes are not work on their own.
@@ -26,42 +26,50 @@ const CHANGED_LINE_THRESHOLD = 20
 # `.fabro/journal/` never counts: the stage-journal hook writes ONE NEW file
 # per run, so counting it would make every terminal run noteworthy and turn
 # the sweep into noise.
-#
-# `.seeds/` counts ONLY as added records (see `added-seed-records`): a run
-# that filed seeds and then died strands them in its unpublished sandbox
-# (fabro-f312 closeout, 2026-10-04), while a claim or a status rewrite is
-# churn that every pass produces.
 const BOOKKEEPING = ['.fabro/journal/']
-const TRACKER = ['.seeds/']
 
-# Seed ids that a tracker hunk ADDS: an id on an added line that no removed
-# line carries. A rewrite (claim, status change, close) keeps its id on both
-# sides and never counts.
-def added-seed-records [lines: list<string>]: nothing -> int {
-  let removed = (seed-ids-in ($lines | where {|l| $l starts-with '-' } | str join "\n"))
-  let added = (seed-ids-in ($lines | where {|l| $l starts-with '+' } | str join "\n"))
-  let fresh = ($added | where {|id| not ($removed | any {|old| $old == $id }) })
-  ($fresh | uniq | length)
+# The work-item WRITE tools (the run-tool registry's FABRO_WORK_*_TOOL_NAME
+# constants): a terminal run that CALLED one of these strands its effect in
+# the sandbox the platform deletes — a filed item, an edited body, a
+# closure, a comment thread that never reached a landed PR. The read/claim
+# tools (`fabro_work_next`/`fabro_work_show`/`fabro_work_list`
+# /`fabro_work_release`/`fabro_work_radius`) are excluded by construction —
+# every develop run calls them, so counting them would turn the sweep into
+# noise.
+#
+# Detector vocabulary note (work#1477): the retired tracker-hunk counter
+# (`added-seed-records`/`TRACKER`) watched a store that left the tree at the
+# tracker cutover (denkhaus/work#988/#990, 2026-10-26) and could never fire
+# again; the work-item write calls are the stranding class that exists
+# post-cutover.
+const WORK_TOOLS = ['fabro_work_create' 'fabro_work_close' 'fabro_work_update' 'fabro_work_comments']
+
+# The machine-written record surface of one dump (run.json, the stage
+# completion records, the stream export): the only files where a tool CALL
+# sits on the record. Prompts, responses, output logs and diffs are model
+# prose and code surfaces — both quote tool names without calling them
+# (the workflow prompts document every tool; a diff editing this detector
+# carries its literals) — so they never count.
+def work-tool-records [dir: path]: nothing -> string {
+  glob ($dir | path join '**' '*.json')
+  | append ($dir | path join 'events.jsonl')
+  | where {|f| ($f | path type) == 'file' }
+  | each {|f| open --raw $f }
+  | str join (char nl)
 }
 
-# The diff lines of the tracker files in one patch: every line after the
-# `+++ b/.seeds/...` header up to the next file header.
-def tracker-hunk-lines [lines: list<string>]: nothing -> list<string> {
-  mut current = ''
-  mut kept = []
-  for line in $lines {
-    if ($line | str starts-with '+++ b/') {
-      $current = ($line | str replace -r '^\+\+\+ b/' '' | str trim)
-    } else if ($current != '' and ($TRACKER | any {|prefix| $current starts-with $prefix })) {
-      $kept = ($kept | append $line)
-    }
-  }
-  $kept
+# Distinct work-item WRITE-tool names the records show. Each distinct name
+# is one stranded-effect class the run exercised; a single call surfaces in
+# both the call and the result progress events, so a raw occurrence count
+# would double — the distinct-name count stays honest without parsing
+# record shapes.
+def work-tool-filings [records: string]: nothing -> int {
+  $WORK_TOOLS | where {|t| $records | str contains $t } | uniq | length
 }
 
 # The analysis of one dump directory: pure, so the smoke battery can pin it.
 # Returns {candidate: bool, green_lie: bool, noteworthy: bool, changed: int,
-# new_files: int, added_seeds: int, affected_seed: string}.
+# new_files: int, work_filings: int, affected_item: string}.
 def analyze-dump [dir: path]: nothing -> record {
   let run = (open ($dir | path join 'run.json'))
   let stages = (glob ($dir | path join 'stages' '*' 'status.json'))
@@ -75,23 +83,22 @@ def analyze-dump [dir: path]: nothing -> record {
       ($l starts-with '+' or $l starts-with '-') and not ($l starts-with '+++' or $l starts-with '---')
     })
     let touched = ($lines | where {|l| $l starts-with '+++ b/' } | each {|l| $l | str replace -r '^\+\+\+ b/' '' | str trim } | where {|p|
-      not (($BOOKKEEPING | append $TRACKER) | any {|prefix| $p starts-with $prefix })
+      not ($BOOKKEEPING | any {|prefix| $p starts-with $prefix })
     })
     {
       changed: ($real | length),
       new_files: ($lines | where {|l| $l starts-with 'new file mode' } | length),
       real_files: ($touched | length),
-      added_seeds: (added-seed-records (tracker-hunk-lines $lines)),
     }
   })
   let empty_guard = ($counts | is-empty)
   let changed = (if $empty_guard { 0 } else { $counts | get changed | math sum })
   let new_files = (if $empty_guard { 0 } else { $counts | get new_files | math sum })
   let real_files = (if $empty_guard { 0 } else { $counts | get real_files | math sum })
-  let added_seeds = (if $empty_guard { 0 } else { $counts | get added_seeds | math sum })
-  # Added tracker records are stranded work in their own right: the run filed
-  # seeds and never published them.
-  let noteworthy = (((($real_files > 0) and (($changed > $CHANGED_LINE_THRESHOLD) or ($new_files > 0))) or ($added_seeds > 0)))
+  let work_filings = (work-tool-filings (work-tool-records $dir))
+  # Work-item write calls are stranded work in their own right: the run
+  # filed/edited/closed items from a sandbox that is gone.
+  let noteworthy = (((($real_files > 0) and (($changed > $CHANGED_LINE_THRESHOLD) or ($new_files > 0))) or ($work_filings > 0)))
   let affected = (seed-ids-in ($run.spec.settings.run.goal?.value? | default '') | first | default '')
   {
     candidate: ($run_failed or $green_lie),
@@ -99,7 +106,7 @@ def analyze-dump [dir: path]: nothing -> record {
     noteworthy: $noteworthy,
     changed: $changed,
     new_files: $new_files,
-    added_seeds: $added_seeds,
-    affected_seed: ($affected | default ''),
+    work_filings: $work_filings,
+    affected_item: ($affected | default ''),
   }
 }
