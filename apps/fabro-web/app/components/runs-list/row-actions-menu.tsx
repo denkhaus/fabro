@@ -263,11 +263,12 @@ export function RowActionsMenu({ run }: { run: RunWithStatus }) {
       </Menu>
       <ConfirmDialog
         open={deleteDialogOpen}
-        title="Delete this run?"
+        title="Delete run permanently?"
         description={
           <>
-            This permanently removes this archived run and its durable state. This action
-            cannot be undone.
+            This permanently removes the run — its record, its sandbox and durable state, its salvage
+            windows, and its observations and journal. The run is unrecoverable: archive keeps the
+            record, delete does not.
           </>
         }
         confirmLabel="Delete run"
