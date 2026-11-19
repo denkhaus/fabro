@@ -45,6 +45,7 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
         "KEY".cell().bold(use_color),
         "PRIO".cell().bold(use_color),
         "STATE".cell().bold(use_color),
+        "LOCK".cell().bold(use_color),
         "LABELS".cell().bold(use_color),
         "TITLE".cell().bold(use_color),
     ];
@@ -56,6 +57,12 @@ pub(super) async fn list_command(args: &WorkListArgs, ctx: &CommandContext) -> R
                 item.item_key.clone().cell().bold(use_color),
                 item.priority.to_string().cell(),
                 item.state.clone().cell(),
+                if super::is_locked(item) {
+                    "locked"
+                } else {
+                    "-"
+                }
+                .cell(),
                 labels_cell(&item.labels).cell(),
                 item.title.clone().cell(),
             ]

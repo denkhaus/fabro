@@ -7942,6 +7942,126 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-items/lock:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: lockWorkItem
+      tags: [Work Items]
+      summary: Place the operator lock on a work item
+      description: >-
+        The item-lock door (denkhaus/work#1420): a locked item is not
+        grantable by the claim pool or the grant door, regardless of its
+        lane; the lane itself stays untouched. The lock has no TTL — it
+        stands until an operator unlocks it. User-only: a run worker
+        principal is refused (the lane-move posture). Refused with 409
+        while the item carries a live claim.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemLockRequest"
+      responses:
+        "200":
+          description: Work item with the operator lock placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not lock items)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The item carries a live claim (named in the message)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/projects/{projectId}/work-items/unlock:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: unlockWorkItem
+      tags: [Work Items]
+      summary: Lift the operator lock from a work item
+      description: >-
+        The lock door's lift (denkhaus/work#1420): the item becomes
+        grantable again; the lane is untouched. Unlocking an unlocked
+        item succeeds (the response just reports the item unlocked).
+        User-only: a run worker principal is refused.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemLockRequest"
+      responses:
+        "200":
+          description: Work item with the operator lock lifted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not unlock items)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project or item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/projects/{projectId}/work-item:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -20484,6 +20604,15 @@ components:
           type: string
           format: date-time
           nullable: true
+        locked:
+          type: boolean
+          description: >-
+            The operator lock (denkhaus/work#1420): a locked item is not
+            grantable by the claim pool or the grant door; the lane is
+            untouched. The lock lives in the store, not the tracker, so
+            the field is optional — the doors that overlay it (list,
+            single-item reads, the lock and unlock doors) answer
+            truthfully; a door that omits it makes no claim either way.
 
     WorkItemListResponse:
       description: Open work items of one project.
@@ -20676,6 +20805,18 @@ components:
           description: >-
             Lane name as declared in the project's laneLabels; omitted or
             `null` clears the item's lane.
+
+    WorkItemLockRequest:
+      description: >-
+        Place or lift the operator lock on one work item
+        (denkhaus/work#1420). The lock blocks claiming while it stands;
+        the lane is untouched.
+      type: object
+      required:
+        - itemKey
+      properties:
+        itemKey:
+          type: string
 
     WorkItemCloseResponse:
       description: >-

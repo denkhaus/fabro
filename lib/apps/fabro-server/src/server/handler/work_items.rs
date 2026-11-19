@@ -14,7 +14,7 @@ use fabro_api::types::{
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
     WorkItemCloseResponse, WorkItemCommentList, WorkItemCreateRequest, WorkItemLaneRequest,
-    WorkItemListResponse, WorkItemRadiusResponse, WorkItemUpdateRequest,
+    WorkItemListResponse, WorkItemLockRequest, WorkItemRadiusResponse, WorkItemUpdateRequest,
     WorkObservationLinkOutcome, WorkObservationLinkRequest, WorkObservationLinkResponse,
     WorkObservationUnlinkResponse, WorkProject as ApiWorkProject, WorkProjectListResponse,
     WorkProjectUpsertRequest,
@@ -77,6 +77,14 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/lane",
             post(lane_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/lock",
+            post(lock_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/unlock",
+            post(unlock_work_item),
         )
         .route("/projects/{projectId}/next", post(claim_next))
         .route("/projects/{projectId}/work-item", get(retrieve_work_item))
@@ -403,6 +411,14 @@ fn store_error(error: fabro_work::Error) -> ApiError {
         fabro_work::Error::WorkClaimConflict(message) => {
             ApiError::new(StatusCode::CONFLICT, message)
         }
+        fabro_work::Error::WorkItemLocked(item_key) => ApiError::with_code(
+            StatusCode::CONFLICT,
+            format!(
+                "item {item_key} carries an operator lock — claiming is refused until an \
+                 operator lifts it (`fabro work unlock {item_key}`)"
+            ),
+            "item_locked",
+        ),
         other => {
             tracing::error!(error = %other, "work store operation failed");
             ApiError::new(
@@ -515,8 +531,25 @@ async fn list_work_items(
                 .collect::<Vec<_>>()
         }
     };
+    // The lock badge overlay (denkhaus/work#1420): the lock lives in the
+    // store beside the claims, so the tracker-shaped items are stamped
+    // here — the operator sees the hold in the same listing that shows
+    // the lane.
+    let locked_items: std::collections::HashSet<String> = state
+        .work_store()
+        .locked_items(&project.project_id)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .collect();
     let response = WorkItemListResponse {
-        data:  items.into_iter().map(api_item).collect(),
+        data:  items
+            .into_iter()
+            .map(|item| {
+                let locked = locked_items.contains(&item.item_key);
+                stamp_lock(api_item(item), locked)
+            })
+            .collect(),
         total: total.map(|total| total.min(i64::MAX.unsigned_abs()).cast_signed()),
     };
     Ok(Json(response).into_response())
@@ -566,7 +599,13 @@ async fn get_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| ApiError::not_found(format!("work item `{}` not found", query.item_key)))?;
-    Ok(Json(api_item(item)).into_response())
+    let locked = state
+        .work_store()
+        .item_lock(&project.project_id, &query.item_key)
+        .await
+        .map_err(store_error)?
+        .is_some();
+    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
 }
 
 async fn create_work_item(
@@ -1082,6 +1121,100 @@ async fn lane_work_item(
     Ok(Json(api_item(item)).into_response())
 }
 
+/// The operator lock door (denkhaus/work#1420): `lock` places the lock,
+/// `unlock` lifts it. USER operations (the lane-move posture): the lock
+/// is the human surface — a worker principal is refused before any store
+/// or tracker call, so the run tools never carry it. The lock rides the
+/// store's lock table (never a tracker label), so it survives tracker
+/// round-trips; the lane stays untouched by both verbs. The lock's
+/// enforcement lives in the claim path: the pool filter (the
+/// stale-basis-skip layer) and the grant door's refusal.
+async fn lock_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemLockRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("the item lock is a user operation — run {run_id} may not lock items"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    // The lock names a real item: an unknown key is a 404, not a lock
+    // row pointing into the void (the close door's item gate).
+    let item = tracker
+        .get(&project, &request.item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| not_found("work item", &request.item_key))?;
+    // Refused while the item carries a live claim (the message names
+    // it): the lock is for items no run owns. Idempotent for an
+    // already-locked item.
+    state
+        .work_store()
+        .lock_item(&project.project_id, &request.item_key)
+        .await
+        .map_err(store_error)?;
+    tracing::info!(
+        project = %project.project_id,
+        item_key = %request.item_key,
+        "operator lock placed"
+    );
+    Ok(Json(stamp_lock(api_item(item), true)).into_response())
+}
+
+/// The lock door's lift (denkhaus/work#1420): the item becomes grantable
+/// again; the lane is untouched. Unlocking an unlocked item succeeds —
+/// the response just reports the item unlocked.
+async fn unlock_work_item(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemLockRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("the item lock is a user operation — run {run_id} may not unlock items"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let tracker = tracker_for(&state, &project).await?;
+    let item = tracker
+        .get(&project, &request.item_key)
+        .await
+        .map_err(tracker_failed)?
+        .ok_or_else(|| not_found("work item", &request.item_key))?;
+    let removed = state
+        .work_store()
+        .unlock_item(&project.project_id, &request.item_key)
+        .await
+        .map_err(store_error)?;
+    tracing::info!(
+        project = %project.project_id,
+        item_key = %request.item_key,
+        removed,
+        "operator lock lifted"
+    );
+    Ok(Json(stamp_lock(api_item(item), false)).into_response())
+}
+
+/// Stamps the operator-lock badge (denkhaus/work#1420) onto a served
+/// item: the lock lives in the store, not the tracker, so the
+/// tracker-shaped item cannot carry it and the door overlays it for the
+/// wire. `locked` is optional in the schema — the doors that stamp it
+/// (list, the single-item reads, lock/unlock) answer truthfully; a door
+/// that leaves it unset makes no claim either way.
+fn stamp_lock(item: ApiWorkItem, locked: bool) -> ApiWorkItem {
+    ApiWorkItem {
+        locked: Some(locked),
+        ..item
+    }
+}
+
 async fn claim_next(
     auth: RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
@@ -1160,6 +1293,20 @@ async fn claim_next(
         .await
         .map_err(store_error)?;
 
+    // Operator lock door (denkhaus/work#1420): an item carrying an
+    // operator-held lock is not grantable — regardless of lane, with no
+    // expiry (the operator lifts it). The same pool layer as the
+    // stale-basis skip above; the grant door's own refusal (the store's
+    // `grant`) is the second net. The lane is untouched by the lock, so
+    // the item still lists under its lane for re-routing decisions.
+    let locked_items: std::collections::HashSet<String> = state
+        .work_store()
+        .locked_items(&project.project_id)
+        .await
+        .map_err(store_error)?
+        .into_iter()
+        .collect();
+
     // Lane backpressure (fabro-4580, ADR-0032): a lane grants only when its
     // open run PRs are drained. Cap 0 = refuse while ANY claim of the lane
     // awaits merge; the scheduler cannot fire a second overlapping run past
@@ -1193,6 +1340,13 @@ async fn claim_next(
     }
 
     for item in items {
+        if locked_items.contains(&item.item_key) {
+            tracing::debug!(
+                item_key = %item.item_key,
+                "work pool: candidate item carries an operator lock; skipped (work#1420)"
+            );
+            continue;
+        }
         if claimed.contains(&item.item_key) {
             // The claim-hold arm of the pool policy (denkhaus/work#1457,
             // ADR-0045 P1): a candidate whose live claim HOLDS stays out
@@ -1384,7 +1538,13 @@ async fn retrieve_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &item_key))?;
-    Ok(Json(api_item(item)).into_response())
+    let locked = state
+        .work_store()
+        .item_lock(&project.project_id, &item_key)
+        .await
+        .map_err(store_error)?
+        .is_some();
+    Ok(Json(stamp_lock(api_item(item), locked)).into_response())
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -1771,6 +1931,10 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         body:       item.body,
         item_key:   item.item_key,
         labels:     item.labels,
+        // The lock badge (denkhaus/work#1420) is a store overlay, not
+        // tracker state: unset here, stamped by the doors that read the
+        // lock table (stamp_lock).
+        locked:     None,
         priority:   item.priority,
         state:      item.state,
         title:      item.title,
@@ -2061,6 +2225,101 @@ mod resolve_self_tests {
             ghost.is_empty(),
             "no claim may land under the literal `self`"
         );
+    }
+
+    /// THE LOCK DOOR AT THE POOL (denkhaus/work#1420): the lane's sole
+    /// open candidate carries an operator lock — claim_next answers
+    /// EMPTY, no claim row lands, and the lane label is untouched. The
+    /// lane stays visible for re-routing; the lock is the only hold.
+    #[tokio::test]
+    async fn an_operator_locked_item_is_never_granted_by_claim_next() {
+        use fabro_api::types::WorkClaimNextRequest;
+        use fabro_work::TrackerProvider;
+
+        use super::claim_next;
+
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(OneItemTracker) as Arc<dyn TrackerProvider>)
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+        // The lock lands only on an unclaimed item — this one.
+        state
+            .work_store()
+            .lock_item("fabro", "denkhaus/work#1")
+            .await
+            .unwrap();
+        let run_id = create_run_with_target(
+            &state,
+            RunTarget::Git(GitRunTarget {
+                repo:   "denkhaus/fabro".to_string(),
+                branch: "denkhaus".to_string(),
+                tag:    None,
+                sha:    None,
+            }),
+        )
+        .await;
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+
+        let response = claim_next(
+            auth,
+            State(Arc::clone(&state)),
+            Path("fabro".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            body["outcome"], "empty",
+            "the locked candidate is skipped, the pool is empty"
+        );
+        assert!(
+            state
+                .work_store()
+                .active_claims("fabro")
+                .await
+                .unwrap()
+                .is_empty(),
+            "no claim may land for a locked item"
+        );
+        // The unlock restores grantability — the same run, same pool.
+        assert!(
+            state
+                .work_store()
+                .unlock_item("fabro", "denkhaus/work#1")
+                .await
+                .unwrap(),
+            "the unlock lifts a placed lock"
+        );
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let response = claim_next(
+            auth,
+            State(Arc::clone(&state)),
+            Path("fabro".to_string()),
+            axum::Json(WorkClaimNextRequest {
+                run_id: run_id.to_string(),
+                lane:   "loop".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["outcome"], "granted", "the unlocked item grants again");
     }
 
     /// One open candidate item, static fixture — the shape the original

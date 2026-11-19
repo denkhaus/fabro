@@ -32,6 +32,15 @@ pub(super) async fn show_command(args: &WorkShowArgs, ctx: &CommandContext) -> R
         field_row(use_color, "state", item.state.clone()),
         field_row(use_color, "priority", item.priority.to_string()),
         field_row(use_color, "labels", labels_cell(&item.labels)),
+        field_row(
+            use_color,
+            "lock",
+            if super::is_locked(&item) {
+                "locked".to_string()
+            } else {
+                "-".to_string()
+            },
+        ),
         field_row(use_color, "title", item.title.clone()),
         field_row(use_color, "url", item.url.clone()),
         field_row(

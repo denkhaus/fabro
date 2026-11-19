@@ -1794,6 +1794,8 @@ impl Commands {
                 WorkCommand::Close(_) => "work close",
                 WorkCommand::Update(_) => "work update",
                 WorkCommand::Lane(_) => "work lane",
+                WorkCommand::Lock(_) => "work lock",
+                WorkCommand::Unlock(_) => "work unlock",
                 WorkCommand::Link(_) => "work link",
                 WorkCommand::Unlink(_) => "work unlink",
                 WorkCommand::Radius(_) => "work radius",
@@ -2494,6 +2496,11 @@ pub(crate) enum WorkCommand {
     Update(WorkUpdateArgs),
     /// Assign a work item to a lane, or clear its lane (`--lane none`)
     Lane(WorkLaneArgs),
+    /// Place the operator lock on a work item (blocks claiming; the
+    /// lane stays untouched)
+    Lock(WorkLockArgs),
+    /// Lift the operator lock from a work item
+    Unlock(WorkLockArgs),
     /// Link a work item to an observation record (ADR-0038 backfill)
     Link(WorkLinkArgs),
     /// Remove a work-item observation link
@@ -2664,6 +2671,17 @@ pub(crate) struct WorkLaneArgs {
     /// lanes), or `none` to clear the item's lane
     #[arg(long)]
     pub(crate) lane:     String,
+}
+
+/// The lock door's shared args (denkhaus/work#1420): `lock` and
+/// `unlock` name the same pair — project and item selector.
+#[derive(Args)]
+pub(crate) struct WorkLockArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project:  String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
+    pub(crate) selector: String,
 }
 
 #[derive(Args)]

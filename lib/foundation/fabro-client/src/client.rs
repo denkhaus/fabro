@@ -2290,6 +2290,51 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// Place the operator lock on a work item (denkhaus/work#1420): a
+    /// locked item is not grantable by the claim pool or the grant door;
+    /// the lane stays untouched.
+    pub async fn lock_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .lock_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemLockRequest {
+                        item_key: item_key.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// Lift the operator lock from a work item (denkhaus/work#1420):
+    /// the item becomes grantable again.
+    pub async fn unlock_work_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<types::WorkItem> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .unlock_work_item()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemLockRequest {
+                        item_key: item_key.to_string(),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Close a work item with a reason comment. `force` overrides an
     /// open closure radius (ADR-0038); the response carries the closed
     /// item and, for a forced close, the overridden open items.
