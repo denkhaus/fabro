@@ -384,11 +384,12 @@ export default function RunDetail({ params }: { params: { id: string } }) {
 
           <ConfirmDialog
             open={deleteDialogOpen}
-            title="Delete this run?"
+            title="Delete run permanently?"
             description={
               <>
-                This permanently removes <span className="font-mono text-fg-2">{run.title}</span> and its
-                durable state. This action cannot be undone.
+                This permanently removes <span className="font-mono text-fg-2">{run.title}</span> — its run
+                record, its sandbox and durable state, its salvage windows, and its observations and
+                journal. The run is unrecoverable: archive keeps the record, delete does not.
               </>
             }
             confirmLabel="Delete run"

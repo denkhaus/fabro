@@ -13,17 +13,21 @@ import {
   canArchive,
   canApprove,
   canCancel,
+  canOwnerPark,
   canUnarchive,
   cancellationActionLabel,
   cancellationSuccessMessage,
   cancelRun,
   deleteRuns,
+  isOwnerPark,
   isTerminalCancelledRun,
   isTerminalRunStatus,
   isCancellationPending,
   isCancellationPendingState,
   isQuotaPark,
   mapError,
+  ownerParkRun,
+  ownerUnparkRun,
   unarchiveRun,
   unarchiveRuns,
   canRetry,
@@ -224,6 +228,47 @@ describe("run lifecycle actions", () => {
     const result = await unarchiveRun("run-1");
     expect(result.lifecycle.status.kind).toBe("succeeded");
     expect(result.lifecycle.archived).toBe(false);
+  });
+
+  // work#1345: the owner-park doors — the park moves a retry-intent
+  // terminal to blocked (owner_pending), the unpark restores the deferred
+  // verdict.
+  test("ownerParkRun posts to the owner-park door and parses the parked run", async () => {
+    const { requests } = stubGeneratedAxiosOnce({
+      status: 200,
+      body: makeRun({ kind: "blocked", blocked_reason: "owner_pending" }),
+    });
+    const result = await ownerParkRun("run-1");
+    expect(result.lifecycle.status.kind).toBe("blocked");
+    if (result.lifecycle.status.kind === "blocked") {
+      expect(result.lifecycle.status.blocked_reason).toBe("owner_pending");
+    }
+    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/owner-park");
+    expect(requests[0]?.method).toBe("post");
+  });
+
+  test("ownerUnparkRun posts to the owner-unpark door and parses the restored run", async () => {
+    const { requests } = stubGeneratedAxiosOnce({
+      status: 200,
+      body: makeRun({ kind: "failed", reason: "workflow_error" }),
+    });
+    const result = await ownerUnparkRun("run-1");
+    expect(result.lifecycle.status.kind).toBe("failed");
+    expect(requests[0]?.url).toBe("/api/v1/runs/run-1/owner-unpark");
+    expect(requests[0]?.method).toBe("post");
+  });
+
+  test("owner park doors preserve the parsed error envelope", async () => {
+    stubGeneratedAxiosOnce({
+      status: 409,
+      body: { errors: [{ status: "409", title: "Precondition", detail: "run must be failed or human_needed" }] },
+    });
+    const error = await expectLifecycleError(ownerParkRun("run-1"));
+    expect(error.status).toBe(409);
+    expect(error.errors[0]?.detail).toBe("run must be failed or human_needed");
+    // A 409 maps to the canned park copy; a teaching detail surfaces on
+    // the other statuses (mapError's detail passthrough).
+    expect(mapError(error, "park")).toBe("Only failed or needs-human runs can be parked.");
   });
 
   test("archiveRuns sends one batch request and parses results", async () => {
@@ -472,6 +517,8 @@ describe("run lifecycle actions", () => {
     expect(mapError({ status: 409, errors: [] }, "deny")).toBe("This run is no longer pending approval.");
     expect(mapError({ status: 409, errors: [] }, "archive")).toBe("Only terminal runs can be archived.");
     expect(mapError({ status: 409, errors: [] }, "unarchive")).toBe("Active runs can't be unarchived.");
+    expect(mapError({ status: 409, errors: [] }, "park")).toBe("Only failed or needs-human runs can be parked.");
+    expect(mapError({ status: 409, errors: [] }, "unpark")).toBe("This run is not parked.");
   });
 
   test("status predicates align with the documented run statuses", () => {
@@ -505,6 +552,31 @@ describe("run lifecycle actions", () => {
     expect(isQuotaPark({ lifecycleStatus: "blocked", blockedReason: null })).toBe(false);
     expect(isQuotaPark({ lifecycleStatus: "failed", blockedReason: null })).toBe(false);
     expect(isQuotaPark({ lifecycleStatus: null, blockedReason: null })).toBe(false);
+  });
+
+  test("the owner park is the retry-intent blocked shape (work#1345)", () => {
+    expect(
+      isOwnerPark({ lifecycleStatus: "blocked", blockedReason: "owner_pending" }),
+    ).toBe(true);
+    expect(
+      isOwnerPark({ lifecycleStatus: "blocked", blockedReason: "quota_rate_limit" }),
+    ).toBe(false);
+    expect(
+      isOwnerPark({ lifecycleStatus: "blocked", blockedReason: "human_input_required" }),
+    ).toBe(false);
+    expect(isOwnerPark({ lifecycleStatus: "failed", blockedReason: null })).toBe(false);
+    expect(isOwnerPark({ lifecycleStatus: null, blockedReason: null })).toBe(false);
+  });
+
+  test("only the retry-intent terminals can be owner-parked (work#1345)", () => {
+    expect(canOwnerPark("failed")).toBe(true);
+    expect(canOwnerPark("human_needed")).toBe(true);
+    // dead has no retry intent to signal; the server refuses it with 409.
+    expect(canOwnerPark("dead")).toBe(false);
+    expect(canOwnerPark("succeeded")).toBe(false);
+    expect(canOwnerPark("blocked")).toBe(false);
+    expect(canOwnerPark("archived")).toBe(false);
+    expect(canOwnerPark(null)).toBe(false);
   });
 
   test("approval predicate requires pending status and pending approval state", () => {

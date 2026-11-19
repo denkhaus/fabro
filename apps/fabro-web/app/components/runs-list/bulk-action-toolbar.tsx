@@ -190,11 +190,12 @@ export function BulkActionToolbar({
       </section>
       <ConfirmDialog
         open={deleteDialogOpen}
-        title={`Delete ${deletableCount} ${plural(deletableCount, "run", "runs")}?`}
+        title={`Delete ${deletableCount} ${plural(deletableCount, "run", "runs")} permanently?`}
         description={
           <>
-            This permanently removes {deletableCount} archived {plural(deletableCount, "run", "runs")}{" "}
-            and their durable state. This action cannot be undone.
+            This permanently removes {deletableCount} {plural(deletableCount, "run", "runs")} — each
+            record, its sandbox and durable state, its salvage windows, and its observations and
+            journal. The runs are unrecoverable: archive keeps the records, delete does not.
           </>
         }
         confirmLabel={`Delete ${plural(deletableCount, "run", "runs")}`}

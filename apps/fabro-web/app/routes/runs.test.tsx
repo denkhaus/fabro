@@ -10,6 +10,7 @@ import {
   placeArchivedColumnLast,
   persistRunsWorkspacePreferences,
   PrCard,
+  resolveBoardDrop,
   RUNS_PREFERENCES_STORAGE_KEY,
   runsQuickStartCommands,
   shouldRefreshBoardForEvent,
@@ -486,5 +487,111 @@ describe("board tile (denkhaus/work#1164)", () => {
 
     (run.pull_request as { state?: unknown }).state = "garbage";
     expect(mapRunListItem(run).pullRequestState).toBeUndefined();
+  });
+});
+
+describe("board owner-park drop resolution (work#1345)", () => {
+  function ownerParkedRun(id: string): Run {
+    const run = boardRun(id, "blocked");
+    run.lifecycle.status = { kind: "blocked", blocked_reason: "owner_pending" };
+    return run;
+  }
+
+  function columnsFor(runs: Run[]) {
+    return buildBoardColumns({ data: runs }, false);
+  }
+
+  test("a failed run dropped on the blocked column parks", () => {
+    const columns = columnsFor([boardRun("failed-run", "failed")]);
+    expect(resolveBoardDrop(columns, "failed-run", "column:blocked")).toEqual({
+      kind: "park",
+      runId: "failed-run",
+    });
+  });
+
+  test("a failed run dropped on a card inside the blocked column parks", () => {
+    const columns = columnsFor([
+      boardRun("failed-run", "failed"),
+      boardRun("waiting-run", "blocked", "Older unresolved question?"),
+    ]);
+    expect(resolveBoardDrop(columns, "failed-run", "waiting-run")).toEqual({
+      kind: "park",
+      runId: "failed-run",
+    });
+  });
+
+  test("a human-needed run dropped on the blocked column parks", () => {
+    const humanRun = boardRun("human-run", "pending");
+    humanRun.lifecycle.status = { kind: "human_needed" };
+    const built = buildBoardColumns({ data: [humanRun] }, false);
+    expect(resolveBoardDrop(built, "human-run", "column:blocked")).toEqual({
+      kind: "park",
+      runId: "human-run",
+    });
+  });
+
+  test("a dead run is not parkable: the drop is not a park gesture", () => {
+    const deadRun = boardRun("dead-run", "failed");
+    deadRun.lifecycle.status = { kind: "dead", reason: "workflow_error" };
+    const columns = columnsFor([deadRun]);
+    expect(resolveBoardDrop(columns, "dead-run", "column:blocked")).toBeNull();
+  });
+
+  test("an active run dropped on the blocked column is not a park gesture", () => {
+    const columns = columnsFor([boardRun("running-run", "running")]);
+    expect(resolveBoardDrop(columns, "running-run", "column:blocked")).toBeNull();
+  });
+
+  test("an owner-parked run dropped on the failed column unparks", () => {
+    const columns = columnsFor([
+      ownerParkedRun("parked-run"),
+      boardRun("failed-run", "failed"),
+    ]);
+    expect(resolveBoardDrop(columns, "parked-run", "column:failed")).toEqual({
+      kind: "unpark",
+      runId: "parked-run",
+    });
+  });
+
+  test("an owner-parked run dropped on a card in the human_needed column unparks", () => {
+    const humanRun = boardRun("human-run", "pending");
+    humanRun.lifecycle.status = { kind: "human_needed" };
+    const columns = columnsFor([ownerParkedRun("parked-run"), humanRun]);
+    expect(resolveBoardDrop(columns, "parked-run", "human-run")).toEqual({
+      kind: "unpark",
+      runId: "parked-run",
+    });
+  });
+
+  test("an owner-parked run dropped on succeeded is not an unpark gesture", () => {
+    const columns = columnsFor([
+      ownerParkedRun("parked-run"),
+      boardRun("done-run", "succeeded"),
+    ]);
+    expect(resolveBoardDrop(columns, "parked-run", "done-run")).toBeNull();
+  });
+
+  test("a quota-parked run dropped on failed is not an unpark gesture", () => {
+    const columns = columnsFor([
+      boardRun("quota-run", "blocked"),
+      boardRun("failed-run", "failed"),
+    ]);
+    expect(resolveBoardDrop(columns, "quota-run", "column:failed")).toBeNull();
+  });
+
+  test("drops inside one column stay reorder gestures, not park gestures", () => {
+    const columns = columnsFor([
+      boardRun("failed-a", "failed"),
+      boardRun("failed-b", "failed"),
+      ownerParkedRun("parked-run"),
+    ]);
+    expect(resolveBoardDrop(columns, "failed-a", "failed-b")).toBeNull();
+    expect(resolveBoardDrop(columns, "parked-run", "column:blocked")).toBeNull();
+  });
+
+  test("an unknown drop target resolves to no action", () => {
+    const columns = columnsFor([boardRun("failed-run", "failed")]);
+    expect(resolveBoardDrop(columns, "failed-run", "column:succeeded")).toBeNull();
+    expect(resolveBoardDrop(columns, "ghost-run", "column:blocked")).toBeNull();
   });
 });

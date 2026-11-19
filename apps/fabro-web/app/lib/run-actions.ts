@@ -93,6 +93,34 @@ export async function unarchiveRun(id: string, request?: Request): Promise<Run> 
   return runLifecycleAction(id, "unarchive", request);
 }
 
+/**
+ * Owner park (work#1345): park a failed or human-needed run as
+ * `blocked` with reason `owner_pending` — the drag into the blocked
+ * column. While parked the run is non-terminal and its work-item claim
+ * holds. Refused with 409 when the run is not failed or human_needed,
+ * or is archived.
+ */
+export async function ownerParkRun(id: string, request?: Request): Promise<Run> {
+  try {
+    return await apiData(() => runsApi.ownerParkRun(id, requestSignalOptions(request)));
+  } catch (error) {
+    throw lifecycleActionErrorFromError(error);
+  }
+}
+
+/**
+ * Owner unpark (work#1345): clear an owner park and restore the
+ * terminal verdict the park deferred (the reverse gesture). Refused
+ * with 409 when the run is not owner-parked.
+ */
+export async function ownerUnparkRun(id: string, request?: Request): Promise<Run> {
+  try {
+    return await apiData(() => runsApi.ownerUnparkRun(id, requestSignalOptions(request)));
+  } catch (error) {
+    throw lifecycleActionErrorFromError(error);
+  }
+}
+
 // Client-side batch summary for actions that don't have a server-side batch
 // endpoint yet (currently: approve). Shape matches the server's batch
 // responses so it slots into the same toolbar plumbing.
@@ -180,6 +208,26 @@ export function isQuotaPark(run: Pick<RunItem, "lifecycleStatus" | "blockedReaso
   return run.lifecycleStatus === "blocked" && run.blockedReason === "quota_rate_limit";
 }
 
+/**
+ * Whether the run is an owner park (work#1345): the owner dragged it into
+ * the blocked column to signal retry intent. While parked the run is
+ * non-terminal and its work-item claim holds; the park clears on a
+ * disposition (retry, retry-latest, archive) or the reverse gesture.
+ */
+export function isOwnerPark(run: Pick<RunItem, "lifecycleStatus" | "blockedReason">): boolean {
+  return run.lifecycleStatus === "blocked" && run.blockedReason === "owner_pending";
+}
+
+/**
+ * The park gesture is valid from a terminal failed or human-needed run —
+ * exactly the retry-intent terminals (the server refuses a succeeded or
+ * dead run with 409: no retry intent to signal). Dead is deliberately
+ * excluded: the park door accepts FAILED or HUMAN_NEEDED only.
+ */
+export function canOwnerPark(status: string | null | undefined): boolean {
+  return status === "failed" || status === "human_needed";
+}
+
 export function canCancel(status: string | null | undefined): boolean {
   return !!status && CANCELABLE_STATUSES.has(status as RunStatus);
 }
@@ -202,8 +250,14 @@ export function isTerminalRunStatus(
   return !!status && TERMINAL_RUN_STATUSES.has(status as RunStatus);
 }
 
+/**
+ * Delete is offered for terminal runs and for archived ones (work#1479:
+ * the menu entry must appear for terminal runs, not only archived ones).
+ * This mirrors the server's guard class — active runs refuse deletion
+ * without `force` (409), while terminal and archived runs delete plain.
+ */
 export function canDelete(status: string | null | undefined): boolean {
-  return status === "archived";
+  return isTerminalRunStatus(status) || status === "archived";
 }
 
 export function isTerminalCancelledRun(run: Pick<Run, "lifecycle">): boolean {
@@ -251,7 +305,7 @@ export function deleteErrorMessage(error: unknown): string {
   return "Couldn't delete the run right now. Try again.";
 }
 
-export function mapError(error: unknown, action: LifecycleAction | "resume"): string {
+export function mapError(error: unknown, action: LifecycleAction | "resume" | "park" | "unpark"): string {
   if (isLifecycleActionError(error)) {
     if (error.status === 404) {
       return "This run no longer exists.";
@@ -269,6 +323,10 @@ export function mapError(error: unknown, action: LifecycleAction | "resume"): st
           return "Active runs can't be unarchived.";
         case "resume":
           return "The provider window is still closed — resume once it reopens.";
+        case "park":
+          return "Only failed or needs-human runs can be parked.";
+        case "unpark":
+          return "This run is not parked.";
       }
     }
 
@@ -291,6 +349,10 @@ export function mapError(error: unknown, action: LifecycleAction | "resume"): st
       return "Couldn't unarchive the run right now. Try again.";
     case "resume":
       return "Couldn't resume the run right now. Try again.";
+    case "park":
+      return "Couldn't park the run right now. Try again.";
+    case "unpark":
+      return "Couldn't clear the park right now. Try again.";
   }
 }
 
