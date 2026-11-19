@@ -250,8 +250,7 @@ fn status_cell(status: RunStatus, archived: bool, use_color: bool) -> CellStruct
 /// The one-line self-update pointer printed under the skew warning
 /// (work#1437): the matching CLI ships inside the server's own release
 /// image, so upgrading the CLI converges it with the server.
-const SELF_UPDATE_HINT: &str =
-    "upgrade the CLI: the release carries it — `fabro upgrade` (or the mise github backend installs it)";
+const SELF_UPDATE_HINT: &str = "upgrade the CLI: the release carries it — `fabro upgrade` (or the mise github backend installs it)";
 
 /// The drift warning for rows this CLI cannot decode: names how many
 /// rows drifted and what the server's unknown shape looks like (the
@@ -387,7 +386,10 @@ mod tests {
             "id": "01JNQVR7M0EJ5GKAT2SC4ERS1Z",
             "lifecycle": {"status": {"kind": "human_needed"}}
         }));
-        assert_eq!(undecodable_title(&row), "<undecodable run: status_kind=human_needed>");
+        assert_eq!(
+            undecodable_title(&row),
+            "<undecodable run: status_kind=human_needed>"
+        );
         assert_eq!(
             undecodable_title(&undecodable_row(serde_json::json!({}))),
             "<undecodable run>"

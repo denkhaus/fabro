@@ -44,8 +44,7 @@ const SNAPSHOT_REPOSITORY_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// the server computed over the COMPLETE bundle before streaming. A consumer
 /// that receives fewer bytes, or bytes that hash differently, knows the
 /// transfer was truncated mid-stream and must not trust the bundle.
-const BUNDLE_SHA256_HEADER: header::HeaderName =
-    header::HeaderName::from_static("x-bundle-sha256");
+const BUNDLE_SHA256_HEADER: header::HeaderName = header::HeaderName::from_static("x-bundle-sha256");
 const BUNDLE_BYTES_HEADER: header::HeaderName = header::HeaderName::from_static("x-bundle-bytes");
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
@@ -223,7 +222,10 @@ async fn get_run_snapshot(
     // deleted exactly when the response body is finished (or abandoned).
     let staging_cleanup = futures_util::stream::unfold(Some(staging), |staging| async move {
         drop(staging);
-        None::<(Result<Bytes, std::io::Error>, Option<tempfile::NamedTempFile>)>
+        None::<(
+            Result<Bytes, std::io::Error>,
+            Option<tempfile::NamedTempFile>,
+        )>
     });
 
     let mut response = Body::from_stream(stream.chain(staging_cleanup)).into_response();
@@ -242,8 +244,12 @@ async fn get_run_snapshot(
         header::CACHE_CONTROL,
         HeaderValue::from_static("private, no-store"),
     );
-    response.headers_mut().insert(header::CONTENT_LENGTH, HeaderValue::from(bundle_bytes));
-    response.headers_mut().insert(BUNDLE_BYTES_HEADER, HeaderValue::from(bundle_bytes));
+    response
+        .headers_mut()
+        .insert(header::CONTENT_LENGTH, HeaderValue::from(bundle_bytes));
+    response
+        .headers_mut()
+        .insert(BUNDLE_BYTES_HEADER, HeaderValue::from(bundle_bytes));
     response.headers_mut().insert(
         BUNDLE_SHA256_HEADER,
         HeaderValue::from_str(&bundle_sha256).expect("hex sha256 is a valid header value"),

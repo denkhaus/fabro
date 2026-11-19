@@ -585,7 +585,7 @@ async fn list_work_items(
         None
     };
     let response = WorkItemListResponse {
-        data:  items
+        data: items
             .into_iter()
             .map(|item| {
                 let locked = locked_items.contains(&item.item_key);
@@ -600,21 +600,21 @@ async fn list_work_items(
 
 #[derive(Debug, Default, serde::Deserialize)]
 struct WorkItemQuery {
-    lane:  Option<String>,
-    limit: Option<u32>,
-    query: Option<String>,
+    lane:   Option<String>,
+    limit:  Option<u32>,
+    query:  Option<String>,
     /// Raw tracker label name, filtered beside the project/lane labels
     /// (denkhaus/work#1001).
-    label: Option<String>,
+    label:  Option<String>,
     /// 1-based results page; `limit` is the page size (denkhaus/work#1001).
-    page:  Option<u32>,
+    page:   Option<u32>,
     /// Server-side sort key: `priority` or `updated`, `-` inverts.
     /// Applies before paging: the handler accumulates tracker pages
     /// (bounded), sorts, and slices the requested page.
-    sort:  Option<String>,
+    sort:   Option<String>,
     /// Which states the listing enumerates: `open` (the default),
     /// `closed`, or `all` — the census read (work#1476).
-    state: Option<String>,
+    state:  Option<String>,
     /// The previous response's opaque next-page token (work#1476);
     /// absent or empty starts at the first page. Overrides `page`.
     cursor: Option<String>,

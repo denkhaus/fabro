@@ -194,8 +194,7 @@ impl AutomationSchedulePlanner {
                 if cursor.holdover.is_none() {
                     cursor.holdover = Some(due_at);
                 }
-                let advance =
-                    advance_cursor(&cursor.expression, &mut cursor.next_due_at, now);
+                let advance = advance_cursor(&cursor.expression, &mut cursor.next_due_at, now);
                 if let Err(err) = advance {
                     warn!(
                         automation_id = %key.automation_id,
@@ -225,7 +224,7 @@ impl AutomationSchedulePlanner {
                 automation: (*automation).clone(),
                 trigger_id: key.trigger_id,
                 due_at,
-                catch_up:   false,
+                catch_up: false,
             });
         }
 
@@ -1408,7 +1407,11 @@ pub(crate) mod tests {
 
         // Slots 00:02 and 00:03 also overrun: they fold into the SAME
         // earliest holdover — one pending slot, not three.
-        let due = planner.tick(std::slice::from_ref(&automation), &active, second_due_time());
+        let due = planner.tick(
+            std::slice::from_ref(&automation),
+            &active,
+            second_due_time(),
+        );
         assert!(due.is_empty());
         let cursor = planner.cursors.values().next().unwrap();
         assert_eq!(cursor.holdover, Some(first_due_time()));
@@ -2197,12 +2200,9 @@ dockerfile = { path = "Dockerfile" }
     async fn overran_slot_fires_once_as_catch_up_after_the_lap_terminalizes() {
         let materializer = succeeding_materializer();
         let state = test_state_with_materializer(materializer.clone());
-        create_automation(
-            state.as_ref(),
-            "overrun",
-            "Overrun",
-            vec![schedule_trigger("schedule", "* * * * *", true)],
-        )
+        create_automation(state.as_ref(), "overrun", "Overrun", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
         .await;
         let mut planner = AutomationSchedulePlanner::default();
 
@@ -2220,9 +2220,7 @@ dockerfile = { path = "Dockerfile" }
 
         // The lap terminalizes; the next tick fires the held-over slot as
         // ONE catch-up run.
-        let lap = stored_runs_chronological(state.as_ref())
-            .await
-            .remove(0);
+        let lap = stored_runs_chronological(state.as_ref()).await.remove(0);
         seed_run_row(
             state.as_ref(),
             &lap.id,
@@ -2263,12 +2261,9 @@ dockerfile = { path = "Dockerfile" }
             vec![schedule_trigger("schedule", "* * * * *", true)],
         )
         .await;
-        create_automation(
-            state.as_ref(),
-            "skip-gear",
-            "Skip gear",
-            vec![schedule_trigger("schedule", "* * * * *", true)],
-        )
+        create_automation(state.as_ref(), "skip-gear", "Skip gear", vec![
+            schedule_trigger("schedule", "* * * * *", true),
+        ])
         .await;
         // One non-terminal run for each automation (runnable in this test
         // state), the way an overrunning lap would leave them.

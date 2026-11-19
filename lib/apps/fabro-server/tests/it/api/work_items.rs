@@ -479,7 +479,7 @@ mod next_item {
                 url:        format!("https://github.com/denkhaus/work/issues/{number}"),
                 updated_at: Some(Utc::now()),
                 created_at: None,
-                closed_at: None,
+                closed_at:  None,
             };
             items.push(created.clone());
             Ok(created)
@@ -921,9 +921,7 @@ mod next_item {
             .oneshot(
                 Request::builder()
                     .method(Method::GET)
-                    .uri(api(
-                        "/projects/fabro/work-items?state=all&cursor=2&limit=2",
-                    ))
+                    .uri(api("/projects/fabro/work-items?state=all&cursor=2&limit=2"))
                     .body(Body::empty())
                     .expect("work-item test step should succeed"),
             )
@@ -1507,7 +1505,7 @@ mod closure_radius {
             url:        format!("https://github.com/denkhaus/work/issues/{number}"),
             updated_at: None,
             created_at: None,
-            closed_at: None,
+            closed_at:  None,
         }
     }
 

@@ -91,7 +91,7 @@ pub struct RunSnapshotDownload {
     /// The bundle's SHA256, hex-encoded, over the complete bundle.
     pub sha256: Option<String>,
     /// The bundle's exact byte count.
-    pub bytes: Option<u64>,
+    pub bytes:  Option<u64>,
     /// The bundle bytes. Consume incrementally; the proof only holds for the
     /// full stream.
     pub stream: HttpByteStream,
@@ -129,7 +129,7 @@ struct RawRunPageMeta {
 pub struct UndecodableRunRow {
     /// The row verbatim, so renderers can still surface its identity
     /// (`id`, `title`, `lifecycle.status.kind`) without understanding it.
-    pub raw: serde_json::Value,
+    pub raw:   serde_json::Value,
     /// Why the row refused to decode (the serde error text).
     pub error: String,
 }
@@ -153,9 +153,7 @@ impl UndecodableRunRow {
     /// The run's title, when the raw row carries one.
     #[must_use]
     pub fn title(&self) -> Option<&str> {
-        self.raw
-            .get("title")
-            .and_then(serde_json::Value::as_str)
+        self.raw.get("title").and_then(serde_json::Value::as_str)
     }
 }
 
@@ -178,7 +176,7 @@ fn decode_run_rows(rows: Vec<serde_json::Value>) -> RunListing {
         match serde_json::from_value::<Run>(row.clone()) {
             Ok(run) => listing.runs.push(run),
             Err(error) => listing.undecodable.push(UndecodableRunRow {
-                raw: row,
+                raw:   row,
                 error: error.to_string(),
             }),
         }
@@ -2855,12 +2853,12 @@ impl Client {
         convert_type(response.into_inner())
     }
 
-    /// The integrity metadata and live byte stream of `GET /runs/{id}/snapshot`:
-    /// the run's snapshot repository as a `git bundle` of all refs. `sha256`
-    /// and `bytes` are the proof the server computed over the COMPLETE bundle
-    /// before streaming (work#1430); a consumer that verifies its received
-    /// bytes against them fails a truncated transfer loudly instead of
-    /// salvaging a corrupt bundle.
+    /// The integrity metadata and live byte stream of `GET
+    /// /runs/{id}/snapshot`: the run's snapshot repository as a `git
+    /// bundle` of all refs. `sha256` and `bytes` are the proof the server
+    /// computed over the COMPLETE bundle before streaming (work#1430); a
+    /// consumer that verifies its received bytes against them fails a
+    /// truncated transfer loudly instead of salvaging a corrupt bundle.
     pub async fn download_run_snapshot(&self, run_id: &RunId) -> Result<RunSnapshotDownload> {
         let response = self
             .current_state()

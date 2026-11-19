@@ -65,7 +65,7 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
             url:        String::new(),
             updated_at: None,
             created_at: None,
-            closed_at: None,
+            closed_at:  None,
         }))
     }
 
@@ -84,7 +84,7 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
             url:        String::new(),
             updated_at: None,
             created_at: None,
-            closed_at: None,
+            closed_at:  None,
         })
     }
 

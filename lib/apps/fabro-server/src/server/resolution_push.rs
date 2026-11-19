@@ -6,18 +6,17 @@
 //! in its own checkout, then names the commit through this door. The
 //! server does every forge-facing step itself:
 //!
-//! - the objects travel out of the calling run's sandbox as a git
-//!   bundle (`git bundle create` beside the checkout, read out through
-//!   the sandbox filesystem facet — the same bundle protocol the
-//!   checkpoint transport uses), and the bundle's basis is the origin's
-//!   own branch state, fetched server-side with the run credentials;
-//! - the push reuses the `run_publish` machinery verbatim: the same
-//!   minted installation token, the same credential-helper git
-//!   environment, a plain non-forced refspec so a non-fast-forward
-//!   push is refused by git itself;
-//! - one `run.branch_pushed` platform record lands in the TARGET run's
-//!   stream per push — the capability-class audit (ADR-0019's second
-//!   instance of the server-side, workflow-gated, audited door).
+//! - the objects travel out of the calling run's sandbox as a git bundle (`git
+//!   bundle create` beside the checkout, read out through the sandbox
+//!   filesystem facet — the same bundle protocol the checkpoint transport
+//!   uses), and the bundle's basis is the origin's own branch state, fetched
+//!   server-side with the run credentials;
+//! - the push reuses the `run_publish` machinery verbatim: the same minted
+//!   installation token, the same credential-helper git environment, a plain
+//!   non-forced refspec so a non-fast-forward push is refused by git itself;
+//! - one `run.branch_pushed` platform record lands in the TARGET run's stream
+//!   per push — the capability-class audit (ADR-0019's second instance of the
+//!   server-side, workflow-gated, audited door).
 //!
 //! Scoping fixed by ADR-0047: the door is the merger workflow's only,
 //! the branch is always `fabro/run/<target>` (never caller-supplied),
@@ -26,9 +25,8 @@
 //! token-in-sandbox posture is the ADR's rejected alternative.
 
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::Json;
@@ -50,8 +48,7 @@ use tracing::{info, warn};
 
 use super::handler::orchestration::{CLOSABLE_WRITER_WORKFLOW, owned_field_for_writer};
 use super::run_publish::{TokenMint, mint_push_token, push_snapshot_commit};
-use super::run_records;
-use super::AppState;
+use super::{AppState, run_records};
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
 use crate::sandbox_access;
@@ -292,10 +289,10 @@ pub(super) async fn push_run_resolution(
         );
     }
     Ok(Json(RunPushResolutionResponse {
-        run_id:     target.to_string(),
-        pushed:     true,
+        run_id: target.to_string(),
+        pushed: true,
         run_branch,
-        head_sha:   full_sha,
+        head_sha: full_sha,
     })
     .into_response())
 }
@@ -339,7 +336,10 @@ async fn resolve_commit(
 /// The calling run's serialization gate for sandbox access (fabro-2c17):
 /// held across every door window that reads through the sandbox.
 async fn hold_writer_gate(writer: &RunId) -> OwnedMutexGuard<()> {
-    sandbox_access::run_sandbox_gate(writer).clone().lock_owned().await
+    sandbox_access::run_sandbox_gate(writer)
+        .clone()
+        .lock_owned()
+        .await
 }
 
 /// The calling run's live sandbox and its checkout directory: the only
@@ -543,17 +543,16 @@ async fn extract_resolution_bundle(
     let start_nanos = *SCRATCH_START_NANOS.get_or_init(|| {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| u64::try_from(since.as_nanos()).unwrap_or(u64::MAX))
+            .map_or(0, |since| {
+                u64::try_from(since.as_nanos()).unwrap_or(u64::MAX)
+            })
     });
     let scratch_dir = Storage::new(state.server_storage_dir())
         .run_scratch(writer)
         .root()
         .join("resolution-push")
         .join(format!("resolution-{start_nanos}-{sequence}.git"));
-    Ok(ResolutionBundle {
-        bytes,
-        scratch_dir,
-    })
+    Ok(ResolutionBundle { bytes, scratch_dir })
 }
 
 /// Read a sandbox file in bounded windows the transport accepts (the
@@ -623,21 +622,26 @@ async fn land_resolution(
         .await
         .map_err(|err| transport_error("creating the resolution scratch repository", &err))?;
     let scratch_arg = scratch.to_string_lossy().into_owned();
-    host_git(
-        "init the scratch repository",
-        None,
-        &["--git-dir", &scratch_arg, "init", "-q", "--bare"],
-    )
+    host_git("init the scratch repository", None, &[
+        "--git-dir",
+        &scratch_arg,
+        "init",
+        "-q",
+        "--bare",
+    ])
     .await?;
     // The bundle's prerequisite is the origin's branch state: fetch it
     // into the scratch first (a read, with the door's own token), then
     // the bundle's delta on top.
     let refspec = format!("refs/heads/{run_branch}:refs/heads/{run_branch}");
-    if let Err(err) = host_git(
-        "fetch the origin branch",
-        Some(token),
-        &["--git-dir", &scratch_arg, "fetch", "-q", https_origin, &refspec],
-    )
+    if let Err(err) = host_git("fetch the origin branch", Some(token), &[
+        "--git-dir",
+        &scratch_arg,
+        "fetch",
+        "-q",
+        https_origin,
+        &refspec,
+    ])
     .await
     {
         return Err(ApiError::with_code(
@@ -655,18 +659,14 @@ async fn land_resolution(
         .await
         .map_err(|err| transport_error("staging the resolution bundle", &err))?;
     let staged_arg = staged.to_string_lossy().into_owned();
-    let fetched = host_git(
-        "fetch the resolution bundle",
-        None,
-        &[
-            "--git-dir",
-            &scratch_arg,
-            "fetch",
-            "-q",
-            &staged_arg,
-            "refs/heads/*:refs/heads/*",
-        ],
-    )
+    let fetched = host_git("fetch the resolution bundle", None, &[
+        "--git-dir",
+        &scratch_arg,
+        "fetch",
+        "-q",
+        &staged_arg,
+        "refs/heads/*:refs/heads/*",
+    ])
     .await;
     let _ = fs::remove_file(&staged).await;
     fetched.map_err(|err| {
@@ -683,11 +683,13 @@ async fn land_resolution(
     // push exist in the scratch, and the named commit sits on the
     // fetched branch — the push content is what the checkout resolved.
     let commit_arg = format!("{full_sha}^{{commit}}");
-    if host_git(
-        "verify the resolution commit",
-        None,
-        &["--git-dir", &scratch_arg, "cat-file", "-e", &commit_arg],
-    )
+    if host_git("verify the resolution commit", None, &[
+        "--git-dir",
+        &scratch_arg,
+        "cat-file",
+        "-e",
+        &commit_arg,
+    ])
     .await
     .is_err()
     {
@@ -698,18 +700,14 @@ async fn land_resolution(
         ));
     }
     let branch_ref = format!("refs/heads/{run_branch}");
-    if host_git(
-        "verify the commit is on the branch",
-        None,
-        &[
-            "--git-dir",
-            &scratch_arg,
-            "merge-base",
-            "--is-ancestor",
-            full_sha,
-            &branch_ref,
-        ],
-    )
+    if host_git("verify the commit is on the branch", None, &[
+        "--git-dir",
+        &scratch_arg,
+        "merge-base",
+        "--is-ancestor",
+        full_sha,
+        &branch_ref,
+    ])
     .await
     .is_err()
     {
@@ -775,9 +773,13 @@ async fn remote_branch_head(
     run_branch: &str,
 ) -> Result<Option<String>, ApiError> {
     let refspec = format!("refs/heads/{run_branch}");
-    let output = host_git("reading the branch head", Some(token), &["ls-remote", https_origin, &refspec])
-        .await
-        .map_err(|err| transport_error("reading the forge branch head", &err))?;
+    let output = host_git("reading the branch head", Some(token), &[
+        "ls-remote",
+        https_origin,
+        &refspec,
+    ])
+    .await
+    .map_err(|err| transport_error("reading the forge branch head", &err))?;
     Ok(output
         .lines()
         .next()

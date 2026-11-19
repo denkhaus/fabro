@@ -209,8 +209,9 @@ mod tests {
         let run_id: RunId = "01ARZ3NDEKTSV4RRFFQ69G5FAV".parse().unwrap();
         let received = format!("{:x}", Sha256::digest(b"corrupted bytes"));
         let expected = format!("{:x}", Sha256::digest(b"bundle bytes"));
-        let err = verify_bundle_integrity(&run_id, 12, &received, Some(expected.as_str()), Some(12))
-            .expect_err("a hash mismatch must be refused");
+        let err =
+            verify_bundle_integrity(&run_id, 12, &received, Some(expected.as_str()), Some(12))
+                .expect_err("a hash mismatch must be refused");
         let message = err.to_string();
         assert!(
             message.contains("truncated") || message.contains("corrupt"),

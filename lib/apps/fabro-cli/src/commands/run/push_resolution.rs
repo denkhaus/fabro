@@ -41,7 +41,11 @@ pub(super) async fn push_resolution_command(
     if ctx.json_output() {
         print_json_pretty(&result)?;
     } else {
-        fabro_util::printout!(printer, "{}", run_push_resolution::run_push_resolution_text(&result));
+        fabro_util::printout!(
+            printer,
+            "{}",
+            run_push_resolution::run_push_resolution_text(&result)
+        );
     }
     Ok(())
 }

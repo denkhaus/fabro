@@ -10,7 +10,9 @@ use fabro_types::{
     WorkItemComment,
 };
 
-use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common, seeds};
+use crate::{
+    FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common, seeds,
+};
 
 #[derive(Clone)]
 pub struct ClientBackend {

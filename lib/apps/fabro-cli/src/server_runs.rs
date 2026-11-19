@@ -122,7 +122,7 @@ impl ServerRunInfo {
 }
 
 pub(crate) struct ServerRunLookup {
-    runs: Vec<ServerRunInfo>,
+    runs:        Vec<ServerRunInfo>,
     /// Rows the CLI could not decode (server schema drift, work#1437):
     /// carried alongside the decoded runs so the listing can render
     /// them as placeholders instead of failing whole.

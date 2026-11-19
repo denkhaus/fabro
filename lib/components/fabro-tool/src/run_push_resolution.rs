@@ -27,7 +27,7 @@ pub struct FabroRunPushResolutionParams {
     /// resolution lands on — the packet's run, the one whose merge the
     /// door declined. The branch is the server's to name; there is no
     /// branch parameter to pass.
-    pub run: String,
+    pub run:    String,
     /// The resolution commit's sha, as committed on the run branch in
     /// THIS checkout (a short or full sha the checkout resolves). The
     /// commit must sit on the checkout's branch for the run branch —
