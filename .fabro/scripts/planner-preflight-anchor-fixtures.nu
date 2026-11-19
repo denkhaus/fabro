@@ -5,7 +5,8 @@
 # anchor (out of range), content mismatch, missing file, no-anchor seed,
 # claim-bleed guard, and degradation (binary/unreadable file) — plus one
 # end-to-end run of planner-preflight.nu (report-only since fabro-83df)
-# whose --candidates seed id cannot be resolved by `seeds show`, proving the
+# whose --candidates seed id does not exist in the tracker (no gh state
+# answers its legacy-label lookup), proving the
 # description-fetch failure degrades to "no anchors" without crashing.
 # fabro-9ec3 arm 1 adds bare-path cases (10)-(12): path-only citations
 # are extracted and existence-checked (workflow-relative fallback root
@@ -82,7 +83,8 @@ def main [] {
         expect '8: binary file flagged not crashed' ($bin | get status | first) 'out_of_range'
 
         # (9) end-to-end: planner-preflight.nu (report-only mode) with a seed
-        # id `seeds show` cannot resolve — description fetch fails, anchor
+        # id the tracker cannot resolve (absent from the legacy-label
+        # census) — description fetch fails, anchor
         # fields degrade to "no anchors" (anchors_ok true), script exits
         # 0 and still routes "Preflight done".
         let pre = ($FIXTURES_DIR | path join '..' 'workflows' 'develop' 'scripts' 'planner-preflight.nu')

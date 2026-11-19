@@ -2,23 +2,22 @@
 # prompt-lint: synthetic-seed-ids
 # Fixture battery for dup-run-check.nu (fabro-4b76): exercises the closure
 # identity (--self) semantics end-to-end against a synthetic git repo — no
-# /tmp seeds wrappers, no dependence on the live tracker or the real
-# merge-target branch. Fixture seed ids (fabro-fix-00NN) use the canonical
-# family shape fabro-[a-z]+-[0-9a-f]{4} — the shared seed-id predicate
-# (lib/seed_id.nu) must see journal-claimed fixture ids — and do not
-# exist in the tracker, so the tracker arm degrades to `unknown` and the
-# verdicts below
-# are driven purely by the landed-PR history the battery fabricates —
-# exactly the closure-identity surface the seed asks to verify.
+# dependence on the live tracker or the real merge-target branch. Fixture
+# ids (fabro-fix-00NN) use the canonical family shape fabro-[a-z]+-[0-9a-f]{4}
+# and do not exist in the tracker, so the tracker arm degrades to `unknown`
+# unless a gh-state shim answers it, and the verdicts below are driven by
+# the landed-PR history (and the shimmed tracker states) the battery
+# fabricates — exactly the closure-identity surface the work asks to
+# verify.
 #
-# Cases (seed acceptance criteria):
+# Cases (work acceptance criteria):
 #   (a) landed implementation whose Fabro-Run trailer names the invoking
 #       run, checked WITH --self        -> clean (self-closure, never duplicate)
 #   (b) the same trailer WITHOUT --self -> duplicate (trailer is foreign)
 #   (c) a landed implementation carrying a FOREIGN run's trailer, checked
 #       WITH --self                     -> duplicate
 #   (d)/(e) fabro-a32f filed-only: revisor-line landed PRs that merely
-#       FILE a seed ("Revise run ...; file fabro-x" / "Revisor pass:
+#       FILE an item ("Revise run ...; file fabro-x" / "Revisor pass:
 #       file N seeds") NEVER count as landed implementations -> clean
 #   (i) fabro-0d48 filed-only: the comma/and-separated "file seeds
 #       fabro-x and fabro-y" subject shape (e.g. real 706d639
@@ -27,7 +26,7 @@
 #       foreign implementation forcing a duplicate verdict -> clean
 #   (o)/(p) fabro-395b bookkeeping: landed squash commits that merely
 #       REOPEN ("fabro-X: reopen ... (#n)", e.g. real e769f791) or
-#       VERIFY/move a seed ("Verify fabro-X fix in-tree; move seed to
+#       VERIFY/move an item ("Verify fabro-X fix in-tree; move seed to
 #       in_progress (#n)", e.g. real f3c12e03) classify filed-only,
 #       NOT landed implementations -> clean (incident runs
 #       01M2WG2Z42N8P2QKX0K7VXT1MC / 01M2WHTHVGK360638W9H9PN2BT)
@@ -35,7 +34,7 @@
 #       landed top candidate -> "Already landed"; filed-only top
 #       candidate -> "Preflight done"; empty candidate list -> degraded
 #       fail-open, still "Preflight done"
-#   (j) fabro-9ec3 arm 2: a seed claimed on the journal of a recent,
+#   (j) fabro-9ec3 arm 2: an id claimed on the journal of a recent,
 #       UNMERGED develop run branch -> in_flight true with the run id;
 #       the invoking run's own branch never marks; a branch already
 #       merged into base never marks
@@ -46,10 +45,10 @@
 #   (l)-(n) fabro-83df report-only: the script NEVER closes and NEVER
 #       routes "Already landed" — duplicates (top or non-top, sha or
 #       not) all route "Preflight done" as ADVISORY verdicts for the
-#       planner, and the scratch tracker rows stay untouched; every
-#       report carries the verdict legend. (The former fabro-ead4 live
-#       close arm was retired 2026-09-19: a commit subject naming a seed
-#       is not closure evidence — reopen/verify commits matched too,
+#       planner, and the tracker states stay untouched; every report
+#       carries the verdict legend. (The former fabro-ead4 live
+#       close arm was retired 2026-09-19: a commit subject naming an
+#       id is not closure evidence — reopen/verify commits matched too,
 #       fabro-395b; incident runs 01M2WG2Z42/01M2WHTHV.)
 #
 # Usage: nu .fabro/scripts/dup-run-check-fixtures.nu   (exit 0 = all pass)
@@ -92,18 +91,14 @@ def check [script: path, id: string, self: string] {
 # the cutover, the self-exclusion in the in-flight arm never fired, and
 # case (j) regressed to naming the invoking run's own branch (the newest
 # unmerged claimant) instead of the live foreign run.
-# denkhaus/work#990: descriptions travel in a candidates FILE (the
-# state-file pattern — the tracker left the fs envelope, no seeds CLI).
-# The file is projected from the same scratch rows this fixture seeds,
-# so every arm's data flow is unchanged.
-def preflight [script: path, candidates: string, self: string] {
+# denkhaus/work#990: --candidates-file carries [{id, description}]
+# records directly (the state-file pattern); descriptions travel via the
+# --desc record here ({id: description}), so the fixture exercises the
+# file's shape without any store round-trip.
+def preflight [script: path, candidates: string, self: string, --desc: record = {}] {
     let ids = ($candidates | split row ',' | each {|c| $c | str trim} | where {|c| not ($c | is-empty)})
-    let rows = (if ('.seeds/issues.jsonl' | path exists) {
-        open --raw .seeds/issues.jsonl | lines | compact | each {|l| do -i { $l | from json } } | where {|r| $r != null}
-    } else { [] })
     let recs = ($ids | each {|id|
-        let hit = ($rows | where {|r| ($r | get -o id | default '') == $id} | get -o 0 | default null)
-        {id: $id, description: (if $hit == null { "" } else { $hit | get -o description | default "" })}
+        {id: $id, description: ($desc | get -o $id | default "")}
     })
     let cf = '.preflight-candidates.json'
     $recs | to json --raw | save -f $cf
@@ -113,17 +108,6 @@ def preflight [script: path, candidates: string, self: string] {
         exit 1
     }
     $out.stdout | lines | last | from json
-}
-
-# Fabricate one scratch-tracker row: the exact compact-JSON-per-line
-# shape seeds itself writes (verified against seeds init/create output) —
-# planner-preflight's description reads (anchor + stranded-scan arms)
-# still resolve through the scratch store until the workflow-asset
-# rewrite lands.
-def fixture-row [id: string, status: string] {
-    # concat, not $"($id)" interpolation: the literal parentheses around
-    # the id are part of the expected description body.
-    {id: $id, title: ("fixture " + $id), status: $status, type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: ("fixture body (" + $id + ")")} | to json --raw
 }
 
 def main [] {
@@ -354,17 +338,12 @@ def main [] {
         # dup-run-check resolves each candidate's legacy label through gh
         # (cutover stage 5, denkhaus/work#988; the battery plants a gh
         # shim whose answers live in state files, one per fixture id,
-        # content open/closed), while planner-preflight still reads
-        # candidate DESCRIPTIONS from the scratch seeds store (the
-        # workflow-asset rewrite is its own unit) — so both live here
-        # until that rewrite lands. The script must NEVER mutate either:
-        # duplicates of every shape route "Preflight done" as advisory
-        # verdicts and the planner owns decisions and closures.
-        seeds init | ignore
-        [(fixture-row 'fabro-fix-0003' 'open')
-         (fixture-row 'fabro-fix-0009' 'closed')
-         (fixture-row 'fabro-fix-0010' 'open')
-         (fixture-row 'fabro-fix-0012' 'open')] | save --append .seeds/issues.jsonl
+        # content open/closed). planner-preflight's candidate descriptions
+        # travel in the candidates file itself (the denkhaus/work#990
+        # shape) — no store round-trip anywhere. The script must NEVER
+        # mutate either surface: duplicates of every shape route
+        # "Preflight done" as advisory verdicts and the planner owns
+        # decisions and closures.
         let gh_dir = ($scratch | path join 'gh-states')
         let gh_bin = ($scratch | path join 'bin')
         mkdir $gh_dir
@@ -373,10 +352,6 @@ def main [] {
         ('closed' | save ($gh_dir | path join 'fabro-fix-0009'))
         ('open' | save ($gh_dir | path join 'fabro-fix-0010'))
         ('open' | save ($gh_dir | path join 'fabro-fix-0012'))
-        # case q's closure-identity pair: both closed in the scratch
-        # store; the verdict split comes from the closing trailers
-        ('closed' | save ($gh_dir | path join 'fabro-fix-0030'))
-        ('closed' | save ($gh_dir | path join 'fabro-fix-0031'))
         (
     '#!/bin/sh
 # fixture gh shim: answers the legacy-label state lookup from state files
@@ -421,6 +396,22 @@ echo missing'
         expect 'm: ambiguous duplicate sha null' ($mrep.candidates | first | get sha) null
         expect 'm: tracker state file untouched' (gh-state 'fabro-fix-0009') 'closed'
 
+        # (m2) the surviving body-grep closing-evidence arm (work#1477):
+        # tracker-closed, NO landed implementation, but a base-ref commit
+        # names the id in its BODY — resolve-closing reports that commit
+        # as closing_evidence (source "body-grep") with its own trailer's
+        # closure identity. A plain (non-PR) commit never counts as an
+        # implementation, so the arm fires instead of an impl match.
+        ('closed' | save ($gh_dir | path join 'fabro-fix-0040'))
+        ^git commit -q --allow-empty -m 'notes: context for fabro-fix-0040' -m 'Root cause (fabro-fix-0040): tracked in the tracker' -m 'Fabro-Run: RUN-OTHER'
+        ^git push -q origin main
+        let m2 = (check $script 'fabro-fix-0040' 'RUN-SELF')
+        expect 'm2: tracker-closed with body evidence verdict' $m2.verdict 'duplicate'
+        expect 'm2: closing evidence resolves body-grep' ($m2.closing_evidence | get -o source) 'body-grep'
+        expect 'm2: closing evidence names the commit' (($m2.closing_evidence | get -o sha | default '' | str length) >= 7) true
+        expect 'm2: closing evidence closure is foreign' ($m2.closing_evidence | get -o closure) 'foreign'
+        expect 'm2: closing evidence carries the trailer' ($m2.closing_evidence | get -o trailer_run) 'RUN-OTHER'
+
         # (n) top-position duplicate with resolvable sha: the strongest
         # already-landed signal that USED to auto-close — it still only
         # routes "Preflight done"; the tracker row stays open for the
@@ -445,14 +436,14 @@ echo missing'
         ^git push -q origin HEAD:refs/heads/fabro/run/RUN-STRAND
         ^git checkout -q main
         let in_base_sha = (^git rev-parse HEAD | str trim)
-        let srow = {|id, desc| {id: $id, title: ("fixture " + $id), status: "open", type: "task", priority: 2, createdAt: "2026-10-16T00:00:00.000Z", updatedAt: "2026-10-16T00:00:00.000Z", description: $desc} | to json --raw}
-        [(do $srow 'fabro-fix-0020' ("Basis: run RUN-STRAND. salvage: git show " + $strand_sha + " on branch fabro/run/RUN-STRAND"))
-         (do $srow 'fabro-fix-0021' "salvage: git show 0123456789abcdef on branch fabro/run/RUN-STRAND")
-         (do $srow 'fabro-fix-0022' ("salvage: git show " + $in_base_sha + " on branch fabro/run/RUN-STRAND"))
-         (do $srow 'fabro-fix-0023' "salvage from stranded branch fabro/run/RUN-STRAND, commit unresolved")
-         (do $srow 'fabro-fix-0024' "no salvage surface at all, just prose")] | save --append .seeds/issues.jsonl
-
-        let s = (preflight $pre 'fabro-fix-0020,fabro-fix-0021,fabro-fix-0022,fabro-fix-0023,fabro-fix-0024' 'RUN-PREFLIGHT')
+        let sdesc = {
+            fabro-fix-0020: ("Basis: run RUN-STRAND. salvage: git show " + $strand_sha + " on branch fabro/run/RUN-STRAND")
+            fabro-fix-0021: "salvage: git show 0123456789abcdef on branch fabro/run/RUN-STRAND"
+            fabro-fix-0022: ("salvage: git show " + $in_base_sha + " on branch fabro/run/RUN-STRAND")
+            fabro-fix-0023: "salvage from stranded branch fabro/run/RUN-STRAND, commit unresolved"
+            fabro-fix-0024: "no salvage surface at all, just prose"
+        }
+        let s = (preflight $pre 'fabro-fix-0020,fabro-fix-0021,fabro-fix-0022,fabro-fix-0023,fabro-fix-0024' 'RUN-PREFLIGHT' --desc $sdesc)
         let srep = ($s.context_updates | get 'output.preflight')
         let srow_of = {|id| $srep.candidates | where {|c| $c.seed == $id} | first}
         expect 's1: resolved unmerged pointer salvage_ok' (do $srow_of fabro-fix-0020 | get salvage_ok) true
@@ -472,36 +463,6 @@ echo missing'
         expect 'k: schema ban pattern semantics' ($schema_ok.stdout | str trim) 'ok'
         let graph = (open --raw ($wf | path join 'workflow.fabro'))
         expect 'k: planner node wired to schema' ($graph | str contains 'output_schema="@schemas/planner-output.schema.json"') true
-
-        # (q) fabro-96c8: closing-seeds-commit anchors the id match on the
-        # added line's own record. Both seeds are tracker-closed (the arm
-        # only fires then — the real incident: fabro-899b). Commit A closes
-        # fabro-fix-0031 with the self trailer; the NEWER commit B closes
-        # fabro-fix-0030 with a foreign trailer and a body CITING
-        # fabro-fix-0031 (real shape: 5369edb53 closed fabro-2366 whose
-        # title contained fabro-899b). The substring match returned B for
-        # 0031 (foreign -> duplicate); the anchored match must return A.
-        ^git checkout -q main
-        # deterministic line append: save --append with a bare string glues
-        # onto the last line when it lacks a trailing newline — normalize
-        # before writing so the tracker stays seeds-CLI-parseable.
-        def append-row [row: string] {
-            let cur = (open --raw .seeds/issues.jsonl)
-            let nl = (if ($cur | str ends-with "\n") { '' } else { "\n" })
-            ($cur + $nl + $row + "\n") | save -f .seeds/issues.jsonl
-        }
-        append-row ({id: "fabro-fix-0031", title: "dup-run-check fixture", status: "closed", type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: "fixture body"} | to json --raw)
-        ^git add .seeds
-        ^git commit -q -m 'tracker: close fabro-fix-0031' -m 'Fabro-Run: RUN-SELF'
-        append-row ({id: "fabro-fix-0030", title: "dup-run-check fixture", status: "closed", type: "task", priority: 2, createdAt: "2026-09-19T00:00:00.000Z", updatedAt: "2026-09-19T00:00:00.000Z", description: "fixture body — superseded by fabro-fix-0031"} | to json --raw)
-        ^git add .seeds
-        ^git commit -q -m 'tracker: close fabro-fix-0030 (superseded by fabro-fix-0031)' -m 'Fabro-Run: RUN-OTHER'
-        ^git push -q origin main
-
-        let q1 = (check $script 'fabro-fix-0031' 'RUN-SELF')
-        expect 'q: cited id resolves its own closure (self, clean)' $q1.verdict 'clean'
-        let q2 = (check $script 'fabro-fix-0030' 'RUN-SELF')
-        expect 'q: citing id closure stays foreign duplicate' $q2.verdict 'duplicate'
     } finally {
         cd $home_dir
         rm -rf $scratch

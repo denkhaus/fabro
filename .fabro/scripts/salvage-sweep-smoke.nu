@@ -1,8 +1,9 @@
 #!/usr/bin/env nu
-# Salvage-sweep smoke (fabro-f312): the dump analysis is the sweep's
-# decision core, so the battery pins it against fixture dump directories —
-# the four verdict-relevant shapes plus the affected-seed extraction. The
-# filing itself stays dry (the sweep's --dry-run arm covers it live).
+# Salvage-sweep smoke (fabro-f312, live shapes work#1477): the dump analysis
+# is the sweep's decision core, so the battery pins it against fixture dump
+# directories — the verdict-relevant shapes plus the affected-item
+# extraction. The filing itself stays dry (the sweep's --dry-run arm covers
+# it live).
 #
 # prompt-lint: synthetic-seed-ids
 # This battery's `fabro-xxxx` literals are FIXTURE ids that must not exist
@@ -14,8 +15,8 @@ const ANALYSIS = "salvage-analysis.nu"
 source $ANALYSIS
 
 # Build one fixture dump directory: run status kind, per-stage (outcome,
-# optional patch body), and the goal text.
-def fixture [kind: string, goal: string, stages: list]: nothing -> string {
+# optional patch body), optional stream export (events.jsonl content).
+def fixture [kind: string, goal: string, stages: list, --events: string = ""]: nothing -> string {
   let dir = (mktemp -d)
   mkdir ($dir | path join 'stages')
   {
@@ -25,11 +26,14 @@ def fixture [kind: string, goal: string, stages: list]: nothing -> string {
   for stage in $stages {
     let sid = ($stage | get 0)
     mkdir ($dir | path join 'stages' $sid)
-    {outcome: ($stage | get 1), notes: null, failure_reason: null, timestamp: '2026-10-04T00:00:00Z'}
+    {outcome: ($stage | get 1), notes: null, failure_reason: null, timestamp: '2026-11-19T00:00:00Z'}
       | save ($dir | path join 'stages' $sid 'status.json')
     if ($stage | get 2? | default '' | str length) > 0 {
       ($stage | get 2) | save --raw ($dir | path join 'stages' $sid 'diff.patch')
     }
+  }
+  if ($events | str length) > 0 {
+    $events | save --raw ($dir | path join 'events.jsonl')
   }
   $dir
 }
@@ -45,6 +49,12 @@ new file mode 100644
 "
 }
 
+# One stream-export line for a tool call (the events.jsonl shape: a stream
+# item whose progress record names the called tool).
+def tool-event [tool: string]: nothing -> string {
+  $"{\"run_id\":\"01FIXTURE0000000000000000AA\",\"stream_seq\":12,\"kind\":\"petri\",\"id\":\"step/3/2\",\"recorded_at\":\"2026-11-19T00:00:01Z\",\"event\":{\"name\":\"step.progress.recorded\",\"data\":{\"tool\":{\"name\":\"($tool)\"}}}}"
+}
+
 def main [] {
   let journal_patch = "diff --git a/.fabro/journal/run1.jsonl b/.fabro/journal/run1.jsonl
   new file mode 100644
@@ -57,8 +67,8 @@ def main [] {
   # A: failed run with real stranded work -> candidate, noteworthy
   let a = (fixture 'failed' 'implement fabro-a1b2' [['001-implementer@1' 'failed' (real_patch 25)]])
   let ra = (analyze-dump $a)
-  if not ($ra.candidate and $ra.noteworthy and $ra.affected_seed == 'fabro-a1b2') {
-    print $"FAIL: failed+work should be a noteworthy candidate naming the seed: ($ra | to json)"
+  if not ($ra.candidate and $ra.noteworthy and $ra.affected_item == 'fabro-a1b2') {
+    print $"FAIL: failed+work should be a noteworthy candidate naming the item: ($ra | to json)"
     exit 1
   }
 
@@ -79,7 +89,7 @@ def main [] {
   }
 
   # D: no diff at all -> no crash, nothing noteworthy
-  let d = (fixture 'failed' 'no seed here' [['001-implementer@1' 'failed' '']])
+  let d = (fixture 'failed' 'no item here' [['001-implementer@1' 'failed' '']])
   let rd = (analyze-dump $d)
   if not ($rd.candidate and not $rd.noteworthy and $rd.changed == 0) {
     print $"FAIL: a diff-less run must not crash and is not noteworthy: ($rd | to json)"
@@ -94,39 +104,36 @@ def main [] {
     exit 1
   }
 
-  # F: a failed run whose ONLY product is a tracker ADDITION — the seeds it
-  # filed never landed (fabro-f312 closeout, 2026-10-04: a revisor whose file
-  # stage died strands exactly this).
-  let filed_patch = 'diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
---- a/.seeds/issues.jsonl
-+++ b/.seeds/issues.jsonl
-@@ -1,1 +1,2 @@
- {"id":"fabro-1111","title":"existing","status":"open"}
-+{"id":"fabro-3333","title":"stranded filing","status":"open"}
-'
-  let f = (fixture 'failed' 'file the findings' [['001-file@1' 'failed' $filed_patch]])
+  # F: a failed run whose stream records a work-item WRITE tool call — the
+  # filing it made never left its unpublished sandbox (work#1477: the live
+  # stranding class since the tracker cutover, denkhaus/work#988/#990;
+  # red-first proof 2026-11-19: the retired store-hunk counter returned
+  # noteworthy=false for exactly this fixture).
+  let f = (fixture 'failed' 'file the follow-up' [['001-file@1' 'failed' $journal_patch]] --events (tool-event 'fabro_work_create'))
   let rf = (analyze-dump $f)
-  if not ($rf.candidate and $rf.noteworthy and $rf.added_seeds == 1) {
-    print $"FAIL: added tracker records are stranded work: ($rf | to json)"
+  if not ($rf.candidate and $rf.noteworthy and $rf.work_filings == 1) {
+    print $"FAIL: a recorded work-item write call is stranded work: ($rf | to json)"
     exit 1
   }
 
-  # G: the noise guard — a tracker REWRITE (a claim, a status change) is
-  # churn every pass produces, never work.
-  let claim_patch = 'diff --git a/.seeds/issues.jsonl b/.seeds/issues.jsonl
---- a/.seeds/issues.jsonl
-+++ b/.seeds/issues.jsonl
-@@ -1,1 +1,1 @@
--{"id":"fabro-1111","title":"existing","status":"open"}
-+{"id":"fabro-1111","title":"existing","status":"in_progress"}
-'
-  let g = (fixture 'failed' 'claim and die' [['001-file@1' 'failed' $claim_patch]])
+  # F2: the other write surfaces count too — a closure call on the record.
+  let f2 = (fixture 'failed' 'close the item' [['001-close@1' 'failed' '']] --events (tool-event 'fabro_work_close'))
+  let rf2 = (analyze-dump $f2)
+  if not ($rf2.candidate and $rf2.noteworthy and $rf2.work_filings == 1) {
+    print $"FAIL: a recorded work-item close call is stranded work: ($rf2 | to json)"
+    exit 1
+  }
+
+  # G: the noise guard — the READ/claim tools every develop run calls
+  # (`fabro_work_next`, `fabro_work_show`) never count: counting them would
+  # make every terminal run noteworthy and turn the sweep into noise.
+  let g = (fixture 'failed' 'claim and die' [['001-file@1' 'failed' '']] --events ((tool-event 'fabro_work_next') + (char nl) + (tool-event 'fabro_work_show')))
   let rg = (analyze-dump $g)
-  if not ($rg.candidate and not $rg.noteworthy and $rg.added_seeds == 0) {
-    print $"FAIL: a tracker rewrite is not stranded work: ($rg | to json)"
+  if not ($rg.candidate and not $rg.noteworthy and $rg.work_filings == 0) {
+    print $"FAIL: the claim/read tools are not stranded work: ($rg | to json)"
     exit 1
   }
 
-  print 'salvage-sweep-smoke: OK — candidate/noteworthy/green-lie/bookkeeping/added-seeds/rewrite/empty/clean verdicts pinned'
+  print 'salvage-sweep-smoke: OK — candidate/noteworthy/green-lie/bookkeeping/work-filings/close-call/read-tool-noise/empty/clean verdicts pinned'
 
 }
