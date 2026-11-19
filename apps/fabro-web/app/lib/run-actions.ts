@@ -202,8 +202,14 @@ export function isTerminalRunStatus(
   return !!status && TERMINAL_RUN_STATUSES.has(status as RunStatus);
 }
 
+/**
+ * Delete is offered for terminal runs and for archived ones (work#1479:
+ * the menu entry must appear for terminal runs, not only archived ones).
+ * This mirrors the server's guard class — active runs refuse deletion
+ * without `force` (409), while terminal and archived runs delete plain.
+ */
 export function canDelete(status: string | null | undefined): boolean {
-  return status === "archived";
+  return isTerminalRunStatus(status) || status === "archived";
 }
 
 export function isTerminalCancelledRun(run: Pick<Run, "lifecycle">): boolean {
