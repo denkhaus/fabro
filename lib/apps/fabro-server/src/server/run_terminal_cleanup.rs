@@ -36,7 +36,7 @@ use std::time::Duration;
 
 use fabro_store::RunProjection;
 use fabro_types::{RunId, RunSandbox};
-use sandbox_driver::{Exec, ExecSpec};
+use sandbox_driver::ExecSpec;
 use tokio::sync::Semaphore;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinHandle;
@@ -48,7 +48,7 @@ use crate::sandbox_access;
 /// How long the declared command may run before the provider stops it:
 /// generous for a big `target/` tree, bounded so a wedged command cannot
 /// hold the run's sandbox gate forever.
-const CLEANUP_TIMEOUT: Duration = Duration::from_secs(300);
+const CLEANUP_TIMEOUT: Duration = Duration::from_mins(5);
 
 /// Cleanups in flight at once. Each is one sandbox exec against the run's
 /// daemon, so the bound guards the daemon, not CPU.

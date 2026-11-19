@@ -22,9 +22,10 @@ use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use futures_util::stream::StreamExt;
+use futures_util::stream::{StreamExt, unfold};
 use sha2::{Digest, Sha256};
 use tokio::fs;
+use tokio::fs::File;
 use tokio::io::AsyncReadExt as _;
 use tokio::process::Command as TokioCommand;
 use tokio_util::io::ReaderStream;
@@ -149,7 +150,8 @@ async fn get_run_snapshot(
     match child.wait().await {
         Ok(status) if status.success() => {}
         Ok(status) => {
-            let detail = String::from_utf8_lossy(&stderr_bytes).trim();
+            let stderr = String::from_utf8_lossy(&stderr_bytes);
+            let detail = stderr.trim();
             warn!(
                 run_id = %id,
                 "git bundle create failed (exit {}): {detail}",
@@ -186,7 +188,7 @@ async fn get_run_snapshot(
     };
 
     let reader = match staging.reopen() {
-        Ok(reader) => tokio::fs::File::from_std(reader),
+        Ok(reader) => File::from_std(reader),
         Err(err) => {
             warn!(run_id = %id, "the staged bundle could not be reopened: {err}");
             return ApiError::new(
@@ -220,7 +222,7 @@ async fn get_run_snapshot(
     });
     // The staged bundle's last handle rides the body: the staging file is
     // deleted exactly when the response body is finished (or abandoned).
-    let staging_cleanup = futures_util::stream::unfold(Some(staging), |staging| async move {
+    let staging_cleanup = unfold(Some(staging), |staging| async move {
         drop(staging);
         None::<(
             Result<Bytes, std::io::Error>,
@@ -261,7 +263,7 @@ async fn get_run_snapshot(
 /// the bundle never sits whole in memory.
 async fn hash_staged_bundle(staging: &tempfile::NamedTempFile) -> std::io::Result<(String, u64)> {
     let reader = staging.reopen()?;
-    let mut reader = tokio::fs::File::from_std(reader);
+    let mut reader = File::from_std(reader);
     let mut digest = Sha256::new();
     let mut total = 0_u64;
     let mut buffer = vec![0_u8; 256 * 1024];

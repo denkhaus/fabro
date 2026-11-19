@@ -22,7 +22,7 @@ mod llm_sse;
 mod mcp_servers;
 mod models;
 mod observation_triage;
-mod orchestration;
+pub(crate) mod orchestration;
 mod pair;
 mod petri;
 pub(in crate::server) mod pull_requests;

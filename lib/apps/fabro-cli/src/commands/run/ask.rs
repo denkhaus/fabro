@@ -30,23 +30,22 @@ pub(crate) async fn run(args: AskArgs, base_ctx: &CommandContext) -> Result<()> 
     // selector, or the newest live run when the caller omits it (the
     // run-less supervisor posture, work#1453; the storage-level session
     // stays run-anchored per work#1468).
-    let (session_id, created) = match args.session {
-        Some(session_id) => (session_id, None),
-        None => {
-            let prompt = args
-                .prompt
-                .as_deref()
-                .ok_or_else(|| anyhow!("a prompt is required when opening a new session"))?;
-            let run_id = resolve_run_anchor(&client, args.run.as_deref()).await?;
-            let session = client
-                .create_run_session(run_id, CreateRunSessionRequest {
-                    title:    Some(session_title(prompt)),
-                    model:    args.model,
-                    provider: None,
-                })
-                .await?;
-            (session.id, Some(session))
-        }
+    let (session_id, created) = if let Some(session_id) = args.session {
+        (session_id, None)
+    } else {
+        let prompt = args
+            .prompt
+            .as_deref()
+            .ok_or_else(|| anyhow!("a prompt is required when opening a new session"))?;
+        let run_id = resolve_run_anchor(&client, args.run.as_deref()).await?;
+        let session = client
+            .create_run_session(run_id, CreateRunSessionRequest {
+                title:    Some(session_title(prompt)),
+                model:    args.model,
+                provider: None,
+            })
+            .await?;
+        (session.id, Some(session))
     };
 
     let mut renderer = AskRenderer::new();

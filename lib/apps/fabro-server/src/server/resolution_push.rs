@@ -743,7 +743,7 @@ async fn land_resolution(
 
 /// One host-side git invocation, its trimmed stdout. Failures carry the
 /// trimmed stderr.
-async fn host_git(op: &str, token: Option<&str>, args: &[&str]) -> Result<String, String> {
+async fn host_git(op: &str, token: Option<&str>, args: &[&str]) -> Result<String, ApiError> {
     let mut command = TokioCommand::new("git");
     if let Some(token) = token {
         fabro_github::apply_probe_git_env(&mut command, token);
@@ -753,12 +753,20 @@ async fn host_git(op: &str, token: Option<&str>, args: &[&str]) -> Result<String
         .stdin(std::process::Stdio::null())
         .output()
         .await
-        .map_err(|err| format!("spawning git {op} failed: {err}"))?;
+        .map_err(|err| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("spawning git {op} failed: {err}"),
+            )
+        })?;
     if !output.status.success() {
-        return Err(format!(
-            "git {op} failed (exit {}): {}",
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).trim()
+        return Err(ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "git {op} failed (exit {}): {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
         ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())

@@ -798,6 +798,7 @@ mod tests {
             updated_at: None,
             created_at: None,
             closed_at:  None,
+            locked:     None,
         };
         let listed = work_list_text(std::slice::from_ref(&item), None);
         assert!(listed.starts_with("1 open work item(s):"));
@@ -825,6 +826,7 @@ mod tests {
             updated_at: None,
             created_at: None,
             closed_at:  None,
+            locked:     None,
         }
     }
 

@@ -23,7 +23,7 @@ use chrono::Utc;
 use fabro_automation::Automation;
 use fabro_store::platform_records::{ObservationTriageState, PlatformRecordKind};
 use fabro_types::{OrchestrationField, OrchestrationVerdict};
-use fabro_work::WorkItemFilter;
+use fabro_work::{WorkItemFilter, WorkItemStateFilter};
 use tracing::warn;
 
 use super::AppState;
@@ -248,6 +248,7 @@ async fn develop_claim_pool(
                 query: None,
                 label: None,
                 page:  1,
+                state: WorkItemStateFilter::All,
             })
             .await
             .map_err(|error| error.to_string())?;
@@ -307,6 +308,8 @@ mod tests {
                 priority:   1,
                 url:        format!("https://github.com/denkhaus/work/issues/{key}"),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at:  None,
             }
         }
     }
@@ -481,7 +484,7 @@ mod tests {
     async fn develop_skips_when_every_declared_lane_drains() {
         let state = TestAppStateBuilder::new()
             .env_lookup(|_| None)
-            .work_projects([project_with_lanes(["develop"])])
+            .work_projects([project_with_lanes(&["develop"])])
             .work_tracker(std::sync::Arc::new(LaneTracker::with_lane("develop", &[
                 "denkhaus/work#1",
             ])))
@@ -509,7 +512,7 @@ mod tests {
     async fn develop_fires_when_a_lane_holds_a_free_item() {
         let state = TestAppStateBuilder::new()
             .env_lookup(|_| None)
-            .work_projects([project_with_lanes(["develop"])])
+            .work_projects([project_with_lanes(&["develop"])])
             .work_tracker(std::sync::Arc::new(LaneTracker::with_lane("develop", &[
                 "denkhaus/work#1",
             ])))
@@ -526,7 +529,7 @@ mod tests {
     async fn develop_fires_open_when_the_tracker_read_fails() {
         let state = TestAppStateBuilder::new()
             .env_lookup(|_| None)
-            .work_projects([project_with_lanes(["develop"])])
+            .work_projects([project_with_lanes(&["develop"])])
             .work_tracker(std::sync::Arc::new(LaneTracker::failing()))
             .build();
         let decision = admission_decision(&state, &automation_with_workflow("develop")).await;

@@ -846,7 +846,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use fabro_http::HttpClientBuilder;
-    use fabro_work::{TrackerProvider as _, WorkItemFilter, WorkProject};
+    use fabro_work::{TrackerProvider as _, WorkItemFilter, WorkItemStateFilter, WorkProject};
     use httpmock::HttpMockResponse;
 
     use super::{GitHubTracker, TrackerApiError};

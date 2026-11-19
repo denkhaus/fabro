@@ -880,7 +880,7 @@ impl Client {
                 async move {
                     client
                         .set_session_capability()
-                        .id(session_id.to_string())
+                        .id(session_id)
                         .body(body)
                         .send()
                         .await

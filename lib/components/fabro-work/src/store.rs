@@ -810,7 +810,7 @@ ON CONFLICT (project_id, item_key) DO NOTHING
         .fetch_all(&self.pool)
         .await?;
         rows.iter()
-            .map(|row| row.try_get::<String, _>("item_key"))
+            .map(|row| Ok(row.try_get::<String, _>("item_key")?))
             .collect()
     }
 
@@ -1833,7 +1833,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            matches!(error, Error::WorkItemLocked(key) if key == "denkhaus/work#1"),
+            matches!(error, Error::WorkItemLocked(ref key) if key == "denkhaus/work#1"),
             "the grant door refuses the locked item: {error}"
         );
 
@@ -1872,7 +1872,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(
-            matches!(error, Error::WorkClaimConflict(message)
+            matches!(error, Error::WorkClaimConflict(ref message)
                 if message.contains(&claim.claim_id) && message.contains("live claim")),
             "the lock refusal names the live claim: {error}"
         );
