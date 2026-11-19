@@ -162,20 +162,34 @@ async fn download_recursive(
     remote_path: &str,
     local_path: &Path,
 ) -> Result<usize> {
-    let entries = client
-        .list_sandbox_files(run_id, remote_path, Some(100))
-        .await?;
+    let archive = client.get_sandbox_archive(run_id, remote_path).await?;
+    info!(bytes = archive.len(), path = %remote_path, "Fetched sandbox archive");
 
+    // The archive's entries are relative to the copied directory, so
+    // unpacking under `local_path` preserves the per-file layout of the
+    // old download loop. `unpack_in` ignores the leading `./` a tar of
+    // `.` produces and refuses `..` traversal.
+    let mut tar_archive = tar::Archive::new(archive.as_slice());
     let mut file_count = 0usize;
-    for entry in &entries {
-        if entry.is_dir {
-            continue;
+    for entry in tar_archive
+        .entries()
+        .context("Failed to read the sandbox archive")?
+    {
+        let mut entry = entry.context("Failed to read a sandbox archive entry")?;
+        let name = entry
+            .path()
+            .context("Failed to read a sandbox archive entry path")?
+            .into_owned();
+        if entry.header().entry_type().is_file() {
+            file_count += 1;
         }
-        let remote_file = format!("{remote_path}/{}", entry.name);
-        let local_file = local_path.join(&entry.name);
-        debug!(path = %remote_file, "Downloading file from sandbox");
-        write_sandbox_file(client, run_id, &remote_file, &local_file).await?;
-        file_count += 1;
+        entry.unpack_in(local_path).with_context(|| {
+            format!(
+                "Failed to unpack '{}' into {}",
+                name.display(),
+                local_path.display()
+            )
+        })?;
     }
     debug!(count = file_count, "Recursive download complete");
     Ok(file_count)

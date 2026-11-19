@@ -10,7 +10,9 @@ use fabro_types::{RunSandboxInstance, SandboxProviderKind};
 use futures_util::FutureExt;
 use futures_util::future::BoxFuture;
 use pebble_coding_agent::sandbox_driver::{display_for_log, resolve_path};
-use sandbox_driver::{FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _};
+use sandbox_driver::{
+    ExecSpec, FileKind, ListeningPort, PtyOptions, PtySize, Sandbox, Services as _,
+};
 use tokio::sync::OwnedMutexGuard;
 
 use super::super::{
@@ -68,6 +70,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/sandbox/vnc", post(create_sandbox_vnc_preview))
         .route("/runs/{id}/sandbox/services", get(list_sandbox_services))
         .route("/runs/{id}/sandbox/files", get(list_sandbox_files))
+        .route("/runs/{id}/sandbox/archive", get(get_sandbox_archive))
         .route(
             "/runs/{id}/sandbox/file",
             get(get_sandbox_file).put(put_sandbox_file),
@@ -754,6 +757,109 @@ async fn put_sandbox_file(
             display_for_log(&err, &SecretRedactor),
         )
         .into_response(),
+    }
+}
+
+/// Downloads one directory of the run's sandbox as an uncompressed tar
+/// archive (work#1416): the directory is tarred inside the sandbox over
+/// the exec facet (argv only, no shell), the single archive travels the
+/// fs download facet, and a best-effort `rm` cleans it up — three round
+/// trips instead of one per file, so a recursive `fabro cp` stays usable
+/// at source-tree scale. Entries are relative to the requested path.
+async fn get_sandbox_archive(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<SandboxFileParams>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
+    let path = resolve_path(&params.path, &record.runtime.working_directory);
+    let archive_remote = format!("/tmp/fabro-archive-{}.tar", uuid::Uuid::new_v4().simple());
+
+    // Tar first, transfer second, clean up always: every exit below
+    // removes the in-sandbox archive before returning.
+    let bytes = async {
+        let spec = ExecSpec::new("tar")
+            .arg("-cf")
+            .arg(&archive_remote)
+            .arg("-C")
+            .arg(&path)
+            .arg(".");
+        let outcome = match sandbox.exec().run(&spec).await {
+            Ok(outcome) => outcome,
+            Err(err) => {
+                return Err(ApiError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    display_for_log(&err, &SecretRedactor),
+                )
+                .into_response());
+            }
+        };
+        if !outcome.success() {
+            // A missing tar binary or a bad path names its cause in stderr.
+            let stderr = String::from_utf8_lossy(&outcome.stderr).trim().to_string();
+            let detail = if stderr.is_empty() {
+                format!("Tarring '{path}' inside the sandbox failed.")
+            } else {
+                format!("Tarring '{path}' inside the sandbox failed: {stderr}")
+            };
+            return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, detail).into_response());
+        }
+        let temp = match NamedTempFile::new() {
+            Ok(temp) => temp,
+            Err(err) => {
+                return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response());
+            }
+        };
+        if let Err(err) = sandbox.fs().download(&archive_remote, temp.path()).await {
+            return Err(ApiError::new(
+                StatusCode::NOT_FOUND,
+                display_for_log(&err, &SecretRedactor),
+            )
+            .into_response());
+        }
+        match fs::read(temp.path()).await {
+            Ok(bytes) => Ok(bytes),
+            Err(err) => Err(ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                err.to_string(),
+            )
+            .into_response()),
+        }
+    }
+    .await;
+    remove_sandbox_archive(&sandbox, &archive_remote).await;
+    match bytes {
+        Ok(bytes) => octet_stream_response(bytes.into()),
+        Err(response) => response,
+    }
+}
+
+/// Best-effort removal of the in-sandbox archive: a leftover is logged,
+/// never propagated to the caller.
+async fn remove_sandbox_archive(sandbox: &dyn Sandbox, archive_remote: &str) {
+    let spec = ExecSpec::new("rm").arg("-f").arg(archive_remote);
+    match sandbox.exec().run(&spec).await {
+        Ok(outcome) if outcome.success() => {}
+        Ok(outcome) => tracing::warn!(
+            path = %archive_remote,
+            stderr = %String::from_utf8_lossy(&outcome.stderr),
+            "Removing the sandbox archive failed"
+        ),
+        Err(err) => tracing::warn!(
+            path = %archive_remote,
+            error = %display_for_log(&err, &SecretRedactor),
+            "Removing the sandbox archive failed"
+        ),
     }
 }
 
