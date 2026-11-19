@@ -82,6 +82,21 @@ pub struct RewindRunResult {
     pub response: types::RewindResponse,
 }
 
+/// The snapshot read door's payload (`GET /runs/{id}/snapshot`, work#1430):
+/// the integrity proof the server computed over the COMPLETE bundle before
+/// streaming, plus the live byte stream. `sha256` and `bytes` are `None` only
+/// from a server that predates the proof; consumers must verify the received
+/// bytes against them so a truncated transfer fails loudly.
+pub struct RunSnapshotDownload {
+    /// The bundle's SHA256, hex-encoded, over the complete bundle.
+    pub sha256: Option<String>,
+    /// The bundle's exact byte count.
+    pub bytes: Option<u64>,
+    /// The bundle bytes. Consume incrementally; the proof only holds for the
+    /// full stream.
+    pub stream: HttpByteStream,
+}
+
 #[derive(Default)]
 struct ListStoreRunsOptions {
     parent_id: Option<RunId>,
@@ -2838,6 +2853,42 @@ impl Client {
             )
             .await?;
         convert_type(response.into_inner())
+    }
+
+    /// The integrity metadata and live byte stream of `GET /runs/{id}/snapshot`:
+    /// the run's snapshot repository as a `git bundle` of all refs. `sha256`
+    /// and `bytes` are the proof the server computed over the COMPLETE bundle
+    /// before streaming (work#1430); a consumer that verifies its received
+    /// bytes against them fails a truncated transfer loudly instead of
+    /// salvaging a corrupt bundle.
+    pub async fn download_run_snapshot(&self, run_id: &RunId) -> Result<RunSnapshotDownload> {
+        let response = self
+            .current_state()
+            .client
+            .get_run_snapshot()
+            .id(run_id.to_string())
+            .send()
+            .await;
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => return Err(classify_api_error(err).await.error),
+        };
+        let sha256 = response
+            .headers()
+            .get("x-bundle-sha256")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let bytes = response
+            .headers()
+            .get("x-bundle-bytes")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.parse::<u64>().ok());
+        let stream = response.into_inner().into_inner();
+        Ok(RunSnapshotDownload {
+            sha256,
+            bytes,
+            stream: Box::pin(stream.map(|chunk| chunk.map_err(anyhow::Error::new))),
+        })
     }
 
     pub async fn get_run_logs(&self, run_id: &RunId) -> Result<Option<Vec<u8>>> {
