@@ -12,7 +12,7 @@ use super::short_run_id;
 use crate::args::RunsListArgs;
 use crate::command_context::CommandContext;
 use crate::commands::resolve_run_id;
-use crate::server_runs::{ServerRunLookup, filter_server_runs};
+use crate::server_runs::{RunListScope, ServerRunLookup, filter_server_runs};
 use crate::shared::{color_if, format_duration_ms, run_status_kind, tilde_path};
 
 pub(crate) async fn list_command(
@@ -33,12 +33,21 @@ pub(crate) async fn list_command(
         None => ServerRunLookup::from_client(client).await?,
     };
     let label_filters = parse_label_filters(&args.filter.label);
+    // Tri-state scope: default shows active runs, -a shows everything
+    // (archived included), --archived narrows to archived runs only.
+    let scope = if args.archived {
+        RunListScope::Archived
+    } else if args.all {
+        RunListScope::All
+    } else {
+        RunListScope::Active
+    };
     let filtered = filter_server_runs(
         lookup.runs(),
         args.filter.before.as_deref(),
         args.filter.workflow.as_deref(),
         &label_filters,
-        !args.all,
+        scope,
     );
 
     if ctx.json_output() {
@@ -53,6 +62,7 @@ pub(crate) async fn list_command(
                     "workflow_graph_name": run.workflow_graph_name(),
                     "workflow_slug": run.workflow_slug(),
                     "status": run.status(),
+                    "archived": run.archived(),
                     "start_time": run.start_time(),
                     "labels": run.labels(),
                     "wall_time_ms": run.wall_time_ms(),
@@ -75,7 +85,9 @@ pub(crate) async fn list_command(
     }
 
     if filtered.is_empty() {
-        if args.all {
+        if args.archived {
+            fabro_util::printerr!(printer, "No archived runs found.");
+        } else if args.all {
             fabro_util::printerr!(printer, "No runs found.");
         } else {
             fabro_util::printerr!(
@@ -142,7 +154,7 @@ pub(crate) async fn list_command(
             }
             row.extend([
                 run.workflow_display_name().cell(),
-                status_cell(run.status(), use_color),
+                status_cell(run.status(), run.archived(), use_color),
                 dir_display.cell(),
                 duration_display.cell(),
                 truncate_goal(run.display_title(), 50)
@@ -170,8 +182,16 @@ pub(crate) async fn list_command(
     Ok(())
 }
 
-fn status_cell(status: RunStatus, use_color: bool) -> CellStruct {
-    let text = run_status_kind(status);
+/// The STATUS cell: the status bucket, with the archived overlay
+/// surfaced as an `archived/<status>` marker so maintenance sweeps can
+/// read archive state straight off the table.
+fn status_cell(status: RunStatus, archived: bool, use_color: bool) -> CellStruct {
+    let kind = run_status_kind(status);
+    let text = if archived {
+        format!("archived/{kind}")
+    } else {
+        kind.to_string()
+    };
     let color = match status {
         RunStatus::Succeeded { .. } => Some(Color::Green),
         RunStatus::Failed { .. } => Some(Color::Red),

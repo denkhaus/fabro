@@ -20,6 +20,7 @@
 
 export const SessionEventName = {
     RUN_SESSION_CREATED: 'run.session.created',
+    RUN_SESSION_CAPABILITY_CHANGED: 'run.session.capability.changed',
     RUN_SESSION_TURN_STARTED: 'run.session.turn.started',
     RUN_SESSION_USER_MESSAGE: 'run.session.user_message',
     RUN_SESSION_ASSISTANT_DELTA: 'run.session.assistant_delta',

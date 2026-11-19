@@ -150,7 +150,11 @@ index (`incidents.md`) carries the full stories.
   stderr with an EMPTY stdout, which reads as "no hits" if only the row
   count is read (2026-11-17: a "0 ERRORs" verdict had to be retracted).
   Read exit code and stderr before counting; `rootprint auth status` is
-  the safe probe. `hist` gives the volume shape (`--interval 30m`),
+  the safe probe. WARM THE STORE BEFORE THE FIRST QUERY when line-watch
+  or run evaluation is expected: ask the user for a blocking `gopass
+  show` of the token path at orient start, not after the first failure
+  (2026-11-19: the second relapse cost a user roundtrip mid-supervision;
+  the store's TTL is ~30 minutes, so warm it again before late windows). `hist` gives the volume shape (`--interval 30m`),
   `search` the rows; search output is JSONL — redirect to a FILE and
   post-process (python/jq), never parse in the head of a shell call.
   Give search a generous timeout (minutes, not seconds).

@@ -81,9 +81,27 @@ model {
         spa "apps/fabro-web"
       }
     }
+    ask-fabro = service "Ask Fabro (operator chat)" {
+      description '''
+        The operator's steering chat over runs: read-only by default,
+        full access through the per-session capability flip the server
+        enforces (POST /sessions/{id}/capability, capability-change
+        event in the run stream — ADR-0046). Full access widens the
+        worker-JWT scope to cross-run reads and swaps in the supervisor
+        prompt, which mandates the in-turn soft confirm before every
+        fabro_run_merge. Landed 2026-11-19 (salvage PR #604 of run
+        01M7R8FS); the global chat page and session resume ride run
+        01M7SQC6's review (work#1452).
+      '''
+      metadata {
+        code "lib/apps/fabro-server/src/server/handler/sessions.rs"
+      }
+    }
   }
 
   operator -[uses]-> fabro.web-ui "files items, reviews parked runs"
+  operator -[uses]-> fabro.ask-fabro "steers runs in chat"
   fabro.web-ui -[uses]-> fabro.server "API"
+  fabro.ask-fabro -[uses]-> fabro.server "run tools"
   fabro.server -[write]-> rootprint "emits OpenTelemetry logs & traces"
 }

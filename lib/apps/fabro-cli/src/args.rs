@@ -393,9 +393,18 @@ pub(crate) struct RunsListArgs {
     #[command(flatten)]
     pub(crate) filter: RunFilterArgs,
 
-    /// Show all runs, not just running (like docker ps -a)
+    /// Show all runs, not just running (like docker ps -a): active plus
+    /// terminal runs, including archived ones. Archived rows are marked
+    /// `archived/<status>` in the table and carry `"archived": true` in
+    /// --json output. Use --archived for archived runs only.
     #[arg(short = 'a', long)]
     pub(crate) all: bool,
+
+    /// Show only archived runs (terminal runs carrying the archived
+    /// overlay flag). Mutually exclusive with -a: -a includes archived
+    /// runs among everything else, --archived filters down to them.
+    #[arg(long, conflicts_with = "all")]
+    pub(crate) archived: bool,
 
     /// Only display run IDs
     #[arg(short = 'q', long)]
