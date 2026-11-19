@@ -362,11 +362,14 @@ impl FabroToolBackend for ClientBackend {
         query: Option<&str>,
     ) -> anyhow::Result<Vec<types::WorkItem>> {
         let limit = u32::try_from(limit).unwrap_or(u32::MAX);
-        // The run tool has no label/page surface yet (denkhaus/work#1001
-        // wires the CLI); it lists the first page unfiltered.
-        self.client
-            .list_work_items(project, lane, Some(limit), query, None, None)
-            .await
+        // The run tool has no label/state/page surface yet (denkhaus/work#1001
+        // wires the CLI; work#1476 wires the census); it lists the first
+        // page, open items, unfiltered — the envelope's `data`.
+        let response = self
+            .client
+            .list_work_items(project, lane, Some(limit), query, None, None, None, None)
+            .await?;
+        Ok(response.data)
     }
 
     async fn work_create(

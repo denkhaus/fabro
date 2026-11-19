@@ -15,7 +15,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fabro_http::{HeaderMap, HttpClient, HttpError, Method, RequestBuilder, StatusCode, header};
-use fabro_work::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkProject};
+use fabro_work::{
+    TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemStateFilter, WorkProject,
+};
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
 use tokio::time::sleep;
@@ -290,6 +292,10 @@ impl GitHubTracker {
                     query: None,
                     label: None,
                     page:  1,
+                    // Legacy ids resolve in ANY state (closed migrated
+                    // items stay resolvable); the search arm ignores
+                    // the state filter — `All` states the intent.
+                    state: WorkItemStateFilter::All,
                 },
                 &format!("label:\"{label}\""),
             )
@@ -382,6 +388,14 @@ impl GitHubTracker {
                 .get("updated_at")
                 .and_then(Value::as_str)
                 .and_then(|raw| raw.parse::<DateTime<Utc>>().ok()),
+            created_at: value
+                .get("created_at")
+                .and_then(Value::as_str)
+                .and_then(|raw| raw.parse::<DateTime<Utc>>().ok()),
+            closed_at: value
+                .get("closed_at")
+                .and_then(Value::as_str)
+                .and_then(|raw| raw.parse::<DateTime<Utc>>().ok()),
         })
     }
 
@@ -397,8 +411,13 @@ impl GitHubTracker {
             .map(|label| utf8_percent_encode(label, NON_ALPHANUMERIC).to_string())
             .collect::<Vec<_>>()
             .join(",");
+        // The state filter rides GitHub's own `state` query param
+        // (work#1476): open stays every established caller's answer;
+        // `all`/`closed` extend the listing to the census reads (the
+        // friction-score swap) without touching the default.
+        let state = filter.state.to_string();
         let url = format!(
-            "{}?state=open&labels={encoded_labels}&per_page={limit}&page={page}",
+            "{}?state={state}&labels={encoded_labels}&per_page={limit}&page={page}",
             self.url("issues")
         );
         let value = self.issue_json(Method::GET, &url, None).await?;
@@ -481,21 +500,25 @@ impl GitHubTracker {
         Ok((value, total))
     }
 
-    /// The open-list arm's count (denkhaus/work#1296): GitHub's issue
+    /// The list arm's count (denkhaus/work#1296): GitHub's issue
     /// LIST answers a page, never a total — the search API's
-    /// `total_count` over the same qualifiers (repo, issue-only, open,
-    /// the filter's labels) names it, one cheap request beside the page
-    /// fetch.
+    /// `total_count` over the same qualifiers (repo, issue-only, the
+    /// state's `is:` qualifier, the filter's labels) names it, one
+    /// cheap request beside the page fetch.
     async fn count_open_items(
         &self,
         project: &WorkProject,
         filter: &WorkItemFilter,
     ) -> anyhow::Result<u64> {
-        let mut terms = vec![
-            format!("repo:{}", self.repo),
-            "is:issue".to_string(),
-            "is:open".to_string(),
-        ];
+        let mut terms = vec![format!("repo:{}", self.repo), "is:issue".to_string()];
+        // The state's `is:` qualifier mirrors the list URL's `state=`
+        // param (work#1476): open (the default), closed, or none for
+        // `all`.
+        match filter.state {
+            WorkItemStateFilter::Open => terms.push("is:open".to_string()),
+            WorkItemStateFilter::Closed => terms.push("is:closed".to_string()),
+            WorkItemStateFilter::All => {}
+        }
         terms.extend(Self::label_qualifiers(project, filter));
         let (_, total) = self.search_issues_json(&terms, 1, 1).await?;
         Ok(total)
@@ -998,6 +1021,7 @@ mod tests {
                 query: Some("watchdog".to_string()),
                 label: None,
                 page:  1,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the search arm resolves");
@@ -1039,6 +1063,7 @@ mod tests {
                 query: Some("watchdog".to_string()),
                 label: None,
                 page:  2,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the counting search resolves");
@@ -1092,6 +1117,7 @@ mod tests {
                 query: None,
                 label: None,
                 page:  1,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the counting list resolves");
@@ -1112,6 +1138,7 @@ mod tests {
                 query: Some("   ".to_string()),
                 label: None,
                 page:  1,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect_err("a blank query must fail");
@@ -1142,6 +1169,7 @@ mod tests {
                 query: None,
                 label: None,
                 page:  1,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the open-list arm resolves");
@@ -1174,10 +1202,53 @@ mod tests {
                 query: None,
                 label: Some("arch".to_string()),
                 page:  3,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the labeled paged list resolves");
         listed.assert_calls_async(1).await;
+    }
+
+    /// The state filter (work#1476): `All` rides GitHub's own `state=`
+    /// query param — the census enumerates every state through the
+    /// same list arm, page semantics unchanged.
+    #[tokio::test]
+    async fn the_all_state_filter_reaches_the_issue_list_call() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "all")
+                    .query_param("labels", "project:fabro")
+                    .query_param("per_page", "100")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!([
+                    {"number": 12, "title": "Closed long ago", "body": "b", "state": "closed",
+                     "labels": [{"name": "project:fabro"}], "html_url": "u12",
+                     "created_at": "2026-10-25T10:00:00Z",
+                     "closed_at": "2026-10-26T10:00:00Z",
+                     "updated_at": "2026-10-26T10:00:00Z"}
+                ]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        let items = tracker
+            .list(&project(), WorkItemFilter {
+                lane:  None,
+                limit: 100,
+                query: None,
+                label: None,
+                page:  1,
+                state: WorkItemStateFilter::All,
+            })
+            .await
+            .expect("the all-state list resolves");
+        listed.assert_calls_async(1).await;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].state, "closed");
+        assert!(items[0].created_at.is_some());
+        assert!(items[0].closed_at.is_some());
     }
 
     /// The same seam on the search arm: the raw label becomes a label
@@ -1209,6 +1280,7 @@ mod tests {
                 query: Some("census".to_string()),
                 label: Some("prio:p0".to_string()),
                 page:  2,
+                state: WorkItemStateFilter::Open,
             })
             .await
             .expect("the labeled paged search resolves");

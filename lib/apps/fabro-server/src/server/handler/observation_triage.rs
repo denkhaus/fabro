@@ -439,6 +439,8 @@ mod link_resolution_tests {
             priority:   2,
             url:        url.to_string(),
             updated_at: None,
+            created_at: None,
+            closed_at:  None,
         }
     }
 

@@ -1958,12 +1958,17 @@ impl Client {
         Ok(response.into_inner())
     }
 
-    /// The project's work items: open-only when `query` is absent,
-    /// title+body text search including closed items when it is set (the
-    /// duplicate check before filing needs the closed half). Optionally
-    /// lane-filtered and limit-capped (the API clamps 1..=100), with a
-    /// raw `label` filter beside the project/lane labels and a 1-based
-    /// `page` (denkhaus/work#1001) — `limit` is the page size.
+    /// One page of the project's work items: per-`state` enumeration
+    /// (`open` by default; `all` is the census read, work#1476) when
+    /// `query` is absent, title+body text search including closed items
+    /// when it is set (the duplicate check before filing needs the
+    /// closed half). Optionally lane-filtered and limit-capped (the API
+    /// clamps 1..=100), with a raw `label` filter beside the
+    /// project/lane labels, a 1-based `page` (denkhaus/work#1001), and
+    /// the cursor walk: pass the previous response's `next_cursor` as
+    /// `cursor` for the following page (work#1476). Returns the full
+    /// envelope — `data`, `total`, `next_cursor` — so a walker sees the
+    /// next token; `data` alone is the item list.
     pub async fn list_work_items(
         &self,
         project_id: &str,
@@ -1971,8 +1976,14 @@ impl Client {
         limit: Option<u32>,
         query: Option<&str>,
         label: Option<&str>,
+        state: Option<&str>,
         page: Option<u32>,
-    ) -> Result<Vec<types::WorkItem>> {
+        cursor: Option<&str>,
+    ) -> Result<types::WorkItemListResponse> {
+        let state = state
+            .map(str::parse::<types::ListWorkItemsState>)
+            .transpose()
+            .map_err(|err| anyhow::anyhow!("unknown work-item state: {err}"))?;
         let response = self
             .send_api(|client| async move {
                 let mut request = client.list_work_items().project_id(project_id.to_string());
@@ -1988,13 +1999,19 @@ impl Client {
                 if let Some(label) = label {
                     request = request.label(label.to_string());
                 }
+                if let Some(state) = state {
+                    request = request.state(state);
+                }
                 if let Some(page) = page {
                     request = request.page(page);
+                }
+                if let Some(cursor) = cursor {
+                    request = request.cursor(cursor.to_string());
                 }
                 request.send().await
             })
             .await?;
-        Ok(response.into_inner().data)
+        Ok(response.into_inner())
     }
 
     /// One work item by its provider-stable key.

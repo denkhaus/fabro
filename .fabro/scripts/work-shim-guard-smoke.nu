@@ -81,8 +81,8 @@ def main []: nothing -> nothing {
 
     # --- The lockstep: every ARMS row answers (no fallback refusal for
     # a spec'd pair), and the log entry carries exactly the LOGGED
-    # flags of the spec (work list logs 4 of its 6 owned — limit and
-    # lane stay out of the entry).
+    # flags of the spec (work list logs 4 of its 8 owned — limit, lane,
+    # state and cursor stay out of the entry).
     let listed = (drive-shim $state [work list --server http://127.0.0.1:1 --project fabro --limit 5])
     if $listed.exit_code != 0 {
         fail $"every ARMS row must answer without the fallback refusal: ($listed.stderr | str substring 0..160)"

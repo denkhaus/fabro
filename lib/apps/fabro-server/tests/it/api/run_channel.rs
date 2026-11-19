@@ -43,6 +43,8 @@ impl TrackerProvider for ChannelFakeTracker {
             priority:   2,
             url:        "https://github.com/denkhaus/work/issues/1".to_string(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         }])
     }
 
@@ -68,6 +70,8 @@ impl TrackerProvider for ChannelFakeTracker {
             priority:   2,
             url:        "https://github.com/denkhaus/work/issues/2".to_string(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         })
     }
 

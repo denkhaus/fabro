@@ -97,7 +97,7 @@ const ARMS = [
     [facade sub owned logged];
     ["work" "show" [server project json] [server project json]]
     ["work" "claims" [server project json] [server project json]]
-    ["work" "list" [server project query limit lane json] [server project query json]]
+    ["work" "list" [server project query limit lane state cursor json] [server project query json]]
     ["work" "create" [server project title type label priority body_file json] [server project title type label]]
     ["work" "close" [server project reason json] [server project reason]]
     ["work" "radius" [server project json] [server project json]]
@@ -150,6 +150,8 @@ def main [
     --body-file: string,          # binds $body_file (work create)
     --priority: string,
     --lane: string,
+    --state: string,              # work list (work#1476: open | closed | all)
+    --cursor: string,             # work list (work#1476: the next-page token)
     # run
     --field: string,              # run queue
     --workflow: string,           # run queue
@@ -179,7 +181,7 @@ def main [
     # parse at the top level, so the second slot is ''.
     let sub = ($argv | get -o 1 | default '')
     let positional = ($argv | skip 2)
-    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run: $run, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json, all: $all}
+    let provided = {server: $server, project: $project, query: $query, label: $label, limit: $limit, reason: $reason, title: $title, type: $type, body_file: $body_file, priority: $priority, lane: $lane, state: $state, cursor: $cursor, field: $field, workflow: $workflow, verdict: $verdict, requires: $requires, run: $run, run_id: $run_id, category: $category, text: $text, execution: $execution, firing: $firing, json: $json, all: $all}
 
     match [$facade $sub] {
         ["work" "show"] => {
@@ -198,8 +200,14 @@ def main [
         }
         ["work" "list"] => {
             let logged = (enter (arm-spec "work" "list") $p $s $argv $stdin_text $provided)
+            # The state filter (work#1476): the shim's items are all
+            # open, so `closed` answers empty; `all`/`open` filter the
+            # same. The walk serves everything in one envelope — the
+            # shim's state is small, `nextCursor` is always null.
             let hits = ($logged.items | where {|it|
-                ($it.state == "open") and (
+                (
+                    ($state | is-empty) or ($state == "open" or $state == "all") and ($it.state == "open")
+                ) and (
                     ($query | is-empty) or ($it.title | str contains $query) or ($it.body | str contains $query)
                 ) and (
                     # The lane filter (work#1144's lane check): the server
@@ -208,7 +216,10 @@ def main [
                     ($lane | is-empty) or ($it.labels | any {|l| $l == $"lane:($lane)"})
                 )
             })
-            $hits | to json --raw | print
+            # The envelope (work#1476): `--json` prints the
+            # WorkItemListResponse record (`.data` + `.total` +
+            # `.nextCursor`), never a bare array — the real CLI's shape.
+            {data: $hits, total: ($hits | length), nextCursor: null} | to json --raw | print
         }
         ["work" "create"] => {
             let logged = (enter (arm-spec "work" "create") $p $s $argv $stdin_text $provided)

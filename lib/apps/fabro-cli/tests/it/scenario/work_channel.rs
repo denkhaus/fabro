@@ -50,6 +50,8 @@ fn fixture_item(key: &str, title: &str) -> WorkItem {
         priority:   2,
         url:        format!("https://github.com/{key}"),
         updated_at: None,
+        created_at: None,
+        closed_at:  None,
     }
 }
 

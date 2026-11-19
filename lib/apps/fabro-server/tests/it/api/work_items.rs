@@ -409,6 +409,8 @@ mod next_item {
             priority,
             url: format!("https://github.com/denkhaus/work/issues/{number}"),
             updated_at: Some(Utc::now()),
+            created_at: None,
+            closed_at: None,
         }
     }
 
@@ -476,6 +478,8 @@ mod next_item {
                 priority:   2,
                 url:        format!("https://github.com/denkhaus/work/issues/{number}"),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at: None,
             };
             items.push(created.clone());
             Ok(created)
@@ -880,6 +884,70 @@ mod next_item {
         let filters = tracker.filters.lock().await;
         assert_eq!(filters[1].label, None);
         assert_eq!(filters[1].page, 1);
+    }
+
+    /// The census doors (work#1476): `state` reaches the tracker filter
+    /// (`all` enumerated, the default open), the `cursor` names the page
+    /// to serve, and the response carries `nextCursor` — a page filled
+    /// to its size names the next token, anything shorter nulls it.
+    #[tokio::test]
+    async fn state_and_cursor_reach_the_filter_and_next_cursor_marks_the_walk() {
+        let tracker = FakeTracker::with_items(vec![item(1, 1), item(2, 2)]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        // The default: open enumeration, and a page short of its size
+        // (2 matches against the default limit 50) is the LAST page.
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api("/projects/fabro/work-items"))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        let page = response_json(response, StatusCode::OK, "default list").await;
+        assert!(
+            page["nextCursor"].is_null(),
+            "a short page is the last one: {page}"
+        );
+
+        // The cursor names the page (2), `state=all` reaches the
+        // filter, and a page filled to its size (2 matches == limit 2)
+        // names the next token (page 3).
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api(
+                        "/projects/fabro/work-items?state=all&cursor=2&limit=2",
+                    ))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        let page = response_json(response, StatusCode::OK, "cursor walk").await;
+        assert_eq!(
+            page["nextCursor"].as_str(),
+            Some("3"),
+            "a full page names the next token: {page}"
+        );
+        let filters = tracker.filters.lock().await;
+        assert_eq!(filters.len(), 2, "both lists reached the tracker");
+        assert_eq!(
+            filters[0].state,
+            fabro_work::WorkItemStateFilter::Open,
+            "the default enumerates open items"
+        );
+        assert_eq!(
+            filters[1].state,
+            fabro_work::WorkItemStateFilter::All,
+            "state=all reaches the tracker"
+        );
+        assert_eq!(filters[1].page, 2, "the cursor names the page");
     }
 
     /// The comment READ verb over HTTP (ADR-0039 stage D part 2,
@@ -1438,6 +1506,8 @@ mod closure_radius {
             priority:   2,
             url:        format!("https://github.com/denkhaus/work/issues/{number}"),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         }
     }
 

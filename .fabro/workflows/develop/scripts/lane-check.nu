@@ -35,14 +35,14 @@ def main [
         print -e $"($CALLER): work list failed for lane ($lane): ($res.stderr | str trim | str substring 0..240)"
         exit 1
     }
-    # The list door prints the BARE item array (open items only — the
-    # lane filter is server-side label translation). Nu describes an
-    # empty array as list<any> and a record-filled one as table<...> —
-    # both are the array shape; anything else is a shape drift.
-    let items = (try { $res.stdout | from json } catch { null })
+    # The list door prints the response ENVELOPE (work#1476: `.data` +
+    # `.total` + `.nextCursor`) — the lane filter is server-side label
+    # translation, the items live under `.data`. Anything else is a
+    # shape drift.
+    let items = (try { $res.stdout | from json | get data } catch { null })
     let shape = ($items | describe)
     if not ($shape | str starts-with 'list') and not ($shape | str starts-with 'table') {
-        print -e $"($CALLER): work list stdout is not the bare item array: ($res.stdout | str trim | str substring 0..240)"
+        print -e $"($CALLER): work list stdout is not the item envelope with .data: ($res.stdout | str trim | str substring 0..240)"
         exit 1
     }
     let open_count = ($items | length)

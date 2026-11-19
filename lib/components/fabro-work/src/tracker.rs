@@ -26,6 +26,13 @@ pub struct WorkItem {
     pub priority:   i64,
     pub url:        String,
     pub updated_at: Option<DateTime<Utc>>,
+    /// When the forge recorded the item's creation — the census reads
+    /// (friction-score) age statistics off it (work#1476). `None` when
+    /// the forge names no creation time.
+    pub created_at: Option<DateTime<Utc>>,
+    /// When the forge closed the item — `None` while it is open. The
+    /// census's close-window counts read off it (work#1476).
+    pub closed_at:  Option<DateTime<Utc>>,
 }
 
 /// A work item to file in the project's forge.
@@ -48,6 +55,19 @@ pub struct WorkItemDraft {
 /// `fabro_work::WorkItemComment` path stays stable.
 pub use fabro_types::WorkItemComment;
 
+/// Which states a listing enumerates. The default is OPEN — every
+/// pre-#1476 caller's behavior, unchanged; the census enumerates ALL
+/// (work#1476). Providers that cannot filter by state ignore the field
+/// (the `page` precedent).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, strum::Display)]
+#[strum(serialize_all = "lowercase")]
+pub enum WorkItemStateFilter {
+    #[default]
+    Open,
+    Closed,
+    All,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkItemFilter {
     pub lane:  Option<String>,
@@ -55,7 +75,8 @@ pub struct WorkItemFilter {
     /// Plain-keyword text search over title and body, INCLUDING closed
     /// items (ADR-0032 phase 3: the pre-create duplicate check needs the
     /// closed half). When set, the provider searches instead of listing
-    /// open items and relevance replaces the priority ordering.
+    /// open items and relevance replaces the priority ordering; the
+    /// state filter does not apply (the search spans states).
     pub query: Option<String>,
     /// Raw tracker label name (e.g. `prio:p0`), filtered in addition to
     /// the project (and lane) labels in both list and search modes —
@@ -64,6 +85,9 @@ pub struct WorkItemFilter {
     /// 1-based results page; `limit` is the page size. Providers that
     /// cannot page ignore it (denkhaus/work#1001).
     pub page:  usize,
+    /// Which states the listing enumerates; the default (OPEN) is every
+    /// pre-#1476 caller's behavior (work#1476).
+    pub state: WorkItemStateFilter,
 }
 
 /// A paged list read that also names the TOTAL the filter matches —
@@ -80,10 +104,11 @@ pub struct WorkItemPage {
 /// and the server never name a forge.
 #[async_trait]
 pub trait TrackerProvider: Send + Sync {
-    /// Open items when `filter.query` is absent; a title+body text search
-    /// including closed items when it is set. One method because both are
-    /// the same read surface for callers — the filter, not the call site,
-    /// picks the mode.
+    /// The listing (which states: `filter.state`) when `filter.query`
+    /// is absent; a title+body text search including closed items when
+    /// it is set (the state filter does not apply to the search). One
+    /// method because both are the same read surface for callers —
+    /// the filter, not the call site, picks the mode.
     async fn list(
         &self,
         project: &crate::WorkProject,

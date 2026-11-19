@@ -25,7 +25,7 @@ use fabro_store::platform_records::{
 use fabro_types::RunId;
 use fabro_work::{
     ClaimState, GrantOutcome, GrantRequest, TrackerProvider, WorkClaim, WorkClaimEvent, WorkItem,
-    WorkItemDraft, WorkItemFilter, WorkProject,
+    WorkItemDraft, WorkItemFilter, WorkItemStateFilter, WorkProject,
 };
 
 use super::super::{
@@ -440,7 +440,37 @@ async fn list_work_items(
     let caller = resolve_caller_project(&state, &auth, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
-    let page = params.page.unwrap_or(1).max(1) as usize;
+    // Which states the listing enumerates (work#1476): the default stays
+    // OPEN — every pre-#1476 caller's answer, unchanged; `all` is the
+    // census read (the friction-score swap). Unknown values are refused
+    // loudly, never silently narrowed.
+    let state_filter = match params.state.as_deref() {
+        None | Some("open") => WorkItemStateFilter::Open,
+        Some("closed") => WorkItemStateFilter::Closed,
+        Some("all") => WorkItemStateFilter::All,
+        Some(other) => {
+            return Err(ApiError::bad_request(format!(
+                "unknown state '{other}' (open | closed | all)"
+            )));
+        }
+    };
+    // The cursor (work#1476) names the page to serve: the previous
+    // response's `nextCursor` verbatim, the first page when absent. The
+    // token is the 1-based page number — the same walk the tracker
+    // provider serves, opaque to the client. It overrides an explicit
+    // `page` so a walker can never double-read a page boundary.
+    let page = match params.cursor.as_deref().map(str::trim) {
+        None | Some("") => params.page.unwrap_or(1).max(1),
+        Some(cursor) => match cursor.parse::<u32>() {
+            Ok(n) if n >= 1 => n,
+            _ => {
+                return Err(ApiError::bad_request(
+                    "invalid cursor — pass the previous response's nextCursor verbatim, \
+                     or omit it for the first page",
+                ));
+            }
+        },
+    };
     let page_size = params.limit.unwrap_or(50).clamp(1, 100) as usize;
     let sort = match params.sort.as_deref() {
         None => None,
@@ -457,6 +487,7 @@ async fn list_work_items(
     // The pager's truthful total (denkhaus/work#1296): the tracker's
     // counting read names the number of items the filter matches,
     // independent of paging — the page-window estimate is gone.
+    let page = usize::try_from(page).unwrap_or(1);
     let mut total: Option<u64> = None;
     let items = match sort {
         None => {
@@ -467,6 +498,7 @@ async fn list_work_items(
                     query: params.query,
                     label: params.label,
                     page,
+                    state: state_filter,
                 })
                 .await
                 .map_err(tracker_failed)?;
@@ -489,6 +521,7 @@ async fn list_work_items(
                     query: params.query.clone(),
                     label: params.label.clone(),
                     page:  tracker_page,
+                    state: state_filter,
                 };
                 let batch = if tracker_page == 1 {
                     let page = tracker
@@ -542,6 +575,15 @@ async fn list_work_items(
         .map_err(store_error)?
         .into_iter()
         .collect();
+    // The next-page cursor (work#1476), the full-page heuristic: a page
+    // that filled its page size MAY have more (the caller walks until a
+    // short page or a null cursor — the `gh --paginate` posture); a
+    // short page is the last one, whatever the total said.
+    let next_cursor = if items.len() == page_size {
+        Some(page.saturating_add(1).to_string())
+    } else {
+        None
+    };
     let response = WorkItemListResponse {
         data:  items
             .into_iter()
@@ -551,6 +593,7 @@ async fn list_work_items(
             })
             .collect(),
         total: total.map(|total| total.min(i64::MAX.unsigned_abs()).cast_signed()),
+        next_cursor,
     };
     Ok(Json(response).into_response())
 }
@@ -569,6 +612,12 @@ struct WorkItemQuery {
     /// Applies before paging: the handler accumulates tracker pages
     /// (bounded), sorts, and slices the requested page.
     sort:  Option<String>,
+    /// Which states the listing enumerates: `open` (the default),
+    /// `closed`, or `all` — the census read (work#1476).
+    state: Option<String>,
+    /// The previous response's opaque next-page token (work#1476);
+    /// absent or empty starts at the first page. Overrides `page`.
+    cursor: Option<String>,
 }
 
 /// One work item by key, including closed items (denkhaus/work#1235):
@@ -1246,6 +1295,7 @@ async fn claim_next(
             query: None,
             label: None,
             page:  1,
+            state: WorkItemStateFilter::Open,
         })
         .await
         .map_err(tracker_failed)?;
@@ -1940,6 +1990,8 @@ fn api_item(item: WorkItem) -> ApiWorkItem {
         title:      item.title,
         updated_at: item.updated_at,
         url:        item.url,
+        created_at: item.created_at,
+        closed_at:  item.closed_at,
     }
 }
 
@@ -2341,6 +2393,8 @@ mod resolve_self_tests {
                 priority:   1,
                 url:        "https://github.com/denkhaus/work/issues/1".to_string(),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at:  None,
             }])
         }
         async fn get(
@@ -2421,6 +2475,8 @@ mod resolve_self_tests {
                 priority:   1,
                 url:        "https://github.com/denkhaus/work/issues/1".to_string(),
                 updated_at: Some(*self.updated_at.lock().unwrap()),
+                created_at: None,
+                closed_at:  None,
             }])
         }
         async fn get(
@@ -2774,6 +2830,8 @@ mod resolve_self_tests {
                 priority,
                 url: format!("https://github.com/denkhaus/work/issues/{key}"),
                 updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at: None,
             }
         }
         #[async_trait::async_trait]
