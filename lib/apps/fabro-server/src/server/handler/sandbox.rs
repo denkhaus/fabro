@@ -837,7 +837,7 @@ async fn get_sandbox_archive(
         }
     }
     .await;
-    remove_sandbox_archive(&sandbox, &archive_remote).await;
+    remove_sandbox_archive(sandbox.as_ref(), &archive_remote).await;
     match bytes {
         Ok(bytes) => octet_stream_response(bytes.into()),
         Err(response) => response,
