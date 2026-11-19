@@ -9,6 +9,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -38,7 +39,7 @@ import { RunsListView } from "../components/runs-list/runs-list-view";
 import { mutateRunListCaches } from "../lib/board-cache";
 import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events";
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
-import { approveRun, archiveRuns, canArchive, isQuotaPark, mapError, retryRun } from "../lib/run-actions";
+import { approveRun, archiveRuns, canArchive, canOwnerPark, isOwnerPark, isQuotaPark, mapError, ownerParkRun, ownerUnparkRun, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
 import { formatAbsoluteTs, formatRelativeAge, formatTileTimestamp } from "../lib/format";
 import { useToast } from "../components/toast";
@@ -159,6 +160,59 @@ export function placeArchivedColumnLast(columns: Column[], includeArchived: bool
   const archived = columns.find((column) => column.id === "archived");
   if (archived == null) return columns;
   return [...columns.filter((column) => column.id !== "archived"), archived];
+}
+
+// The owner-park gesture (work#1345): the columns that accept a drop —
+// blocked is the park target, failed and human_needed are the unpark
+// targets (the restore lands the run back on its deferred verdict).
+const PARK_DROP_COLUMNS: ReadonlySet<BoardColumn> = new Set<BoardColumn>([
+  "blocked",
+  "failed",
+  "human_needed",
+]);
+
+const COLUMN_DROP_PREFIX = "column:";
+
+export type BoardDropAction =
+  | { kind: "park"; runId: string }
+  | { kind: "unpark"; runId: string };
+
+function findBoardRun(columns: Column[], runId: string): RunItem | undefined {
+  for (const column of columns) {
+    const item = column.items.find((item) => item.id === runId);
+    if (item != null) return item;
+  }
+  return undefined;
+}
+
+/**
+ * What a board drop means (work#1345): dropping a failed or human-needed
+ * run onto the blocked column (or any card in it) parks it; dropping an
+ * owner-parked run onto the failed or human_needed column clears the
+ * park. Everything else — including intra-column reordering — is not a
+ * park gesture and returns null so the normal sortable logic runs.
+ */
+export function resolveBoardDrop(
+  columns: Column[],
+  activeId: string,
+  overId: string | number,
+): BoardDropAction | null {
+  const source = findBoardRun(columns, activeId);
+  if (source == null) return null;
+  const target = typeof overId === "string" && overId.startsWith(COLUMN_DROP_PREFIX)
+    ? (overId.slice(COLUMN_DROP_PREFIX.length) as BoardColumn)
+    : (findBoardRun(columns, String(overId))?.column ?? null);
+  if (target == null || target === source.column) return null;
+  if (target === "blocked" && canOwnerPark(source.lifecycleStatus)) {
+    return { kind: "park", runId: source.id };
+  }
+  if (
+    (target === "failed" || target === "human_needed") &&
+    isOwnerPark(source)
+  ) {
+    return { kind: "unpark", runId: source.id };
+  }
+  return null;
 }
 
 function boardLifecycleStatusLabel(run: Pick<RunItem, "column" | "lifecycleStatusLabel">): string | null {
@@ -318,9 +372,13 @@ export function PrCard({
   // A quota-class park (ADR-0021) has no question to answer: its action is
   // Resume (Retry keeps the committed stages and reruns the interrupted
   // one). The column's Answer Question would send the operator to an empty
-  // interview, so it is suppressed for this run (fabro-2c4a).
+  // interview, so it is suppressed for this run (fabro-2c4a). An owner
+  // park (work#1345) defers the question the same way — the owner's drag
+  // signaled retry intent, and the verdict bar is the disposition
+  // surface — so the answer affordances stay suppressed while parked.
   const quotaPark = isQuotaPark(pr);
-  const cardActions = quotaPark ? [] : actions;
+  const ownerParked = isOwnerPark(pr);
+  const cardActions = quotaPark || ownerParked ? [] : actions;
 
   return (
     <div className="group rounded-md border border-line bg-panel p-4 transition-all duration-200 hover:border-line-strong hover:shadow-lg hover:shadow-black/20">
@@ -332,6 +390,11 @@ export function PrCard({
         {lifecycleLabel != null && (
           <span className="rounded-full border border-line px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-fg-muted">
             {lifecycleLabel}
+          </span>
+        )}
+        {ownerParked && (
+          <span className="rounded-full border border-amber/40 px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wide text-amber">
+            owner pending
           </span>
         )}
         {pr.pullRequestUrl && pr.number != null && (
@@ -369,7 +432,7 @@ export function PrCard({
 
       {pr.checks != null && <ChecksStatus checks={pr.checks} />}
 
-      {(pr.question != null || pr.lifecycleStatus === "human_needed") && !quotaPark && (
+      {(pr.question != null || pr.lifecycleStatus === "human_needed") && !quotaPark && !ownerParked && (
         <div className="mt-3 flex items-center gap-2">
           {pr.question != null && (
             <p className="min-w-0 flex-1 truncate text-xs italic text-amber/70">{pr.question}</p>
@@ -666,8 +729,35 @@ function ColumnActionsMenu({ column }: { column: Column }) {
   );
 }
 
+/**
+ * The card body of a board column, droppable for the owner-park gesture
+ * (work#1345): the park drop targets the blocked column, the unpark drop
+ * targets the failed and human_needed columns. The useDroppable hook is
+ * called unconditionally (rules of hooks); only the park-drop columns
+ * attach the ref, so the others stay plain bodies.
+ */
+function ColumnDropBody({ column }: { column: Column }) {
+  const droppable = PARK_DROP_COLUMNS.has(column.id);
+  const { isOver, setNodeRef } = useDroppable({ id: `${COLUMN_DROP_PREFIX}${column.id}` });
+  return (
+    <div
+      ref={droppable ? setNodeRef : undefined}
+      className={`flex flex-1 flex-col gap-3 rounded-md transition-colors ${
+        droppable && isOver ? "bg-amber/5 ring-1 ring-inset ring-amber/60" : ""
+      }`}
+    >
+      {column.items.map((pr) => (
+        <SortablePrCard
+          key={pr.id}
+          pr={pr}
+          actions={column.actions}
+        />
+      ))}
+    </div>
+  );
+}
+
 function BoardColumnView({ column }: { column: Column }) {
-  const actions = column.actions;
   return (
     <div className="flex min-w-0 flex-col">
       <div className="mb-3 flex items-center gap-3">
@@ -682,15 +772,7 @@ function BoardColumnView({ column }: { column: Column }) {
       </div>
 
       <SortableContext items={column.items.map((pr) => pr.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-1 flex-col gap-3">
-          {column.items.map((pr) => (
-            <SortablePrCard
-              key={pr.id}
-              pr={pr}
-              actions={actions}
-            />
-          ))}
-        </div>
+        <ColumnDropBody column={column} />
       </SortableContext>
     </div>
   );
@@ -894,9 +976,39 @@ export default function Runs() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  const { mutate } = useSWRConfig();
+  const { push } = useToast();
+
+  // The owner-park drop (work#1345): park clears nothing by itself — the
+  // run moves to blocked (owner_pending) and its work-item claim holds;
+  // unpark restores the deferred terminal verdict. Feedback and cache
+  // refresh follow the board-button convention (toast + list invalidation).
+  const runBoardDrop = useCallback(async (action: BoardDropAction) => {
+    try {
+      if (action.kind === "park") {
+        await ownerParkRun(action.runId);
+        mutateRunListCaches(mutate);
+        push({ message: "Run parked in Blocked — its work-item claim holds until you dispose of it." });
+      } else {
+        await ownerUnparkRun(action.runId);
+        mutateRunListCaches(mutate);
+        push({ message: "Park cleared — the run is back on its recorded verdict." });
+      }
+    } catch (error) {
+      mutateRunListCaches(mutate);
+      push({ message: mapError(error, action.kind), tone: "error" });
+    }
+  }, [mutate, push]);
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+
+    const drop = resolveBoardDrop(columns, String(active.id), over.id);
+    if (drop != null) {
+      void runBoardDrop(drop);
+      return;
+    }
 
     setColumnsState({
       base:    initialColumns,
@@ -907,7 +1019,7 @@ export default function Runs() {
         return { ...col, items: arrayMove(col.items, oldIndex, newIndex) };
       }),
     });
-  }, [columns, initialColumns]);
+  }, [columns, initialColumns, runBoardDrop]);
 
   const totalRuns = columns.reduce((sum, col) => sum + col.items.length, 0);
 

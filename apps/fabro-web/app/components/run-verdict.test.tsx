@@ -146,4 +146,60 @@ describe("RunVerdict", () => {
     const renderer = renderVerdict();
     expect(renderer.toJSON()).toBeNull();
   });
+
+  // work#1345: an owner-parked run (blocked / owner_pending) gets the
+  // verdict bar's disposition surface — the three park-clearing
+  // dispositions, no fork (the run is non-terminal, nothing to continue
+  // from).
+  test("an owner-parked run renders the bar with the three dispositions and no fork", () => {
+    currentRun = {
+      id: "run-1",
+      lifecycle: {
+        status: { kind: "blocked", blocked_reason: "owner_pending" },
+        error: { message: "boom at the deploy stage" },
+      },
+      current_question: null,
+    };
+    const renderer = renderVerdict();
+    const rendered = textOf(renderer);
+
+    expect(rendered).toContain("owner-parked");
+    expect(rendered).toContain("boom at the deploy stage");
+    expect(rendered).toContain("Retry");
+    expect(rendered).toContain("Retry on latest");
+    expect(rendered).toContain("Archive");
+    expect(rendered).not.toContain("Fork");
+  });
+
+  test("retry on an owner-parked run calls the disposition door (the park clears server-side)", async () => {
+    currentRun = {
+      id: "run-1",
+      lifecycle: {
+        status: { kind: "blocked", blocked_reason: "owner_pending" },
+        error: null,
+      },
+      current_question: null,
+    };
+    const renderer = renderVerdict();
+    const retry = renderer.root.findAll(
+      (node) => typeof node.props?.onClick === "function",
+    )[0];
+    await act(async () => {
+      retry.props.onClick();
+    });
+    expect(retryRunMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("a quota-blocked run (not owner-parked) renders no verdict bar", () => {
+    currentRun = {
+      id: "run-1",
+      lifecycle: {
+        status: { kind: "blocked", blocked_reason: "quota_rate_limit" },
+        error: null,
+      },
+      current_question: null,
+    };
+    const renderer = renderVerdict();
+    expect(renderer.toJSON()).toBeNull();
+  });
 });
