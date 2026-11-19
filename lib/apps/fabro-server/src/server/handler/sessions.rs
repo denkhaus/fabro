@@ -110,6 +110,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             "/runs/{run_id}/sessions",
             get(list_run_sessions).post(create_run_session),
         )
+        .route("/sessions", get(list_all_sessions))
         .route(
             "/sessions/{id}",
             get(get_session).fallback(session_method_not_found),
@@ -188,9 +189,45 @@ async fn list_run_sessions(
     }
 }
 
+/// The global session index (ADR-0046, work#1452): every session across all
+/// runs with its run anchor, last activity and capability state — the
+/// global chat page's resume picker reads this door.
+async fn list_all_sessions(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ListRunSessionsParams>,
+) -> Response {
+    match state.stores.session_events.list_all_sessions().await {
+        Ok(events) => {
+            let mut sessions = project_run_sessions(&events);
+            match params.order {
+                RunSessionListOrder::UpdatedDesc => sessions.sort_by(|left, right| {
+                    right
+                        .updated_at
+                        .cmp(&left.updated_at)
+                        .then_with(|| right.created_at.cmp(&left.created_at))
+                        .then_with(|| right.id.cmp(&left.id))
+                }),
+                RunSessionListOrder::CreatedDesc => sessions.sort_by(|left, right| {
+                    right
+                        .created_at
+                        .cmp(&left.created_at)
+                        .then_with(|| right.id.cmp(&left.id))
+                }),
+            }
+            let (data, has_more) = paginate_items(sessions, &params.pagination);
+            Json(serde_json::json!({
+                "data": data,
+                "meta": { "has_more": has_more }
+            }))
+            .into_response()
+        }
+        Err(err) => store_error(&err).into_response(),
+    }
+}
+
 async fn create_run_session(
     // Ask-Fabro sessions are opened by users (web UI, `fabro ask`) and by
-    // stage agents through the `fabro_ask` run tool (fabro-43cf), whose
     // worker token carries the agent:run_tools scope.
     _auth: RequiredRunToolActor,
     State(state): State<Arc<AppState>>,

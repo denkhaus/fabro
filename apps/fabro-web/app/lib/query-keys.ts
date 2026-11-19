@@ -131,4 +131,10 @@ export const queryKeys = {
     list: () => ["mcp-servers", "list"] as const,
     detail: (id: string) => ["mcp-servers", "detail", id] as const,
   },
+  ask: {
+    /** The global session index door (ADR-0046, work#1452). */
+    index: () => ["ask", "sessions"] as const,
+    runSessions: (runId: string) => ["ask", "run-sessions", runId] as const,
+    transcript: (sessionId: string) => ["ask", "transcript", sessionId] as const,
+  },
 };

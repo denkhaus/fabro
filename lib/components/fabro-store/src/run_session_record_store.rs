@@ -23,6 +23,16 @@ pub struct StoredSessionRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+/// The metadata of a stored conversation, without its JSON payload — the
+/// index view `list_for_run` serves (denkhaus/work#1452): a run's sessions
+/// and when each was last written, never the record bodies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredSessionRecordSummary {
+    pub session_id: SessionId,
+    pub run_id:     RunId,
+    pub updated_at: DateTime<Utc>,
+}
+
 /// Reads and writes pebble session records in SQLite.
 pub struct RunSessionRecordStore {
     pool: SqlitePool,
@@ -80,6 +90,23 @@ ON CONFLICT(session_id) DO UPDATE SET
         row.as_ref().map(record_from_row).transpose()
     }
 
+    /// Every stored record of `run_id`, as metadata only — the record
+    /// payloads stay in the table (denkhaus/work#1452's index seam).
+    pub async fn list_for_run(&self, run_id: RunId) -> Result<Vec<StoredSessionRecordSummary>> {
+        let rows = sqlx::query(
+            r"
+SELECT session_id, run_id, updated_at_ms
+FROM run_session_records
+WHERE run_id = ?
+ORDER BY updated_at_ms DESC, session_id ASC
+",
+        )
+        .bind(run_id.to_string())
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(summary_from_row).collect()
+    }
+
     /// Forget the stored record for `session_id`.
     pub async fn delete(&self, session_id: SessionId) -> Result<bool> {
         let result = sqlx::query("DELETE FROM run_session_records WHERE session_id = ?")
@@ -87,6 +114,17 @@ ON CONFLICT(session_id) DO UPDATE SET
             .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
+    }
+
+    /// Forget every stored record of `run_id` — the deletion-chain mate of
+    /// the event store's `delete_for_run`, so run deletion leaves no
+    /// orphaned conversations behind.
+    pub async fn delete_for_run(&self, run_id: RunId) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM run_session_records WHERE run_id = ?")
+            .bind(run_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
     }
 }
 
@@ -101,6 +139,23 @@ fn record_from_row(row: &SqliteRow) -> Result<StoredSessionRecord> {
     Ok(StoredSessionRecord {
         run_id,
         record,
+        updated_at,
+    })
+}
+
+fn summary_from_row(row: &SqliteRow) -> Result<StoredSessionRecordSummary> {
+    let session_id: String = row.try_get("session_id")?;
+    let session_id = session_id.parse::<SessionId>().map_err(|error| {
+        Error::InvalidEvent(format!("stored {RECORD_NAME} session id: {error}"))
+    })?;
+    let run_id: String = row.try_get("run_id")?;
+    let run_id = run_id
+        .parse::<RunId>()
+        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+    let updated_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "updated_at_ms")?;
+    Ok(StoredSessionRecordSummary {
+        session_id,
+        run_id,
         updated_at,
     })
 }
@@ -212,5 +267,95 @@ mod tests {
         assert_eq!(stored.record.last_event_seq, 12);
         assert!(store.delete(session_id).await.unwrap());
         assert!(store.get(session_id).await.unwrap().is_none());
+    }
+
+    /// The index seam (denkhaus/work#1452): `list_for_run` returns the
+    /// run's records as metadata only, newest first, and never touches
+    /// another run's records.
+    #[tokio::test]
+    async fn list_for_run_returns_metadata_only_for_its_own_run() {
+        let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
+            fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+        ]));
+        let first = SessionId::new();
+        let second = SessionId::new();
+        let other_run = SessionId::new();
+        let earlier = Utc.with_ymd_and_hms(2026, 9, 11, 12, 0, 0).unwrap();
+        let later = earlier + chrono::Duration::minutes(5);
+
+        store
+            .put(first, fixtures::RUN_1, &record(&first), earlier)
+            .await
+            .unwrap();
+        store
+            .put(second, fixtures::RUN_1, &record(&second), later)
+            .await
+            .unwrap();
+        store
+            .put(other_run, fixtures::RUN_2, &record(&other_run), later)
+            .await
+            .unwrap();
+
+        let summaries = store.list_for_run(fixtures::RUN_1).await.unwrap();
+        assert_eq!(summaries, vec![
+            StoredSessionRecordSummary {
+                session_id: second,
+                run_id:     fixtures::RUN_1,
+                updated_at: later,
+            },
+            StoredSessionRecordSummary {
+                session_id: first,
+                run_id:     fixtures::RUN_1,
+                updated_at: earlier,
+            },
+        ]);
+        assert_eq!(
+            store.list_for_run(fixtures::RUN_2).await.unwrap().len(),
+            1,
+            "the other run's records stay out of this run's index"
+        );
+    }
+
+    /// The deletion-chain seam (denkhaus/work#1452): `delete_for_run`
+    /// removes exactly the run's records and leaves other runs intact.
+    #[tokio::test]
+    async fn delete_for_run_removes_only_that_runs_records() {
+        let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
+            fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+        ]));
+        let first = SessionId::new();
+        let second = SessionId::new();
+        let kept = SessionId::new();
+        let now = Utc::now();
+
+        store
+            .put(first, fixtures::RUN_1, &record(&first), now)
+            .await
+            .unwrap();
+        store
+            .put(second, fixtures::RUN_1, &record(&second), now)
+            .await
+            .unwrap();
+        store
+            .put(kept, fixtures::RUN_2, &record(&kept), now)
+            .await
+            .unwrap();
+
+        assert_eq!(store.delete_for_run(fixtures::RUN_1).await.unwrap(), 2);
+        assert!(
+            store
+                .list_for_run(fixtures::RUN_1)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(store.get(first).await.unwrap().is_none());
+        assert!(store.get(second).await.unwrap().is_none());
+        assert_eq!(
+            store.list_for_run(fixtures::RUN_2).await.unwrap().len(),
+            1,
+            "the other run's records survive"
+        );
+        assert_eq!(store.delete_for_run(fixtures::RUN_1).await.unwrap(), 0);
     }
 }
