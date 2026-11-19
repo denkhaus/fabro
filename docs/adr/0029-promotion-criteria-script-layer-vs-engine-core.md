@@ -60,6 +60,12 @@ fabro-fea9 harness, fabro-7ce7 module family), never migration.
 - Deploy/release wrappers (image-release, run-images, up, install-*):
   they already wrap product commands; the pipeline shape is ours.
 - Session instruments (friction-score, loop-digest): iterate-local.
+  (Landing note, denkhaus/work#1476, 2026-11-19: the score stays
+  iterate-local — but its census's read path WAS promoted: the work
+  facade's cursor-paged listing (`state=all` + `cursor`/`nextCursor`)
+  is generic to any installation and every future enumeration
+  consumer, criterion 1+2. The instrument merely shrank: its raw
+  `gh` census leg is gone, the read goes through the facade.)
 - line-tip-sha: denkhaus-specific (GitButler fork).
 
 ## Consequences

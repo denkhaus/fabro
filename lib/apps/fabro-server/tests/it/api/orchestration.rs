@@ -64,6 +64,8 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
             priority:   2,
             url:        String::new(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         }))
     }
 
@@ -81,6 +83,8 @@ impl fabro_work::TrackerProvider for ObservationsFakeTracker {
             priority:   2,
             url:        String::new(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         })
     }
 
@@ -205,6 +209,8 @@ impl fabro_work::TrackerProvider for FlippableObservationsTracker {
             priority: 2,
             url: String::new(),
             updated_at: None,
+            created_at: None,
+            closed_at: None,
         }))
     }
 

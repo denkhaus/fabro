@@ -2527,9 +2527,18 @@ pub(crate) struct WorkListArgs {
     /// project/lane labels
     #[arg(long)]
     pub(crate) label:   Option<String>,
+    /// Which states to enumerate: `open` (the default), `closed`, or
+    /// `all` — the census read (work#1476)
+    #[arg(long)]
+    pub(crate) state:   Option<String>,
     /// 1-based results page (limit is the page size)
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub(crate) page:    Option<u32>,
+    /// The previous response's opaque next-page token, verbatim
+    /// (work#1476); overrides --page. `--json` prints the envelope with
+    /// the next `nextCursor`.
+    #[arg(long)]
+    pub(crate) cursor:  Option<String>,
 }
 
 #[derive(Args)]

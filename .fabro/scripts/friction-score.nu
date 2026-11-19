@@ -7,12 +7,15 @@
 # Usage:
 #   nu .fabro/scripts/friction-score.nu [--days 7] [--threshold 0.6]
 #
-# Data layer (cutover stage 5, denkhaus/work#988): the work tracker on
-# denkhaus/work. The facade cannot enumerate >100 items (single page, no
-# cursor), so the ITEM census reads the tracker through gh (host,
-# read-only, paginated — the established audit posture; gh never writes).
-# The claim ledger comes through the facade (`fabro work claims`) because
-# that view IS small and the server owns it.
+# Data layer (cutover stage 5, denkhaus/work#988; work#1476): the work
+# tracker on denkhaus/work, read through the work FACADE — the census
+# walks the cursor-paged listing (`work list --state all`, the
+# work-list-page-argv builder in lib/work_channel.nu). The raw `gh`
+# census leg is retired (ADR-0029 landing note: the promoted capability
+# is the facade's cursor paging, generic to every enumeration consumer;
+# the score itself stays iterate-local). The claim ledger comes through
+# the facade (`fabro work claims`) because that view IS small and the
+# server owns it.
 #
 # Timestamp semantics: items carrying a `seeds:` label are MIGRATED —
 # their GitHub timestamps are import artifacts (all 2026-10-25/26), so
@@ -34,7 +37,8 @@
 
 const SERVER = 'https://mirtuell.net'
 const PROJECT = 'fabro'
-const TRACKER = 'denkhaus/work'
+
+use lib/work_channel.nu [work-list-page-argv]
 
 def iso-age-days [iso: string]: nothing -> float {
   let dt = ($iso | into datetime)
@@ -60,19 +64,44 @@ def is-migrated [item: record]: nothing -> bool {
   ($item.labels? | default [] | any {|l| ($l | str starts-with 'seeds:')})
 }
 
-# The full project census: every issue carrying the project label, all
-# states, paginated. ~10 pages for ~1000 items; deterministic order.
-def tracker-census []: nothing -> list<record> {
-  let run = (do { gh api --paginate $"repos/($TRACKER)/issues?state=all&labels=project%3A($PROJECT)&per_page=100" --jq '.[] | select(.pull_request == null) | {number, state, created_at, closed_at, labels: [.labels[].name], body}' } | complete)
-  if $run.exit_code != 0 {
-    print -e $"friction-score: tracker census failed: ($run.stderr | str trim | str substring 0..200)"
-    exit 1
+# The full project census: every item carrying the project label, all
+# states, cursor-paged through the work facade (work#1476 — the raw gh
+# leg is retired). ~10 pages for ~1000 items at the API's 100-per-page
+# cap; deterministic order (the tracker's own, as before). A failed
+# page fails the census (the gh leg's posture). Each facade item maps
+# onto the census row the score math has always read: number, state,
+# created_at, closed_at, labels, body — same fields, same semantics.
+def facade-census []: nothing -> list<record> {
+  mut rows = []
+  mut cursor = ''
+  loop {
+    let argv = (work-list-page-argv $SERVER $PROJECT --cursor $cursor)
+    let run = (do { ^fabro ...$argv } | complete)
+    if $run.exit_code != 0 {
+      print -e $"friction-score: work facade census failed: ($run.stderr | str trim | str substring 0..200)"
+      exit 1
+    }
+    let page = ($run.stdout | from json)
+    let items = ($page | get -o data | default [])
+    for it in $items {
+      $rows = ($rows | append {
+        number: ($it | get -o itemKey | default '' | split row '#' | last | into int)
+        state: ($it | get -o state | default '')
+        created_at: ($it | get -o createdAt | default '')
+        closed_at: ($it | get -o closedAt)
+        labels: ($it | get -o labels | default [])
+        body: ($it | get -o body | default '')
+      })
+    }
+    let next = ($page | get -o nextCursor | default null)
+    if ($next | is-empty) { break }
+    $cursor = $next
   }
-  try { $run.stdout | lines | each {|l| $l | from json } } catch { [] }
+  $rows
 }
 
 def main [--days: int = 7, --threshold: float = 0.6]: nothing -> nothing {
-  let census = (tracker-census)
+  let census = (facade-census)
   let open_items = ($census | where {|i| $i.state == 'open'})
   let window_start = ((date now) - ($days * 24hr))
 
