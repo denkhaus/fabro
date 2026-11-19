@@ -262,39 +262,75 @@ RUN mulch --version \
     && ! command -v sd \
     && ! command -v ml
 
-# Full fabro CLI (ADR-0042): built INSIDE the image from the checkout —
-# no version pin, no staged binary. The image and the code under test
-# are the same sha by construction (the old parity world pinned a
-# release-built CLI to the deployed server; the run channel's
-# compatibility floor now guards the seam instead). PATH availability
-# at container start is the demand; FABRO_VALIDATE_PREBUILT=1 keeps the
-# validate-workflows fast path on this binary. The COPY sits LAST: the
-# tools above change rarely, the source changes with every commit, and
-# the warm cook keeps this leg to the workspace's own crates.
+# Full fabro CLI (work#1335): fetched as the PINNED RELEASE BINARY from
+# the denkhaus/fabro GitHub releases — the same static musl artifact the
+# fabro upgrade door installs — instead of compiled from the checkout.
+# Why: the per-tip source compile was the toolchain cook's cost floor
+# (6-10 min warm, up to 30 cold) and by 2026-11-19 it OOM-killed the
+# host (run 01M7SXPQJ: the release-profile rustc was SIGKILLed at
+# anon-rss 3.3 GB mid-LTO on netcup-5). The fetch collapses the cook to
+# layer hits + downloads. Posture (ADR-0042, to be amended): "the CLI
+# ships as the pinned release binary; the cook's remaining context is
+# the checkout" — the same-sha guarantee moves to release-tag
+# discipline.
 #
-# WORKDIR /src like the chef stages: the workspace must sit at a
-# dedicated root — cargo passes rustc source paths RELATIVE to the
-# workspace root, and the repo's include_str!/include_dir! paths (six
-# and three `..` from their sources) resolve against exactly this
-# shape. At the filesystem root `/` the include resolution breaks
-# (probed live 2026-11-09: relative rustc paths from `/` fail while
-# the same tree under /src compiles).
-WORKDIR /src
-COPY Cargo.toml Cargo.lock ./
-COPY .cargo/ .cargo/
-COPY lib/ lib/
-COPY test/ test/
-COPY vendor/ vendor/
-# The embedded documentation trees (fork_ask_docs include_dir!s) and the
-# OpenAPI spec (system.rs include_str!): the server carries them in its
-# binary. docs/public (the website) rides no image — nothing embeds it.
-COPY docs/agents/ docs/agents/
-COPY docs/internal/ docs/internal/
-COPY docs/adr/ docs/adr/
-COPY docs/lab/ docs/lab/
-COPY docs/public/api-reference/fabro-api.yaml docs/public/api-reference/
-RUN cargo build --locked --release -p fabro-cli \
-    && cp /opt/target/release/fabro /usr/local/bin/fabro \
-    && chmod +x /usr/local/bin/fabro \
-    && rm -rf /src
+# Version source (cannot silently pin a stale binary): the workspace
+# version is read from the CHECKED-OUT root Cargo.toml — the same tree
+# this cook runs against — and the GitHub API's latest release must
+# carry that exact version as its tag prefix (tags are
+# `<version>-<sha12>`; the sha is chosen by the release cut). A trunk
+# tip whose release has not been cut yet FAILS THE BUILD loudly. There
+# is deliberately NO build-from-source fallback: a silent fallback
+# would resurrect exactly the compile cost/OOM this step removes. The
+# loud escape hatch is FABRO_VERSION_TAG (below): an operator sets it
+# to pin an exact older tag (rollback/emergency). Within one released
+# version, the binary may lag the tip by commits until its release is
+# cut — the version prefix is the floor guarantee; an exact-sha pin is
+# impossible here anyway because the cook context carries no `.git`.
+#
+# Checksum: when the release ships a `<tarball>.sha256` asset
+# (fork.43+, PR #614), it is verified; while it is absent the fetch
+# proceeds with a LOUD warning — the same tolerate-absent tolerance as
+# the fabro upgrade door.
+#
+# Tools: curl ships in base; jq is installed by the openapi-generator
+# layer ABOVE — keep that layer before this one. The API call is
+# unauthenticated (one per cook; the repo is public).
+ARG FABRO_VERSION_TAG=
+COPY Cargo.toml /tmp/fabro-version-Cargo.toml
+RUN set -eux; \
+    version="$(sed -n 's/^version = "\(.*\)"$/\1/p' /tmp/fabro-version-Cargo.toml | head -n1)"; \
+    [ -n "$version" ] || { echo "FATAL: no workspace version found in the checkout's Cargo.toml" >&2; exit 1; }; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) triple=x86_64-unknown-linux-musl;; \
+        arm64) triple=aarch64-unknown-linux-musl;; \
+        *) echo "unsupported TARGETARCH ${TARGETARCH}"; exit 1;; \
+    esac; \
+    if [ -n "${FABRO_VERSION_TAG:-}" ]; then \
+        tag="${FABRO_VERSION_TAG:-}"; \
+    else \
+        tag="$(curl --fail-with-body -sSL -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/denkhaus/fabro/releases/latest \
+            | jq -er '.tag_name')"; \
+        case "$tag" in \
+            "$version"|"$version"-*) ;; \
+            *) echo "FATAL: trunk version ${version} has no release yet — the latest release tag is '${tag}'. Cut the release for this tip (just host-release), or set build-arg FABRO_VERSION_TAG to pin an existing tag explicitly." >&2; exit 1;; \
+        esac; \
+    fi; \
+    asset="fabro-${version}-${triple}.tar.gz"; \
+    url="https://github.com/denkhaus/fabro/releases/download/${tag}/${asset}"; \
+    echo "fabro CLI: fetching release binary ${asset} from tag ${tag}"; \
+    curl -fsSL "$url" -o /tmp/fabro.tgz; \
+    if curl -fsSL "${url}.sha256" -o /tmp/fabro.tgz.sha256; then \
+        echo "$(awk '{print $1}' /tmp/fabro.tgz.sha256)  /tmp/fabro.tgz" | sha256sum -c -; \
+    else \
+        echo "WARNING: no ${asset}.sha256 asset on release ${tag} — skipping checksum verification (expected from fork.43+, PR #614)" >&2; \
+    fi; \
+    tar -xzf /tmp/fabro.tgz -C /usr/local/bin fabro; \
+    chmod 0755 /usr/local/bin/fabro; \
+    rm -f /tmp/fabro.tgz /tmp/fabro.tgz.sha256 /tmp/fabro-version-Cargo.toml; \
+    /usr/local/bin/fabro --version
+# The release binary serves the validate-workflows fast path the same
+# way the self-compiled one did (scripts/validate-workflows.nu skips
+# the cargo build when this is set).
 ENV FABRO_VALIDATE_PREBUILT=1
