@@ -47,6 +47,7 @@ domains:
   fabro-store: {}
   rust-testing: {}
   api-design: {}
+  session: {}
 governance:
   max_entries: 100
   warn_entries: 150
