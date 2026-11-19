@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -30,6 +30,17 @@ struct ScheduleCursor {
     automation_revision: AutomationRevision,
     expression:          String,
     next_due_at:         DateTime<Utc>,
+    /// work#1435 gear-fire holdover: the earliest slot the running lap
+    /// overran — a due boundary that arrived while the automation still
+    /// had a non-terminal run, so the fire could not start and the
+    /// overlap guard would have eaten it after the cursor moved on.
+    /// ONE coalesced slot per cursor (later missed boundaries fold into
+    /// the earliest), fired once as a catch-up when the automation goes
+    /// idle. In-memory scheduler state on purpose: a pause, a breaker
+    /// trip, an expression change, or a restart drops the cursor and the
+    /// holdover with it — no catch-up ever crosses those boundaries, and
+    /// an unpause re-arms fresh (work#1411's separate contract).
+    holdover:            Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +48,9 @@ struct DueScheduleTrigger {
     automation: Automation,
     trigger_id: AutomationTriggerId,
     due_at:     DateTime<Utc>,
+    /// True when this entry is the coalesced catch-up fire for a slot a
+    /// lap overran (work#1435) instead of the cursor's regular boundary.
+    catch_up:   bool,
 }
 
 #[derive(Debug, Default)]
@@ -46,6 +60,18 @@ pub(crate) struct AutomationSchedulePlanner {
 
 fn next_occurrence(expression: &str, after: DateTime<Utc>) -> Result<DateTime<Utc>, CronError> {
     parse_schedule_expression(expression)?.find_next_occurrence(&after, false)
+}
+
+/// Advance a drained cursor past `now`. `Err` marks the cursor
+/// unadvanceable: the caller drops it (invalid expression, already warned
+/// about by reconcile).
+fn advance_cursor(
+    expression: &str,
+    next_due_at: &mut DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Result<(), CronError> {
+    *next_due_at = next_occurrence(expression, now)?;
+    Ok(())
 }
 
 impl AutomationSchedulePlanner {
@@ -87,6 +113,9 @@ impl AutomationSchedulePlanner {
                         automation_revision: automation.revision.clone(),
                         expression:          cursor.expression.clone(),
                         next_due_at:         cursor.next_due_at,
+                        // work#1435: a revision-only change must not
+                        // discard a pending catch-up either.
+                        holdover:            cursor.holdover,
                     });
                     continue;
                 }
@@ -107,6 +136,7 @@ impl AutomationSchedulePlanner {
                     automation_revision: automation.revision.clone(),
                     expression: trigger.expression.clone(),
                     next_due_at,
+                    holdover: None,
                 });
             }
         }
@@ -114,15 +144,27 @@ impl AutomationSchedulePlanner {
         self.cursors = reconciled;
     }
 
+    /// Drain the cursors whose boundary has arrived. `active` maps an
+    /// automation id to its non-terminal run — the caller's overlap
+    /// snapshot for this tick (the same data fabro-09ea's guard reads): a
+    /// due slot of a gear whose lap is still running cannot start, and
+    /// letting the guard suppress it after this drain would silently eat
+    /// the slot. Instead the boundary becomes the cursor's coalesced
+    /// holdover and the cursor moves on (work#1435). `skip` excludes keys
+    /// whose catch-up already fired this tick, so one tick never emits
+    /// two fires for one trigger — the regular slot stays armed at its
+    /// untouched `next_due_at` and is accounted on a later tick.
     fn take_due(
         &mut self,
         automations: &[Automation],
+        active: &HashMap<AutomationId, RunId>,
+        skip: &HashSet<ScheduleTriggerKey>,
         now: DateTime<Utc>,
     ) -> Vec<DueScheduleTrigger> {
         let mut due_keys = self
             .cursors
             .iter()
-            .filter(|(_, cursor)| cursor.next_due_at <= now)
+            .filter(|(key, cursor)| cursor.next_due_at <= now && !skip.contains(key))
             .map(|(key, cursor)| (key.clone(), cursor.next_due_at))
             .collect::<Vec<_>>();
         // Deterministic order for spawn scheduling, log output, and tests.
@@ -144,11 +186,17 @@ impl AutomationSchedulePlanner {
             let Some(cursor) = self.cursors.get_mut(&key) else {
                 continue;
             };
-            match next_occurrence(&cursor.expression, now) {
-                Ok(next_due_at) => {
-                    cursor.next_due_at = next_due_at;
+            // work#1435: the lap overran this boundary. Keep the EARLIEST
+            // suppressed boundary as the cursor's single coalesced
+            // holdover (never N pending fires), move the cursor past
+            // `now`, and fire once when the gear goes idle.
+            if active.contains_key(&key.automation_id) {
+                if cursor.holdover.is_none() {
+                    cursor.holdover = Some(due_at);
                 }
-                Err(err) => {
+                let advance =
+                    advance_cursor(&cursor.expression, &mut cursor.next_due_at, now);
+                if let Err(err) = advance {
                     warn!(
                         automation_id = %key.automation_id,
                         trigger_id = %key.trigger_id,
@@ -156,8 +204,18 @@ impl AutomationSchedulePlanner {
                         "Removing automation schedule cursor after next occurrence failed",
                     );
                     self.cursors.remove(&key);
-                    continue;
                 }
+                continue;
+            }
+            if let Err(err) = advance_cursor(&cursor.expression, &mut cursor.next_due_at, now) {
+                warn!(
+                    automation_id = %key.automation_id,
+                    trigger_id = %key.trigger_id,
+                    error = %err,
+                    "Removing automation schedule cursor after next occurrence failed",
+                );
+                self.cursors.remove(&key);
+                continue;
             }
 
             let Some(automation) = automations_by_id.get(&key.automation_id) else {
@@ -167,17 +225,105 @@ impl AutomationSchedulePlanner {
                 automation: (*automation).clone(),
                 trigger_id: key.trigger_id,
                 due_at,
+                catch_up:   false,
             });
         }
 
         due
     }
 
-    /// Reconcile cursors against the current automation set, then drain due
-    /// triggers. Single entry point used by the production loop and tests.
-    fn tick(&mut self, automations: &[Automation], now: DateTime<Utc>) -> Vec<DueScheduleTrigger> {
+    /// Reconcile cursors against the current automation set, resolve
+    /// pending holdovers, then drain due triggers. Single entry point
+    /// used by the production loop and tests.
+    ///
+    /// `active` is the caller's overlap snapshot for this tick (automation
+    /// id -> its non-terminal run; see [`active_automation_runs`]). The
+    /// holdover policy is COALESCED CATCH-UP (work#1435): a lap that
+    /// overran its slot costs the schedule exactly ONE fire — the earliest
+    /// missed boundary, fired as soon as the gear is idle again — never N
+    /// fires and never a loop (the holdover clears when it fires; a new
+    /// one only forms from a fresh suppressed boundary).
+    fn tick(
+        &mut self,
+        automations: &[Automation],
+        active: &HashMap<AutomationId, RunId>,
+        now: DateTime<Utc>,
+    ) -> Vec<DueScheduleTrigger> {
         self.reconcile(automations, now);
-        self.take_due(automations, now)
+
+        // Catch-up pass: a pending holdover of an idle automation fires
+        // ONCE, on the first tick after the lap terminalized. The regular
+        // boundary of this same tick stays armed (skipped in the drain
+        // below): the catch-up's own run would overlap-suppress a second
+        // fire, so the slot is accounted on a later tick instead of being
+        // dropped.
+        let mut catch_ups = Vec::new();
+        let mut resolved = HashSet::new();
+        let mut holdover_keys = self
+            .cursors
+            .iter()
+            .filter(|(key, cursor)| {
+                cursor.holdover.is_some() && !active.contains_key(&key.automation_id)
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        holdover_keys.sort_by(|a, b| {
+            a.automation_id
+                .cmp(&b.automation_id)
+                .then_with(|| a.trigger_id.cmp(&b.trigger_id))
+        });
+        if !holdover_keys.is_empty() {
+            let automations_by_id = automations
+                .iter()
+                .map(|automation| (&automation.id, automation))
+                .collect::<HashMap<_, _>>();
+            for key in holdover_keys {
+                let Some(automation) = automations_by_id.get(&key.automation_id) else {
+                    continue;
+                };
+                let Some(missed_at) = self
+                    .cursors
+                    .get_mut(&key)
+                    .and_then(|cursor| cursor.holdover.take())
+                else {
+                    continue;
+                };
+                resolved.insert(key.clone());
+                catch_ups.push(DueScheduleTrigger {
+                    automation: (*automation).clone(),
+                    trigger_id: key.trigger_id,
+                    due_at:     missed_at,
+                    catch_up:   true,
+                });
+            }
+        }
+
+        let mut due = self.take_due(automations, active, &resolved, now);
+        catch_ups.append(&mut due);
+        catch_ups
+    }
+
+    /// Put a coalesced slot back after its catch-up fire was withheld
+    /// (work#1435 × fabro-986b): the provider-window holds must not
+    /// consume the catch-up — re-arming keeps it owed so the first tick
+    /// after the window reopens fires it once. Same minimum rule as the
+    /// drain: the earliest boundary wins; an already-pending holdover is
+    /// never overwritten.
+    fn rearm_holdover(
+        &mut self,
+        automation_id: &AutomationId,
+        trigger_id: &AutomationTriggerId,
+        missed_at: DateTime<Utc>,
+    ) {
+        let key = ScheduleTriggerKey {
+            automation_id: automation_id.clone(),
+            trigger_id:    trigger_id.clone(),
+        };
+        if let Some(cursor) = self.cursors.get_mut(&key) {
+            if cursor.holdover.is_none() {
+                cursor.holdover = Some(missed_at);
+            }
+        }
     }
 
     fn sleep_duration(&self, now: DateTime<Utc>) -> Duration {
@@ -457,8 +603,31 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                 }
             }
             let held = tick.held;
-            for due in planner.tick(&automations, now) {
+            // work#1435: snapshot the overlap state BEFORE draining due
+            // triggers, so a due slot of a gear whose lap overruns it is
+            // held over (coalesced) by the planner instead of being
+            // silently eaten by the overlap guard after the cursor moved
+            // on. The snapshot is pre-tick: a run that starts between this
+            // read and the spawn is still caught by the in-fire guard.
+            let active = active_automation_runs(state.as_ref(), &automations).await;
+            for due in planner.tick(&automations, &active, now) {
+                if due.catch_up {
+                    info!(
+                        automation_id = %due.automation.id,
+                        trigger_id = %due.trigger_id,
+                        missed_slot = %due.due_at,
+                        "Scheduled catch-up fire: the previous lap overran the slot (work#1435 holdover)"
+                    );
+                }
                 if held.contains(due.automation.id.as_str()) {
+                    // A withheld catch-up stays owed (work#1435): re-arm
+                    // it so the first tick after the window reopens fires
+                    // it once. Regular slots keep their own fabro-986b
+                    // semantics (the boundary is past; the schedule moves
+                    // on).
+                    if due.catch_up {
+                        planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
+                    }
                     info!(
                         automation_id = %due.automation.id,
                         trigger_id = %due.trigger_id,
@@ -473,6 +642,9 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                 )
                 .await
                 {
+                    if due.catch_up {
+                        planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
+                    }
                     continue;
                 }
                 let state = Arc::clone(&state);
@@ -503,6 +675,47 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
             }
         }
     });
+}
+
+/// The overlap snapshot the scheduler's holdover accounting reads
+/// (work#1435): automation id -> the newest non-terminal run, for the
+/// automations whose effective scheduled overlap policy can suppress a
+/// fire (`skip`, the fabro-09ea/fabro-fb16 default). An explicit `fire`
+/// policy overlaps on purpose, so its slots never hold over. A store
+/// error reads as idle: the authoritative fail-safe stays the overlap
+/// guard inside `fire_scheduled_automation_run`, which records
+/// `last_error` and skips.
+async fn active_automation_runs(
+    state: &AppState,
+    automations: &[Automation],
+) -> HashMap<AutomationId, RunId> {
+    let mut active = HashMap::new();
+    for automation in automations {
+        if automation.effective_scheduled_overlap_policy()
+            != fabro_automation::AutomationOverlapPolicy::Skip
+        {
+            continue;
+        }
+        match state
+            .stores
+            .run_summaries
+            .active_run_for_automation(automation.id.as_str())
+            .await
+        {
+            Ok(Some(run_id)) => {
+                active.insert(automation.id.clone(), run_id);
+            }
+            Ok(None) => {}
+            Err(err) => {
+                warn!(
+                    automation_id = %automation.id,
+                    error = ?err,
+                    "Automation overlap snapshot failed; holdover accounting treats the gear as idle",
+                );
+            }
+        }
+    }
+    active
 }
 
 /// Fork visibility seam (fabro-986b): the recheck probes in
@@ -817,7 +1030,9 @@ pub(crate) fn run_due_schedules_once<'a>(
         // fire, with a reload when anything paused (fabro-3d97). The
         // provider window gate (fabro-986b) runs in the production loop
         // only — its probe would hit the network; the gate's decision
-        // logic is unit-tested in fork_line_recovery.
+        // logic is unit-tested in fork_line_recovery. The overlap snapshot
+        // (work#1435) runs in BOTH paths so the holdover accounting
+        // cannot drift between the loop and this harness.
         let automations = if super::automation_breaker::update_automation_breakers(
             state.as_ref(),
             &automations,
@@ -833,7 +1048,8 @@ pub(crate) fn run_due_schedules_once<'a>(
         } else {
             automations
         };
-        for trigger in planner.tick(&automations, now) {
+        let active = active_automation_runs(state.as_ref(), &automations).await;
+        for trigger in planner.tick(&automations, &active, now) {
             Box::pin(fire_scheduled_automation_run(
                 Arc::clone(&state),
                 trigger.automation,
@@ -1049,8 +1265,18 @@ pub(crate) mod tests {
         let mut planner = AutomationSchedulePlanner::default();
         planner.reconcile(std::slice::from_ref(&automation), prime_time());
 
-        let due = planner.take_due(std::slice::from_ref(&automation), first_due_time());
-        let second_due = planner.take_due(std::slice::from_ref(&automation), first_due_time());
+        let due = planner.take_due(
+            std::slice::from_ref(&automation),
+            &HashMap::new(),
+            &HashSet::new(),
+            first_due_time(),
+        );
+        let second_due = planner.take_due(
+            std::slice::from_ref(&automation),
+            &HashMap::new(),
+            &HashSet::new(),
+            first_due_time(),
+        );
 
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].trigger_id.as_str(), "schedule");
@@ -1112,6 +1338,8 @@ pub(crate) mod tests {
         );
         let due = planner.take_due(
             std::slice::from_ref(&automation),
+            &HashMap::new(),
+            &HashSet::new(),
             dt("2026-05-29T00:04:00Z"),
         );
 
@@ -1122,6 +1350,160 @@ pub(crate) mod tests {
             planner.cursors.values().next().unwrap().next_due_at,
             dt("2026-05-29T00:05:00Z")
         );
+    }
+
+    /// An active-lap snapshot for one automation, the way
+    /// `active_automation_runs` builds it for the planner's holdover
+    /// accounting (work#1435).
+    fn active_runs(automation: &Automation) -> HashMap<AutomationId, RunId> {
+        HashMap::from([(automation.id.clone(), RunId::new())])
+    }
+
+    /// work#1435, the planner contract: every boundary that arrives while
+    /// the gear's lap is still running folds into ONE coalesced holdover
+    /// (the earliest missed slot), which fires exactly once as a catch-up
+    /// on the first tick after the gear goes idle — never N fires, and
+    /// the next tick does not re-fire the catch-up.
+    #[test]
+    fn overran_slots_coalesce_into_one_catch_up_fire_on_idle() {
+        let automation = automation("gear", "Gear", vec![schedule_trigger(
+            "schedule",
+            "* * * * *",
+            true,
+        )]);
+        let mut planner = AutomationSchedulePlanner::default();
+        planner.reconcile(std::slice::from_ref(&automation), prime_time());
+        let active = active_runs(&automation);
+
+        // Slot 00:01 arrives while the lap runs: held over, not fired, and
+        // the cursor moved on past the boundary.
+        let due = planner.tick(std::slice::from_ref(&automation), &active, first_due_time());
+        assert!(due.is_empty());
+        let cursor = planner.cursors.values().next().unwrap();
+        assert_eq!(cursor.holdover, Some(first_due_time()));
+        assert_eq!(cursor.next_due_at, second_due_time());
+
+        // Slots 00:02 and 00:03 also overrun: they fold into the SAME
+        // earliest holdover — one pending slot, not three.
+        let due = planner.tick(std::slice::from_ref(&automation), &active, second_due_time());
+        assert!(due.is_empty());
+        let cursor = planner.cursors.values().next().unwrap();
+        assert_eq!(cursor.holdover, Some(first_due_time()));
+        assert_eq!(cursor.next_due_at, due_minute(3));
+
+        let due = planner.tick(std::slice::from_ref(&automation), &active, due_minute(3));
+        assert!(due.is_empty());
+        let cursor = planner.cursors.values().next().unwrap();
+        assert_eq!(cursor.holdover, Some(first_due_time()));
+        assert_eq!(cursor.next_due_at, due_minute(4));
+
+        // The lap terminalizes: the very next tick fires the catch-up ONCE
+        // — for the earliest missed slot — while the regular 00:04 slot
+        // stays armed (one fire per tick per trigger).
+        let idle = HashMap::new();
+        let due = planner.tick(std::slice::from_ref(&automation), &idle, due_minute(4));
+        assert_eq!(due.len(), 1);
+        assert!(due[0].catch_up);
+        assert_eq!(due[0].due_at, first_due_time());
+        let cursor = planner.cursors.values().next().unwrap();
+        assert_eq!(cursor.holdover, None);
+        assert_eq!(cursor.next_due_at, due_minute(4));
+
+        // The next tick does not re-fire the catch-up: the armed regular
+        // slot fires as itself.
+        let due = planner.tick(std::slice::from_ref(&automation), &idle, due_minute(5));
+        assert_eq!(due.len(), 1);
+        assert!(!due[0].catch_up);
+        assert_eq!(due[0].due_at, due_minute(4));
+    }
+
+    /// work#1435 × work#1411 boundary: a pending holdover must not cross a
+    /// pause. Disabling the trigger drops the cursor (and the holdover
+    /// with it); the unpause re-arms fresh at the first boundary — the
+    /// catch-up never fires across the pause boundary.
+    #[test]
+    fn pause_drops_a_pending_holdover_and_unpause_rearms_fresh() {
+        let mut automation = automation("nightly", "Nightly", vec![schedule_trigger(
+            "schedule",
+            "* * * * *",
+            true,
+        )]);
+        let mut planner = AutomationSchedulePlanner::default();
+        planner.reconcile(std::slice::from_ref(&automation), prime_time());
+
+        // The 00:01 slot overruns; the holdover is pending when the gear
+        // is paused at 00:01:10.
+        let active = active_runs(&automation);
+        let due = planner.tick(std::slice::from_ref(&automation), &active, first_due_time());
+        assert!(due.is_empty());
+        assert_eq!(
+            planner.cursors.values().next().unwrap().holdover,
+            Some(first_due_time())
+        );
+
+        automation.triggers = vec![schedule_trigger("schedule", "* * * * *", false)];
+        planner.reconcile(
+            std::slice::from_ref(&automation),
+            dt("2026-05-29T00:01:10Z"),
+        );
+        assert!(planner.cursors.is_empty());
+
+        automation.triggers = vec![schedule_trigger("schedule", "* * * * *", true)];
+        planner.reconcile(
+            std::slice::from_ref(&automation),
+            dt("2026-05-29T00:03:10Z"),
+        );
+        let due = planner.tick(
+            std::slice::from_ref(&automation),
+            &HashMap::new(),
+            dt("2026-05-29T00:04:00Z"),
+        );
+        assert_eq!(due.len(), 1);
+        assert!(!due[0].catch_up, "no catch-up across the pause boundary");
+        assert_eq!(due[0].due_at, dt("2026-05-29T00:04:00Z"));
+    }
+
+    /// work#1435 × fabro-986b: a catch-up fire withheld by a provider
+    /// window hold must stay owed — the loop re-arms the holdover, and the
+    /// next idle tick emits it once again. Clearing on emission is what
+    /// keeps this from looping.
+    #[test]
+    fn withheld_catch_up_rearms_and_fires_once_after_the_window_reopens() {
+        let automation = automation("gear", "Gear", vec![schedule_trigger(
+            "schedule",
+            "* * * * *",
+            true,
+        )]);
+        let mut planner = AutomationSchedulePlanner::default();
+        planner.reconcile(std::slice::from_ref(&automation), prime_time());
+
+        // The 00:01 slot overruns (lap active), the lap terminalizes, and
+        // the catch-up fires — but the provider window hold withholds it,
+        // so the loop re-arms the holdover.
+        let active = active_runs(&automation);
+        let due = planner.tick(std::slice::from_ref(&automation), &active, first_due_time());
+        assert!(due.is_empty());
+        let idle = HashMap::new();
+        let due = planner.tick(std::slice::from_ref(&automation), &idle, second_due_time());
+        assert_eq!(due.len(), 1);
+        assert!(due[0].catch_up);
+        planner.rearm_holdover(&automation.id, &due[0].trigger_id, due[0].due_at);
+
+        // Window reopens: the next tick emits the SAME catch-up once, and
+        // the regular slot stays armed behind it.
+        let due = planner.tick(std::slice::from_ref(&automation), &idle, due_minute(3));
+        assert_eq!(due.len(), 1);
+        assert!(due[0].catch_up);
+        assert_eq!(due[0].due_at, first_due_time());
+        let cursor = planner.cursors.values().next().unwrap();
+        assert_eq!(cursor.holdover, None);
+        assert_eq!(cursor.next_due_at, second_due_time());
+
+        // No re-arm this time: the schedule resumes at the regular slot.
+        let due = planner.tick(std::slice::from_ref(&automation), &idle, due_minute(4));
+        assert_eq!(due.len(), 1);
+        assert!(!due[0].catch_up);
+        assert_eq!(due[0].due_at, second_due_time());
     }
 
     #[test]
@@ -1161,7 +1543,12 @@ pub(crate) mod tests {
         let mut planner = AutomationSchedulePlanner::default();
 
         planner.reconcile(std::slice::from_ref(&automation), prime_time());
-        let due = planner.take_due(std::slice::from_ref(&automation), first_due_time());
+        let due = planner.take_due(
+            std::slice::from_ref(&automation),
+            &HashMap::new(),
+            &HashSet::new(),
+            first_due_time(),
+        );
 
         assert_eq!(planner.cursors.len(), 2);
         assert_eq!(due.len(), 1);
@@ -1776,6 +2163,121 @@ dockerfile = { path = "Dockerfile" }
         run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
         assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
         assert_eq!(materializer.captured_inputs().len(), 1);
+    }
+
+    /// work#1435, end to end over the shared tick: a lap overruns slot X
+    /// (the gear stays active), the next tick holds the slot over instead
+    /// of eating it, the lap terminalizes, the catch-up fires ONCE, and
+    /// the following tick does not re-fire (the catch-up's own lap is now
+    /// the active run, so the next slot holds over instead).
+    #[tokio::test]
+    async fn overran_slot_fires_once_as_catch_up_after_the_lap_terminalizes() {
+        let materializer = succeeding_materializer();
+        let state = test_state_with_materializer(materializer.clone());
+        create_automation(
+            state.as_ref(),
+            "overrun",
+            "Overrun",
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        let mut planner = AutomationSchedulePlanner::default();
+
+        // The 00:01 slot starts the lap (non-terminal in this test state,
+        // like a run blocked at a gate).
+        run_due_schedules_once(Arc::clone(&state), &mut planner, prime_time()).await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, first_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+
+        // Slot 00:02 arrives while the lap runs: no second run — the slot
+        // is held over, not silently eaten by the overlap guard.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, second_due_time()).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
+        assert_eq!(materializer.captured_inputs().len(), 1);
+
+        // The lap terminalizes; the next tick fires the held-over slot as
+        // ONE catch-up run.
+        let lap = stored_runs_chronological(state.as_ref())
+            .await
+            .remove(0);
+        seed_run_row(
+            state.as_ref(),
+            &lap.id,
+            RunStatus::Succeeded {
+                reason: fabro_types::SuccessReason::Completed,
+            },
+            lap.automation.clone(),
+            None,
+        )
+        .await;
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(3)).await;
+        let runs = stored_runs(state.as_ref()).await;
+        assert_eq!(runs.len(), 2);
+        assert_eq!(materializer.captured_inputs().len(), 2);
+
+        // The next tick does not re-fire the catch-up: the catch-up's own
+        // run is now the active lap, so the 00:03 slot holds over instead
+        // of starting a third run.
+        run_due_schedules_once(Arc::clone(&state), &mut planner, due_minute(4)).await;
+        assert_eq!(stored_runs(state.as_ref()).await.len(), 2);
+        assert_eq!(materializer.captured_inputs().len(), 2);
+    }
+
+    /// work#1435 scoping: the overlap snapshot covers only automations
+    /// whose effective policy can suppress a fire. An explicit `fire`
+    /// policy overlaps on purpose (fabro-09ea) — its slots must never
+    /// hold over, so the snapshot excludes it and every boundary fires
+    /// immediately.
+    #[tokio::test]
+    async fn overlap_snapshot_covers_only_skip_policy_automations() {
+        let state = test_state_with_materializer(succeeding_materializer());
+        create_automation_full(
+            state.as_ref(),
+            "fire-gear",
+            "Fire gear",
+            None,
+            Some(fabro_automation::AutomationOverlapPolicy::Fire),
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        create_automation(
+            state.as_ref(),
+            "skip-gear",
+            "Skip gear",
+            vec![schedule_trigger("schedule", "* * * * *", true)],
+        )
+        .await;
+        // One non-terminal run for each automation (runnable in this test
+        // state), the way an overrunning lap would leave them.
+        for (id, name) in [("fire-gear", "Fire gear"), ("skip-gear", "Skip gear")] {
+            seed_run_row(
+                state.as_ref(),
+                &RunId::new(),
+                RunStatus::Runnable,
+                Some(AutomationRef {
+                    id:              id.to_string(),
+                    name:            Some(name.to_string()),
+                    trigger_id:      Some("schedule".to_string()),
+                    workflow_source: None,
+                }),
+                None,
+            )
+            .await;
+        }
+
+        let automations = state
+            .automation_store()
+            .list()
+            .await
+            .expect("test automations should load");
+        let active = active_automation_runs(state.as_ref(), &automations).await;
+
+        assert!(active.contains_key(
+            &AutomationId::new("skip-gear").expect("test automation id should be valid")
+        ));
+        assert!(!active.contains_key(
+            &AutomationId::new("fire-gear").expect("test automation id should be valid")
+        ));
     }
 
     #[tokio::test]
