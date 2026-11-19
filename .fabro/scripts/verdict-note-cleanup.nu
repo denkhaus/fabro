@@ -8,35 +8,41 @@
 # records, not triage-worthy findings. Other untriaged notes (routed
 # escalations, anything not matching the head filter) stay untouched.
 #
-# The list leg rides the global feed door over HTTP (the CLI's
-# observation list is run-scoped only); the manage leg rides the TREE
-# build's fabro observation manage (the installed fork.36 binary predates
-# the subcommand). Session-owned cleanup script.
+# Both legs ride the CLI verbs through the work-channel seam
+# (work#1475): the list leg is the global feed door (`fabro observation
+# feed --category note --triage untriaged --json`, ADR-0044 — the verb
+# owns auth, token refresh and server-side paging; the retired raw
+# HTTP leg raced a stale token-file read), the manage leg is `fabro
+# observation manage`. The binary resolves from PATH (FABRO_BIN
+# overrides, the batteries' shim). Session-owned cleanup script.
 #
 # Verdicts (one line per record): cleanup:reviewed <run>#<seq> |
 # cleanup:skip:<reason>. Exit 0 always — the routing is the caller's.
 
+use lib/work_channel.nu [cli, observation-feed-argv]
+
 const PAGE = 100
-const FABRO = '/home/denkhaus/dev/fabro/target/debug/fabro'
 
 def main [
   --server: string = 'https://mirtuell.net'  # the production feed
   --max-records: int = 500                   # hard stop, the pass is idempotent
   --dry-run                                  # report the matches, decide nothing
 ] {
-  let token = (open ~/.fabro/auth.json | get servers | get $server | get -o access_token | default '')
-  if ($token | is-empty) {
-    print -e $"cleanup: no access token for ($server) — run one fabro CLI call first to refresh"
-    exit 1
-  }
-  let headers = {Authorization: $"Bearer ($token)"}
   mut reviewed = 0
   mut skipped = 0
   mut page = 1
   while ($reviewed + $skipped) < $max_records {
-    let qs = $"category=note&triage=untriaged&limit=($PAGE)&page=($page)"
-    let rows = (http get --headers $headers $"($server)/api/v1/observations?($qs)")
-    let observations = ($rows | get -o observations | default [])
+    let res = (cli 'cleanup' (observation-feed-argv $server --category 'note' --triage 'untriaged' --limit $PAGE --page $page))
+    if $res.exit_code != 0 {
+      print -e $"cleanup: observation feed read failed: ($res.stderr | str trim | str substring 0..200)"
+      exit 1
+    }
+    let parsed = (try { $res.stdout | from json } catch { null })
+    if not ($parsed | describe | str starts-with 'record') {
+      print -e 'cleanup: observation feed stdout is not the GlobalObservationList record'
+      exit 1
+    }
+    let observations = ($parsed | get -o observations | default [])
     if ($observations | is-empty) { break }
     for row in $observations {
       let text = ($row.text? | default '')
@@ -49,8 +55,14 @@ def main [
       if $dry_run {
         print $"cleanup:would-review ($run)#($seq)"
       } else {
-        let argv2 = ['observation' 'manage', '--run-id' $run, '--seq' ($seq | into string), '--action' 'no-filing', '--reason' 'adjudicator verdict rationale — audit record, auto-reviewed per the feed-hygiene design (work#1409)']
-        let m = (do { ^$FABRO ...$argv2 } | complete)
+        let argv = [
+          'observation' '--server' $server 'manage'
+          '--run-id' $run
+          '--seq' ($seq | into string)
+          '--action' 'no-filing'
+          '--reason' 'adjudicator verdict rationale — audit record, auto-reviewed per the feed-hygiene design (work#1409)'
+        ]
+        let m = (cli 'cleanup' $argv)
         if $m.exit_code == 0 {
           print $"cleanup:reviewed ($run)#($seq)"
           $reviewed += 1
@@ -59,7 +71,7 @@ def main [
         }
       }
     }
-    let total = ($rows | get -o total | default 0)
+    let total = ($parsed | get -o total | default 0)
     if (($page * $PAGE) >= $total) { break }
     $page += 1
   }
