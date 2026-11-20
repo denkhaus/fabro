@@ -111,7 +111,7 @@ export default function Ask() {
   );
 }
 
-/** A brand-new global conversation anchors to the most recent run — the
+/** A brand-new global conversation anchors to the newest live run — the
  * page itself carries no run; the conversation determines the context. */
 function FreshConversation() {
   const latestRun = useLatestRunId();
@@ -126,7 +126,7 @@ function FreshConversation() {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <EmptyState
-          title="No runs yet — a conversation needs a run to anchor to."
+          title="No live run to anchor to — a conversation needs a run with a live sandbox."
           action={null}
         />
       </div>

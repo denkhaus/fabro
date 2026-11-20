@@ -850,8 +850,27 @@ impl AskFabroBuildError {
         }
     }
 
+    /// No Ask-Fabro build failure is retryable (work#1506): a reaped
+    /// sandbox never comes back on retry — `attach_running_run_sandbox`
+    /// is the one place that could revive a live run's sandbox, and it has
+    /// already failed by the time `SandboxUnavailable` exists. Retrying the
+    /// turn just re-fails in one second, so the turn event says
+    /// `retryable: false` for every build failure.
     fn retryable(&self) -> bool {
-        matches!(self, Self::SandboxUnavailable(_))
+        match self {
+            // No variant survives a retry: LLM/model failures need
+            // operator config, agent failures are session rebuilds the
+            // next turn performs anyway, and a reaped sandbox never
+            // comes back — `attach_running_run_sandbox` is the one place
+            // that could revive a live run's sandbox, and it has already
+            // failed by the time `SandboxUnavailable` exists. Retrying
+            // the turn just re-fails in one second.
+            Self::LlmUnconfigured(_)
+            | Self::ModelUnavailable(_)
+            | Self::NoSandbox
+            | Self::SandboxUnavailable(_)
+            | Self::Agent(_) => false,
+        }
     }
 }
 
@@ -2181,6 +2200,23 @@ enabled = true
         assert!(input.contains("Run ID: run_123"));
         assert!(input.contains("Treat it as possibly stale"));
         assert!(input.ends_with("User question:\nWhy did it fail?"));
+    }
+
+    /// A sandbox-unavailable build failure is terminal, not retryable
+    /// (work#1506): a reaped sandbox never comes back on retry, so the
+    /// turn event must say `retryable: false` instead of inviting a
+    /// one-second re-fail.
+    #[test]
+    fn ask_fabro_build_failures_are_not_retryable() {
+        let err = AskFabroBuildError::SandboxUnavailable(anyhow::anyhow!(
+            "Failed to reconnect docker sandbox '3bd9c7d9786da6e35c'"
+        ));
+        assert_eq!(err.code(), SessionTurnFailedCode::SandboxUnavailable);
+        assert!(!err.retryable());
+
+        let err = AskFabroBuildError::NoSandbox;
+        assert_eq!(err.code(), SessionTurnFailedCode::NoSandbox);
+        assert!(!err.retryable());
     }
 }
 

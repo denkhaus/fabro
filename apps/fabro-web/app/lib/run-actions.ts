@@ -251,6 +251,21 @@ export function isTerminalRunStatus(
 }
 
 /**
+ * The run a brand-new global Ask-Fabro conversation anchors to: the
+ * first live (non-terminal) run of the newest-first run list (work#1506).
+ * A terminal run's sandbox is reaped, and anchoring to it fails the first
+ * turn with `sandbox_unavailable` — so terminal runs never anchor.
+ */
+export function liveAnchorRunId<
+  T extends { id: string; lifecycle: { status: { kind: string } } },
+>(runs: readonly T[]): string | null {
+  return (
+    runs.find((run) => !isTerminalRunStatus(run.lifecycle.status.kind))?.id ??
+    null
+  );
+}
+
+/**
  * Delete is offered for terminal runs and for archived ones (work#1479:
  * the menu entry must appear for terminal runs, not only archived ones).
  * This mirrors the server's guard class — active runs refuse deletion
