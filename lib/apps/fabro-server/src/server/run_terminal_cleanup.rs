@@ -62,12 +62,12 @@ const SUMMARY_MAX_CHARS: usize = 200;
 /// keeps a terminal run's later signals from re-running its cleanup. The
 /// set never shrinks; entries are one `RunId` each and die with the
 /// process.
-type HandledRuns = StdMutex<HashSet<RunId>>;
+pub(crate) type HandledRuns = StdMutex<HashSet<RunId>>;
 
 /// Whether `run_id` is newly this process's to handle: the once-only
 /// gate. A run already handled — cleaned, or proven to owe nothing — is
 /// never visited again.
-fn mark_handled(handled: &HandledRuns, run_id: RunId) -> bool {
+pub(crate) fn mark_handled(handled: &HandledRuns, run_id: RunId) -> bool {
     let mut handled = handled
         .lock()
         .expect("terminal cleanup handled-set lock poisoned");
@@ -76,7 +76,7 @@ fn mark_handled(handled: &HandledRuns, run_id: RunId) -> bool {
 
 /// The declared cleanup command of `run_state`'s workflow; `None` when
 /// the workflow declares none (the permanent, silent no-op).
-fn declared_terminal_cleanup(run_state: &RunProjection) -> Option<String> {
+pub(crate) fn declared_terminal_cleanup(run_state: &RunProjection) -> Option<String> {
     let command = run_state.spec.settings.workflow.terminal_cleanup.as_ref()?;
     let trimmed = command.trim();
     if trimmed.is_empty() {
@@ -87,7 +87,7 @@ fn declared_terminal_cleanup(run_state: &RunProjection) -> Option<String> {
 
 /// The first stdout line, trimmed and bounded: the cleanup script's
 /// one-line report (bytes freed where `df` measured it).
-fn stdout_summary(stdout: &[u8]) -> String {
+pub(crate) fn stdout_summary(stdout: &[u8]) -> String {
     let text = String::from_utf8_lossy(stdout);
     let line: String = text.lines().next().unwrap_or_default().trim().to_string();
     line.chars().take(SUMMARY_MAX_CHARS).collect()
@@ -95,7 +95,7 @@ fn stdout_summary(stdout: &[u8]) -> String {
 
 /// The last non-empty stderr line, trimmed and bounded: the reason a
 /// failed cleanup command named for the log.
-fn stderr_reason(stderr: &[u8]) -> String {
+pub(crate) fn stderr_reason(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr);
     let reason: String = text
         .lines()

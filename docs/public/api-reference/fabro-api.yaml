@@ -18963,6 +18963,12 @@ components:
           type: string
         metadata:
           $ref: "#/components/schemas/StringMap"
+        terminal_cleanup:
+          type: string
+          description: >-
+            The command the server executes in the run's sandbox when the run
+            turns terminal, before the sandbox is released (work#1478). Absent
+            means no cleanup.
 
     RunNamespace:
       type: object
