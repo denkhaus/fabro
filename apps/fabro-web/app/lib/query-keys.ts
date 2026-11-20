@@ -135,6 +135,11 @@ export const queryKeys = {
     /** The global session index door (ADR-0046, work#1452). */
     index: () => ["ask", "sessions"] as const,
     runSessions: (runId: string) => ["ask", "run-sessions", runId] as const,
-    transcript: (sessionId: string) => ["ask", "transcript", sessionId] as const,
+    /** A session's transcript snapshot, keyed per mount (work#1507): every
+     * conversation (re)mount refetches the events door fresh, so a turn
+     * that completed while the page was away is never replayed from a
+     * stale cache. */
+    transcript: (sessionId: string, mountToken = "") =>
+      ["ask", "transcript", sessionId, mountToken] as const,
   },
 };
