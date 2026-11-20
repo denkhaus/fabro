@@ -6,7 +6,7 @@ import type { ListWorkItemsSortEnum } from "@qltysh/fabro-api-client";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { Markdown } from "../components/stage-renderers/primitives";
-import { labelBadgeClass, prioBadgeClass, typeBadgeClass, workItemLinkClass } from "../components/badges";
+import { labelBadgeClass, prioBadgeClass, trackerItemState, typeBadgeClass, workItemLinkClass } from "../components/badges";
 
 /**
  * The work items view (denkhaus/work#1199): the tracker's read surface
@@ -138,7 +138,10 @@ export default function WorkItemsView() {
           priority: labelValue(item.labels ?? [], "prio:"),
           lane: labelValue(item.labels ?? [], "lane:"),
           type: labelValue(item.labels ?? [], "type:"),
-          state: item.state ?? null,
+          // work#1511: the raw tracker state joins the shared live-state
+          // vocabulary (completed-only closures ARE merged work) so the
+          // table's links wear the observations table's per-state colors.
+          state: trackerItemState(item.state ?? null),
           url: item.url ?? "",
           updatedAt: item.updatedAt ?? "",
         }));
