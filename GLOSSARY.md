@@ -95,7 +95,19 @@ never called it is invalid (engine-validated beside the output
 schema). Work items link to observation records; the bird's-eye
 run-end hook files them, deduping at the link. [The filing sentence is
 superseded by ADR-0039: the adjudicator workflow files and closes; the
-run-end hook strips.]
+run-end hook strips.] A record lives and dies with its run (ADR-0048):
+deleting the run deletes its records — no tombstone history; the
+durable value of a triage decision is the work-item link.
+
+## Run retention
+
+The scheduled deletion of ARCHIVED runs older than the configured age
+(ADR-0048): archiving is the operator-controlled drain — a reviewed
+run is deletable, a non-archived terminal run keeps its metadata
+forever. The triage clock (work#1299) spares any run carrying an
+untriaged observation indefinitely. Distinct from the **sandbox reap**,
+which removes a terminal run's sandbox/storage after a much shorter
+age (hours) while the run's metadata survives.
 
 ## Triage state
 
