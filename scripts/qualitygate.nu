@@ -207,15 +207,16 @@ def check-workspace-compiles [] {
 source ../.fabro/scripts/lib/spec_paths.nu
 
 # Pure: one path against the product-lane deny-list — EXACTLY develop's
-# implementer fs_hide set (.fabro/**, .agents/**, scripts/**,
-# justfile) minus the hook-owned journal. `.mulch/**` is deliberately NOT denied: develop's implementer
+# implementer fs_hide set (.agents/**, ADR-0049: loop assets are product
+# surfaces now). `.mulch/**` is deliberately NOT denied: develop's implementer
 # has a mandatory lesson-capture contract (`mulch record` writes the
 # git-tracked expertise files) — refusing it would false-red every
 # lesson-recording product run (fabro-70b5 spec review).
 def product-denied? [p: string]: nothing -> bool {
-    if ($p | str starts-with ".fabro/journal/") { return false }
-    let prefix_hit = ([".fabro/" ".agents/" "scripts/"] | any {|q| $p | str starts-with $q})
-    ($prefix_hit) or ($p == "justfile")
+    # ADR-0049: loop assets are product surfaces — the only denied path
+    # is the .agents/ mirror (owned by `just sync-style-guide`; the
+    # implementer's fs_hide list is the same single entry).
+    $p | str starts-with ".agents/"
 }
 
 # Pure: the violating paths for one lane. product -> out-of-lane loop

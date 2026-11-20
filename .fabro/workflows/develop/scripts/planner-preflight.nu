@@ -428,7 +428,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
         let legend = {duplicate: "advisory: implementation possibly already in merge-target base — the implementer judges acceptance criteria and routes Blocked per the duplicate-run rule",
                       clean: "no landed implementation found",
                       degraded: "check failed (fetch/history error)"}
-        let envelope_legend = {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before implementing; loop-asset-only or external-tool items are DIRECT WORK (route Blocked naming the misroute)"}
+        let envelope_legend = {envelope_risk: "advisory: the body names an external-tool surface (outside the repo) — verify the PRIMARY fix surface exists in the repo (lib/ apps/ docs/ web .fabro/ scripts/) before implementing; external-tool-only items are DIRECT WORK (route Blocked naming the misroute)"}
         let basis_legend = {basis_commit: "advisory: the body's Basis-line commit sha. basis_commit_resolves=false means the commit is unreachable in this object DB (squash-merged run branches strand their basis commits) — NOT a stale-basis verdict: adjudicate the basis via its files/worktree, never probe for the sha; null = no sha in body or tooling fail-open"}
         let salvage_legend = {stranded_implementation: "advisory: salvage/stranded-implementation pointers verified at claim time — salvage_ok false names commit_missing, already_in_base, branch_missing, or pointer_missing (resolve the implementer commit BEFORE implementing)"}
         let pl_legend = {partially_landed: "advisory (denkhaus/work#1433): a body anchor's quoted criterion content is ABSENT from the file as the merge target carries it — the criterion may already be landed by an unrelated change in a drifted form (or the citation rotted): grep the target before implementing; the planner judges, nothing closes mechanically"}
@@ -512,12 +512,12 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
                   clean: "no landed implementation found",
                   degraded: "check failed (fetch/tracker error)"}
     # fabro-bd55: the envelope legend is LANE-SCOPED like the flag —
-    # loop readers get the misroute-detector semantics, product lanes the
-    # historic hidden-surface advisory.
+    # loop readers get the misroute-detector semantics; product lanes
+    # the external-tool advisory (ADR-0049: loop assets no longer hide).
     let envelope_legend = (if $assignee == "loop" {
         {envelope_risk: "advisory (loop lane): the body names a PRODUCT surface (lib/ apps/ docs/ public/) outside the loop implementer's fs envelope — verify the PRIMARY fix surface: product primary = MISROUTED to @fabro (skip, journal per the surface router); loop-asset primary = claimable (the product path is a BASIS citation)"}
     } else {
-        {envelope_risk: "advisory: the body names a loop-asset or external-tool surface the implementer fs envelope hides — verify the PRIMARY fix surface is repo-visible (lib/ apps/ docs/ web) before claiming; loop-asset-only or external-tool seeds are DIRECT WORK (skip, journal the classification)"}
+        {envelope_risk: "advisory: the body names an external-tool surface (outside the repo) — verify the PRIMARY fix surface exists in the repo (lib/ apps/ docs/ web .fabro/ scripts/) before claiming; external-tool-only seeds are DIRECT WORK (skip, journal the classification)"}
     })
     # fabro-d95c: the Basis-commit legend keeps the table
     # self-interpreting (fabro-ead4 legend contract): an unreachable sha

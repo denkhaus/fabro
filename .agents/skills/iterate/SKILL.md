@@ -118,11 +118,12 @@ the interrupted cycle's continuation is named.
   NAMES (graph attributes, API fields, tool names, CLI flags, settings
   keys) are pivotal: surface naming for user decision before the first
   commit. The full format: `reference/select.md`.
-- Local-first: invoking /iterate means the session works LOCALLY; only
-  loop-asset work (`.fabro/workflows/**`, `.fabro/scripts/**`,
-  `scripts/**`, justfile, fabro-test rigs) is lane material. Until the
-  re-armed line is PROVEN reliable, propose NO lane moves and NO line
-  assignments — the cycle report recommends LOCAL work instead.
+- Local-first: invoking /iterate means the session works LOCALLY.
+  Since ADR-0049 loop-asset work is ALSO develop-landable (the line's
+  fs_hide is `.agents/**` alone) — loop-asset items file
+  `lane:develop` as the normal path. Until the re-armed line is
+  PROVEN reliable, propose NO lane moves and NO line assignments —
+  the cycle report recommends LOCAL work instead.
 - VET BEFORE WORKING: every item considered gets a relevance test
   against the CURRENT codebase first (does the cited path/mechanism
   still exist? overtaken by landed work?). Lane admission is vetted
@@ -444,10 +445,11 @@ reality.
   until approved; a merged capability change without a recorded user
   decision is reverted, not ratified.
 - Loop-asset fix surfaces (`scripts/**`, `.fabro/**`, `justfile`) are
-  unlandable by the develop line — the fs envelope kills the write.
-  DIRECT-FIX PROPOSAL DUTY: at filing/triage time, every such item (or
-  trivially mechanical one-file fix with evidence in hand) is PROPOSED
-  to the user as a direct fix in the same turn — never silently queued.
+  PRODUCT surfaces since ADR-0049 — the develop line works them like
+  any other diff (its fs_hide is `.agents/**` alone). Session-side
+  loop work stays for emergencies and the instrument's own
+  bookkeeping; a loop-asset item no longer needs the direct-fix
+  proposal duty — it is a normal develop candidate.
 - Ownership (ADR-0018): the line works only fail-closed-picked items;
   the run-end observation filing files items UNASSIGNED. Emergencies
   bypass the picker: line down -> agent repairs directly with the

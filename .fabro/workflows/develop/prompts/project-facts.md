@@ -10,14 +10,11 @@ in the journal, never silently work around it.
 - Primary code areas — where item work normally lands: the Rust workspace
   under `lib/` (crates in `lib/apps/`, `lib/components/`, `lib/foundation/`),
   rarely `apps/` for the web UI.
-- Loop-asset paths — the dev loop's own machinery, hidden from FILE TOOLS by
-  the per-node `fs_hide` envelope (ADR-0009 stage-envelope
-  family): `.fabro/`, `.mulch/`, `.agents/`, `scripts/`,
-  `justfile`. FILE TOOLS (read_file, write_file, edit_file, glob discovery)
-  fail on them — reads and writes both; the shell is unaffected (reads AND
-  writes succeed through grep, sed, cat, python3 heredocs — the documented
-  escape hatch). The `ml` and `just` commands keep working through
-  the shell.
+- Loop-asset paths — the dev loop's own machinery (`.fabro/`, `.mulch/`,
+  `scripts/`, `justfile`) are normal work surfaces since ADR-0049:
+  read and write them like any product path. The only hidden path is
+  `.agents/` (the sync-style-guide mirror; its owner is
+  `just sync-style-guide`, never hand edits).
 - Repo wiring — visible, but never modify without the item saying so
   explicitly: `AGENTS.md`, `CLAUDE.md`, `docs/`, `Cargo.toml`, and the
   workspace manifests.

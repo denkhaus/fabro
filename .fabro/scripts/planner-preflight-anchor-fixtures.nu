@@ -156,15 +156,17 @@ def main [] {
         expect '15: absent commit does not resolve' (basis-commit-resolves '0123456789abcdef0123456789abcdef01234567' $home_dir) false
         expect '15: non-git root fails open' (basis-commit-resolves '0123456789abcdef0123456789abcdef01234567' $scratch) null
 
-        # (16) lane-scoped surface risk (fabro-bd55): the loop lane flags
-        # PRODUCT surfaces (misroute detector); the product lane keeps the
-        # historic loop-asset/external tokens; the same body flips per lane.
+        # (16) lane-scoped surface risk (fabro-bd55 + ADR-0049): the loop
+        # lane flags PRODUCT surfaces (misroute detector); the product
+        # lane flags only the .agents/ mirror (loop assets are product
+        # surfaces now); the same body flips per lane.
         let loop_body = 'edit .fabro/workflows/develop/prompts/implementer.md and lib/components/fabro-llm/src/client.rs'
         expect '16: loop lane flags product surface' (lane-surface-risk? $loop_body 'loop') true
-        expect '16: product lane flags the loop-asset half of a mixed body' (lane-surface-risk? $loop_body 'fabro') true
+        expect '16: product lane silent on a mixed loop-asset/product body' (lane-surface-risk? $loop_body 'fabro') false
         expect '16: product lane ignores a product-only body' (lane-surface-risk? 'edit lib/components/fabro-llm/src/client.rs and docs/public/x.mdx' 'fabro') false
         expect '16: loop lane silent on loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu and justfile' 'loop') false
-        expect '16: product lane still flags loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu' 'fabro') true
+        expect '16: product lane silent on a loop-asset body' (lane-surface-risk? 'fix .fabro/workflows/loop/scripts/loop-gate.nu' 'fabro') false
+        expect '16: product lane flags the agents mirror' (lane-surface-risk? 'fix .agents/skills/x/SKILL.md' 'fabro') true
         expect '16: empty body flags nothing' (lane-surface-risk? '' 'loop') false
 
         # (17) Partially-landed advisory (denkhaus/work#1433): a
