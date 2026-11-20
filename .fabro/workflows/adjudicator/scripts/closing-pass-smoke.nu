@@ -3,10 +3,12 @@
 # denkhaus/work#1107): drives closing-pass.nu end to end through the
 # channel shim — the verdict-flipped queue read (closable = enabled)
 # lists exactly the merged runs, the empty-radius item CLOSES (the
-# claim lands server-side), the open-radius item waits for the next
-# pass, and an already-closed item's refusal is DONE, not a failure
-# (the door's idempotence). No live server: the shim fakes every door;
-# the argv grammar against the REAL parser is pinned below.
+# claim lands server-side), the open-radius item is DEFERRED by the
+# radius pre-check BEFORE any close attempt (work#1450: the tracker
+# radius is the deferral state — no close call, no churn), and an
+# already-closed item's refusal is DONE, not a failure (the door's
+# idempotence). No live server: the shim fakes every door; the argv
+# grammar against the REAL parser is pinned below.
 
 const SCRIPTS_DIR = (path self | path dirname)
 
@@ -70,18 +72,35 @@ if (do $item "denkhaus/work#1").state != "closed" {
 if (do $item "denkhaus/work#2").state != "open" {
     fail $"the open-radius item must wait for the next pass: ($after.items | to json -r)"
 }
-# The close calls logged with the ENTRY's project (never a hardcode —
-# work#1113's contract extends to the closing pass).
+# work#1450: the radius pre-check is the guard — every closable entry
+# gets exactly one radius read (the tracker radius is the deferral
+# state), and ONLY the empty-radius entries reach the close door.
+let radius_log = ($after | get -o log | default [] | where {|l| ($l.argv | str join ' ') =~ 'radius'})
+if ($radius_log | length) != 3 {
+    fail $"every closable entry gets one radius pre-check read: ($radius_log | to json -r)"
+}
+if (($radius_log | where {|l| $l.flags?.project? != "fabro"} | length) != 0) {
+    fail $"the radius read must carry the entry's project: ($radius_log | to json -r)"
+}
 let close_log = ($after | get -o log | default [] | where {|l| ($l.argv | str join ' ') =~ 'close'})
-if ($close_log | length) != 3 {
-    fail $"every closable-enabled claimed item gets exactly one close call: ($close_log | to json -r)"
+if ($close_log | length) != 2 {
+    fail $"only the empty-radius entries reach the close door: ($close_log | to json -r)"
 }
 if (($close_log | where {|l| $l.flags?.project? != "fabro"} | length) != 0) {
     fail $"the close must carry the entry's project: ($close_log | to json -r)"
 }
-# The pending run and the smoke run never reached the close door.
-if (($close_log | where {|l| ($l.argv | str join ' ') =~ 'work#2'}) | length) != 1 {
-    fail "the radius waiter's close call happened (and was refused by the radius)"
+# The radius waiter never reaches the close door (the churn is dead).
+if (($close_log | where {|l| ($l.argv | str join ' ') =~ 'work#2'}) | length) != 0 {
+    fail "the radius waiter got a close call — the pre-check did not defer it"
+}
+# The envelope reports the deferral (the observable the engine carries).
+let envelope = ($closing.stdout | lines | where {|l| ($l | str contains 'preferred_next_label')} | last | from json)
+let closing_rec = ($envelope | get context_updates | get -o 'output.closing')
+if ($closing_rec | get -o radius_deferred | default []) != ["denkhaus/work#2"] {
+    fail $"the envelope must defer the waiter: ($closing_rec | to json -r)"
+}
+if ($closing_rec | get -o radius_open | default ['sentinel']) != [] {
+    fail $"the race-fallback list must stay empty here: ($closing_rec | to json -r)"
 }
 
 # --- Negative arm: a missing FABRO_SERVER is refused loudly.
@@ -92,12 +111,13 @@ refuses-missing-server ($SCRIPTS_DIR | path join "closing-pass.nu") $state
 let dead = "http://127.0.0.1:1"
 pin-argvs $dead [
     [run queue --field closable --verdict enabled --workflow develop --json --server $dead]
+    [work --server $dead radius --project fabro "denkhaus/work#1" --json]
     [work --server $dead close --project fabro "denkhaus/work#1" --reason "landed via merger"]
 ]
 
 rm -f $state
 end-fail-gate
-print "adjudicator-closing-pass-smoke: ok — verdict-flipped read, empty-radius lands, open-radius waits, closed item is done, entry project, argv grammar"
+print "adjudicator-closing-pass-smoke: ok — verdict-flipped read, radius pre-check defers the waiter (no close call), empty-radius lands, closed item is done, entry project on both doors, argv grammar"
 
 # Sourcing closing-pass.nu imports its `def main`; nu auto-invokes it
 # after the top level runs — exit explicitly so the smoke never reaches
