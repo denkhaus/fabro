@@ -141,16 +141,6 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::search_runs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
-        fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME => {
-            let params = parse_fabro_tool_args::<fabro_tool::FabroSeedsSearchParams>(name, args)?;
-            let result = fabro_tool::seeds_search(
-                Arc::clone(&services.backend),
-                fabro_tool::ValidatedSeedsSearchParams::try_from(params)?,
-            )
-            .await?;
-            let summary = fabro_tool::seeds_search_text(&result);
-            render_fabro_tool_result(&summary, &result)
-        }
         fabro_tool::FABRO_RUN_GET_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunGetParams>(name, args)?;
             let result = fabro_tool::run_get(
@@ -855,60 +845,6 @@ mod tests {
             output.contains("seed fabro-9711: meaningful run titles"),
             "the result names the new title: {output}"
         );
-    }
-
-    /// The tracker search through the run-context source (fabro-d6de
-    /// rework, ADR-0031 era): the source's rows narrow by keyword terms
-    /// and the tracker-level filters apply — the dedupe the tool exists
-    /// for. The HTTP listing is gone; the source is the run workspace.
-    #[tokio::test]
-    async fn seeds_search_maps_the_api_page_and_narrows_by_terms() {
-        struct FixedSeeds;
-        #[async_trait::async_trait]
-        impl fabro_tool::RunSeedsSource for FixedSeeds {
-            async fn rows(&self) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
-                Ok(vec![
-                    fabro_tool::SeedsRow {
-                        id:        "fabro-0001".into(),
-                        title:     "Lint duplication in the gate".into(),
-                        status:    Some("open".into()),
-                        seed_type: Some("task".into()),
-                        assignee:  Some("loop".into()),
-                        labels:    vec!["loop-assets".into()],
-                    },
-                    fabro_tool::SeedsRow {
-                        id:        "fabro-0002".into(),
-                        title:     "Planner schema parity".into(),
-                        status:    Some("in_progress".into()),
-                        seed_type: None,
-                        assignee:  None,
-                        labels:    Vec::new(),
-                    },
-                ])
-            }
-        }
-        let server = httpmock::MockServer::start_async().await;
-        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
-        let services = FabroRunToolServices {
-            backend:        Arc::new(
-                ClientBackend::new(Arc::new(client)).with_run_seeds(Arc::new(FixedSeeds)),
-            ),
-            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
-            stage:          None,
-        };
-        let output = execute_fabro_run_tool(
-            fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
-            json!({"query": "lint duplication", "limit": 10}),
-            &services,
-        )
-        .await
-        .unwrap();
-        let (summary, body) = output.split_once('\n').unwrap();
-        assert_eq!(summary, "matched 1 tracker seed(s), returning 1");
-        let body: serde_json::Value = serde_json::from_str(body).unwrap();
-        assert_eq!(body["rows"][0]["id"], "fabro-0001");
-        assert_eq!(body["rows"][0]["assignee"], "loop");
-        assert_eq!(body["truncated"], false);
     }
 
     /// `fabro_work_list` (ADR-0032): the read-only candidate/dedupe

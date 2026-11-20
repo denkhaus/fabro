@@ -70,9 +70,6 @@ const ASK_FABRO_SUPERVISOR_PROMPT: &str = include_str!("prompts/ask_fabro_superv
 const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
     fabro_tool::FABRO_RUN_GET_TOOL_NAME,
-    // The live tracker for dedupe (fabro-d6de): recommendations that
-    // duplicate an open seed are the analyst's loudest failure class.
-    fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
 ];
 
 /// The widened run-tool registry of a full-access Ask Fabro session
@@ -960,17 +957,6 @@ async fn build_agent(
     } else {
         sandbox_access::InspectionSandbox::live(Arc::clone(&handle))
     };
-    // The run-context tracker source (fabro-d6de rework, user decision
-    // 2026-10-19): `fabro_seeds_search` reads the CURRENT `.seeds/` tracker
-    // of this run's own sandbox workspace — the same checkout the analyst
-    // reads files from — never a server-side mirror. A workspace without a
-    // tracker (foreign repo) serves an empty row set.
-    let seeds_workspace_dir = sandbox_instance.runtime.working_directory.clone();
-    let seeds_source: Arc<dyn fabro_tool::RunSeedsSource> =
-        Arc::new(sandbox_access::RunSandboxSeedsSource {
-            sandbox:      Arc::clone(&handle),
-            tracker_path: format!("{seeds_workspace_dir}/.seeds/issues.jsonl"),
-        });
     let environment: Arc<dyn Environment> = Arc::new(
         SandboxEnvironment::attach(handle, &sandbox_instance.runtime.working_directory)
             .await
@@ -981,9 +967,8 @@ async fn build_agent(
     // to its owning run. The session reaches the local HTTP API via a same-run
     // worker token; the scoped backend rejects accidental cross-run tool calls
     // and the server's auth middleware remains a backstop for direct HTTP.
-    // The ask session's tracker search (fabro-d6de) reads /api/v1/seeds,
-    // which requires the agent:run_tools capability on worker tokens. The
-    // session stays read-only: the permission middleware denies every tool
+    // The run tools require the agent:run_tools capability on worker tokens.
+    // The session stays read-only: the permission middleware denies every tool
     // outside the allowed list, so the broader transport scope cannot be
     // reached through the analyst.
     //
@@ -1010,7 +995,7 @@ async fn build_agent(
         .connect()
         .await
         .map_err(AskFabroBuildError::Agent)?;
-    let mut backend = ClientBackend::new(Arc::new(api_client)).with_run_seeds(seeds_source);
+    let mut backend = ClientBackend::new(Arc::new(api_client));
     if capability == AskFabroCapability::ReadOnly {
         backend = backend.with_run_scope(run_id);
     }
@@ -2007,9 +1992,6 @@ enabled = true
             "glob",
             fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
             fabro_tool::FABRO_RUN_GET_TOOL_NAME,
-            // The analyst's live-tracker view (fabro-d6de): without it the
-            // policy would silently strip the seeds tool from ask sessions.
-            fabro_tool::FABRO_SEEDS_SEARCH_TOOL_NAME,
         ] {
             assert!(
                 ask_fabro_allows_tool(tool_name, AskFabroCapability::ReadOnly),
@@ -2679,74 +2661,5 @@ mod resume_tests {
             .find("User question: Second question")
             .expect("the resumed turn ends with the second question");
         assert!(first_at < second_at, "got {}", turns[1]);
-    }
-
-    use crate::sandbox_access::RunSandboxSeedsSource;
-
-    /// fabro-d6de rework: the run-context tracker parser maps the compact
-    /// JSON-per-line format to tool rows, skips id-less lines, rejects
-    /// corrupt JSON, and treats a missing tracker as empty (foreign repo).
-    #[test]
-    fn run_sandbox_seeds_source_parses_tracker_rows() {
-        let text = concat!(
-            "{\"id\":\"fabro-0001\",\"title\":\"One\",\"status\":\"open\",\"type\":\"bug\",\"labels\":[\"engine\"]}\n",
-            "{\"id\":\"fabro-0002\",\"title\":\"Two\",\"status\":\"closed\",\"assignee\":\"loop\",\"labels\":[]}\n",
-            "{\"id\":\"fabro-0003\",\"title\":\"Three assignee-null\",\"assignee\":null}\n",
-            "{\"not\":\"a tracker row\"}\n",
-            "\n"
-        );
-        let rows = RunSandboxSeedsSource::parse_tracker_rows(text).expect("tracker parses");
-        assert_eq!(rows.len(), 3, "id-less lines are skipped: {rows:?}");
-        assert_eq!(rows[0].id, "fabro-0001");
-        assert_eq!(rows[0].status.as_deref(), Some("open"));
-        assert_eq!(rows[0].seed_type.as_deref(), Some("bug"));
-        assert_eq!(rows[0].labels, vec!["engine"]);
-        assert_eq!(rows[1].assignee.as_deref(), Some("loop"));
-        assert!(
-            rows[2].assignee.is_none(),
-            "explicit null assignee maps to unassigned"
-        );
-
-        let corrupt = RunSandboxSeedsSource::parse_tracker_rows("{ not json");
-        assert!(
-            corrupt.is_err(),
-            "a corrupt tracker line surfaces, never shrinks the search silently"
-        );
-    }
-
-    /// fabro-d6de rework: the tracker-level filters keep the removed
-    /// server-side listing semantics (status, assignee `none`, label).
-    #[test]
-    fn run_seeds_tracker_filters_match_listing_semantics() {
-        let rows = vec![
-            fabro_tool::SeedsRow {
-                id:        "a".into(),
-                title:     "open unassigned".into(),
-                status:    Some("open".into()),
-                seed_type: None,
-                assignee:  None,
-                labels:    vec!["engine".into()],
-            },
-            fabro_tool::SeedsRow {
-                id:        "b".into(),
-                title:     "closed assigned".into(),
-                status:    Some("closed".into()),
-                seed_type: None,
-                assignee:  Some("loop".into()),
-                labels:    vec![],
-            },
-        ];
-        let open = fabro_tool::apply_tracker_filters(rows.clone(), Some("open"), None, None);
-        assert_eq!(open.len(), 1);
-        assert_eq!(open[0].id, "a");
-        let unassigned = fabro_tool::apply_tracker_filters(rows.clone(), None, Some("none"), None);
-        assert_eq!(unassigned.len(), 1);
-        assert_eq!(unassigned[0].id, "a");
-        let assigned = fabro_tool::apply_tracker_filters(rows.clone(), None, Some("loop"), None);
-        assert_eq!(assigned.len(), 1);
-        assert_eq!(assigned[0].id, "b");
-        let labeled = fabro_tool::apply_tracker_filters(rows, None, None, Some("engine"));
-        assert_eq!(labeled.len(), 1);
-        assert_eq!(labeled[0].id, "a");
     }
 }
