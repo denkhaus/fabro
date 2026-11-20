@@ -19,4 +19,8 @@ export interface WorkflowNamespace {
     'description': string | null;
     'graph': string;
     'metadata': { [key: string]: string; };
+    /**
+     * The command the server executes in the run\'s sandbox when the run turns terminal, before the sandbox is released (work#1478). Absent means no cleanup.
+     */
+    'terminal_cleanup'?: string;
 }

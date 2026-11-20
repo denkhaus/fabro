@@ -1,49 +1,33 @@
-import { generatedApiConfiguration } from "./api-client";
+import type { PaginatedSessionList, SessionSummary } from "@qltysh/fabro-api-client";
+
+import { apiData, sessionsApi } from "./api-client";
 
 /** A session as the global index door serves it (ADR-0046, work#1452). */
-export interface AskSessionSummary {
-  id: string;
-  run_id: string;
-  title: string | null;
-  status: string;
-  model?: string | null;
-  capability?: string;
-  created_at: string;
-  updated_at: string;
-}
+export type AskSessionSummary = SessionSummary;
 
-interface IndexPage {
-  data: AskSessionSummary[];
-  meta: { has_more: boolean };
+/** One page of the global index door, as the generated client types it. */
+export type AskSessionIndexPage = PaginatedSessionList;
+
+/** Loads one page of the global index through the generated client. */
+function loadIndexPage(limit: number, offset: number): Promise<AskSessionIndexPage> {
+  return apiData(() => sessionsApi.listSessions(limit, offset));
 }
 
 /**
  * The global session index: every Ask Fabro session across all runs, with
- * its run anchor, last activity and capability state. Calls the
- * `GET /api/v1/sessions` door by hand until the generated API client's
- * regen picks the endpoint up (the generated client is machine-owned —
- * never hand-mirrored).
+ * its run anchor, last activity and capability state. Rides the generated
+ * client's `listSessions` operation (`GET /api/v1/sessions`; the generated
+ * client is machine-owned — never hand-mirrored).
  */
 export async function listAllAskSessions({
   limit = 100,
   offset = 0,
-  fetchImpl = fetch,
+  loadPage = loadIndexPage,
 }: {
   limit?: number;
   offset?: number;
-  fetchImpl?: typeof fetch;
+  loadPage?: (limit: number, offset: number) => Promise<AskSessionIndexPage>;
 } = {}): Promise<AskSessionSummary[]> {
-  const params = new URLSearchParams({
-    "page[limit]": String(limit),
-    "page[offset]": String(offset),
-  });
-  const base = generatedApiConfiguration.basePath ?? "";
-  const response = await fetchImpl(`${base}/api/v1/sessions?${params}`, {
-    credentials: "include",
-  });
-  if (!response.ok) {
-    throw new Error(`session index request failed: ${response.status}`);
-  }
-  const page = (await response.json()) as IndexPage;
+  const page = await loadPage(limit, offset);
   return page.data;
 }
