@@ -280,8 +280,8 @@ export def basis-commit-resolves [sha: string, root: string]: nothing -> any {
 # develop semantics in the loop lane shipped backwards verdicts (run
 # 01M58AHT reviewer false-positive on fabro-b659): the flag marks what
 # the LANE'S implementer fs envelope cannot write.
-#   - product lane (develop/any non-loop): loop-asset or external-tool
-#     surfaces in the body (the historic tokens — unlandable there).
+#   - product lane (develop/any non-loop): `.agents/` (the only hidden
+#     path left — ADR-0049 lifted the loop-asset separation).
 #   - loop lane: PRODUCT surfaces (the misroute detector — a @loop item
 #     whose primary surface is repo-visible belongs to @fabro).
 # Advisory in both directions: a body may cite the foreign surface as
@@ -289,7 +289,7 @@ export def basis-commit-resolves [sha: string, root: string]: nothing -> any {
 # surface-router prompts own that adjudication.
 export def lane-surface-risk? [desc: string, lane: string]: nothing -> bool {
     let product_tokens = ["lib/" "apps/" "docs/" "lib/packages/" "public/"]
-    let loop_tokens = [".fabro/workflows" ".fabro/scripts" ".fabro/skills" ".agents/" "scripts/" "justfile" "mulch record" "mulch"]
+    let loop_tokens = [".agents/"]
     let tokens = (if $lane == "loop" { $product_tokens } else { $loop_tokens })
     $tokens | any {|t| $desc | str contains $t}
 }

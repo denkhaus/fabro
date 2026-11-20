@@ -24,7 +24,7 @@ Tracker mechanics (the run tools are the only tracker surface — ADR-0032):
 
 FORK FILE PLACEMENT (hard rule): every fork implementation lives in its OWN files — new files or fork-prefixed files (e.g. `fork_*.rs`, `fork-*.toml`) that an upstream merge cannot overwrite. Do NOT bury fork behavior inside upstream-owned files: a same-file edit is exactly what a future upstream merge clobbers silently (absorbed-regression class, 00ffd60f6). When an item extends an upstream file's behavior, prefer a fork-owned module wired in with the smallest possible upstream-side touch point, and presence-pin every fork feature in the fork-only test files (`fork_*_tests.rs` / `fork_seam_tests` family) — the pin proves the feature survives upstream merges.
 
-When the item touches Rust (any `*.rs`, `Cargo.toml`, or a crate under `lib/`): your FIRST action after reading the brief is to read `.fabro/skills/rust-style-guide/SKILL.md` via a shell read (e.g. `sed -n '1,200p'` or `cat` — the node's fs_hide=".fabro/**" hides the path from file tools), then the guideline PAGES covering this diff (the guide's table of contents names them — load only the relevant pages). The guide is the binding coding policy: the design and every edit conform to it from the start, never retrofitted after review. A Rust implementation written without the prior guide read is a failed pass, not a style choice. Do not paraphrase the guide from memory — the vendored file is the source. Non-Rust briefs skip this gate.
+When the item touches Rust (any `*.rs`, `Cargo.toml`, or a crate under `lib/`): your FIRST action after reading the brief is to read `.fabro/skills/rust-style-guide/SKILL.md`, then the guideline PAGES covering this diff (the guide's table of contents names them — load only the relevant pages). The guide is the binding coding policy: the design and every edit conform to it from the start, never retrofitted after review. A Rust implementation written without the prior guide read is a failed pass, not a style choice. Do not paraphrase the guide from memory — the vendored file is the source. Non-Rust briefs skip this gate.
 
 ## Your job this pass
 
@@ -112,24 +112,14 @@ Your writable scope is defined mechanically by THIS node's fs/tool envelope
 (the ADR-0009 stage-envelope family), not by prose about project areas:
 work where the envelope allows, and treat every tool denial as a scope
 boundary. Seed work normally lands in the PROJECT_FACTS primary code
-areas; the loop-asset paths in PROJECT_FACTS are fs_hide-bound
-for FILE TOOLS only (read_file, write_file, edit_file, glob discovery):
-tool reads fail and tool writes are refused there. The shell is
-unaffected — reads AND writes to those paths all succeed through shell
-commands (grep, sed -n, sed -i, cat, python3 heredocs). The `just` command keeps
-working through the shell.
+areas; the only hidden path is `.agents/` (the sync-style-guide mirror).
 rg flag discipline: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag (observed once: `rg -rn "is_engine_stamped_key"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable' — the sandbox rg was fine, the flag was wrong).
 
-Carve-out for loop-asset-targeting items: when the claimed item's brief
-explicitly targets loop-asset files (e.g. prompts under the PROJECT_FACTS
-fs_hide list), perform those reads and edits through the shell — the
-capability is not denied. What remains off-limits is unrequested
-loop-asset change: the report-don't-fix rule still applies to loop-asset
-friction found incidentally while working any item. The PROJECT_FACTS
-repo-wiring files remain visible but are repo wiring: never modify them
-without the item saying so explicitly. When your work reveals friction in
-any of these (a script bug, a prompt gap, a gate blind spot), do NOT fix
-it here — report it.
+Loop-asset friction found incidentally while working an item: fix it in
+the item's scope like any other surface (ADR-0049); unrelated
+discoveries stay report-don't-fix. The PROJECT_FACTS repo-wiring files
+remain repo wiring: never modify them without the item saying so
+explicitly.
 
 Carve-out for verified pre-existing compile breaks in touched crates: a
 VERIFIED pre-existing compile or clippy break in a crate the item's work
@@ -140,15 +130,13 @@ untouched tree (e.g. stash the work and reproduce, then restore) BEFORE
 fixing; an unverified break stays report-don't-fix. Every adjacent
 repair must be disclosed in the implementation summary under an explicit
 "adjacent repair" label naming the file(s) and the root cause. This
-carve-out loosens nothing else: unrelated-file fixes, feature drift, and
-loop-asset (the PROJECT_FACTS fs_hide list) fixes remain off-limits, and
-incidental loop-asset friction stays journal-only. Minimal-fix discipline
+carve-out loosens nothing else: unrelated-file fixes and feature drift
+stay off-limits. Minimal-fix discipline
 applies: prefer the smallest compiling fix over refactors; if the
 minimal fix is unclear, report instead of fixing. This carve-out only
 permits the minimal repair of VERIFIED pre-existing breaks — it does
 not soften the default-features clippy rule in step 4: that rule
-governs touched crates and breaks you caused or could fix, and until
-the minimal fix lands, a default-features break still fails your
+governs touched crates and breaks you caused or could fix, and until the minimal fix lands, a default-features break still fails your
 'gate passes' self-assessment.
 
 {% include "observations.md" %}

@@ -38,20 +38,16 @@ def expect-violations [paths: list<string>, lane: string, expected: list<string>
 }
 
 # ── pure classification, product lane ─────────────────────────────────
-# Loop assets violate (shell-staged escape hatch class — the checkpoint
-# envelope does NOT see them: the product implementer has no fs_write
-# pin).
-expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"] "product" [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile" ".agents/skills/x/SKILL.md"]
+# work#ADR-0049 (the loop/develop separation lifted): loop assets are
+# PRODUCT surfaces now — they PASS on the product lane. Only the
+# .agents/ mirror violates (the sync-style-guide pair invariant owns
+# it; the implementer's fs_hide list is .agents/** alone).
+expect-violations [".fabro/workflows/develop/workflow.fabro" "scripts/run.sh" "justfile"] "product" []
+expect-violations [".agents/skills/x/SKILL.md"] "product" [".agents/skills/x/SKILL.md"]
 
 # .mulch passes for the PRODUCT lane on purpose: develop's lesson-capture
 # contract writes the git-tracked expertise files there (mulch record).
 expect-violations [".mulch/expertise/rust.jsonl"] "product" []
-
-# The hook-owned journal exemption passes. The .seeds tracker paths left
-# the lists with the fs-envelope sweep (denkhaus/work#990) — they are
-# neither denied nor allowed anymore, plain dead paths in a live tree
-# without the tracker.
-expect-violations [".fabro/journal/01X.jsonl"] "product" []
 
 # Repo code passes untouched.
 expect-violations ["lib/apps/fabro-cli/src/main.rs" "apps/fabro-web/src/x.ts" "docs/public/api.yaml" "README.md"] "product" []
@@ -125,8 +121,9 @@ if not ($evidence_src | str contains $PIN_SNAPSHOT_DIR) or not ($lib_src | str c
 # A throwaway repo on a run branch with a checkpoint-shaped commit: the
 # check-run-scope path derivation must ground on the checkpoint parent
 # and see exactly the staged files. Proves BOTH lanes' exit codes:
-# loop-asset-only diff -> loop GREEN / product RED; repo-code diff ->
-# product GREEN / loop RED. RED proven both ways, both lanes.
+# loop-asset-only diff -> loop GREEN / product GREEN (ADR-0049: loop
+# assets are product surfaces); repo-code diff -> product GREEN / loop
+# RED. The one remaining hard line: an .agents/ diff is RED for product.
 let FX = (mktemp -d)
 cd $FX
 do { ^git init -q -b main } | ignore
@@ -150,7 +147,15 @@ def probe [lane: string]: nothing -> int {
 let loop_rc = (probe loop)
 let product_rc = (probe product)
 if $loop_rc != 0 { fail $"git fixture: loop lane should be GREEN on a loop-asset-only diff \(rc=($loop_rc)\)" }
-if $product_rc == 0 { fail "git fixture: product lane should be RED on a loop-asset-only diff \(rc=($product_rc)\)" }
+if $product_rc != 0 { fail $"git fixture: product lane should be GREEN on a loop-asset-only diff \(rc=($product_rc)\)" }
+
+# The .agents/ mirror stays denied on the product lane (ADR-0049).
+mkdir .agents/skills/x
+"mirror" | save .agents/skills/x/SKILL.md
+do { ^git add -A } | ignore
+do { ^git commit -qm "fabro(fxrun3): implementer (succeeded)" } | ignore
+let product_rc3 = (probe product)
+if $product_rc3 == 0 { fail "git fixture: product lane should be RED on an .agents-only diff" }
 
 # Flip side: repo-code-only diff -> product GREEN, loop RED.
 do { ^git checkout -q main } | ignore
