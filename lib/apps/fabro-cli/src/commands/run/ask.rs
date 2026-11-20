@@ -102,22 +102,32 @@ pub(crate) async fn run(args: AskArgs, base_ctx: &CommandContext) -> Result<()> 
 
 /// The run anchor for a new session: the positional selector (run ID
 /// prefix or workflow name), or — run-less, the supervisor's posture
-/// (work#1453) — the newest live run. A server with no live run has no
-/// anchor (the storage-level session stays run-anchored, work#1468): the
-/// error names the contract instead of guessing.
+/// (work#1453) — the newest live run. A run anchors the session only
+/// while it owns a live (non-terminal, non-archived) sandbox
+/// (work#1506): a terminal run's sandbox is reaped, and anchoring to it
+/// fails the first turn with `sandbox_unavailable`. A server with no
+/// live run has no anchor (the storage-level session stays run-anchored,
+/// work#1468): the error names the contract instead of guessing.
 async fn resolve_run_anchor(client: &Client, selector: Option<&str>) -> Result<RunId> {
     let Some(selector) = selector else {
         let newest_live = client
             .list_store_runs()
             .await?
             .into_iter()
-            .filter(|run| !run.lifecycle.archived)
+            .filter(|run| anchorable_lifecycle(&run.lifecycle))
             .max_by_key(|run| run.timestamps.created_at);
         return newest_live.map(|run| run.id).ok_or_else(|| {
-            anyhow!("no run to anchor the session — pass a run selector, or start a run first")
+            anyhow!("no live run to anchor the session — pass a run selector, or start a run first")
         });
     };
     Ok(client.resolve_run(selector).await?.id)
+}
+
+/// Whether a run's lifecycle may anchor a run-less Ask-Fabro conversation
+/// (work#1506): not archived and not terminal, so its sandbox is either
+/// live or restartable by the supervisor's attach path.
+fn anchorable_lifecycle(lifecycle: &fabro_types::RunLifecycle) -> bool {
+    !lifecycle.archived && !lifecycle.status.is_terminal()
 }
 
 fn session_title(prompt: &str) -> String {
@@ -335,6 +345,63 @@ mod tests {
             renderer.render_to(&event, false, &mut out).unwrap();
         }
         assert_eq!(out, "Hello world\n");
+    }
+
+    fn anchor_lifecycle(
+        status: fabro_types::RunStatus,
+        archived: bool,
+    ) -> fabro_types::RunLifecycle {
+        fabro_types::RunLifecycle {
+            status,
+            conclusion_failure: None,
+            approval: None,
+            pending_control: None,
+            queue_position: None,
+            error: None,
+            archived,
+            archived_at: None,
+        }
+    }
+
+    /// The run-less anchor only accepts runs that own a live (or
+    /// attach-restartable) sandbox (work#1506): the incident anchored a
+    /// global conversation to a terminal run whose sandbox was already
+    /// reaped, and the first turn failed `sandbox_unavailable`.
+    #[test]
+    fn the_run_less_anchor_skips_terminal_and_archived_runs() {
+        use fabro_types::{FailureReason, RunStatus, SuccessReason};
+
+        assert!(anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::Running,
+            false
+        )));
+        assert!(anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::Blocked {
+                blocked_reason: fabro_types::BlockedReason::HumanInputRequired,
+            },
+            false
+        )));
+        assert!(!anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::Succeeded {
+                reason: SuccessReason::Completed,
+            },
+            false
+        )));
+        assert!(!anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::Failed {
+                reason: FailureReason::WorkflowError,
+            },
+            false
+        )));
+        assert!(!anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::HumanNeeded,
+            false
+        )));
+        // The archived overlay disqualifies even a live status.
+        assert!(!anchorable_lifecycle(&anchor_lifecycle(
+            RunStatus::Running,
+            true
+        )));
     }
 
     /// A new turn starts fresh: a message after a streamed previous turn

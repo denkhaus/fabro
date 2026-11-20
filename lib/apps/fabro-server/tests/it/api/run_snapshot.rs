@@ -102,6 +102,12 @@ fn plant_snapshot_repository(
         "git clone --bare failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    // A local `clone --bare` hardlinks the source's LOOSE objects — on
+    // this git there is no pack at all, so the broken-store test's pack
+    // deletion would remove nothing and the bundle would still stream.
+    // Repacking makes the pack the objects' only home deterministically,
+    // whatever the source's object layout is.
+    git(&bare, &["repack", "-a", "-d", "-q"]);
     (snapshots, head, source)
 }
 

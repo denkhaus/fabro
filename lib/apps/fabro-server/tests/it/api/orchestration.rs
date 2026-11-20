@@ -993,6 +993,18 @@ async fn the_resolution_push_door_refuses_every_unauthorized_shape() {
                 .await
                 .unwrap();
         }
+        // A direct store append does not wake the projector — production
+        // appends ride `run_records::append`, which notifies the store's
+        // platform hook and waits for the pass before returning. The
+        // door's projection read only waits for an already-signalled
+        // pass, so the test wakes the projector and waits for the fold
+        // itself; without it the door serves the seeded PR-less view and
+        // the not-enabled arm answers 409 instead of 403. After the
+        // loop's last append: a pass woken earlier could commit before
+        // the verdict lands.
+        let projector = state.test_petri_projector();
+        projector.signal(run);
+        projector.settle(run).await;
     }
 
     let push_as = |worker: &RunId, target: &RunId| {
