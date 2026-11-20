@@ -441,6 +441,49 @@ def test-inline-cfg-hunk-mapping []: nothing -> nothing {
     rm -rf $dir
 }
 
+# work#1482: the ADDED-file blind spots. git diff covers tracked files
+# only, so a brand-new file is invisible to the diff enumeration AND its
+# inline-test content cannot be proven through an empty diff. Both teeth
+# must treat an existing-but-untracked path as first-class input.
+def test-diff-paths-includes-untracked []: nothing -> nothing {
+    let dir = (scratch-repo)
+    cd $dir
+    mkdir src
+    'pub fn a() -> i32 { 1 }' | save src/a.rs
+    do { ^git add -A } | ignore
+    do { ^git commit -qm base } | ignore
+    let base = (git rev-parse HEAD)
+    'pub fn b() -> i32 { 2 }' | save src/new.rs
+    let saw = (verification_commons diff-paths $base | any {|p| $p == 'src/new.rs'})
+    assert-eq $saw true 'an untracked file joins the diff enumeration'
+    cd $DIR
+    rm -rf $dir
+}
+
+def test-added-inline-test-file-is-test-touched []: nothing -> nothing {
+    let dir = (scratch-repo)
+    cd $dir
+    mkdir src
+    'pub fn a() -> i32 { 1 }' | save src/lib.rs
+    do { ^git add -A } | ignore
+    do { ^git commit -qm base } | ignore
+    let base = (git rev-parse HEAD)
+    let added = ("pub fn b() -> i32 { 2 }\n"
+        + "#[cfg(test)]\n"
+        + "mod tests {\n"
+        + "    #[test]\n"
+        + "    fn t_b() { assert_eq!(b(), 2); }\n"
+        + "}\n")
+    $added | save src/extra.rs
+    assert-eq (verification_commons is-inline-test-diff $base 'src/extra.rs') true 'an added untracked inline-test file is test-touched'
+    # The control: an untracked file WITHOUT inline tests stays
+    # code-touched only (over-detection never fires without the signal).
+    'pub fn c() -> i32 { 3 }' | save src/plain.rs
+    assert-eq (verification_commons is-inline-test-diff $base 'src/plain.rs') false 'an added untracked plain source file is not test-touched'
+    cd $DIR
+    rm -rf $dir
+}
+
 # --- 3. regrowth pins: the extraction teeth ---------------------------------
 
 def test-consumers-source-the-module []: nothing -> nothing {
@@ -553,6 +596,8 @@ def main []: nothing -> nothing {
     test-root-edge
     test-off-run-contract
     test-inline-cfg-hunk-mapping
+    test-diff-paths-includes-untracked
+    test-added-inline-test-file-is-test-touched
     test-consumers-source-the-module
     test-no-mirror-regrows
     test-run-anchor-delegates
