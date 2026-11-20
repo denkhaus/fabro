@@ -17,8 +17,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
 use fabro_redact::SecretRedactor;
 use fabro_store::{
-    PlatformRecord, ProjectedRunSession, SessionCapabilityRecord, project_run_session,
-    project_run_sessions,
+    PlatformRecord, ProjectedRunSession, SessionCapabilityRecord, SessionSummaryOrder,
+    project_run_session, project_run_sessions,
 };
 use fabro_tool::fabro_client::ClientBackend;
 use fabro_types::session_event::{
@@ -53,7 +53,10 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
 use super::super::session_runtime::{InterruptTurnError, SessionTurnLease, StartTurnError};
-use super::super::{AppState, PaginationParams, paginate_items, parse_run_id_path, run_records};
+use super::super::{
+    AppState, PaginationParams, clamp_page_limit, clamp_page_offset, default_page_limit,
+    paginate_items, parse_run_id_path, run_records,
+};
 use crate::error::ApiError;
 use crate::principal_middleware::{RequiredRunToolActor, RequiredUser};
 use crate::sandbox_access;
@@ -141,10 +144,25 @@ enum RunSessionListOrder {
 
 #[derive(serde::Deserialize)]
 struct ListRunSessionsParams {
-    #[serde(flatten)]
-    pagination: PaginationParams,
+    /// The page fields are declared here instead of a flattened
+    /// `PaginationParams`: `serde(flatten)` buffers query values as raw
+    /// strings, and a buffered string does not parse into `u32` — the
+    /// doors 400'd on their own documented `page[limit]` (work#1469).
+    #[serde(rename = "page[limit]", default = "default_page_limit")]
+    limit:  u32,
+    #[serde(rename = "page[offset]", default)]
+    offset: u32,
     #[serde(default)]
-    order:      RunSessionListOrder,
+    order:  RunSessionListOrder,
+}
+
+impl ListRunSessionsParams {
+    fn pagination(&self) -> PaginationParams {
+        PaginationParams {
+            limit:  self.limit,
+            offset: self.offset,
+        }
+    }
 }
 
 async fn list_run_sessions(
@@ -178,7 +196,7 @@ async fn list_run_sessions(
                         .then_with(|| right.id.cmp(&left.id))
                 }),
             }
-            let (data, has_more) = paginate_items(sessions, &params.pagination);
+            let (data, has_more) = paginate_items(sessions, &params.pagination());
             Json(serde_json::json!({
                 "data": data,
                 "meta": { "has_more": has_more }
@@ -191,37 +209,35 @@ async fn list_run_sessions(
 
 /// The global session index (ADR-0046, work#1452): every session across all
 /// runs with its run anchor, last activity and capability state — the
-/// global chat page's resume picker reads this door.
+/// global chat page's resume picker reads this door. The page bound is the
+/// store's SQL (work#1469): the store returns at most the page plus the
+/// has-more probe, projected from a latest-event-per-session query instead
+/// of loading every event's payload, and its ORDER BY is this handler's
+/// former in-memory comparator.
 async fn list_all_sessions(
     _auth: RequiredUser,
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListRunSessionsParams>,
 ) -> Response {
-    match state.stores.session_events.list_all_sessions().await {
-        Ok(events) => {
-            let mut sessions = project_run_sessions(&events);
-            match params.order {
-                RunSessionListOrder::UpdatedDesc => sessions.sort_by(|left, right| {
-                    right
-                        .updated_at
-                        .cmp(&left.updated_at)
-                        .then_with(|| right.created_at.cmp(&left.created_at))
-                        .then_with(|| right.id.cmp(&left.id))
-                }),
-                RunSessionListOrder::CreatedDesc => sessions.sort_by(|left, right| {
-                    right
-                        .created_at
-                        .cmp(&left.created_at)
-                        .then_with(|| right.id.cmp(&left.id))
-                }),
-            }
-            let (data, has_more) = paginate_items(sessions, &params.pagination);
-            Json(serde_json::json!({
-                "data": data,
-                "meta": { "has_more": has_more }
-            }))
-            .into_response()
-        }
+    let order = match params.order {
+        RunSessionListOrder::UpdatedDesc => SessionSummaryOrder::UpdatedDesc,
+        RunSessionListOrder::CreatedDesc => SessionSummaryOrder::CreatedDesc,
+    };
+    // The same clamps `paginate_items` applied when the door paginated an
+    // in-memory load.
+    let limit = clamp_page_limit(params.limit);
+    let offset = clamp_page_offset(params.offset);
+    match state
+        .stores
+        .session_events
+        .list_session_summaries(order, limit, offset)
+        .await
+    {
+        Ok(page) => Json(serde_json::json!({
+            "data": page.data,
+            "meta": { "has_more": page.has_more }
+        }))
+        .into_response(),
         Err(err) => store_error(&err).into_response(),
     }
 }
