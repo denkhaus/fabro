@@ -235,11 +235,15 @@ describe("WorkItemsView key link state colors", () => {
     expect(anchor.className).not.toContain("text-teal-500");
   });
 
-  test("closed settles the key link to the muted foreground", async () => {
+  test("closed wears the same done-mint the observations table paints (work#1511)", async () => {
+    // The tracker closes items COMPLETED-ONLY, so a closed item is the
+    // same landed-work state the enriched vocabulary calls merged —
+    // the two tables agree per state, application-wide.
     const renderer = await renderListWithState("closed", 5);
     const anchor = anchorFor(renderer, "denkhaus/work#41");
-    expect(anchor.className).toContain("text-fg-muted");
+    expect(anchor.className).toContain("text-mint");
     expect(anchor.className).not.toContain("text-teal-500");
+    expect(anchor.className).not.toContain("text-fg-muted");
   });
 
   test("an unresolved state stays plain — no false color", async () => {

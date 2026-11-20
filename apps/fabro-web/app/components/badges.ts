@@ -60,13 +60,19 @@ export function labelBadgeClass(label: string): string {
 }
 
 /**
- * The work-item link state colors (denkhaus/work#1298): every link to
- * a work item renders color-coded by its LIVE state, so a row is
- * judged at a glance — open amber (demands work), in_progress teal-500
- * (active), merged mint (the closure rode a merged PR; the theme has
- * NO violet token, so the closest existing accent stands in for it),
- * closed fg-muted (settled). An unresolved state stays plain fg-3 —
- * never a false color for a state the tracker could not resolve.
+ * The work-item link state colors (denkhaus/work#1298, unified per the
+ * 2026-11-20 directive): every link to a work item renders color-coded
+ * by its state, and the SAME logical state wears the SAME color on
+ * every surface. One vocabulary feeds this map — the enriched live
+ * state (open, in_progress, merged, closed; #1237/#1173). The raw
+ * tracker state (open/closed) joins it through trackerItemState():
+ * the tracker closes items COMPLETED-ONLY (the provider hardcodes
+ * state_reason completed), so a tracker `closed` IS the landed-work
+ * state the enriched vocabulary calls `merged`. open amber (demands
+ * work), in_progress teal-500 (active), merged mint (done), closed
+ * fg-muted (settled without landing). An unresolved state stays plain
+ * fg-3 — never a false color for a state the tracker could not
+ * resolve.
  */
 const WORK_ITEM_STATE_TEXT: Record<string, string> = {
   open: "text-amber",
@@ -74,6 +80,18 @@ const WORK_ITEM_STATE_TEXT: Record<string, string> = {
   merged: "text-mint",
   closed: "text-fg-muted",
 };
+
+/**
+ * The raw tracker state → the shared live-state vocabulary
+ * (work#1511's one-vocabulary rule). The tracker closes items
+ * COMPLETED-ONLY, so its `closed` maps to `merged` — the work table's
+ * done-links wear the same mint the observations table paints for the
+ * same landed work. Unknown states pass through unchanged.
+ */
+export function trackerItemState(state: string | null | undefined): string | null {
+  if (state == null) return null;
+  return state === "closed" ? "merged" : state;
+}
 
 /** Tooltip naming the degradation behind a stale null state (#1298). */
 export const WORK_ITEM_LINK_STALE_TITLE =
