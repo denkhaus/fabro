@@ -37,7 +37,7 @@ pub use platform_records::{
     SessionCapabilityRecord, StagePosition, StoredPlatformRecord, WorkClaimedRecord,
     WorkReleasedRecord,
 };
-pub use run_session_event_store::RunSessionEventStore;
+pub use run_session_event_store::{RunSessionEventStore, SessionSummaryOrder, SessionSummaryPage};
 pub use run_session_record_store::{
     RunSessionRecordStore, StoredSessionRecord, StoredSessionRecordSummary,
 };

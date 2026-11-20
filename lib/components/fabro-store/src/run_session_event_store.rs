@@ -7,14 +7,85 @@
 //! client attached to a session sees a turn as it runs.
 
 use chrono::{DateTime, Utc};
-use fabro_types::{RunId, SessionEvent, SessionEventBody, SessionId};
-use sqlx::sqlite::SqliteRow;
+use fabro_types::session_event::{
+    SessionCapabilityChangedProps, SessionCreatedProps, SessionTurnStartedProps,
+};
+use fabro_types::{
+    AskFabroCapability, RunId, SessionEvent, SessionEventBody, SessionId, SessionStatus,
+    SessionSummary, SessionTurn,
+};
+use sqlx::sqlite::{Sqlite, SqliteRow};
 use sqlx::{Row as _, SqlitePool};
 use tokio::sync::broadcast;
 
 use crate::{Error, Result, sqlite_row};
 
 const RECORD_NAME: &str = "run session event";
+
+/// The rows of the global session index's page: one row per session, put
+/// together from a latest-event-per-session projection of the events.
+///
+/// Every aggregate query here keeps exactly one aggregate in its SELECT,
+/// which SQLite documents as pinning each bare column to the row holding
+/// that aggregate's min/max: `candidates` reads each session's last
+/// projection-relevant event's timestamp — the `updated_at` the fold path
+/// ends on. The streaming `assistant_delta` frames are excluded, exactly
+/// as the full event load this door replaced excluded them. The `created`
+/// join is inner because a session projects nothing without its creation
+/// event (the fold only opens an entry on `run.session.created`), and its
+/// row holds the run anchor and the creation properties the summary
+/// keeps; `capability` and `turn` are the latest of their event kinds,
+/// `LEFT`-joined because a session may never leave the default posture
+/// or never run a turn.
+const SESSIONS_PAGE_SQL: &str = r"
+WITH candidates AS (
+    SELECT session_id, MAX(seq) AS last_seq, recorded_at_ms AS updated_at_ms
+    FROM run_session_events
+    WHERE event_name <> 'run.session.assistant_delta'
+    GROUP BY session_id
+),
+created AS (
+    SELECT session_id, run_id, recorded_at_ms AS created_at_ms,
+           properties_json AS created_json
+    FROM run_session_events
+    WHERE seq = 1 AND event_name = 'run.session.created'
+),
+capability AS (
+    SELECT session_id, properties_json AS capability_json
+    FROM run_session_events AS latest
+    WHERE event_name = 'run.session.capability.changed'
+      AND seq = (
+          SELECT MAX(seq) FROM run_session_events AS same
+          WHERE same.session_id = latest.session_id
+            AND same.event_name = 'run.session.capability.changed'
+      )
+),
+turn AS (
+    SELECT session_id, event_name AS turn_event, recorded_at_ms AS turn_ms,
+           properties_json AS turn_json
+    FROM run_session_events AS latest
+    WHERE event_name IN (
+        'run.session.turn.started', 'run.session.turn.succeeded',
+        'run.session.turn.failed', 'run.session.turn.interrupted'
+    )
+      AND seq = (
+          SELECT MAX(seq) FROM run_session_events AS same
+          WHERE same.session_id = latest.session_id
+            AND same.event_name IN (
+                'run.session.turn.started', 'run.session.turn.succeeded',
+                'run.session.turn.failed', 'run.session.turn.interrupted'
+            )
+      )
+)
+SELECT candidates.session_id, candidates.updated_at_ms,
+       created.run_id, created.created_at_ms, created.created_json,
+       capability.capability_json,
+       turn.turn_event, turn.turn_ms, turn.turn_json
+FROM candidates
+JOIN created ON created.session_id = candidates.session_id
+LEFT JOIN capability ON capability.session_id = candidates.session_id
+LEFT JOIN turn ON turn.session_id = candidates.session_id
+";
 
 /// How many committed events a slow subscriber may fall behind before it
 /// is told it lagged and has to replay from the table.
@@ -32,6 +103,28 @@ impl std::fmt::Debug for RunSessionEventStore {
         f.debug_struct("RunSessionEventStore")
             .finish_non_exhaustive()
     }
+}
+
+/// Which ordering the global session index's page arrives in. Each variant
+/// is the SQL ORDER BY that replicates the handler's comparator exactly,
+/// including its tie-breaks — a ULID's TEXT order is its `Ord`, so
+/// ordering by the stored id string decides ties the same way the fold
+/// path's `SessionId: Ord` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionSummaryOrder {
+    /// Last activity first: `updated_at` descending, then `created_at`,
+    /// then the session id.
+    UpdatedDesc,
+    /// Newest session first: `created_at` descending, then the session id.
+    CreatedDesc,
+}
+
+/// One page of the global session index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SessionSummaryPage {
+    pub data:     Vec<SessionSummary>,
+    /// Another page exists past this one's `offset`.
+    pub has_more: bool,
 }
 
 impl RunSessionEventStore {
@@ -135,22 +228,50 @@ ORDER BY session_id ASC, seq ASC
         rows.iter().map(event_from_row).collect()
     }
 
-    /// The projection-relevant events of EVERY session, across all runs
-    /// (denkhaus/work#1452's global index door): every event but the
-    /// streaming `assistant_delta` frames, which carry the bulk of the
-    /// volume and nothing the session projection folds.
-    pub async fn list_all_sessions(&self) -> Result<Vec<SessionEvent>> {
-        let rows = sqlx::query(
-            r"
-SELECT session_id, seq, run_id, event_name, recorded_at_ms, properties_json
-FROM run_session_events
-WHERE event_name != 'run.session.assistant_delta'
-ORDER BY session_id ASC, seq ASC
-",
-        )
-        .fetch_all(&self.pool)
-        .await?;
-        rows.iter().map(event_from_row).collect()
+    /// One page of the global session index — every run's sessions with
+    /// the summary the projection fold would give them (denkhaus/work#1452's
+    /// global index door, bounded at the SQL level by work#1469).
+    ///
+    /// The rows are a latest-event-per-session SQL projection, not a full
+    /// event load: `candidates` folds every session down to its last
+    /// projection-relevant event (the streaming `assistant_delta` frames
+    /// are excluded, as the full load they once served was), and the
+    /// `created`/`capability`/`turn` joins read the three rows whose
+    /// properties the summary keeps. At most `limit + 1` rows cross into
+    /// Rust; the extra row is the has-more probe, the same convention the
+    /// in-memory pagination this door replaced used. `limit` must be at
+    /// least 1; `offset` skips into the ordered session list.
+    pub async fn list_session_summaries(
+        &self,
+        order: SessionSummaryOrder,
+        limit: u32,
+        offset: u32,
+    ) -> Result<SessionSummaryPage> {
+        // The ORDER BY variant is the one dynamic piece; `QueryBuilder`
+        // carries it the way the run summary store's list does.
+        let mut query = sqlx::QueryBuilder::<Sqlite>::new(SESSIONS_PAGE_SQL);
+        match order {
+            SessionSummaryOrder::UpdatedDesc => {
+                query.push(
+                    " ORDER BY candidates.updated_at_ms DESC, created.created_at_ms DESC, \
+                     candidates.session_id DESC",
+                );
+            }
+            SessionSummaryOrder::CreatedDesc => {
+                query.push(" ORDER BY created.created_at_ms DESC, candidates.session_id DESC");
+            }
+        }
+        query.push(" LIMIT ").push_bind(i64::from(limit) + 1);
+        query.push(" OFFSET ").push_bind(i64::from(offset));
+        let mut rows = query.build().fetch_all(&self.pool).await?;
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+        let has_more = rows.len() > limit;
+        rows.truncate(limit);
+        let data = rows
+            .iter()
+            .map(session_summary_from_row)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(SessionSummaryPage { data, has_more })
     }
 
     /// The sequence number of the session's latest event, if it has any.
@@ -204,6 +325,68 @@ ORDER BY session_id ASC, seq ASC
     }
 }
 
+/// The summary of one session, read off the page query's projected rows.
+///
+/// The mapping mirrors [`project_run_sessions`]' fold over the session's
+/// non-delta events: the creation event holds the run anchor, the
+/// timestamps and the title/model/provider; the latest capability event
+/// holds the posture (default read-only); the latest turn-lifecycle event
+/// holds the status and, for a turn still open, the active turn.
+fn session_summary_from_row(row: &SqliteRow) -> Result<SessionSummary> {
+    let session_id: String = row.try_get("session_id")?;
+    let session_id = session_id.parse::<SessionId>().map_err(|error| {
+        Error::InvalidEvent(format!("stored {RECORD_NAME} session id: {error}"))
+    })?;
+    let created_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "created_at_ms")?;
+    let updated_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "updated_at_ms")?;
+    let run_id: String = row.try_get("run_id")?;
+    let run_id = run_id
+        .parse::<RunId>()
+        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+    let created_json: String = row.try_get("created_json")?;
+    let created: SessionCreatedProps = serde_json::from_str(&created_json)?;
+    let capability_json: Option<String> = row.try_get("capability_json")?;
+    let capability = capability_json
+        .map(|json| {
+            serde_json::from_str::<SessionCapabilityChangedProps>(&json)
+                .map(|props| props.capability)
+        })
+        .transpose()?
+        .unwrap_or(AskFabroCapability::ReadOnly);
+    let turn_event: Option<String> = row.try_get("turn_event")?;
+    let (status, active_turn) = match turn_event.as_deref() {
+        Some("run.session.turn.started") => {
+            let turn_json: String = row.try_get("turn_json")?;
+            let started: SessionTurnStartedProps = serde_json::from_str(&turn_json)?;
+            let started_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "turn_ms")?;
+            (
+                SessionStatus::Running,
+                Some(SessionTurn {
+                    id: started.turn_id,
+                    started_at,
+                    input: started.input,
+                }),
+            )
+        }
+        Some("run.session.turn.failed") => (SessionStatus::Failed, None),
+        // A turn that succeeded or was interrupted leaves the session idle,
+        // and a session that never ran a turn starts idle.
+        Some(_) | None => (SessionStatus::Idle, None),
+    };
+    Ok(SessionSummary {
+        id: session_id,
+        run_id,
+        title: created.title,
+        status,
+        model: created.model,
+        provider: created.provider,
+        active_turn,
+        capability,
+        created_at,
+        updated_at,
+    })
+}
+
 fn event_from_row(row: &SqliteRow) -> Result<SessionEvent> {
     let session_id: String = row.try_get("session_id")?;
     let session_id = session_id.parse::<SessionId>().map_err(|error| {
@@ -237,11 +420,15 @@ fn event_from_row(row: &SqliteRow) -> Result<SessionEvent> {
 mod tests {
     use chrono::TimeZone;
     use fabro_types::session_event::{
-        SessionAssistantDeltaProps, SessionCreatedProps, SessionTurnStartedProps,
+        SessionAssistantDeltaProps, SessionAssistantMessageProps, SessionCapabilityChangedProps,
+        SessionCreatedProps, SessionToolCallCompletedProps, SessionToolCallStartedProps,
+        SessionTurnFailedCode, SessionTurnFailedProps, SessionTurnStartedProps,
+        SessionTurnSucceededProps, SessionUserMessageProps,
     };
     use fabro_types::{TurnId, fixtures};
 
     use super::*;
+    use crate::run_sessions::project_run_sessions;
     use crate::test_support;
 
     fn store() -> RunSessionEventStore {
@@ -262,6 +449,75 @@ mod tests {
         SessionEventBody::TurnStarted(SessionTurnStartedProps {
             turn_id,
             input: "What happened?".to_string(),
+        })
+    }
+
+    fn capability_changed(capability: AskFabroCapability) -> SessionEventBody {
+        SessionEventBody::CapabilityChanged(SessionCapabilityChangedProps {
+            capability,
+            actor: None,
+        })
+    }
+
+    fn user_message(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::UserMessage(SessionUserMessageProps {
+            turn_id,
+            text: "What happened?".to_string(),
+        })
+    }
+
+    fn assistant_delta(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::AssistantDelta(SessionAssistantDeltaProps {
+            turn_id,
+            delta: "streaming bulk".to_string(),
+        })
+    }
+
+    fn assistant_message(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::AssistantMessage(SessionAssistantMessageProps {
+            turn_id,
+            text: "The run finished.".to_string(),
+            model: Some("test-model".to_string()),
+            usage: serde_json::json!({ "output_tokens": 4 }),
+        })
+    }
+
+    fn tool_call_started(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::ToolCallStarted(SessionToolCallStartedProps {
+            turn_id,
+            tool_name: "read_file".to_string(),
+            tool_call_id: "call_1".to_string(),
+            arguments: serde_json::json!({ "path": "README.md" }),
+        })
+    }
+
+    fn tool_call_completed(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::ToolCallCompleted(SessionToolCallCompletedProps {
+            turn_id,
+            tool_name: "read_file".to_string(),
+            tool_call_id: "call_1".to_string(),
+            output: serde_json::json!("readme bytes"),
+            is_error: false,
+            output_bytes_observed: None,
+            output_bytes_retained: None,
+            output_bytes_omitted: None,
+        })
+    }
+
+    fn turn_succeeded(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::TurnSucceeded(SessionTurnSucceededProps {
+            turn_id,
+            output: Some("The run finished.".to_string()),
+        })
+    }
+
+    fn turn_failed(turn_id: TurnId) -> SessionEventBody {
+        SessionEventBody::TurnFailed(SessionTurnFailedProps {
+            turn_id,
+            error: "boom".to_string(),
+            output: None,
+            code: SessionTurnFailedCode::AgentError,
+            retryable: false,
         })
     }
 
@@ -340,58 +596,253 @@ mod tests {
         assert_eq!(store.owner(second).await.unwrap(), Some(fixtures::RUN_2));
     }
 
-    /// The global index door (denkhaus/work#1452): `list_all_sessions`
-    /// serves every run's projection-relevant events and skips only the
-    /// streaming delta frames.
+    /// work#1469 pin: the global sessions index door bounds its rows in
+    /// the SQL. The observable is the row count crossing the store's
+    /// public door: a fixture with more sessions than the page holds hands
+    /// back at most the page plus the has-more probe — never every
+    /// session's events, which is what the full load this door replaced
+    /// did (the red run materialized 30 rows for a 5-row page).
     #[tokio::test]
-    async fn list_all_sessions_spans_runs_and_skips_delta_frames() {
+    async fn the_global_sessions_door_bounds_its_rows_in_sql() {
         let store = store();
-        let mine = SessionId::new();
-        let other = SessionId::new();
-        let turn_id = TurnId::new();
         let ts = Utc::now();
+        for _ in 0..30 {
+            store
+                .append(fixtures::RUN_1, SessionId::new(), created(), ts)
+                .await
+                .unwrap();
+        }
+
+        let first = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 5, 0)
+            .await
+            .unwrap();
+        assert_eq!(first.data.len(), 5);
+        assert!(first.has_more, "30 sessions leave more past a 5-row page");
+
+        let last = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 5, 25)
+            .await
+            .unwrap();
+        assert_eq!(last.data.len(), 5);
+        assert!(!last.has_more);
+
+        let past = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 5, 26)
+            .await
+            .unwrap();
+        assert_eq!(past.data.len(), 4);
+        assert!(!past.has_more);
+
+        let beyond = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 5, 30)
+            .await
+            .unwrap();
+        assert!(beyond.data.is_empty());
+        assert!(!beyond.has_more);
+    }
+
+    /// work#1469 parity pin: the SQL-projected page equals the summaries
+    /// the projection fold gives the same sessions' non-delta events, in
+    /// the handler comparator's order. The fixture walks every event kind
+    /// the fold reacts to, across two runs.
+    #[tokio::test]
+    async fn the_sessions_index_page_matches_the_projection_fold() {
+        let store = store();
+        let base = Utc.with_ymd_and_hms(2026, 11, 20, 9, 0, 0).unwrap();
+        let at = |millis: i64| base + chrono::Duration::milliseconds(millis);
+
+        let rich = SessionId::new();
+        let rich_turn = TurnId::new();
+        for (millis, body) in [
+            (0, created()),
+            (1, capability_changed(AskFabroCapability::FullAccess)),
+            (2, turn_started(rich_turn)),
+            (3, user_message(rich_turn)),
+            (4, assistant_delta(rich_turn)),
+            (5, assistant_message(rich_turn)),
+            (6, tool_call_started(rich_turn)),
+            (7, tool_call_completed(rich_turn)),
+            (8, turn_succeeded(rich_turn)),
+        ] {
+            store
+                .append(fixtures::RUN_1, rich, body, at(millis))
+                .await
+                .unwrap();
+        }
+
+        let running = SessionId::new();
+        let running_turn = TurnId::new();
         store
-            .append(fixtures::RUN_1, mine, created(), ts)
+            .append(fixtures::RUN_1, running, created(), at(10))
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, mine, turn_started(turn_id), ts)
+            .append(fixtures::RUN_1, running, turn_started(running_turn), at(11))
+            .await
+            .unwrap();
+
+        // A session whose only projection-relevant event is its creation:
+        // the trailing delta frame must not move the door's `updated_at`.
+        let quiet = SessionId::new();
+        store
+            .append(fixtures::RUN_1, quiet, created(), at(12))
             .await
             .unwrap();
         store
             .append(
                 fixtures::RUN_1,
-                mine,
-                SessionEventBody::AssistantDelta(SessionAssistantDeltaProps {
-                    turn_id,
-                    delta: "streaming bulk".to_string(),
-                }),
-                ts,
+                quiet,
+                assistant_delta(TurnId::new()),
+                at(100),
             )
             .await
             .unwrap();
+
+        let failed = SessionId::new();
+        let failed_turn = TurnId::new();
         store
-            .append(fixtures::RUN_2, other, created(), ts)
+            .append(fixtures::RUN_2, failed, created(), at(20))
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_2, failed, turn_started(failed_turn), at(21))
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_2, failed, turn_failed(failed_turn), at(22))
             .await
             .unwrap();
 
-        let events = store.list_all_sessions().await.unwrap();
-        assert_eq!(events.len(), 3, "the delta frame is skipped");
-        assert!(
-            events
+        // The oracle: the fold over each session's non-delta events —
+        // what the door served before its bound moved into the SQL.
+        let mut expected = std::collections::BTreeMap::new();
+        for run in [fixtures::RUN_1, fixtures::RUN_2] {
+            let events: Vec<_> = store
+                .list_for_run(run)
+                .await
+                .unwrap()
+                .into_iter()
+                .filter(|event| event.body.event_name() != "run.session.assistant_delta")
+                .collect();
+            for summary in project_run_sessions(&events) {
+                expected.insert(summary.id, summary);
+            }
+        }
+
+        let page = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert!(!page.has_more, "four sessions fit a 10-row page");
+        assert_eq!(page.data.len(), 4, "one row per session, not per event");
+        for summary in &page.data {
+            assert_eq!(
+                Some(summary),
+                expected.get(&summary.id),
+                "summary of session {} matches the fold",
+                summary.id
+            );
+        }
+        let mut ordered: Vec<_> = expected.values().cloned().collect();
+        ordered.sort_by(|left, right| {
+            right
+                .updated_at
+                .cmp(&left.updated_at)
+                .then_with(|| right.created_at.cmp(&left.created_at))
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        assert_eq!(page.data, ordered, "the page arrives in comparator order");
+
+        // The semantics the fold gives, readable on the page itself: the
+        // finished arc is idle in full access, the open turn is running
+        // with its active turn, the failed turn marks the session failed,
+        // and the quiet session's activity stops at its creation event —
+        // the delta frame did not move it.
+        let by_id = |id| {
+            page.data
                 .iter()
-                .all(|event| event.body.event_name() != "run.session.assistant_delta")
+                .find(|summary| summary.id == id)
+                .unwrap_or_else(|| panic!("session {id} should be on the page"))
+        };
+        assert_eq!(by_id(rich).status, SessionStatus::Idle);
+        assert_eq!(by_id(rich).capability, AskFabroCapability::FullAccess);
+        assert!(by_id(rich).active_turn.is_none());
+        assert_eq!(by_id(running).status, SessionStatus::Running);
+        assert_eq!(by_id(running).capability, AskFabroCapability::ReadOnly);
+        assert_eq!(
+            by_id(running).active_turn.as_ref().map(|turn| turn.id),
+            Some(running_turn)
         );
-        assert!(
-            events
-                .iter()
-                .any(|event| event.session_id == mine && event.run_id == fixtures::RUN_1)
+        assert_eq!(by_id(quiet).updated_at, at(12));
+        assert_eq!(by_id(failed).status, SessionStatus::Failed);
+    }
+
+    /// UpdatedDesc orders by last activity; CreatedDesc by creation. The
+    /// orderings differ when the older session is the more recently
+    /// active one.
+    #[tokio::test]
+    async fn the_sessions_page_orders_by_activity_or_creation() {
+        let store = store();
+        let older = SessionId::new();
+        let newer = SessionId::new();
+        let at = |hour: u32| Utc.with_ymd_and_hms(2026, 11, 20, hour, 0, 0).unwrap();
+        store
+            .append(fixtures::RUN_1, older, created(), at(9))
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_1, older, turn_started(TurnId::new()), at(11))
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_1, newer, created(), at(10))
+            .await
+            .unwrap();
+
+        let by_activity = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            by_activity.data.iter().map(|s| s.id).collect::<Vec<_>>(),
+            vec![older, newer],
+            "the older session was active last"
         );
-        assert!(
-            events
-                .iter()
-                .any(|event| event.session_id == other && event.run_id == fixtures::RUN_2)
+
+        let by_creation = store
+            .list_session_summaries(SessionSummaryOrder::CreatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            by_creation.data.iter().map(|s| s.id).collect::<Vec<_>>(),
+            vec![newer, older],
+            "the newer session was created last"
         );
+    }
+
+    /// The page's tie-break is the session id descending — the TEXT order
+    /// of the stored ULID strings, which is the fold path's
+    /// `SessionId: Ord` descending.
+    #[tokio::test]
+    async fn the_sessions_page_breaks_ties_by_session_id_descending() {
+        let store = store();
+        let ts = Utc.with_ymd_and_hms(2026, 11, 20, 9, 0, 0).unwrap();
+        for _ in 0..4 {
+            store
+                .append(fixtures::RUN_1, SessionId::new(), created(), ts)
+                .await
+                .unwrap();
+        }
+
+        let page = store
+            .list_session_summaries(SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        let ids: Vec<String> = page.data.iter().map(|s| s.id.to_string()).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable_by(|left, right| right.cmp(left));
+        assert_eq!(ids, sorted, "ties order by the session id descending");
     }
 
     #[tokio::test]

@@ -448,6 +448,121 @@ async fn inactive_turn_interrupt_returns_conflict() {
     .await;
 }
 
+/// One page of the global session index door (ADR-0046, work#1452), read
+/// with an optional query string.
+async fn global_sessions_page(app: &axum::Router, query: &str) -> serde_json::Value {
+    let request = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/sessions{query}")))
+        .body(Body::empty())
+        .expect("global sessions request should build");
+    response_json(
+        app.clone().oneshot(request).await.unwrap(),
+        StatusCode::OK,
+        "GET /api/v1/sessions",
+    )
+    .await
+}
+
+/// The global session index door (ADR-0046, work#1452; bounded in SQL by
+/// work#1469): sessions from every run share one page, the store hands out
+/// at most `page[limit]` rows plus the has-more probe, and the summary
+/// shape stays the metadata projection — last activity and capability,
+/// never the event payloads.
+#[tokio::test]
+async fn the_global_sessions_index_lists_across_runs_and_paginates_in_sql() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+    let (first_run, _first_workspace) = create_run(&app).await;
+    let (second_run, _second_workspace) = create_run(&app).await;
+    let first = create_session(&app, &first_run, "First run chat").await;
+    let second = create_session(&app, &first_run, "Second run chat").await;
+    let third = create_session(&app, &second_run, "Third run chat").await;
+    let mut expected_ids: Vec<String> = [first, second, third]
+        .into_iter()
+        .map(|created| {
+            created["id"]
+                .as_str()
+                .expect("session response should include an id")
+                .to_string()
+        })
+        .collect();
+    expected_ids.sort();
+
+    // The unfiltered door lists every session across both runs.
+    let all = global_sessions_page(&app, "").await;
+    let rows = all["data"]
+        .as_array()
+        .expect("sessions response should include data");
+    assert_eq!(rows.len(), 3);
+    assert_eq!(all["meta"]["has_more"], false);
+    let mut ids: Vec<String> = rows
+        .iter()
+        .map(|row| {
+            row["id"]
+                .as_str()
+                .expect("session row should include an id")
+                .to_string()
+        })
+        .collect();
+    ids.sort();
+    assert_eq!(ids, expected_ids);
+    let anchors: Vec<&str> = rows
+        .iter()
+        .map(|row| {
+            row["run_id"]
+                .as_str()
+                .expect("session row should include its run anchor")
+        })
+        .collect();
+    assert!(anchors.contains(&first_run.as_str()), "the door spans runs");
+    assert!(
+        anchors.contains(&second_run.as_str()),
+        "the door spans runs"
+    );
+
+    // The metadata projection shape: last activity and capability state,
+    // not the event log.
+    for row in rows {
+        assert_eq!(row["status"], "idle");
+        assert_eq!(row["capability"], "read_only");
+        assert!(row["created_at"].is_string());
+        assert!(row["updated_at"].is_string());
+        assert!(
+            row.get("last_seq").is_none(),
+            "the summary carries no event-log position"
+        );
+        assert!(
+            row.get("properties").is_none(),
+            "the summary carries no event payloads"
+        );
+    }
+
+    // The page bound is the store's SQL: two rows with one more behind.
+    let page = global_sessions_page(&app, "?page[limit]=2").await;
+    let page_rows = page["data"].as_array().unwrap();
+    assert_eq!(page_rows.len(), 2);
+    assert_eq!(page["meta"]["has_more"], true);
+
+    // The offset continues where the page stopped; together the pages
+    // cover the sessions exactly once.
+    let tail = global_sessions_page(&app, "?page[limit]=2&page[offset]=2").await;
+    let tail_rows = tail["data"].as_array().unwrap();
+    assert_eq!(tail_rows.len(), 1);
+    assert_eq!(tail["meta"]["has_more"], false);
+    let mut covered: Vec<String> = page_rows
+        .iter()
+        .chain(tail_rows.iter())
+        .map(|row| row["id"].as_str().unwrap().to_string())
+        .collect();
+    covered.sort();
+    assert_eq!(covered, expected_ids);
+
+    // Both orderings are served by the same bound.
+    let by_creation = global_sessions_page(&app, "?order=created_desc").await;
+    assert_eq!(by_creation["data"].as_array().unwrap().len(), 3);
+    assert_eq!(by_creation["meta"]["has_more"], false);
+}
+
 async fn session_sse_events(response: axum::response::Response) -> Vec<serde_json::Value> {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
