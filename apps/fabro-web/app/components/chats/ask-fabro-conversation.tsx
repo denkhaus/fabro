@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -54,7 +54,18 @@ export default function AskFabroConversation({
     // react-doctor-disable-next-line react-doctor/exhaustive-deps -- keyed mount-once adapter
     [],
   );
-  const transcript = useAskSessionTranscript(initialSessionId);
+  // The transcript cache key carries a per-mount token (work#1507): every
+  // mount of this component is a cache miss, so the fetch below always
+  // answers from the events door — a turn that completed while the
+  // conversation was unreachable (navigated away mid-turn) shows up on the
+  // next visit instead of replaying a stale fold. The component is keyed by
+  // the caller per session, so the token is stable for the instance's
+  // lifetime and the fetch runs exactly once per mount.
+  const mountToken = useId();
+  const transcript = useAskSessionTranscript(
+    initialSessionId,
+    initialSessionId ? mountToken : undefined,
+  );
   const initialMessages: readonly ThreadMessageLike[] =
     initialSessionId && transcript.data ? transcript.data : [];
   const runtime = useLocalRuntime(adapter, { initialMessages });

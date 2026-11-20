@@ -626,10 +626,23 @@ export function useRunAskSessions(runId: string | null) {
   );
 }
 
-/** A session's recorded transcript folded into thread messages. */
-export function useAskSessionTranscript(sessionId: string | null) {
+/** A session's recorded transcript folded into thread messages. The cache
+ * key carries a per-mount token (work#1507): a resumed conversation always
+ * refetches the events door instead of replaying a stale fold — the
+ * assistant-ui runtime below imports `initialMessages` once at construction,
+ * so a refresh landing after the mount could never surface. A stable key
+ * with `revalidateIfStale: false` is exactly what stranded the answer of a
+ * turn that completed while the operator was on another page.
+ * `revalidateOnFocus` stays off on purpose: while the conversation is
+ * mounted, no revalidation may restart the fetch the live thread was built
+ * from — and the gate in `AskFabroConversation` releases on `isLoading`,
+ * which never re-arms for a mount-time revalidation. */
+export function useAskSessionTranscript(
+  sessionId: string | null,
+  mountToken?: string,
+) {
   return useSWR<ThreadMessageLike[]>(
-    sessionId ? queryKeys.ask.transcript(sessionId) : null,
+    sessionId ? queryKeys.ask.transcript(sessionId, mountToken) : null,
     () => loadSessionTranscript(sessionId!),
     { revalidateOnFocus: false, revalidateIfStale: false },
   );
