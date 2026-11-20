@@ -303,10 +303,13 @@ vendor-pins:
 
 # Sync a vendored fork with its branch. `just vendor status` (drift, no
 # clone), `just vendor import petri` (fork tip -> tree + PINS),
-# `just vendor export petri --message '...'` (tree -> fork commit,
-# pushed; the fork stays the history archive and the upstream-PR vehicle).
-vendor *args:
-    nu scripts/vendor-sync.nu {{ args }}
+# `just vendor export petri 'message...'` (tree -> fork commit, pushed;
+# the fork stays the history archive and the upstream-PR vehicle).
+# The message rides an env-exported parameter: parens, #, and spaces
+# arrive verbatim (work#1522 — the raw {{ args }} paste re-parsed
+# through bash and died on them).
+vendor verb name='' message='':
+    if [ -n "{{ message }}" ]; then exec nu scripts/vendor-sync.nu {{ quote(verb) }} {{ quote(name) }} -m {{ quote(message) }}; elif [ -n "{{ name }}" ]; then exec nu scripts/vendor-sync.nu {{ quote(verb) }} {{ quote(name) }}; else exec nu scripts/vendor-sync.nu {{ quote(verb) }}; fi
 
 # Session sprint-ledger rotation (iterate-skill bookkeeping, SESSION-OWNED):
 # iterate-state.json keeps the newest 10 sprints, older ones move to

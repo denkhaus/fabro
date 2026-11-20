@@ -254,9 +254,11 @@ repository carries no fork history.
   drifts from the recorded snapshot or when a patched crate silently
   resolves from a git source again.
 - Sync: `just vendor status` (drift, no clone), `just vendor import <name>`
-  (fork tip → tree + PINS), `just vendor export <name> --message '…'`
-  (tree → one fork commit, pushed). One managed clone per fork lives at
-  `tmp/vendor/<name>` (gitignored, created on demand).
+  (fork tip → tree + PINS), `just vendor export <name> 'message…'`
+  (tree → one fork commit, pushed; the message is the third positional
+  and shell-safe since the ADR-0049 vendor-recipe fix). One managed
+  clone per fork lives at `tmp/vendor/<name>` (gitignored, created on
+  demand).
 - The vendored workspaces are their OWN workspaces
   (`workspace.exclude`): their feature graph and lockfile never unify with
   fabro's. Run their suites with `--locked`; a run that rewrites a vendored
