@@ -3,6 +3,19 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
+# Terminal cleanup (work#1478): when a run of THIS workflow turns terminal
+# and its sandbox is still reachable, the server executes this command in
+# the sandbox (exec facet, `bash -c`, cwd = the run's workspace) before
+# the container is released — the run's cargo target trees and tmp
+# leftovers stop costing their retention-window writable layer. The
+# script is project-owned and whitelisted (ADR-0015): workspace target
+# dirs (root + one level), /opt/target, /tmp/fabro-*; .git, .fabro/
+# (journal included) and .seeds-era paths are never touched. Cleanup
+# errors are server-side warnings only — never a terminal-status change.
+# Every gear workflow declares the same script (see the sibling gear
+# tomls); a workflow without the key gets no cleanup (silent no-op).
+terminal_cleanup = "nu .fabro/scripts/run-cleanup.nu"
+
 # The line's toolchain environment, repo-declared (ADR-0042): the engine
 # builds this image at run initialization FROM THE REPOSITORY (the
 # checkout is the build context; the fabro CLI is cooked inside from the

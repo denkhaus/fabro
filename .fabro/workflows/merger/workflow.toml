@@ -3,6 +3,13 @@ _version = 1
 [workflow]
 graph = "workflow.fabro"
 
+# Terminal cleanup (work#1478): the server sweeps the run's build
+# artifacts in-sandbox when the run turns terminal, before the container
+# is released. The merger's per-merge cargo smokes leave multi-GB target
+# trees that would otherwise cost their whole retention window.
+# Whitelist and mechanics: the script header (.fabro/scripts/run-cleanup.nu).
+terminal_cleanup = "nu .fabro/scripts/run-cleanup.nu"
+
 # The line's toolchain environment, repo-declared (ADR-0042): the engine
 # builds this image at run initialization FROM THE REPOSITORY (the
 # checkout is the build context; the fabro CLI is cooked inside from the
