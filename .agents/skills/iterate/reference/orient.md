@@ -93,6 +93,12 @@ index (`incidents.md`) carries the full stories.
   starts unreflected. The short form carries the same retro mandate as
   the full close: the reflection runs through the `@retro` skill and
   its candidates are jointly decided with the user (Phase 6 item 2).
+  SESSION BOUNDARY (user directive 2026-11-20): this invariant binds
+  the sprint's OWN session only. In a LATER session a missed retro is
+  never run — record the waiver on the sprint's ledger note, set
+  `sprints_reflected := sprints_completed`, and move on; the retro
+  obligation binds the sprint session itself (close the sprint with
+  its retro, not after).
 - Three review gates ride the same cadence shape, each with a marker in
   `iterate-state.json` beside the notes; `null` means never run:
   - CODE-REVIEW (`last_code_review_at_sprint`): due when
