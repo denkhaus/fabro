@@ -56,7 +56,7 @@
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
 use ../../../scripts/lib/terminal_status.nu [is-human-needed-kind]
 use ../../../scripts/lib/work_channel.nu [
-    server, cli, observation-list-argv, work-radius-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
+    server, cli, observation-list-argv, work-radius-argv, work-show-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
 ]
 
 const CALLER = 'adjudicator-fast-path'
@@ -190,6 +190,37 @@ def read-radius [project: string, work_item: string]: nothing -> list<any> {
     } else { [] }
 }
 
+# One work item's updatedAt through the read door (work#1523): the
+# freshness half of the parked re-entry gate. Null when the record
+# carries no updatedAt — the fail-safe direction: an undatable item
+# never counts as fresh. HARD on transport failure.
+def read-item-updated [project: string, work_item: string]: nothing -> any {
+    if ($work_item | is-empty) { return null }
+    let srv = (server $CALLER)
+    let res = (cli $CALLER (work-show-argv $srv $project $work_item))
+    if $res.exit_code != 0 {
+        print -e $"($CALLER): work show failed for ($work_item): ($res.stderr | str trim | str substring 0..240)"
+        exit 1
+    }
+    let parsed = (try { $res.stdout | from json } catch { null })
+    if ($parsed | describe | str starts-with "record") {
+        $parsed | get -o updatedAt | default null
+    } else { null }
+}
+
+# Pure (work#1523): whether the claimed item moved AFTER the run
+# completed — the operator's answer is the expected mover, and a
+# re-park writes run observations, never the item, so the gate cannot
+# feed itself. Either half missing or unparseable reads as NOT fresh
+# (the budget-burn loop is the worse failure mode).
+def item-moved-after-run [item_updated: any, completed_at: any]: nothing -> bool {
+    if ($item_updated == null) or ($completed_at == null) { return false }
+    let moved = (try { $item_updated | into datetime } catch { null })
+    let done = (try { $completed_at | into datetime } catch { null })
+    if ($moved == null) or ($done == null) { return false }
+    $moved > $done
+}
+
 # One verdict write through the door (HARD: a failed mark fails the
 # stage — the engine retries the whole sweep; marks are idempotent at
 # the fold, a re-sweep is gap-safe). The wrapper is the shared policy
@@ -210,6 +241,7 @@ def main [--smoke]: nothing -> nothing {
     mut parked_human = []
     mut parked_landed = []
     mut skipped_parked = []
+    mut parked_waiting = []
     for entry in $entries {
         let run_id = $entry.run.id
         let work_item = ($entry | get -o work_item | default '')
@@ -217,8 +249,22 @@ def main [--smoke]: nothing -> nothing {
         let has_pr = ($entry.run | get -o pull_request | default null) != null
 
         if $entry.verdict == "parked" {
-            # An open operator escalation re-enters every pass: the
-            # agent pass re-engages with the fork's context.
+            # work#1523: the parked re-entry gate. An item-carrying
+            # parked run re-enters ONLY when the item moved after the
+            # run completed — the operator's answer channel is the
+            # expected mover. Re-servicing an unanswered fork every
+            # pass burned the agent node's firing budget (30 re-parks
+            # of one frozen packet) and the tracker quota. A re-park
+            # writes run observations, never the item, so the gate
+            # cannot feed itself. Item-less parked runs stay ungated
+            # (no item channel exists to read).
+            let completed_at = ($entry.run | get -o timestamps | default {} | get -o completed_at | default null)
+            let item_updated = (read-item-updated $project $work_item)
+            let gated = (not ($work_item | is-empty)) and (not (item-moved-after-run $item_updated $completed_at))
+            if $gated {
+                $parked_waiting = ($parked_waiting | append $run_id)
+                continue
+            }
             let observations = (read-observations $run_id)
             $skipped_parked = ($skipped_parked | append $run_id)
             $packets = ($packets | append (packet $run_id $work_item "parked" (distinct-painpoints $observations) (routed-notes $observations) $observations (read-radius $project $work_item | length) $has_pr))
@@ -285,8 +331,8 @@ def main [--smoke]: nothing -> nothing {
     # the board tile — the operator reads what THIS pass did without
     # opening the run, the parked classes named (work#1419: the park is
     # the attention signal). Advisory (work_channel::title-own-run).
-    title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\); \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked"
-    print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass; \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked"
+    title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\); \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked; \(($parked_waiting | length)\) parked waiting"
+    print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass; \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked; \(($parked_waiting | length)\) parked waiting \(work#1523\)"
     let adjudication = {
         packets: $packets,
         marked_enabled: $marked_enabled,
@@ -294,6 +340,7 @@ def main [--smoke]: nothing -> nothing {
         parked_human_needed: $parked_human,
         parked_already_landed: $parked_landed,
         parked_reentered: $skipped_parked,
+        parked_waiting: $parked_waiting,
     }
     let label = (if ($packets | is-empty) { "Queue empty" } else { "Runs pending adjudication" })
     emit-envelope $label 'adjudication' $adjudication $smoke
