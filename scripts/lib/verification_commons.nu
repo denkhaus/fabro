@@ -178,6 +178,18 @@ export def is-test-file [p: string]: nothing -> bool {
     ($p | str contains '/tests/') or ($p | str ends-with '_tests.rs') or ($p | str ends-with '/tests.rs')
 }
 
+# The touched-surface enumeration (work#1482): git diff covers tracked
+# files only, so a brand-new file was invisible until staged — its crate
+# dropped out of the derived verification lane and the new tests never
+# ran. The untracked set (gitignore-respecting) joins the diff; the
+# union is the touched surface. Over-detection is fail-safe: it widens
+# verification, never narrows it.
+export def diff-paths [base: string]: nothing -> list<string> {
+    let tracked = (git diff --name-only $base | lines | compact)
+    let untracked = (git ls-files --others --exclude-standard | lines | compact)
+    $tracked | append $untracked | uniq
+}
+
 # fabro-2f70: a diff touching an inline `#[cfg(test)]` module (the repo's
 # dominant test convention) also marks the file test-touched — previously
 # only test-path filenames counted, so inline-module edits silently
@@ -201,6 +213,15 @@ export def first-cfg-line [content: list<string>]: nothing -> any {
 }
 
 export def is-inline-test-diff [base: string, p: string]: nothing -> bool {
+    let old_blob = (do { git show $"($base):($p)" } | complete)
+    # NEW-FILE widening (work#1482): git diff is empty for untracked
+    # paths, so a brand-new source file cannot prove its inline-test
+    # content through the diff. A path that exists now but has no base
+    # blob is new; its own cfg(test) content decides (fail-safe:
+    # over-detection widens to the full crate suite, never narrows).
+    if ($old_blob.exit_code != 0) and ($p | path exists) {
+        return ((open --raw $p | lines) | any {|l| $l | str contains '#[cfg(test)]'})
+    }
     let diff = (git diff $base -- $p)
     if ($diff | is-empty) { return false }
     let lines = ($diff | lines)
@@ -210,7 +231,6 @@ export def is-inline-test-diff [base: string, p: string]: nothing -> bool {
     if ($changed | any {|l| $l | str contains 'cfg(test)'}) { return true }
     if (not ($p | path exists)) { return false }
     let new_cfg = (first-cfg-line (open --raw $p | lines))
-    let old_blob = (do { git show $"($base):($p)" } | complete)
     let old_cfg = (if $old_blob.exit_code == 0 {
         first-cfg-line ($old_blob.stdout | lines)
     } else { null })

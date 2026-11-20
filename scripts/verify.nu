@@ -91,7 +91,9 @@ def output-tail [text: string, bound: int] {
 def touched [] {
     let run = (run-base '' --origin-branch --checkpoint-pick 'latest')
     let base = $run.base
-    let paths = (git diff --name-only $base | lines | compact)
+    # work#1482: the module's enumeration joins untracked files — the
+    # bare git diff missed brand-new files, and their crates never ran.
+    let paths = (diff-paths $base)
     let crate_paths = ($paths | where {|p| $p | str starts-with 'lib/' })
     let crates = (crates-from-paths $crate_paths)
     let test_files = ($crate_paths
