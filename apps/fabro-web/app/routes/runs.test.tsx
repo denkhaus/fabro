@@ -31,9 +31,11 @@ function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
           ? { kind: "pending" as const, reason: "approval_required" as const }
           : column === "runnable"
             ? { kind: "runnable" as const }
-            : column === "initializing"
-              ? { kind: "starting" as const }
-              : { kind: "running" as const };
+            : column === "human_needed"
+              ? { kind: "human_needed" as const }
+              : column === "initializing"
+                ? { kind: "starting" as const }
+                : { kind: "running" as const };
   return {
     id,
     goal:             `Run ${id}`,
@@ -179,6 +181,52 @@ describe("runs route board mapping", () => {
       "failed",
       "archived",
     ]);
+  });
+
+  test("an archived needs-human park stays in the Needs human column (work#1508)", () => {
+    // The fork.43 incident: the operator looked under Needs human and
+    // found nothing while `fabro ps -a` showed the park plainly.
+    const archivedPark = boardRun("archived-park", "human_needed");
+    archivedPark.lifecycle.archived = true;
+    archivedPark.lifecycle.archived_at = "2026-11-19T00:52:27Z";
+
+    // Without the archived column (the board's default), the park must
+    // still surface under Needs human; the plain archived run drops.
+    const columns = buildBoardColumns(
+      { data: [archivedPark, boardRun("archived-run", "archived")] },
+      false,
+    );
+    expect(
+      columns.find((column) => column.id === "human_needed")?.items.map((item) => item.id),
+    ).toEqual(["archived-park"]);
+    expect(columns.some((column) => column.id === "archived")).toBe(false);
+
+    // With the archived column open, the park stays a Needs-human
+    // citizen — only the plain archived run lands there.
+    const withArchived = buildBoardColumns(
+      { data: [archivedPark, boardRun("archived-run", "archived")] },
+      true,
+    );
+    expect(
+      withArchived.find((column) => column.id === "human_needed")?.items.map((item) => item.id),
+    ).toEqual(["archived-park"]);
+    expect(
+      withArchived.find((column) => column.id === "archived")?.items.map((item) => item.id),
+    ).toEqual(["archived-run"]);
+  });
+
+  test("an archived park keeps its archived lifecycle mapping (work#1508)", () => {
+    // The overlay stays on the item: the unarchive affordance keys on
+    // lifecycleStatus === "archived", and the card's label stays honest
+    // ("Archived") while the column buckets it under Needs human.
+    const archivedPark = boardRun("archived-park", "human_needed");
+    archivedPark.lifecycle.archived = true;
+    archivedPark.lifecycle.archived_at = "2026-11-19T00:52:27Z";
+
+    const item = mapRunListItem(archivedPark);
+    expect(item.lifecycleStatus).toBe("archived");
+    expect(item.lifecycleStatusLabel).toBe("Archived");
+    expect(item.column).toBe("human_needed");
   });
 
   test("refreshes for the lifecycle, the blocking question and the answer", () => {

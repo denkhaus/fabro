@@ -1324,6 +1324,13 @@ paths:
         hidden by default; pass `include_archived=true` (or `status=archived`)
         to include them. Runs in the `removing` bucket are hidden unless
         explicitly requested via `status=removing`.
+
+        Needs-human parks are the exception (ADR-0045: the waiting state is
+        first-class until the operator dispositions it): a `human_needed` run
+        is returned regardless of its archive state — in the default listing,
+        in a `status=human_needed` selection, and under
+        `include_archived=true`. Every other archived status stays hidden by
+        the overlay.
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -8737,7 +8744,9 @@ components:
         Filter runs by status bucket. Repeatable. When omitted, runs in the
         `removing` bucket are hidden; pass `status=removing` to include them.
         Archived runs are hidden unless `include_archived=true` or
-        `status=archived` is passed.
+        `status=archived` is passed. Needs-human parks answer
+        `status=human_needed` regardless of archive state (ADR-0045: the
+        waiting state is first-class until dispositioned).
       schema:
         type: array
         items:
