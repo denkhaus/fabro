@@ -507,59 +507,6 @@ pub(crate) struct RunSandboxSeedsSource {
 }
 
 impl RunSandboxSeedsSource {
-    /// Map the tracker's compact JSON-per-line format (ADR-0023) to tool
-    /// rows. Lines without an `id` are skipped, never fatal — the format
-    /// tolerates additive fields; a non-JSON line IS an error (a corrupt
-    /// tracker must surface, not silently shrink the search space).
-    pub(crate) fn parse_tracker_rows(text: &str) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
-        let mut rows = Vec::new();
-        for line in text.lines() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let record: serde_json::Value = serde_json::from_str(line)
-                .map_err(|err| anyhow::anyhow!("tracker line is not valid JSON: {err}"))?;
-            let Some(id) = record.get("id").and_then(|v| v.as_str()) else {
-                continue;
-            };
-            rows.push(fabro_tool::SeedsRow {
-                id:        id.to_string(),
-                title:     record
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                status:    record
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                seed_type: record
-                    .get("type")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                assignee:  record
-                    .get("assignee")
-                    .filter(|v| !v.is_null())
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string),
-                labels:    record
-                    .get("labels")
-                    .and_then(|v| v.as_array())
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|item| item.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            });
-        }
-        Ok(rows)
-    }
-}
-
-impl RunSandboxSeedsSource {
     /// The tracker file's text; an absent file is the empty tracker
     /// (foreign repo), never an error.
     pub(crate) async fn tracker_text(&self) -> anyhow::Result<String> {
@@ -567,14 +514,6 @@ impl RunSandboxSeedsSource {
             return Ok(String::new());
         };
         Ok(String::from_utf8(bytes)?)
-    }
-}
-
-#[async_trait::async_trait]
-impl fabro_tool::RunSeedsSource for RunSandboxSeedsSource {
-    async fn rows(&self) -> anyhow::Result<Vec<fabro_tool::SeedsRow>> {
-        let text = self.tracker_text().await?;
-        Self::parse_tracker_rows(&text)
     }
 }
 

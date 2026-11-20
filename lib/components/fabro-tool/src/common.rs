@@ -51,18 +51,6 @@ impl std::error::Error for ToolError {}
 
 pub type ToolResult<T> = Result<T, ToolError>;
 
-/// The tracker of the run context a tool serves (fabro-d6de rework, user
-/// decision 2026-10-19): the current `.seeds/issues.jsonl` of the run's
-/// own sandbox workspace — the same checkout the agent reads files from.
-/// Never a server-side mirror of a fixed repository: seeds always come
-/// from the repo the session works on.
-#[async_trait]
-pub trait RunSeedsSource: Send + Sync {
-    /// Every tracker row of the run workspace's tracker, unfiltered; an
-    /// empty result is a valid trackerless workspace (foreign repo).
-    async fn rows(&self) -> anyhow::Result<Vec<crate::SeedsRow>>;
-}
-
 #[async_trait]
 pub trait FabroToolBackend: Send + Sync {
     async fn create_workflow_version(
@@ -400,21 +388,6 @@ pub trait FabroToolBackend: Send + Sync {
         Err(pair_tool_unavailable_error())
     }
 
-    /// The tracker rows the status/assignee/label filters select
-    /// (fabro_seeds_search, fabro-d6de): served from the run context's own
-    /// tracker (`RunSeedsSource`) — never a server-side mirror (user
-    /// decision 2026-10-19). The keyword narrowing and limit live in the
-    /// tool. Only backends bound to a run tracker serve it; the default
-    /// refuses with a teaching error.
-    async fn list_seed_rows(
-        &self,
-        _status: Option<&str>,
-        _assignee: Option<&str>,
-        _label: Option<&str>,
-    ) -> anyhow::Result<Vec<crate::SeedsRow>> {
-        Err(ToolError::message(format!("{FABRO_SEEDS_SEARCH_TOOL_NAME} is not available")).into())
-    }
-
     /// Open an Ask-Fabro session on the target run and return its id.
     async fn create_ask_session(&self, _run_id: &RunId, _title: &str) -> anyhow::Result<String> {
         Err(ask_tool_unavailable_error())
@@ -561,7 +534,6 @@ pub const FABRO_OBSERVATION_RECORD_TOOL_NAME: &str = "fabro_observation_record";
 pub const FABRO_RUN_PAIR_TOOL_NAME: &str = "fabro_run_pair";
 pub const FABRO_ASK_TOOL_NAME: &str = "fabro_ask";
 pub const FABRO_BLOB_TOOL_NAME: &str = "fabro_blob";
-pub const FABRO_SEEDS_SEARCH_TOOL_NAME: &str = "fabro_seeds_search";
 pub const FABRO_WORK_NEXT_TOOL_NAME: &str = "fabro_work_next";
 pub const FABRO_WORK_SHOW_TOOL_NAME: &str = "fabro_work_show";
 pub const FABRO_WORK_LIST_TOOL_NAME: &str = "fabro_work_list";
@@ -580,10 +552,6 @@ pub const FABRO_OBSERVATION_FEED_TOOL_NAME: &str = "fabro_observation_feed";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
-        tool_definition::<crate::FabroSeedsSearchParams>(
-            FABRO_SEEDS_SEARCH_TOOL_NAME,
-            "Search the project's seeds tracker read-only: list and filter the tracker's seeds by keyword terms (AND over id, title, labels), status, assignee, and label. Use it to check for existing seeds before recommending a new filing.",
-        ),
         tool_definition::<crate::FabroWorkflowVersionCreateParams>(
             FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
             "Register supplied workflow file contents and all local dependencies as a reusable immutable workflow version ID. Obtain files with shell/read tools first; this does not create or start a run.",
@@ -835,7 +803,6 @@ mod tests {
     #[test]
     fn shared_tool_definitions_include_run_management_catalog() {
         assert_eq!(shared_tool_names(), vec![
-            FABRO_SEEDS_SEARCH_TOOL_NAME,
             FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME,
             FABRO_RUN_CREATE_TOOL_NAME,
             FABRO_RUN_SEARCH_TOOL_NAME,

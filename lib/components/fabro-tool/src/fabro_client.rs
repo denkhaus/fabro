@@ -10,16 +10,13 @@ use fabro_types::{
     WorkItemComment,
 };
 
-use crate::{
-    FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common, seeds,
-};
+use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common};
 
 #[derive(Clone)]
 pub struct ClientBackend {
     client:                    Arc<::fabro_client::Client>,
     run_scope:                 Option<RunId>,
     workflow_version_packager: Option<Arc<dyn crate::WorkflowVersionPackager>>,
-    run_seeds:                 Option<Arc<dyn crate::RunSeedsSource>>,
 }
 
 impl ClientBackend {
@@ -29,18 +26,7 @@ impl ClientBackend {
             client,
             run_scope: None,
             workflow_version_packager: None,
-            run_seeds: None,
         }
-    }
-
-    /// Bind the tracker reads to the run context's own workspace
-    /// (fabro-d6de rework): `fabro_seeds_search` serves from this source —
-    /// the current tracker of the repo the session works on — instead of a
-    /// server-side seeds listing.
-    #[must_use]
-    pub fn with_run_seeds(mut self, source: Arc<dyn crate::RunSeedsSource>) -> Self {
-        self.run_seeds = Some(source);
-        self
     }
 
     #[must_use]
@@ -631,27 +617,6 @@ impl FabroToolBackend for ClientBackend {
         self.ensure_run_scope(run_id)?;
         let bytes = self.client.read_run_blob(run_id, hash).await?;
         Ok(bytes.map(|bytes| bytes.to_vec()))
-    }
-
-    async fn list_seed_rows(
-        &self,
-        status: Option<&str>,
-        assignee: Option<&str>,
-        label: Option<&str>,
-    ) -> anyhow::Result<Vec<crate::SeedsRow>> {
-        // The run context's own tracker (fabro-d6de rework, user decision
-        // 2026-10-19): rows come from the bound RunSeedsSource and the
-        // tracker-level filters apply locally. No server-side listing —
-        // the tracker always follows the repo the session works on.
-        let Some(source) = self.run_seeds.as_ref() else {
-            return Err(anyhow::anyhow!(
-                "fabro_seeds_search is not available: this session is not bound to a run \
-                 workspace tracker"
-            ));
-        };
-        let rows = source.rows().await?;
-        let rows = seeds::apply_tracker_filters(rows, status, assignee, label);
-        Ok(rows)
     }
 
     async fn create_ask_session(&self, run_id: &RunId, title: &str) -> anyhow::Result<String> {
