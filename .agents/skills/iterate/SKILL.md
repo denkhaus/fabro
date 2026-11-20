@@ -310,6 +310,15 @@ reality.
    (`~/.agents/skills/retro/SKILL.md`), whose category framework
    (navigation, automated checks, coding standards, AGENTS.md, tool
    economy, no-ops, information access) IS the reflection surface.
+   THE RETRO RUNS IN THE SPRINT'S OWN SESSION, AT ITS CLOSE — a retro
+   that did not run there is NEVER carried into a later session (user
+   directive 2026-11-20: a new session has nothing to improve — it did
+   not live the sprint). A later session finding
+   `sprints_reflected < sprints_completed` does NOT run the missed
+   retro: it records the waiver in the ledger (a short note on the
+   sprint's record), sets `sprints_reflected := sprints_completed`,
+   and moves on. The obligation binds the sprint session itself: close
+   the sprint with its retro, not after.
    The retro presents its candidates in order of severity — and the
    candidates then go through a JOINT decision with the user: which
    points get implemented is decided TOGETHER, nothing from the retro
