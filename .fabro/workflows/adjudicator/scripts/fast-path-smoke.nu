@@ -30,8 +30,13 @@ let state = (mktemp -t adjudicator-fast-path.XXXXXX.json)
 write-shim-state $state {
     items: [
         {itemKey: "denkhaus/work#1", title: "Make the frobnicator queue bounded", body: "the item body", state: "open", labels: []}
-        {itemKey: "denkhaus/work#2", title: "Clean the residual cache key", body: "the item body", state: "open", labels: []}
+        {itemKey: "denkhaus/work#2", title: "Clean the residual cache key", body: "the item body", state: "open", labels: [], updatedAt: "2026-11-20T11:00:00Z"}
         {itemKey: "denkhaus/work#3", title: "The radius blocker", body: "the item body", state: "open", labels: []}
+        # work#1523: the gate's fixture halves — item #6 has not moved
+        # since its run completed (stale: no packet), item #7 moved
+        # after (fresh: the operator's answer, re-enters).
+        {itemKey: "denkhaus/work#6", title: "The stale fork", body: "the item body", state: "open", labels: [], updatedAt: "2026-11-20T09:00:00Z"}
+        {itemKey: "denkhaus/work#7", title: "The freshly answered fork", body: "the item body", state: "open", labels: [], updatedAt: "2026-11-20T10:30:00Z"}
     ],
     claims: [],
     nextKey: 9001,
@@ -40,7 +45,14 @@ write-shim-state $state {
         {runId: "01TRIVIALPR00000000000000000", workflowSlug: "develop", status: "succeeded", title: "clean trivial run", pullRequest: {owner: "denkhaus", repo: "fabro", number: 501}, claimedItem: "denkhaus/work#1", project: "fabro"}
         {runId: "01TRIVIALNOPR0000000000000000", workflowSlug: "develop", status: "failed", title: "failed without a pull request", claimedItem: null, project: null}
         {runId: "01PAINPoinTRUN000000000000000", workflowSlug: "develop", status: "succeeded", title: "run with painpoints", pullRequest: {owner: "denkhaus", repo: "fabro", number: 502}, claimedItem: "denkhaus/work#2", project: "fabro-test"}
-        {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro"}
+        {runId: "01PARKEDRUN00000000000000000", workflowSlug: "develop", status: "succeeded", title: "the parked escalation", pullRequest: null, claimedItem: "denkhaus/work#2", project: "fabro", completedAt: "2026-11-20T10:00:00Z"}
+        # work#1523: the comment gate — two parked re-entries with
+        # claimed items. The STALE one's item has not moved since the
+        # run completed (updatedAt before completed_at): no packet, the
+        # run waits. The FRESH one's item moved after completion (the
+        # operator's answer landed): it re-enters.
+        {runId: "01PARKEDSTALE00000000000000", workflowSlug: "develop", status: "succeeded", title: "the stale parked re-entry", pullRequest: null, claimedItem: "denkhaus/work#6", project: "fabro", completedAt: "2026-11-20T10:00:00Z"}
+        {runId: "01PARKEDFRESH00000000000000", workflowSlug: "develop", status: "succeeded", title: "the fresh parked re-entry", pullRequest: null, claimedItem: "denkhaus/work#7", project: "fabro", completedAt: "2026-11-20T10:00:00Z"}
         {runId: "01HUMANNEEDED00000000000000A", workflowSlug: "develop", status: "human_needed", title: "the deadlock ask", pullRequest: {owner: "denkhaus", repo: "fabro", number: 503}, claimedItem: "denkhaus/work#3", project: "fabro"}
         {runId: "01DRAINEDRUN0000000000000000", workflowSlug: "develop", status: "succeeded", title: "the drained lane pass", pullRequest: null, claimedItem: null, project: null}
         # work#1419: the backlog shape — the planner's already-landed
@@ -55,6 +67,8 @@ write-shim-state $state {
     ],
     marks: [
         {runId: "01PARKEDRUN00000000000000000", field: "merge", verdict: "parked", byRun: "01PREVPASS0000000000000000"}
+        {runId: "01PARKEDSTALE00000000000000", field: "merge", verdict: "parked", byRun: "01PREVPASS0000000000000000"}
+        {runId: "01PARKEDFRESH00000000000000", field: "merge", verdict: "parked", byRun: "01PREVPASS0000000000000000"}
     ],
     observations: [
         # 01TRIVIALPR: one NOTE (visible patch) — notes never trigger.
@@ -71,6 +85,9 @@ write-shim-state $state {
         {runId: "01PAINPoinTRUN000000000000000", seq: 3, category: "painpoint", text: "fact=dockerfile-touch paths=.fabro/Dockerfile.toolchain"}
         # 01PARKED: the prior pass's fork context rides observations.
         {runId: "01PARKEDRUN00000000000000000", seq: 1, category: "note", text: "parked-fork: should the residual file as unfinished or exempt?"}
+        # work#1523: the gated re-entries carry their fork questions too.
+        {runId: "01PARKEDSTALE00000000000000", seq: 1, category: "note", text: "parked-fork: the stale question still stands unanswered"}
+        {runId: "01PARKEDFRESH00000000000000", seq: 1, category: "note", text: "parked-fork: the operator answered on the item"}
         # 01DRAINED (#1144/#1146): the start stage's routed marker — a
         # NOTE whose machine head's fact names the class; the fast path
         # routes it to the agent pass without any painpoint existing.
@@ -129,12 +146,41 @@ if ($adjudication.parked_human_needed | default []) != ["01HUMANNEEDED0000000000
     fail $"the envelope names the human-needed parking: ($adjudication | to json -r)"
 }
 
-# The packets: painpoint run, parked run, routed-note run — never the
-# trivial pair, never the smoke workflow's run, never the live run.
+# The packets: painpoint run, parked run (fresh item), routed-note run,
+# and the freshly-answered parked re-entry — never the trivial pair,
+# never the stale gated re-entry, never the smoke workflow's run, never
+# the live run.
 let packets = ($adjudication | get -o packets | default [])
 let packet_ids = ($packets | get run_id)
-if ($packets | length) != 3 {
-    fail $"exactly the painpoint, parked, and routed-note runs become packets: ($packet_ids | to json -r)"
+if ($packets | length) != 4 {
+    fail $"exactly the painpoint, parked, routed-note, and fresh-re-entry runs become packets: ($packet_ids | to json -r)"
+}
+
+# --- work#1523: the parked re-entry gate ---------------------------------
+# A parked run with a claimed item re-enters ONLY when the item moved
+# after the run completed (the operator's answer is the expected
+# mover). A re-park writes run observations, never the item, so the
+# gate cannot feed itself — the loop starves at the source.
+if ($adjudication.parked_waiting | default []) != ["01PARKEDSTALE00000000000000"] {
+    fail $"the stale re-entry must wait, not packet: ($adjudication | to json -r)"
+}
+if ("01PARKEDSTALE00000000000000" in $packet_ids) {
+    fail "the stale parked re-entry must never packet without fresh item movement (work#1523)"
+}
+let fresh_packet = ($packets | where {|p| $p.run_id == "01PARKEDFRESH00000000000000"} | get -o 0 | default null)
+if $fresh_packet == null {
+    fail "the freshly answered parked re-entry must re-enter for re-adjudication"
+}
+# The gate read the claimed item of every parked candidate, with the
+# entry's own project (work#1113 extends to the show read).
+let show_log = (open --raw $state | from json | get -o log | default [] | where {|l|
+    (($l.argv | get -o 0 | default '') == 'work') and (($l.argv | get -o 1 | default '') == 'show')
+})
+if ($show_log | length) != 3 {
+    fail $"every item-carrying parked candidate gets exactly one show read: ($show_log | to json -r)"
+}
+if (($show_log | where {|l| $l.flags?.project? != "fabro"}) | length) != 0 {
+    fail $"the show read must carry the entry's project: ($show_log | to json -r)"
 }
 
 # work#1419: the already-landed completions park DIRECTLY, LLM-free —
@@ -319,6 +365,7 @@ do {
         [observation --server $dead list --run-id "01M5844J1FDD" --json]
         [work --server $dead radius --project fabro "denkhaus/work#1" --json]
         [work --server $dead comments --project fabro "denkhaus/work#1" --json]
+        [work --server $dead show --project fabro "denkhaus/work#1" --json]
     ]
 }
 
@@ -367,7 +414,7 @@ expect-note [] null
 
 rm -f $state $empty_state
 end-fail-gate
-print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, already-landed parks with the claim pinned and the note verbatim (work#1419 fold), fact-head dedupe, filter, routing envelope"
+print "adjudicator-fast-path-smoke: ok — trivial marks split by pull request, packets for painpoint/radius/parked runs, the parked re-entry gate (fresh item movement re-enters, stale waits, work#1523), already-landed parks with the claim pinned and the note verbatim (work#1419 fold), fact-head dedupe, filter, routing envelope"
 
 # Sourcing fast-path.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

@@ -181,6 +181,12 @@ export def work-comments-argv [srv: string, project: string, work_item: string]:
     ['work' '--server' $srv 'comments' '--project' $project $work_item '--json']
 }
 
+# Pure: the argv for one work-show read (the item record — the
+# parked-re-entry gate's `updatedAt` freshness half, work#1523).
+export def work-show-argv [srv: string, project: string, work_item: string]: nothing -> list<string> {
+    ['work' '--server' $srv 'show' '--project' $project $work_item '--json']
+}
+
 # Pure: the argv for one work-close write (the closing pass's door,
 # ADR-0039 stage E): the adjudicator closes the merged run's item; the
 # claim lands server-side (merge-complete).
