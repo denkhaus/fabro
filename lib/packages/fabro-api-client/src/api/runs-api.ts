@@ -1109,13 +1109,13 @@ export const RunsApiAxiosParamCreator = function (configuration?: Configuration)
             };
         },
         /**
-         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
+         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.  Needs-human parks are the exception (ADR-0045: the waiting state is first-class until the operator dispositions it): a `human_needed` run is returned regardless of its archive state — in the default listing, in a `status=human_needed` selection, and under `include_archived=true`. Every other archived status stays hidden by the overlay.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
-         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
+         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed. Needs-human parks answer &#x60;status&#x3D;human_needed&#x60; regardless of archive state (ADR-0045: the waiting state is first-class until dispositioned).
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
@@ -2564,13 +2564,13 @@ export const RunsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
-         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
+         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.  Needs-human parks are the exception (ADR-0045: the waiting state is first-class until the operator dispositions it): a `human_needed` run is returned regardless of its archive state — in the default listing, in a `status=human_needed` selection, and under `include_archived=true`. Every other archived status stays hidden by the overlay.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
-         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
+         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed. Needs-human parks answer &#x60;status&#x3D;human_needed&#x60; regardless of archive state (ADR-0045: the waiting state is first-class until dispositioned).
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
@@ -3170,13 +3170,13 @@ export const RunsApiFactory = function (configuration?: Configuration, basePath?
             return localVarFp.listRunSeeds(id, pageLimit, pageOffset, status, type, assignee, label, options).then((request) => request(axios, basePath));
         },
         /**
-         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
+         * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.  Needs-human parks are the exception (ADR-0045: the waiting state is first-class until the operator dispositions it): a `human_needed` run is returned regardless of its archive state — in the default listing, in a `status=human_needed` selection, and under `include_archived=true`. Every other archived status stays hidden by the overlay.
          * @summary List Runs
          * @param {number} [pageLimit] Maximum number of items to return per page.
          * @param {number} [pageOffset] Number of items to skip before returning results.
          * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
          * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
-         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
+         * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed. Needs-human parks answer &#x60;status&#x3D;human_needed&#x60; regardless of archive state (ADR-0045: the waiting state is first-class until dispositioned).
          * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
          * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
          * @param {*} [options] Override http request option.
@@ -3718,13 +3718,13 @@ export class RunsApi extends BaseAPI {
     }
 
     /**
-     * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.
+     * Returns durable run summaries from the backing store, including runs persisted before the current server boot. Supports per-status filtering and sorting for both list and kanban renderings. Archived runs are hidden by default; pass `include_archived=true` (or `status=archived`) to include them. Runs in the `removing` bucket are hidden unless explicitly requested via `status=removing`.  Needs-human parks are the exception (ADR-0045: the waiting state is first-class until the operator dispositions it): a `human_needed` run is returned regardless of its archive state — in the default listing, in a `status=human_needed` selection, and under `include_archived=true`. Every other archived status stays hidden by the overlay.
      * @summary List Runs
      * @param {number} [pageLimit] Maximum number of items to return per page.
      * @param {number} [pageOffset] Number of items to skip before returning results.
      * @param {boolean} [includeArchived] Whether to include archived runs in the response. Defaults to &#x60;false&#x60;.
      * @param {string} [parentId] Return only runs currently linked to this orchestration parent.
-     * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed.
+     * @param {Array<BoardColumn>} [status] Filter runs by status bucket. Repeatable. When omitted, runs in the &#x60;removing&#x60; bucket are hidden; pass &#x60;status&#x3D;removing&#x60; to include them. Archived runs are hidden unless &#x60;include_archived&#x3D;true&#x60; or &#x60;status&#x3D;archived&#x60; is passed. Needs-human parks answer &#x60;status&#x3D;human_needed&#x60; regardless of archive state (ADR-0045: the waiting state is first-class until dispositioned).
      * @param {ListRunsSortEnum} [sort] Field to sort by. Defaults to &#x60;created_at&#x60;.
      * @param {ListRunsDirectionEnum} [direction] Sort direction. Defaults to &#x60;desc&#x60;.
      * @param {*} [options] Override http request option.

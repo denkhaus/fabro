@@ -190,8 +190,13 @@ export function columnForStatus(status: ApiRunStatus | null | undefined): BoardC
 }
 
 export function columnForRun(run: Run): BoardColumn | null {
-  if (run.lifecycle.archived) return "archived";
-  return columnForStatus(run.lifecycle.status);
+  const column = columnForStatus(run.lifecycle.status);
+  // A needs-human park stays a Needs-human column citizen under the
+  // archival overlay (ADR-0045, work#1508): the archive is bookkeeping,
+  // the park still awaits the operator's disposition. Every other
+  // archived status keeps the archived column.
+  if (run.lifecycle.archived && column !== "human_needed") return "archived";
+  return column;
 }
 
 export function toRunWithStatus(run: Run): RunWithStatus {

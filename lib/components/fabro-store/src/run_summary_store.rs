@@ -852,13 +852,22 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
     match &query.visibility {
         RunSummaryVisibility::All => {}
         RunSummaryVisibility::Default { include_archived } => {
+            // A needs-human park is an open operator attention item
+            // (ADR-0045: the waiting state is first-class — the
+            // operator's disposition, not the archive, ends it), so the
+            // default listing carries parks of ANY archive state
+            // (work#1508: an archived park was invisible in the UI while
+            // `fabro ps -a` showed it plainly).
+            let parks = format!("status = '{}'", RunStatusKind::HumanNeeded);
             let not_removing = format!("status <> '{}'", RunStatusKind::Removing);
             if *include_archived {
                 builder.push(format!(
                     " AND (archived_at_ms IS NOT NULL OR {not_removing})"
                 ));
             } else {
-                builder.push(format!(" AND archived_at_ms IS NULL AND {not_removing}"));
+                builder.push(format!(
+                    " AND ((archived_at_ms IS NULL AND {not_removing}) OR {parks})"
+                ));
             }
         }
         RunSummaryVisibility::Selected { statuses, archived } => {
@@ -872,7 +881,18 @@ fn push_filters(builder: &mut QueryBuilder<Sqlite>, query: &RunSummaryListQuery)
                 if has_condition {
                     builder.push(" OR ");
                 }
-                builder.push("(archived_at_ms IS NULL AND status IN (");
+                // The Needs human column answers parks of any archive
+                // state — the waiting state is the column's subject
+                // (ADR-0045, work#1508); every other status keeps the
+                // overlay guard.
+                if statuses.contains(&RunStatusKind::HumanNeeded) {
+                    builder.push(format!(
+                        "((archived_at_ms IS NULL OR status = '{}') AND status IN (",
+                        RunStatusKind::HumanNeeded
+                    ));
+                } else {
+                    builder.push("(archived_at_ms IS NULL AND status IN (");
+                }
                 let mut separated = builder.separated(", ");
                 for status in statuses {
                     separated.push_bind(status.to_string());
@@ -1696,6 +1716,101 @@ mod tests {
             .unwrap();
         assert_eq!(archived.data.len(), 1);
         assert_eq!(archived.data[0].id, archived_id);
+    }
+
+    /// Parks of any archive state stay first-class board citizens
+    /// (ADR-0045, work#1508): the default listing and the Needs human
+    /// column expose them; the archive overlay keeps hiding everything
+    /// else.
+    #[tokio::test]
+    async fn the_default_listing_and_the_needs_human_column_expose_archived_parks() {
+        async fn listed(
+            store: &RunSummaryStore,
+            visibility: RunSummaryVisibility,
+            now: DateTime<Utc>,
+        ) -> Vec<RunId> {
+            store
+                .list(
+                    &RunSummaryListQuery {
+                        visibility,
+                        ..RunSummaryListQuery::default()
+                    },
+                    now,
+                )
+                .await
+                .unwrap()
+                .data
+                .into_iter()
+                .map(|run| run.id)
+                .collect()
+        }
+
+        let (_directory, store) = store().await;
+        let created_at = dt("2026-07-11T12:00:00Z");
+        let base = created_at.timestamp_millis().cast_unsigned();
+        let live_park_id = run_id(base, 1);
+        let archived_park_id = run_id(base + 1, 2);
+        let archived_plain_id = run_id(base + 2, 3);
+
+        let mut live_park = projection(live_park_id, "live park", created_at);
+        live_park.status = RunStatus::HumanNeeded;
+        let mut archived_park = projection(archived_park_id, "archived park", created_at);
+        archived_park.status = RunStatus::HumanNeeded;
+        archived_park.archived_at = Some(created_at);
+        let mut archived_plain = projection(archived_plain_id, "archived plain", created_at);
+        archived_plain.archived_at = Some(created_at);
+        for projected in [live_park, archived_park, archived_plain] {
+            write(&store, &projected).await;
+        }
+
+        // The default listing carries parks of any archive state and
+        // still hides the plain archived run (newest first).
+        let default_ids = listed(
+            &store,
+            RunSummaryVisibility::Default {
+                include_archived: false,
+            },
+            created_at,
+        )
+        .await;
+        assert_eq!(default_ids, vec![archived_park_id, live_park_id]);
+
+        // The Needs human column answers parks of any archive state.
+        let column_ids = listed(
+            &store,
+            RunSummaryVisibility::Selected {
+                statuses: vec![RunStatusKind::HumanNeeded],
+                archived: false,
+            },
+            created_at,
+        )
+        .await;
+        assert_eq!(column_ids, vec![archived_park_id, live_park_id]);
+
+        // A non-park status selection keeps the overlay guard.
+        let succeeded_ids = listed(
+            &store,
+            RunSummaryVisibility::Selected {
+                statuses: vec![RunStatusKind::Succeeded],
+                archived: false,
+            },
+            created_at,
+        )
+        .await;
+        assert!(succeeded_ids.is_empty());
+
+        // The archive-only selection still answers every archived row,
+        // parks included.
+        let archived_ids = listed(
+            &store,
+            RunSummaryVisibility::Selected {
+                statuses: Vec::new(),
+                archived: true,
+            },
+            created_at,
+        )
+        .await;
+        assert_eq!(archived_ids, vec![archived_plain_id, archived_park_id]);
     }
 
     #[tokio::test]

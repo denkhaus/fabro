@@ -1,6 +1,7 @@
 mod archive;
 mod dry_run;
 mod lifecycle;
+mod parked;
 mod petri;
 mod petri_stream;
 mod run_completion;
