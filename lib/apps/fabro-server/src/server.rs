@@ -194,6 +194,8 @@ pub(crate) mod fork_system_stats;
 #[cfg(test)]
 mod fork_system_stats_tests;
 #[cfg(test)]
+mod fork_terminal_cleanup_tests;
+#[cfg(test)]
 mod fork_window_gate_twin_tests;
 pub(crate) mod fork_work_registry;
 #[cfg(test)]
