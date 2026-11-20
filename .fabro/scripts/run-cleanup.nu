@@ -15,9 +15,14 @@
 #      single target dir, so the vendored workspaces are covered by it.
 #   2. `/opt/target` — the toolchain image's prebuilt target dir — only
 #      when present and removable.
-#   3. `/tmp/fabro-*` — the line's scratch leftovers.
-#
-# What is NEVER touched, by construction:
+#   3. `/tmp` — the run's scratch space, EVERY non-hidden entry: rustc
+#      and linker temp files, cargo fetch scratch, nextest temp, tool
+#      leftovers, the line's own /tmp/fabro-* included. The run is
+#      terminal (nothing reads its scratch anymore) and the container is
+#      released right after; hidden entries — the Unix socket dirs
+#      (.X11-unix, .ICE-unix and friends) — survive by the enumeration
+#      rule, which keeps the class deterministic.
+#   What is NEVER touched, by construction:
 #   - `.git` and every dot-entry: the enumeration skips hidden entries,
 #     and only directories literally named `target` are candidates.
 #   - `.fabro/journal` (and all of `.fabro/`): hidden, never enumerated.
@@ -29,7 +34,9 @@
 # `run-cleanup:` reason per failed path to stderr and exit non-zero (the
 # caller only warns). Stdout: exactly one `run-cleanup:` line reporting
 # the removed paths and — when df measured the workspace filesystem —
-# the approximate freed size.
+# the approximate freed size. The sandbox invocation passes no flags;
+# --tmp-root exists for fixture tests (the declared command in
+# workflow.toml stays flag-free).
 
 # The used 1K blocks of the filesystem holding `path`, or null when df
 # cannot answer (the caller then reports no measurement).
@@ -82,7 +89,9 @@ def remove-path [path: string] {
   }
 }
 
-def main [] {
+def main [
+  --tmp-root: path = '/tmp'  # the scratch root to sweep; fixture tests only
+] {
   let workspace = (pwd)
   let used_before = (df-used-kb $workspace)
 
@@ -116,8 +125,13 @@ def main [] {
     }
   }
 
-  # Class 3: the line's /tmp scratch leftovers, files and directories.
-  for leftover in (glob '/tmp/fabro-*') {
+  # Class 3: /tmp, the run's scratch space, entirely — every non-hidden
+  # entry (rustc and linker temp files, cargo fetch scratch, nextest
+  # temp, tool leftovers, the line's own /tmp/fabro-* included). The run
+  # is terminal: nothing reads its scratch anymore, and the container is
+  # released right after. Hidden entries — the Unix socket dirs —
+  # survive by the enumeration rule.
+  for leftover in (ls $tmp_root | get name) {
     let failure = (remove-path $leftover)
     if $failure == null {
       $removed = ($removed + 1)
