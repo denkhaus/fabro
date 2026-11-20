@@ -39,6 +39,10 @@ ceremony, back on 7 — archive-gated by then).
 ## Sprint 93 state (the ledger carries the record)
 
 - Counted via #1482 (verify.nu ADDED-file classifier, PR #640 merged).
+- **The sprint-93 ledger commit (2bb728e6d, iterate-state.json) is
+  LOCAL on denkhaus, UNPUSHED** — the push gate refused (2 active
+  runs at session end). First duty alongside the tofu stopper:
+  re-check `nu .fabro/scripts/push-gate.nu` and push when open.
 - The %3 architecture gate is DUE at 93 and DEFERRED with rationale
   (the session ended before the ceremony; the marker stays at 92).
   Open the next session with it, or defer again with rationale.
