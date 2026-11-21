@@ -793,12 +793,49 @@ impl TrackerProvider for MaterializedTracker {
     ) -> anyhow::Result<()> {
         self.forge.project_claim(project, item_key, run_id).await?;
         // The claim label moves the item's label set — first-cut
-        // content. Evict: the next read re-materializes the item with
-        // its claim label, one forge call per claim.
-        self.views
-            .evict(&project.project_id, item_key)
-            .await
-            .with_context(|| format!("evicting {item_key} after a claim projection"))?;
+        // content. Refresh the row from the forge so the next read
+        // stays LOCAL (one forge read per claim, never a forced miss):
+        // the claim-time eviction made a run's first post-claim work
+        // show re-materialize through the forge exactly when the forge
+        // was down — a 403 total miss that killed the run's tool chain
+        // (work#1557 post-merge finding 2026-11-21, the bench's
+        // probe-23/25/39 class). On a load failure the stale row KEEPS
+        // serving (ADR-0050's honest staleness): eviction is the one
+        // error the view exists to absorb.
+        match self.forge.get(project, item_key).await {
+            Ok(Some(item)) => {
+                self.views
+                    .put(&project.project_id, &item)
+                    .await
+                    .with_context(|| {
+                        format!("materializing {item_key} after a claim projection")
+                    })?;
+            }
+            Ok(None) => {
+                self.views
+                    .evict(&project.project_id, item_key)
+                    .await
+                    .with_context(|| {
+                        format!("evicting {item_key} after a claim projection")
+                    })?;
+                self.views
+                    .remove_from_universe(&project.project_id, item_key)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "removing {item_key} from the universe after a claim projection"
+                        )
+                    })?;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    project = %project.project_id,
+                    item_key = %item_key,
+                    error = ?error,
+                    "post-claim refresh failed; the view keeps serving its stale row"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -809,10 +846,41 @@ impl TrackerProvider for MaterializedTracker {
         run_id: &str,
     ) -> anyhow::Result<()> {
         self.forge.clear_claim(project, item_key, run_id).await?;
-        self.views
-            .evict(&project.project_id, item_key)
-            .await
-            .with_context(|| format!("evicting {item_key} after a claim clear"))?;
+        // The clear moves the item's label set — refresh-or-keep, the
+        // claim projection's twin (see the comment above): a failed
+        // refresh keeps the stale row serving, never evicts.
+        match self.forge.get(project, item_key).await {
+            Ok(Some(item)) => {
+                self.views
+                    .put(&project.project_id, &item)
+                    .await
+                    .with_context(|| {
+                        format!("materializing {item_key} after a claim clear")
+                    })?;
+            }
+            Ok(None) => {
+                self.views
+                    .evict(&project.project_id, item_key)
+                    .await
+                    .with_context(|| {
+                        format!("evicting {item_key} after a claim clear")
+                    })?;
+                self.views
+                    .remove_from_universe(&project.project_id, item_key)
+                    .await
+                    .with_context(|| {
+                        format!("removing {item_key} from the universe after a claim clear")
+                    })?;
+            }
+            Err(error) => {
+                tracing::warn!(
+                    project = %project.project_id,
+                    item_key = %item_key,
+                    error = ?error,
+                    "post-clear refresh failed; the view keeps serving its stale row"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -1372,6 +1440,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_claim_forge_failure_keeps_the_view_row_serving() {
+        // The claim-time refresh must never evict on failure: the run
+        // just claimed the item and its NEXT tool call reads it — an
+        // eviction would force that read through the forge exactly when
+        // the forge is down (2026-11-21: the claim-time eviction made a
+        // run's first post-claim work show die on a 403 total miss
+        // during the quota window; the bench's probe-23/25/39 class,
+        // work#1557 post-merge finding).
+        let (_directory, forge, tracker) = fixture().await;
+        seed_forge(&forge, &project());
+        let warm = tracker
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .unwrap()
+            .unwrap();
+        forge.fail_reads();
+        tracker
+            .project_claim(&project(), "denkhaus/work#1", "run-1")
+            .await
+            .expect("the claim write itself succeeds — reads fail, not writes");
+        let served = tracker
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .unwrap()
+            .expect("the stale row keeps serving after a failed claim refresh");
+        assert_eq!(served, warm, "the claim never evicts the view row");
+    }
+
+    #[tokio::test]
     async fn a_total_miss_plus_forge_failure_fails() {
         let (_directory, forge, tracker) = fixture().await;
         forge.fail_reads();
@@ -1471,7 +1568,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claim_projections_evict_the_view_row() {
+    async fn claim_projections_refresh_the_view_row() {
+        // The claim moves the item's labels — the row REFRESHES from the
+        // forge (one read per claim), it never evicts: an eviction would
+        // force the run's next post-claim read through the forge exactly
+        // when the forge is down (the 2026-11-21 quota window;
+        // work#1557 post-merge finding).
         let (directory, forge, tracker) = fixture().await;
         seed_forge(&forge, &project());
         tracker
@@ -1487,10 +1589,9 @@ mod tests {
             .await
             .unwrap();
         let views = WorkItemViewStore::new(database.clone_pool());
-        assert_eq!(
-            views.get("fabro", "denkhaus/work#1").await.unwrap(),
-            None,
-            "a claim moves the item's labels; the next read re-materializes them"
+        assert!(
+            views.get("fabro", "denkhaus/work#1").await.unwrap().is_some(),
+            "a claim refreshes the row in place — the next read stays local"
         );
     }
 
