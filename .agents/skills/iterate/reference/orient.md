@@ -37,6 +37,13 @@ index (`incidents.md`) carries the full stories.
   session in this repo's cwd means a second /iterate is alive: the
   uncommitted pool, the tracker file and the ledger are then SHARED,
   and one line has one executor per surface.
+- THE ROSTER COVERS EVERY REPO OF THE LINE (sprint 95, 2026-11-21):
+  sibling agents live on fabro-test and fabro-tofu too — the
+  architecture agent's PR series on fabro-test was invisible to a
+  fabro-only roster check, and a land dance swept its WIP mid-series.
+  The orient sweep greps the sibling PR lists per repo (gh pr list per
+  repo, seconds); any repo with an active agent series is HANDS-OFF
+  for this session's land dances until coordinated.
 - On a sibling: pick a DISJOINT surface (code side vs loop assets),
   claim it in the tracker (a sibling's message queue can be full — a
   message then refuses; claim before messaging). Never commit the
