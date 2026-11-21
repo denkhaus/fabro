@@ -631,6 +631,27 @@ LIMIT 1
         Ok(latest)
     }
 
+    /// Every claim of one item, oldest first — the acceptance fold's
+    /// input rows (denkhaus/work#1555): the item-level fold reads the
+    /// whole history (a landed claim from an earlier lap, a live
+    /// claim's verdicts), not just the live row the other reads serve.
+    pub async fn claims_for_item(&self, project_id: &str, item_key: &str) -> Result<Vec<WorkClaim>> {
+        let rows = sqlx::query(
+            r"
+SELECT claim_id, project_id, item_key, run_id, lane, state,
+       granted_at_ms, updated_at_ms, released_at_ms, release_reason, pr_url
+FROM work_claims
+WHERE project_id = ? AND item_key = ?
+ORDER BY granted_at_ms, claim_id
+",
+        )
+        .bind(project_id)
+        .bind(item_key)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(claim_from_row).collect()
+    }
+
     /// The project's live claims of one lane (assignment backpressure and
     /// lane-queue views).
     pub async fn active_claims_of_lane(
@@ -2283,6 +2304,51 @@ mod tests {
                 .unwrap()
                 .is_empty(),
             "an item nobody ever claimed resolves to no runs"
+        );
+    }
+
+    #[tokio::test]
+    async fn claims_for_item_covers_the_whole_history_oldest_first() {
+        let (_directory, store) = store().await;
+        let first_run = fabro_types::RunId::new();
+        let second_run = fabro_types::RunId::new();
+        let GrantOutcome::Granted(first) = store
+            .grant(&request("denkhaus/work#1", first_run))
+            .await
+            .unwrap()
+        else {
+            panic!("first grant must win");
+        };
+        store.release(&first.claim_id, "run failed").await.unwrap();
+        let GrantOutcome::Granted(second) = store
+            .grant(&request("denkhaus/work#1", second_run))
+            .await
+            .unwrap()
+        else {
+            panic!("second grant must win after the release");
+        };
+        store.activate(&second.claim_id).await.unwrap();
+
+        let claims = store
+            .claims_for_item("fabro", "denkhaus/work#1")
+            .await
+            .unwrap();
+        let run_ids: Vec<_> = claims.iter().map(|claim| claim.run_id).collect();
+        assert_eq!(
+            run_ids,
+            vec![first_run, second_run],
+            "the fold's input rows are the WHOLE history, oldest first: the released lap \
+             beside the live one"
+        );
+        assert_eq!(claims[0].state, ClaimState::Released);
+        assert_eq!(claims[1].state, ClaimState::Active);
+        assert!(
+            store
+                .claims_for_item("fabro", "denkhaus/work#404")
+                .await
+                .unwrap()
+                .is_empty(),
+            "an item nobody ever claimed has no fold rows"
         );
     }
 

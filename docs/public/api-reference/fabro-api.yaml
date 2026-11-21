@@ -10387,6 +10387,29 @@ components:
             (stage D part 2). `enabled` and `refused` appear only under
             a settled-verdict filter (stage E) — the entry names the
             verdict the filter selected.
+        acceptance:
+          type: ["string", "null"]
+          enum:
+            - no_claim_open_item
+            - no_claim_closed_item
+            - waiting_for_merge_verdict
+            - merge_refused
+            - waiting_for_closable
+            - closable_landed
+            - closed_unlanded
+            - landed_closed
+          description: |
+            The acceptance fold of the entry's claimed work item
+            (denkhaus/work#1555): the derived, never-stored reader for
+            the done-state across tracker state, claim ledger, run
+            verdicts and PR projection. Null when the run never
+            claimed a work item. Both production failure classes are
+            named states: `closed_unlanded` (item closed while no
+            claim ever landed — the closed-with-unlanded-halves class,
+            work#1463) and `closable_landed` (integrated, item not
+            closed — the landed-but-open class when nothing closes it).
+            The close door consumes the same fold as its precondition
+            in the work#1552 follow-up.
 
     RunQueueList:
       description: The adjudication queue with work-item decoration.

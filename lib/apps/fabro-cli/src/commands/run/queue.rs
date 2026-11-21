@@ -126,6 +126,7 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
         "STATUS".cell().bold(use_color),
         "WORK ITEM".cell().bold(use_color),
         "VERDICT".cell().bold(use_color),
+        "ACCEPTANCE".cell().bold(use_color),
         "TITLE".cell().bold(use_color),
     ];
     let rows: Vec<Vec<CellStruct>> = queue
@@ -142,6 +143,12 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
                     .unwrap_or_else(|| "—".to_string())
                     .cell(),
                 entry.verdict.to_string().cell(),
+                entry
+                    .acceptance
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "—".to_string())
+                    .cell(),
                 entry.run.title.clone().cell(),
             ]
         })

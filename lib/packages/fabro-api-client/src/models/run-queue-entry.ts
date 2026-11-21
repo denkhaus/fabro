@@ -34,6 +34,10 @@ export interface RunQueueEntry {
      * The run\'s latest verdict on the QUERIED field. `pending` means the run was never adjudicated on the field (absence); `parked` means an open operator escalation keeps the run queued — it re-enters every pass until resolved (stage D part 2). `enabled` and `refused` appear only under a settled-verdict filter (stage E) — the entry names the verdict the filter selected.
      */
     'verdict': RunQueueEntryVerdictEnum;
+    /**
+     * The acceptance fold of the entry\'s claimed work item (denkhaus/work#1555): the derived, never-stored reader for the done-state across tracker state, claim ledger, run verdicts and PR projection. Null when the run never claimed a work item. Both production failure classes are named states: `closed_unlanded` (item closed while no claim ever landed — the closed-with-unlanded-halves class, work#1463) and `closable_landed` (integrated, item not closed — the landed-but-open class when nothing closes it). The close door consumes the same fold as its precondition in the work#1552 follow-up.
+     */
+    'acceptance'?: RunQueueEntryAcceptanceEnum | null;
 }
 
 export const RunQueueEntryVerdictEnum = {
@@ -44,3 +48,15 @@ export const RunQueueEntryVerdictEnum = {
 } as const;
 
 export type RunQueueEntryVerdictEnum = typeof RunQueueEntryVerdictEnum[keyof typeof RunQueueEntryVerdictEnum];
+export const RunQueueEntryAcceptanceEnum = {
+    NO_CLAIM_OPEN_ITEM: 'no_claim_open_item',
+    NO_CLAIM_CLOSED_ITEM: 'no_claim_closed_item',
+    WAITING_FOR_MERGE_VERDICT: 'waiting_for_merge_verdict',
+    MERGE_REFUSED: 'merge_refused',
+    WAITING_FOR_CLOSABLE: 'waiting_for_closable',
+    CLOSABLE_LANDED: 'closable_landed',
+    CLOSED_UNLANDED: 'closed_unlanded',
+    LANDED_CLOSED: 'landed_closed'
+} as const;
+
+export type RunQueueEntryAcceptanceEnum = typeof RunQueueEntryAcceptanceEnum[keyof typeof RunQueueEntryAcceptanceEnum];

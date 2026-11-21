@@ -16,6 +16,7 @@
 //! The DB stays the authority: every tracker write here is idempotent, and a
 //! failed pass retries on the next tick.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
@@ -63,6 +64,24 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
         return report;
     };
     report.projects = projects.len();
+    // The acceptance fold's verdict maps (denkhaus/work#1555): read
+    // once per pass, shared by every claim of every project — the
+    // per-run `latest_verdict_of_run` scans the records table per call,
+    // so a per-claim read would pay a full scan per row. A read failure
+    // degrades to EMPTY maps: without verdicts nothing releases (the
+    // hold posture — a failed read never frees an item), and the next
+    // pass re-reads.
+    let (merge_verdicts, closable_verdicts) =
+        match super::acceptance::verdict_maps(state).await {
+            Ok(maps) => maps,
+            Err(error) => {
+                tracing::warn!(
+                    error = ?error,
+                    "work reconciler: verdict map read failed; claims hold this pass"
+                );
+                Default::default()
+            }
+        };
     for project in projects {
         let tracker = match state.work_tracker_for_project(&project).await {
             Ok(tracker) => tracker,
@@ -95,37 +114,86 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
                             } else {
                                 report.labels_set += 1;
                             }
-                            reconcile_run_state(state, &project, &claim, &mut report).await;
+                            reconcile_run_state(
+                                state,
+                                &project,
+                                &claim,
+                                (&merge_verdicts, &closable_verdicts),
+                                &mut report,
+                            )
+                            .await;
                         }
                         ClaimState::AwaitingMerge => {
-                            // A PR the adjudicator REFUSED never merges:
-                            // the verdict releases the claim (the label
-                            // is removed with it). Every other verdict
-                            // waits for the merger + the closing pass.
-                            // The same rule lives in the claim-hold seam
-                            // (`fabro_work::hold_reason`'s AwaitingMerge
-                            // arm, denkhaus/work#1457); this arm stays
-                            // direct because it runs before any run
-                            // status is read.
-                            if merge_verdict_of_run(state, claim.run_id).await
-                                == Some(fabro_types::OrchestrationVerdict::Refused)
+                            // The PR state of the chain, read through the
+                            // acceptance fold (denkhaus/work#1555): the
+                            // refused arm releases exactly the fold's
+                            // `merge_refused` state, and the
+                            // `closed_unlanded` arm heals the stuck
+                            // window — an item the tracker closed while
+                            // this claim still holds it must not pin the
+                            // item forever (the close verb's two-phase
+                            // failure window, work#1463). Integration
+                            // evidence (a `closable` verdict, an
+                            // observed-merged PR) outranks a stale
+                            // refusal INSIDE the fold, so an externally
+                            // merged PR holds for the closing pass
+                            // instead of releasing unlanded.
+                            let fold = match super::acceptance::live_claim_fold(
+                                state,
+                                &claim,
+                                (&merge_verdicts, &closable_verdicts),
+                                None,
+                            )
+                            .await
                             {
-                                match state
-                                    .work_store()
-                                    .release(
-                                        &claim.claim_id,
-                                        "merge refused: the adjudicator rejected the run",
-                                    )
-                                    .await
-                                {
-                                    Ok(_released) => report.orphans_released += 1,
-                                    Err(error) => tracing::warn!(
+                                Ok(fold) => fold,
+                                Err(error) => {
+                                    tracing::warn!(
                                         claim_id = %claim.claim_id,
                                         error = ?error,
-                                        "work reconciler: refused-verdict release failed"
-                                    ),
+                                        "work reconciler: acceptance fold read failed; claim holds"
+                                    );
+                                    continue;
                                 }
-                                continue;
+                            };
+                            match fold {
+                                fabro_work::AcceptanceState::MergeRefused => {
+                                    match state
+                                        .work_store()
+                                        .release(
+                                            &claim.claim_id,
+                                            "merge refused: the adjudicator rejected the run",
+                                        )
+                                        .await
+                                    {
+                                        Ok(_released) => report.orphans_released += 1,
+                                        Err(error) => tracing::warn!(
+                                            claim_id = %claim.claim_id,
+                                            error = ?error,
+                                            "work reconciler: refused-verdict release failed"
+                                        ),
+                                    }
+                                    continue;
+                                }
+                                fabro_work::AcceptanceState::ClosedUnlanded => {
+                                    match state
+                                        .work_store()
+                                        .release(
+                                            &claim.claim_id,
+                                            "item closed: healing the claim hold the close left behind",
+                                        )
+                                        .await
+                                    {
+                                        Ok(_released) => report.orphans_released += 1,
+                                        Err(error) => tracing::warn!(
+                                            claim_id = %claim.claim_id,
+                                            error = ?error,
+                                            "work reconciler: stuck-window release failed"
+                                        ),
+                                    }
+                                    continue;
+                                }
+                                _ => {}
                             }
                             // The label is removed at run end; the PR carries
                             // the pending state.
@@ -254,14 +322,26 @@ async fn drain_outbox(
 
 /// Run-status truth for a live claim: terminal runs move to
 /// `awaiting_merge` (PR) or release (no PR); a missing run releases after
-/// the grace window. The no-PR decision is the claim-hold seam's
-/// ([`fabro_work::hold_reason`], denkhaus/work#1457): ADR-0039 stage E as
-/// content — the refused verdict releases, every other state holds (the
-/// park pin included, ADR-0045 P1).
+/// the grace window. The no-PR decision reads the acceptance fold
+/// ([`fabro_work::acceptance_fold`], denkhaus/work#1555): the refused
+/// arm (`merge_refused`) releases, and `closed_unlanded` — an item the
+/// tracker closed while this claim still holds — releases as the stuck
+/// window's healing. Every other fold state holds, and the claim-hold
+/// seam ([`fabro_work::hold_reason`], denkhaus/work#1457) names WHY
+/// (the park pin included, ADR-0045 P1). On this path (live claim,
+/// stored projection, terminal run, no pull request) fold and hold seam
+/// cannot disagree: the hold seam releases exactly the refused verdict,
+/// which is exactly the fold's refused arm. The orphan grace above
+/// stays OUTSIDE the fold by design — a gone run record is not an
+/// acceptance row (the hold seam's module doc carries the same note).
 async fn reconcile_run_state(
     state: &AppState,
     project: &fabro_work::WorkProject,
     claim: &fabro_work::WorkClaim,
+    verdicts: (
+        &HashMap<fabro_types::RunId, fabro_types::OrchestrationVerdict>,
+        &HashMap<fabro_types::RunId, fabro_types::OrchestrationVerdict>,
+    ),
     report: &mut ReconcileReport,
 ) {
     let Some(projection) = super::run_records::projection(state, claim.run_id)
@@ -300,42 +380,83 @@ async fn reconcile_run_state(
         }
         return;
     }
-    // A terminal run WITHOUT a pull request: the hold seam decides
-    // (denkhaus/work#1457; ADR-0039 stage E as content). A refused
-    // verdict releases — `hold_reason` answers None; every other state
-    // holds, named: parked waiting runs pin (the park pin, ADR-0045
-    // P1 — a parked run's claim yields to nothing but its operator's
-    // disposition), unadjudicated runs wait for the adjudicator.
-    // Releasing on an unadjudicated run would strand the item outside
-    // the closure chain the verdicts carry (stage-A finding, resolved
-    // with the stage-E rewire).
-    let verdict = merge_verdict_of_run(state, claim.run_id).await;
-    match fabro_work::hold_reason(claim, projection.status, verdict) {
-        Some(reason) => {
-            tracing::debug!(
+    // A terminal run WITHOUT a pull request: the acceptance fold names
+    // the chain state; its release arms fire, the hold seam names the
+    // hold.
+    let fold = match super::acceptance::live_claim_fold(
+        state,
+        claim,
+        verdicts,
+        Some(projection.as_ref()),
+    )
+    .await
+    {
+        Ok(fold) => fold,
+        Err(error) => {
+            tracing::warn!(
                 claim_id = %claim.claim_id,
-                run_id = %claim.run_id,
-                hold = %reason,
-                "work reconciler: terminal run without a pull request holds its claim"
+                error = ?error,
+                "work reconciler: acceptance fold read failed; claim holds"
             );
+            return;
         }
-        None => {
-            match state
-                .work_store()
-                .release(
-                    &claim.claim_id,
-                    "merge refused: the adjudicator rejected the run",
-                )
-                .await
-            {
-                Ok(_released) => report.orphans_released += 1,
-                Err(error) => tracing::warn!(
+    };
+    match fold {
+        fabro_work::AcceptanceState::MergeRefused => {
+            release_verdict(state, claim, "merge refused: the adjudicator rejected the run", report)
+                .await;
+        }
+        fabro_work::AcceptanceState::ClosedUnlanded => {
+            release_verdict(
+                state,
+                claim,
+                "item closed: healing the claim hold the close left behind",
+                report,
+            )
+            .await;
+        }
+        other => match fabro_work::hold_reason(
+            claim,
+            projection.status,
+            verdicts.0.get(&claim.run_id).copied(),
+        ) {
+            Some(reason) => {
+                tracing::debug!(
                     claim_id = %claim.claim_id,
-                    error = ?error,
-                    "work reconciler: refused-verdict release failed"
-                ),
+                    run_id = %claim.run_id,
+                    acceptance = %other,
+                    hold = %reason,
+                    "work reconciler: terminal run without a pull request holds its claim"
+                );
             }
-        }
+            None => {
+                release_verdict(
+                    state,
+                    claim,
+                    "merge refused: the adjudicator rejected the run",
+                    report,
+                )
+                .await;
+            }
+        },
+    }
+}
+
+/// The refused / stuck-window release, shared by the fold's release
+/// arms: release the claim with the named reason and count it.
+async fn release_verdict(
+    state: &AppState,
+    claim: &fabro_work::WorkClaim,
+    reason: &str,
+    report: &mut ReconcileReport,
+) {
+    match state.work_store().release(&claim.claim_id, reason).await {
+        Ok(_released) => report.orphans_released += 1,
+        Err(error) => tracing::warn!(
+            claim_id = %claim.claim_id,
+            error = ?error,
+            "work reconciler: fold release failed"
+        ),
     }
 }
 
@@ -712,6 +833,250 @@ mod tests {
             fabro_work::ClaimState::Released,
             "the parked run's claim never releases while parked"
         );
+    }
+
+    /// The fold-driven refused arm over an `awaiting_merge` claim
+    /// (denkhaus/work#1555): the pass releases exactly the fold's
+    /// `merge_refused` state — read through the acceptance fold, not a
+    /// raw verdict comparison.
+    #[tokio::test]
+    async fn the_pass_releases_an_awaiting_merge_claim_the_fold_reads_refused() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let run_id = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1555".to_string(),
+                run_id,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        let fabro_work::GrantOutcome::Granted(claim) = granted else {
+            panic!("grant wins");
+        };
+        store.activate(&claim.claim_id).await.expect("activate");
+        let pr_url = "https://github.com/denkhaus/fabro/pull/1555";
+        store.await_merge(&claim.claim_id, pr_url).await.expect("await merge");
+
+        // A terminal run row WITH the open pull request.
+        seed_projection(&state, run_id, "refused PR run", Some((pr_url, None))).await;
+        // The adjudicator refused the run.
+        append_verdict(&state, &run_id, fabro_types::OrchestrationField::Merge, fabro_types::OrchestrationVerdict::Refused).await;
+
+        let report = run_pass(&state).await;
+        assert_eq!(report.orphans_released, 1, "the fold's refused arm released");
+        let released = store.claim(&claim.claim_id).await.unwrap().unwrap();
+        assert_eq!(released.state, fabro_work::ClaimState::Released);
+        assert_eq!(
+            released.release_reason.as_deref(),
+            Some("merge refused: the adjudicator rejected the run")
+        );
+    }
+
+    /// Integration evidence outranks a stale refusal INSIDE the fold
+    /// (denkhaus/work#1555): a PR the platform observed MERGED holds
+    /// for the closing pass even when the adjudicator's verdict said
+    /// refused — the work is in the target; releasing would strand the
+    /// land bookkeeping.
+    #[tokio::test]
+    async fn an_externally_merged_pr_survives_a_stale_refusal() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let run_id = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1556".to_string(),
+                run_id,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        let fabro_work::GrantOutcome::Granted(claim) = granted else {
+            panic!("grant wins");
+        };
+        store.activate(&claim.claim_id).await.expect("activate");
+        let pr_url = "https://github.com/denkhaus/fabro/pull/1556";
+        store.await_merge(&claim.claim_id, pr_url).await.expect("await merge");
+
+        seed_projection(
+            &state,
+            run_id,
+            "externally merged PR run",
+            Some((pr_url, Some(fabro_types::PullRequestState::Merged))),
+        )
+        .await;
+        append_verdict(&state, &run_id, fabro_types::OrchestrationField::Merge, fabro_types::OrchestrationVerdict::Refused).await;
+
+        let _ = run_pass(&state).await;
+        let held = store.claim(&claim.claim_id).await.unwrap().unwrap();
+        assert_eq!(
+            held.state,
+            fabro_work::ClaimState::AwaitingMerge,
+            "the observed merge outranks the stale refusal: the claim holds for the closing pass"
+        );
+    }
+
+    /// The stuck window heals (denkhaus/work#1555): an item the tracker
+    /// closed while a claim still holds it — the close verb's two-phase
+    /// failure window, the #1463 class — releases with the healing
+    /// reason instead of pinning the item forever.
+    #[tokio::test]
+    async fn a_closed_item_with_a_live_claim_releases_as_the_stuck_window() {
+        let tracker = Arc::new(ScriptedTracker::default());
+        let (state, store) = state_with(Arc::clone(&tracker)).await;
+        let run_id = fabro_types::RunId::new();
+        let granted = store
+            .grant(&fabro_work::GrantRequest {
+                project_id: "fabro".to_string(),
+                item_key:   "denkhaus/work#1463".to_string(),
+                run_id,
+                lane:       "loop".to_string(),
+            })
+            .await
+            .expect("grant");
+        let fabro_work::GrantOutcome::Granted(claim) = granted else {
+            panic!("grant wins");
+        };
+        store.activate(&claim.claim_id).await.expect("activate");
+
+        // Terminal run, no pull request, no verdict: without the closed
+        // item the fold would hold (adjudication pending).
+        seed_projection(&state, run_id, "stuck window run", None).await;
+        // The view store's row says the item CLOSED — the tracker-side
+        // truth the close verb committed before its claim half failed.
+        state
+            .stores
+            .work_item_views
+            .put(
+                "fabro",
+                &fabro_work::WorkItem {
+                    item_key:   "denkhaus/work#1463".to_string(),
+                    title:      "the stuck item".to_string(),
+                    body:       String::new(),
+                    state:      "closed".to_string(),
+                    labels:     Vec::new(),
+                    priority:   0,
+                    url:        "https://github.com/denkhaus/work/issues/1463".to_string(),
+                    updated_at: None,
+                    created_at: None,
+                    closed_at:  Some(chrono::Utc::now()),
+                },
+            )
+            .await
+            .expect("view row seed");
+
+        let report = run_pass(&state).await;
+        assert_eq!(report.orphans_released, 1, "the stuck window released");
+        let released = store.claim(&claim.claim_id).await.unwrap().unwrap();
+        assert_eq!(released.state, fabro_work::ClaimState::Released);
+        assert_eq!(
+            released.release_reason.as_deref(),
+            Some("item closed: healing the claim hold the close left behind")
+        );
+    }
+
+    /// Seed one terminal run projection, optionally carrying a pull
+    /// request link with an observed state.
+    async fn seed_projection(
+        state: &AppState,
+        run_id: fabro_types::RunId,
+        title: &str,
+        pr: Option<(&str, Option<fabro_types::PullRequestState>)>,
+    ) {
+        let mut projection = fabro_types::RunProjection::new(
+            title.to_string(),
+            fabro_types::RunSpec {
+                run_id,
+                settings:            fabro_types::WorkflowSettings::default(),
+                graph:               fabro_types::RunGraph::new("test"),
+                graph_source:        None,
+                workflow_slug:       Some("develop".to_string()),
+                workflow_version_id: None,
+                target:              None,
+                automation:          None,
+                source_directory:    None,
+                labels:              std::collections::HashMap::new(),
+                provenance:          fabro_types::test_support::test_run_provenance(),
+                definition_blob:     None,
+                spec_blob:           None,
+                git:                 None,
+                fork_source_ref:     None,
+                admission:           fabro_types::PetriAdmission::default(),
+            },
+            chrono::Utc::now(),
+        );
+        projection.status = fabro_types::RunStatus::Failed {
+            reason: fabro_types::FailureReason::WorkflowError,
+        };
+        if let Some((url, pr_state)) = pr {
+            let (owner, repo, number) = parse_pr_url(url);
+            projection.pull_request = Some(fabro_types::PullRequestLink {
+                owner,
+                repo,
+                number,
+                state: pr_state,
+            });
+        }
+        let pool = state.stores.run_summaries.pool();
+        let mut tx = pool.begin().await.expect("seed tx");
+        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
+            .await
+            .expect("run row seed");
+        let projection_json = serde_json::to_string(&projection).expect("projection json");
+        sqlx::query(
+            "INSERT INTO petri_projection (run_id, projection_json, fold_json, \
+             positions_json, stream_seq, updated_at_ms) VALUES (?, ?, '{}', '{}', 0, 0) \
+             ON CONFLICT(run_id) DO UPDATE SET projection_json = excluded.projection_json",
+        )
+        .bind(run_id.to_string())
+        .bind(projection_json)
+        .execute(&mut *tx)
+        .await
+        .expect("projection row seed");
+        tx.commit().await.expect("seed commit");
+    }
+
+    /// Append one orchestration verdict record for the run.
+    async fn append_verdict(
+        state: &AppState,
+        run_id: &fabro_types::RunId,
+        field: fabro_types::OrchestrationField,
+        verdict: fabro_types::OrchestrationVerdict,
+    ) {
+        state
+            .stores
+            .run_summaries
+            .platform_records()
+            .append(
+                run_id,
+                &fabro_store::platform_records::PlatformRecord::RunOrchestration(
+                    fabro_store::platform_records::RunOrchestrationRecord {
+                        field,
+                        verdict,
+                        by_run: None,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("verdict seed");
+    }
+
+    /// Split a GitHub PR html url into its link parts (test URLs only).
+    fn parse_pr_url(url: &str) -> (String, String, u64) {
+        let rest = url
+            .strip_prefix("https://github.com/")
+            .expect("a github pr url");
+        let (owner_repo, number) = rest.split_once("/pull/").expect("a pull path");
+        let (owner, repo) = owner_repo.split_once('/').expect("owner/repo");
+        (
+            owner.to_string(),
+            repo.to_string(),
+            number.parse().expect("a pr number"),
+        )
     }
 
     #[tokio::test]

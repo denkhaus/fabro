@@ -27,8 +27,8 @@ use fabro_api::types::{
     GlobalObservation, GlobalObservationList, ObservationManageRequest,
     ObservationManageRequestAction, ObservationManageResponse, ObservationWorkItemLink,
     PaginationMeta, RunMergeResponse, RunObservation, RunObservationList,
-    RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry, RunQueueEntryVerdict,
-    RunQueueList,
+    RunOrchestrationMarkRequest, RunOrchestrationMarkResponse, RunQueueEntry,
+    RunQueueEntryAcceptance, RunQueueEntryVerdict, RunQueueList,
 };
 use fabro_store::platform_records::{
     ObservationRecordedRecord, ObservationTriageState, PlatformRecord, PlatformRecordKind,
@@ -774,21 +774,21 @@ async fn list_queue(
 
     // The verdict map names the parked runs: the queue holds pending and
     // parked entries, and only the parked ones re-entered by escalation.
-    // Read once, like the store's own fold.
-    let verdicts = match state
-        .stores
-        .run_summaries
-        .platform_records()
-        .latest_verdicts_by_run(field)
+    // ONE read pair serves both the entry verdicts and the acceptance
+    // folds below — the store folds all records per field, so a second
+    // read would scan the same rows twice.
+    let (merge_verdicts, closable_verdicts) = match super::super::acceptance::verdict_maps(&state)
         .await
     {
-        Ok(verdicts) => verdicts
-            .into_iter()
-            .collect::<HashMap<RunId, OrchestrationVerdict>>(),
+        Ok(maps) => maps,
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
                 .into_response();
         }
+    };
+    let verdicts = match field {
+        OrchestrationField::Merge => &merge_verdicts,
+        OrchestrationField::Closable => &closable_verdicts,
     };
     let run_ids = runs.iter().map(|run| run.id).collect::<Vec<_>>();
     // The decoration carries the claim's item AND project (work#1113):
@@ -797,8 +797,8 @@ async fn list_queue(
     let claim_by_run = match state.stores.work.latest_claims_of_runs(&run_ids).await {
         Ok(claims) => claims
             .into_iter()
-            .map(|claim| (claim.run_id, (claim.item_key, claim.project_id)))
-            .collect::<HashMap<RunId, (String, String)>>(),
+            .map(|claim| (claim.run_id, claim))
+            .collect::<HashMap<RunId, fabro_work::WorkClaim>>(),
         Err(err) => {
             return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
                 .into_response();
@@ -806,27 +806,45 @@ async fn list_queue(
     };
 
     let data = state.decorate_run_summaries(runs).await;
-    let entries = data
-        .into_iter()
-        .map(|run| {
-            let verdict = match verdicts.get(&run.id) {
-                Some(OrchestrationVerdict::Parked) => RunQueueEntryVerdict::Parked,
-                Some(OrchestrationVerdict::Enabled) => RunQueueEntryVerdict::Enabled,
-                Some(OrchestrationVerdict::Refused) => RunQueueEntryVerdict::Refused,
-                _ => RunQueueEntryVerdict::Pending,
-            };
-            let (work_item, project) = match claim_by_run.get(&run.id) {
-                Some((item_key, project_id)) => (Some(item_key.clone()), Some(project_id.clone())),
-                None => (None, None),
-            };
-            RunQueueEntry {
-                work_item,
-                project,
-                run,
-                verdict,
+    let mut entries = Vec::with_capacity(data.len());
+    for run in data {
+        let verdict = match verdicts.get(&run.id) {
+            Some(OrchestrationVerdict::Parked) => RunQueueEntryVerdict::Parked,
+            Some(OrchestrationVerdict::Enabled) => RunQueueEntryVerdict::Enabled,
+            Some(OrchestrationVerdict::Refused) => RunQueueEntryVerdict::Refused,
+            _ => RunQueueEntryVerdict::Pending,
+        };
+        let (work_item, project, acceptance) = match claim_by_run.get(&run.id) {
+            Some(claim) => {
+                // The claimed entry carries the item's acceptance fold
+                // (denkhaus/work#1555): re-derived per read, never
+                // stored.
+                let fold = match super::super::acceptance::item_fold(
+                    &state,
+                    &claim.project_id,
+                    &claim.item_key,
+                    (&merge_verdicts, &closable_verdicts),
+                )
+                .await
+                {
+                    Ok(fold) => Some(wire_acceptance(fold)),
+                    Err(err) => {
+                        return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                            .into_response();
+                    }
+                };
+                (Some(claim.item_key.clone()), Some(claim.project_id.clone()), fold)
             }
-        })
-        .collect::<Vec<_>>();
+            None => (None, None, None),
+        };
+        entries.push(RunQueueEntry {
+            work_item,
+            project,
+            run,
+            verdict,
+            acceptance,
+        });
+    }
     Json(RunQueueList {
         data: entries,
         meta: PaginationMeta {
@@ -838,6 +856,28 @@ async fn list_queue(
         },
     })
     .into_response()
+}
+
+/// The wire acceptance state for a derived one (denkhaus/work#1555):
+/// the API type stays the generated enum — no parallel DTO, the same
+/// posture as the observation feed's `wire_triage_state`.
+fn wire_acceptance(state: fabro_work::AcceptanceState) -> RunQueueEntryAcceptance {
+    match state {
+        fabro_work::AcceptanceState::NoClaimOpenItem => RunQueueEntryAcceptance::NoClaimOpenItem,
+        fabro_work::AcceptanceState::NoClaimClosedItem => {
+            RunQueueEntryAcceptance::NoClaimClosedItem
+        }
+        fabro_work::AcceptanceState::WaitingForMergeVerdict => {
+            RunQueueEntryAcceptance::WaitingForMergeVerdict
+        }
+        fabro_work::AcceptanceState::MergeRefused => RunQueueEntryAcceptance::MergeRefused,
+        fabro_work::AcceptanceState::WaitingForClosable => {
+            RunQueueEntryAcceptance::WaitingForClosable
+        }
+        fabro_work::AcceptanceState::ClosableLanded => RunQueueEntryAcceptance::ClosableLanded,
+        fabro_work::AcceptanceState::ClosedUnlanded => RunQueueEntryAcceptance::ClosedUnlanded,
+        fabro_work::AcceptanceState::LandedClosed => RunQueueEntryAcceptance::LandedClosed,
+    }
 }
 
 /// The verdict write door. Authorization is the identity chain of the
