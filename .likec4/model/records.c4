@@ -49,12 +49,21 @@ model {
           through an outbox. Derived lock: an item is locked while it
           has an active claim whose run is not yet merged — the lock
           span is claim to merge-complete.
+
+          ADR-0050 (2026-11-21) widens the server side to claims + a
+          MATERIALIZED READ VIEW: work-item content is cached in the
+          fabro DB (write-invalidation only, no TTL), every read
+          resolves cache-first, the forge loads on demand, and a
+          failed forge load serves the stale row with an honest age —
+          a quota-exhausted forge no longer kills reads.
         '''
         metadata {
           substrate "landed"
           code "lib/components/fabro-work/src/store.rs"
+          code "lib/components/fabro-work/src/materialization.rs"
         }
         link ../../docs/adr/0032-central-work-item-tracker.md
+        link ../../docs/adr/0050-work-item-read-materialization.md
       }
     }
   }

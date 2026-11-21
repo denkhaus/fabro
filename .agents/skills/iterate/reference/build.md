@@ -17,6 +17,19 @@ directives, and verification recipes. Edit mechanics also live in
   mechanical gates of the touched surface (Rust: rust-style-guide +
   the guideline pages covering the diff, loaded and NAMED before the
   first edit cell), verify with real commands, close with evidence.
+- RECORDED KNOWLEDGE BINDS (retro sprint 95, operator decision
+  2026-11-21): a recorded decision, grill outcome, or incapacity
+  marker (a script header's UNUSABLE, an item's supersession note, a
+  landed-but-unlanded-half title) binds until its recorded blocker or
+  premise is VERIFIED resolved — check the blocker's state first
+  (cheap: the item's state, the marker's issue), then act. Running
+  the marked thing to "see if it works now" is the #1463 failure
+  mode in miniature: the salvage script hung, the grill re-opened a
+  decided space, and the operator asked why we circle. A grill over a
+  space with a recorded decision CITES the record and grills only the
+  delta; an unlanded named half gets its own open item at close time
+  (never closed implicitly — the work#1463 lesson's structural half,
+  enforced mechanically by work#1552's door once landed).
 - CLOSE = SCOPE ACCOUNTED (the #1463 lesson, user decision 2026-11-21):
   before `work close`, re-read the item's title, body, and task list
   and account for EVERY named part — landed (name where), deferred

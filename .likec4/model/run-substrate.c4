@@ -34,10 +34,18 @@ model {
           builds deliver every context file — the 2026-11-11 cook
           blocker). Every sandbox carries the petri.run label; deleting
           a run deletes its sandboxes through the lease ledger.
+
+          The environment-image cook is SERIALIZED (work#1551, live
+          fork.45): a daemon-side CAS lock (fixed-name container
+          create) arbitrates concurrent first cooks — exactly one
+          build, waiters reuse at mint — and the tag is a RECIPE
+          digest (chef-prepare inputs + Dockerfile + base image), so
+          source-only merges reuse the image without a build.
         '''
         metadata {
           code "vendor/sandbox-driver"
         }
+        link ../../docs/adr/0034-vendored-forks.md
       }
 
       run-channel = service "Per-run channel" {
