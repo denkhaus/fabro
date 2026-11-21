@@ -34,10 +34,12 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sha2::{Digest as _, Sha256};
+use sqlx::sqlite::SqliteRow;
 use sqlx::{Row as _, SqlitePool};
 
 use crate::tracker::{
-    TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemPage, WorkItemStateFilter,
+    TrackerProvider, WorkItem, WorkItemComment, WorkItemDraft, WorkItemFilter, WorkItemPage,
+    WorkItemStateFilter,
 };
 use crate::{Error, Result, WorkProject};
 
@@ -297,7 +299,7 @@ ON CONFLICT(project_id, item_key) DO UPDATE SET seen_at_ms = excluded.seen_at_ms
 /// Decode one view row. Timestamps are epoch milliseconds; a value
 /// outside chrono's range reads as the invalid-stored-timestamp error
 /// the work store family shares.
-fn view_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<MaterializedItem> {
+fn view_from_row(row: &SqliteRow) -> Result<MaterializedItem> {
     let labels_json: String = row.try_get("labels_json")?;
     let labels: Vec<String> = serde_json::from_str(&labels_json)?;
     let invalid = |field: &'static str, value: i64| Error::InvalidStoredTimestamp {
@@ -625,7 +627,7 @@ impl MaterializedTracker {
             .await
             .with_context(|| format!("materializing {}", item.item_key))?;
         self.views
-            .record_universe(project_id, &[item.item_key.clone()])
+            .record_universe(project_id, std::slice::from_ref(&item.item_key))
             .await
             .with_context(|| format!("recording {} in the universe", item.item_key))?;
         Ok(())
@@ -633,27 +635,32 @@ impl MaterializedTracker {
 
     /// The refresh door, one item: force-load the item from the forge
     /// and materialize what it answers — the foreign-edit case. `None`
-    /// (the item left the project) drops the row and the universe key.
-    /// A failed load propagates: the refresh is explicit, its failure
-    /// is the operator's answer, and the view keeps serving what it
-    /// had.
+    /// (the item left the project) drops the row and the universe key
+    /// and reports `refreshed == 0`. A failed load propagates: the
+    /// refresh is explicit, its failure is the operator's answer, and
+    /// the view keeps serving what it had.
     pub async fn refresh_item(
         &self,
         project: &WorkProject,
         item_key: &str,
-    ) -> anyhow::Result<Option<WorkItem>> {
+    ) -> anyhow::Result<WalkReport> {
         let project_id = project.project_id.as_str();
         match self.forge.get(project, item_key).await {
             Ok(Some(item)) => {
-                self.views
+                let changed = self
+                    .views
                     .put(project_id, &item)
                     .await
                     .with_context(|| format!("materializing {item_key}"))?;
                 self.views
-                    .record_universe(project_id, &[item.item_key.clone()])
+                    .record_universe(project_id, std::slice::from_ref(&item.item_key))
                     .await
                     .with_context(|| format!("recording {item_key} in the universe"))?;
-                Ok(Some(item))
+                Ok(WalkReport {
+                    refreshed: 1,
+                    changed:   usize::from(changed),
+                    complete:  true,
+                })
             }
             Ok(None) => {
                 self.views
@@ -664,7 +671,11 @@ impl MaterializedTracker {
                     .remove_from_universe(project_id, item_key)
                     .await
                     .with_context(|| format!("removing {item_key} from the universe"))?;
-                Ok(None)
+                Ok(WalkReport {
+                    refreshed: 0,
+                    changed:   0,
+                    complete:  true,
+                })
             }
             Err(error) => Err(error),
         }
@@ -769,7 +780,7 @@ impl TrackerProvider for MaterializedTracker {
         &self,
         project: &WorkProject,
         item_key: &str,
-    ) -> anyhow::Result<Vec<crate::tracker::WorkItemComment>> {
+    ) -> anyhow::Result<Vec<WorkItemComment>> {
         // Comments are part 2: never cached, always the forge's answer.
         self.forge.list_comments(project, item_key).await
     }
@@ -838,25 +849,21 @@ fn item_matches_filter(project: &WorkProject, filter: &WorkItemFilter, item: &Wo
     let labels_ok = required
         .iter()
         .all(|label| item.labels.iter().any(|carried| carried == label));
-    match filter.query.as_deref() {
-        Some(query) => {
-            let title = item.title.to_lowercase();
-            let body = item.body.to_lowercase();
-            labels_ok
-                && query
-                    .to_lowercase()
-                    .split_whitespace()
-                    .all(|term| title.contains(term) || body.contains(term))
-        }
-        None => {
-            let state_ok = match filter.state {
-                WorkItemStateFilter::Open => item.state == "open",
-                WorkItemStateFilter::Closed => item.state == "closed",
-                WorkItemStateFilter::All => true,
-            };
-            state_ok && labels_ok
-        }
+    if let Some(query) = filter.query.as_deref() {
+        let title = item.title.to_lowercase();
+        let body = item.body.to_lowercase();
+        return labels_ok
+            && query
+                .to_lowercase()
+                .split_whitespace()
+                .all(|term| title.contains(term) || body.contains(term));
     }
+    let state_ok = match filter.state {
+        WorkItemStateFilter::Open => item.state == "open",
+        WorkItemStateFilter::Closed => item.state == "closed",
+        WorkItemStateFilter::All => true,
+    };
+    state_ok && labels_ok
 }
 
 #[cfg(test)]
@@ -939,27 +946,23 @@ mod tests {
             labels
         }
 
-        fn matches(&self, filter: &WorkItemFilter, required: &[String], item: &WorkItem) -> bool {
+        fn matches(filter: &WorkItemFilter, required: &[String], item: &WorkItem) -> bool {
             let labels_ok = required.iter().all(|label| item.labels.contains(label));
-            match filter.query.as_deref() {
-                Some(query) => {
-                    let terms = query.to_lowercase();
-                    let title = item.title.to_lowercase();
-                    let body = item.body.to_lowercase();
-                    labels_ok
-                        && terms
-                            .split_whitespace()
-                            .all(|term| title.contains(term) || body.contains(term))
-                }
-                None => {
-                    let state_ok = match filter.state {
-                        WorkItemStateFilter::Open => item.state == "open",
-                        WorkItemStateFilter::Closed => item.state == "closed",
-                        WorkItemStateFilter::All => true,
-                    };
-                    state_ok && labels_ok
-                }
+            if let Some(query) = filter.query.as_deref() {
+                let terms = query.to_lowercase();
+                let title = item.title.to_lowercase();
+                let body = item.body.to_lowercase();
+                return labels_ok
+                    && terms
+                        .split_whitespace()
+                        .all(|term| title.contains(term) || body.contains(term));
             }
+            let state_ok = match filter.state {
+                WorkItemStateFilter::Open => item.state == "open",
+                WorkItemStateFilter::Closed => item.state == "closed",
+                WorkItemStateFilter::All => true,
+            };
+            state_ok && labels_ok
         }
     }
 
@@ -977,7 +980,7 @@ mod tests {
             let mut items: Vec<WorkItem> = state
                 .items
                 .values()
-                .filter(|item| self.matches(&filter, &required, item))
+                .filter(|item| Self::matches(&filter, &required, item))
                 .cloned()
                 .collect();
             items.sort_by_key(|item| (item.priority, item.updated_at));
@@ -1162,7 +1165,7 @@ mod tests {
             title:      title.to_string(),
             body:       format!("body of {title}"),
             state:      state.to_string(),
-            labels:     labels.iter().map(|label| label.to_string()).collect(),
+            labels:     labels.iter().map(ToString::to_string).collect(),
             priority:   2,
             url:        format!("https://github.com/denkhaus/work/issues/{key_number}"),
             updated_at: None,
@@ -1317,7 +1320,7 @@ mod tests {
         let item = item(1, "Departing", "open", &["project:fabro"]);
         store.put("fabro", &item).await.unwrap();
         store
-            .record_universe("fabro", &[item.item_key.clone()])
+            .record_universe("fabro", std::slice::from_ref(&item.item_key))
             .await
             .unwrap();
         store
@@ -1617,12 +1620,9 @@ mod tests {
             stale.title, "First open item",
             "write-invalidation only: the foreign edit is invisible"
         );
-        let refreshed = tracker
-            .refresh_item(&project(), key)
-            .await
-            .unwrap()
-            .expect("the refresh loads the item");
-        assert_eq!(refreshed.title, "Foreign edit at the forge");
+        let report = tracker.refresh_item(&project(), key).await.unwrap();
+        assert_eq!(report.refreshed, 1, "the refresh loaded the item");
+        assert_eq!(report.changed, 1, "the foreign edit moved the content hash");
         let served = tracker.get(&project(), key).await.unwrap().unwrap();
         assert_eq!(
             served.title, "Foreign edit at the forge",

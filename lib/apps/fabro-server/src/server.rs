@@ -1213,6 +1213,11 @@ pub struct AppState {
     /// provider; production resolves GitHub credentials per project.
     #[cfg(any(test, feature = "test-support"))]
     work_tracker_override: Option<Arc<dyn fabro_work::TrackerProvider>>,
+    /// Whether the override sits under the materializing adapter
+    /// (ADR-0050) instead of replacing it — the IT seam for read-view
+    /// behavior. Ignored without an override.
+    #[cfg(any(test, feature = "test-support"))]
+    work_tracker_override_materialized: bool,
     worker_tokens: WorkerTokenKeys,
     started_at: Instant,
     resource_sampler: resource_sampler::ResourceSampler,
@@ -1303,6 +1308,10 @@ pub(crate) struct AppStores {
     /// Project registry, server-owned claim ledger and projection outbox
     /// (ADR-0032).
     pub(crate) work:            Arc<WorkStore>,
+    /// The materialized work-item read view (ADR-0050): cached item
+    /// content beside the claim ledger, served by the materializing
+    /// tracker adapter at the tracker seam.
+    pub(crate) work_item_views: Arc<fabro_work::WorkItemViewStore>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1527,6 +1536,12 @@ pub(crate) struct AppStateConfig {
     pub(crate) automation_materializer_override: Option<Arc<dyn AutomationRunMaterializer>>,
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) work_tracker_override: Option<Arc<dyn fabro_work::TrackerProvider>>,
+    /// Whether the test tracker override sits UNDER the materializing
+    /// adapter (ADR-0050) instead of replacing it — the IT seam for the
+    /// read-view behavior. Production ignores it; the flag only matters
+    /// when `work_tracker_override` is set.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) work_tracker_override_materialized: bool,
 }
 
 #[derive(Clone)]
@@ -1910,13 +1925,42 @@ impl AppState {
     /// nothing. The GitHub arm resolves its installation token through the
     /// per-scope source cache (`tracker_token_sources`, work#1384), so
     /// repeated resolutions reuse a token instead of minting one per call.
+    ///
+    /// Production seats every resolved forge UNDER the materializing
+    /// adapter (ADR-0050): reads resolve cache-first from the work-item
+    /// view, the forge loads on demand. A scripted test override REPLACES
+    /// the seam unless the builder seated it under the view
+    /// (`work_tracker_through_view`) — existing scripted-IT semantics
+    /// stay untouched.
     pub(crate) async fn work_tracker_for_project(
         &self,
         project: &fabro_work::WorkProject,
     ) -> anyhow::Result<Arc<dyn fabro_work::TrackerProvider>> {
         #[cfg(any(test, feature = "test-support"))]
+        if self.work_tracker_override.is_some() && !self.work_tracker_override_materialized {
+            if let Some(tracker) = self.work_tracker_override.as_ref() {
+                return Ok(Arc::clone(tracker));
+            }
+        }
+        Ok(self.materialized_work_tracker(project).await?)
+    }
+
+    /// The materializing tracker over this project's forge (ADR-0050):
+    /// the read view's store beside the resolved forge. This one
+    /// construction path serves both the tracker seam above and the
+    /// refresh door — the view logic lives in exactly one adapter.
+    /// With a scripted override present (materialized or not), the
+    /// override plays the forge, so IT drives the same adapter.
+    pub(crate) async fn materialized_work_tracker(
+        &self,
+        project: &fabro_work::WorkProject,
+    ) -> anyhow::Result<Arc<fabro_work::MaterializedTracker>> {
+        #[cfg(any(test, feature = "test-support"))]
         if let Some(tracker) = self.work_tracker_override.as_ref() {
-            return Ok(Arc::clone(tracker));
+            return Ok(Arc::new(fabro_work::MaterializedTracker::new(
+                Arc::clone(tracker),
+                Arc::clone(&self.stores.work_item_views),
+            )));
         }
 
         match project.tracker_provider.as_str() {
@@ -1945,11 +1989,15 @@ impl AppState {
                 let client = self.http_client.clone().unwrap_or_else(|| {
                     fabro_http::http_client().expect("HTTP client should build")
                 });
-                Ok(Arc::new(GitHubTracker::new(
+                let forge = Arc::new(GitHubTracker::new(
                     client,
                     &self.github_api_base_url,
                     token,
                     project.tracker_repo.clone(),
+                ));
+                Ok(Arc::new(fabro_work::MaterializedTracker::new(
+                    forge,
+                    Arc::clone(&self.stores.work_item_views),
                 )))
             }
             other => anyhow::bail!("unknown tracker provider `{other}` -- known providers: github"),
@@ -2770,6 +2818,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         #[cfg(any(test, feature = "test-support"))]
         work_tracker_override,
         #[cfg(any(test, feature = "test-support"))]
+        work_tracker_override_materialized,
+        #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override,
     } = config;
 
@@ -2812,6 +2862,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
     );
     let variables = Arc::new(VariableStore::new(db_pool.clone()));
     let work = Arc::new(WorkStore::new(db_pool.clone()));
+    let work_item_views = Arc::new(fabro_work::WorkItemViewStore::new(db_pool.clone()));
     let petri_runs = PetriRuns::new(db_pool.clone());
     // Petri's records live on the shared pool; the view tables live where the
     // run summary store keeps the `runs` row (the same database in the
@@ -2938,6 +2989,7 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
             vault: secret_store,
             variables,
             work,
+            work_item_views,
         },
         session_runtimes: SessionRuntimeManager::new(),
         artifact_store,
@@ -2947,6 +2999,8 @@ pub(crate) fn build_app_state(config: AppStateConfig) -> anyhow::Result<Arc<AppS
         automation_materializer_override,
         #[cfg(any(test, feature = "test-support"))]
         work_tracker_override,
+        #[cfg(any(test, feature = "test-support"))]
+        work_tracker_override_materialized,
         worker_tokens,
         started_at: Instant::now(),
         resource_sampler: resource_sampler::ResourceSampler::new(),

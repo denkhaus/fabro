@@ -8369,6 +8369,64 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/projects/{projectId}/work-items/refresh:
+    parameters:
+      - $ref: "#/components/parameters/WorkProjectId"
+    post:
+      operationId: refreshWorkItemView
+      tags: [Work Items]
+      summary: Refresh the materialized work-item view from the forge
+      description: >-
+        The refresh door of the read-view materialization (ADR-0050):
+        force-load from the forge and re-materialize — one item when the
+        body names `itemKey`, the project's whole universe otherwise.
+        The explicit door for foreign edits made directly at the forge;
+        ordinary reads stay write-invalidated only. User-only: a run
+        worker principal is refused (the door spends forge quota).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkItemRefreshRequest"
+      responses:
+        "200":
+          description: The refresh report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItemRefreshResponse"
+        "400":
+          description: Malformed request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller is not a user (run workers may not refresh the view)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Work project not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Tracker provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Tracker provider not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/projects/{projectId}/work-item:
     parameters:
       - $ref: "#/components/parameters/WorkProjectId"
@@ -21254,6 +21312,47 @@ components:
           type: integer
           format: int64
           minimum: 1
+
+    WorkItemRefreshRequest:
+      description: >-
+        Refresh the materialized read view (ADR-0050). One item when
+        `itemKey` names it, the project's whole universe otherwise. The
+        explicit door for foreign edits made directly at the forge: a
+        refresh force-loads from the forge and re-materializes, while
+        ordinary reads stay write-invalidated only.
+      type: object
+      properties:
+        itemKey:
+          type: string
+          description: >-
+            The provider-stable item key to refresh; omitted refreshes
+            every item of the project.
+
+    WorkItemRefreshResponse:
+      description: >-
+        What a refresh re-materialized: how many rows it wrote, how many
+        carried content the view did not already hold, and whether the
+        walk completed (a project-wide refresh capped at the walk budget
+        reports `complete: false` and leaves the universe untouched).
+      type: object
+      required:
+        - refreshed
+        - changed
+        - complete
+      properties:
+        refreshed:
+          type: integer
+          format: int64
+          description: Rows the refresh wrote.
+        changed:
+          type: integer
+          format: int64
+          description: Rows whose content hash moved (1 for a one-item refresh whose content changed).
+        complete:
+          type: boolean
+          description: >-
+            Whether the walk completed. A one-item refresh is complete
+            when it is; a project refresh that hit the page cap is not.
 
     WorkObservationLinkOutcome:
       type: string

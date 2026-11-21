@@ -14,10 +14,10 @@ use fabro_api::types::{
     WorkClaimNextOutcome, WorkClaimNextRequest, WorkClaimNextResponse, WorkClaimReleaseRequest,
     WorkClaimState, WorkClaimTransitionRequest, WorkItem as ApiWorkItem, WorkItemCloseRequest,
     WorkItemCloseResponse, WorkItemCommentList, WorkItemCreateRequest, WorkItemLaneRequest,
-    WorkItemListResponse, WorkItemLockRequest, WorkItemRadiusResponse, WorkItemUpdateRequest,
-    WorkObservationLinkOutcome, WorkObservationLinkRequest, WorkObservationLinkResponse,
-    WorkObservationUnlinkResponse, WorkProject as ApiWorkProject, WorkProjectListResponse,
-    WorkProjectUpsertRequest,
+    WorkItemListResponse, WorkItemLockRequest, WorkItemRadiusResponse, WorkItemRefreshRequest,
+    WorkItemRefreshResponse, WorkItemUpdateRequest, WorkObservationLinkOutcome,
+    WorkObservationLinkRequest, WorkObservationLinkResponse, WorkObservationUnlinkResponse,
+    WorkProject as ApiWorkProject, WorkProjectListResponse, WorkProjectUpsertRequest,
 };
 use fabro_store::platform_records::{
     PlatformRecord, PlatformRecordKind, WorkClaimedRecord, WorkLandedRecord, WorkReleasedRecord,
@@ -85,6 +85,10 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route(
             "/projects/{projectId}/work-items/unlock",
             post(unlock_work_item),
+        )
+        .route(
+            "/projects/{projectId}/work-items/refresh",
+            post(refresh_work_item_view),
         )
         .route("/projects/{projectId}/next", post(claim_next))
         .route("/projects/{projectId}/work-item", get(retrieve_work_item))
@@ -1229,6 +1233,61 @@ async fn unlock_work_item(
         "operator lock lifted"
     );
     Ok(Json(stamp_lock(api_item(item), false)).into_response())
+}
+
+/// The refresh door of the read-view materialization (ADR-0050):
+/// force-load from the forge and re-materialize — one item when the
+/// body names one, the project's whole universe otherwise. The explicit
+/// door for foreign edits made directly at the forge; ordinary reads
+/// stay write-invalidated only. User-only: the door spends forge quota,
+/// and a run never needs it (its own writes already moved the view).
+async fn refresh_work_item_view(
+    auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+    Path(project_id): Path<String>,
+    Json(request): Json<WorkItemRefreshRequest>,
+) -> Result<Response, ApiError> {
+    if let fabro_types::Principal::Worker { run_id } = &auth.0 {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            format!("the view refresh is a user operation — run {run_id} may not refresh it"),
+        ));
+    }
+    let project = resolve_project(&state, &auth, &project_id).await?;
+    let item_key = request.item_key.as_deref().map(str::trim);
+    if item_key == Some("") {
+        return Err(ApiError::bad_request(
+            "itemKey must not be blank; omit it to refresh the whole project",
+        ));
+    }
+    let tracker = state
+        .materialized_work_tracker(&project)
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("tracker provider is not available: {error:#}"),
+            )
+        })?;
+    let report = match item_key {
+        Some(item_key) => tracker.refresh_item(&project, item_key).await,
+        None => tracker.refresh_project(&project).await,
+    }
+    .map_err(tracker_failed)?;
+    tracing::info!(
+        project = %project.project_id,
+        item_key = item_key,
+        refreshed = report.refreshed,
+        changed = report.changed,
+        complete = report.complete,
+        "work-item view refreshed"
+    );
+    Ok(Json(WorkItemRefreshResponse {
+        refreshed: i64::try_from(report.refreshed).unwrap_or(i64::MAX),
+        changed:   i64::try_from(report.changed).unwrap_or(i64::MAX),
+        complete:  report.complete,
+    })
+    .into_response())
 }
 
 /// Stamps the operator-lock badge (denkhaus/work#1420) onto a served
@@ -3215,5 +3274,303 @@ mod resolve_self_tests {
         require_claim_held_by_run(&state, &user_caller, "denkhaus/work#9")
             .await
             .expect("a user closes and edits without holding a claim");
+    }
+}
+
+#[cfg(test)]
+mod view_materialization_tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+    use axum_extra::extract::Query as ExtraQuery;
+    use fabro_static::EnvVars;
+    use fabro_types::Principal;
+
+    use super::{WorkItemGetQuery, get_work_item, refresh_work_item_view};
+    use crate::principal_middleware::RequiredRunManagementActor;
+    use crate::server::AppState;
+    use crate::test_support::TestAppStateBuilder;
+
+    /// The scripted forge for the seam tests: one item, a read-failure
+    /// switch, and a mutable title — the two moves the pins need.
+    struct SwitchForge {
+        item:       Mutex<fabro_work::WorkItem>,
+        fail_reads: AtomicBool,
+    }
+
+    impl SwitchForge {
+        fn new() -> Self {
+            Self {
+                item:       Mutex::new(fabro_work::WorkItem {
+                    item_key:   "denkhaus/work#1".to_string(),
+                    title:      "Item as the forge serves it".to_string(),
+                    body:       "the spec body".to_string(),
+                    state:      "open".to_string(),
+                    labels:     vec!["project:fabro".to_string()],
+                    priority:   2,
+                    url:        "https://github.com/denkhaus/work/issues/1".to_string(),
+                    updated_at: None,
+                    created_at: None,
+                    closed_at:  None,
+                }),
+                fail_reads: AtomicBool::new(false),
+            }
+        }
+
+        fn fail_reads(&self) {
+            self.fail_reads.store(true, Ordering::SeqCst);
+        }
+
+        fn edit_title(&self, title: &str) {
+            self.item.lock().expect("forge item lock").title = title.to_string();
+        }
+    }
+
+    #[async_trait]
+    impl fabro_work::TrackerProvider for SwitchForge {
+        async fn list(
+            &self,
+            _project: &fabro_work::WorkProject,
+            filter: fabro_work::WorkItemFilter,
+        ) -> anyhow::Result<Vec<fabro_work::WorkItem>> {
+            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            let item = self.item.lock().expect("forge item lock").clone();
+            let state_ok = match filter.state {
+                fabro_work::WorkItemStateFilter::Closed => item.state == "closed",
+                fabro_work::WorkItemStateFilter::All => true,
+                fabro_work::WorkItemStateFilter::Open => item.state == "open",
+            };
+            Ok(if state_ok { vec![item] } else { Vec::new() })
+        }
+
+        async fn get(
+            &self,
+            _project: &fabro_work::WorkProject,
+            item_key: &str,
+        ) -> anyhow::Result<Option<fabro_work::WorkItem>> {
+            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            let item = self.item.lock().expect("forge item lock").clone();
+            Ok((item.item_key == item_key).then_some(item))
+        }
+
+        async fn create(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _draft: fabro_work::WorkItemDraft,
+        ) -> anyhow::Result<fabro_work::WorkItem> {
+            anyhow::bail!("the switch forge creates nothing")
+        }
+
+        async fn update(
+            &self,
+            _project: &fabro_work::WorkProject,
+            item_key: &str,
+            title: Option<&str>,
+            body: Option<&str>,
+        ) -> anyhow::Result<fabro_work::WorkItem> {
+            let mut item = self.item.lock().expect("forge item lock");
+            anyhow::ensure!(item.item_key == item_key, "work item {item_key} not found");
+            if let Some(title) = title {
+                item.title = title.to_string();
+            }
+            if let Some(body) = body {
+                item.body = body.to_string();
+            }
+            Ok(item.clone())
+        }
+
+        async fn close(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            self.item.lock().expect("forge item lock").state = "closed".to_string();
+            Ok(())
+        }
+
+        async fn comment(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn project_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn clear_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn project() -> fabro_work::WorkProject {
+        fabro_work::WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              None,
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       fabro_work::DEFAULT_CLAIM_LABEL_PREFIX.to_owned(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        }
+    }
+
+    fn user_auth() -> RequiredRunManagementActor {
+        RequiredRunManagementActor(Principal::User(fabro_types::UserPrincipal {
+            identity:    fabro_types::IdpIdentity::new("https://issuer.test", "user-1")
+                .expect("issuer and subject are non-empty"),
+            login:       "tester".to_string(),
+            auth_method: fabro_types::AuthMethod::DevToken,
+            avatar_url:  None,
+        }))
+    }
+
+    async fn state_with_forge(forge: Arc<SwitchForge>) -> Arc<AppState> {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker_through_view(forge as Arc<dyn fabro_work::TrackerProvider>)
+            .build();
+        state.work_store().upsert_project(&project()).await.unwrap();
+        state
+    }
+
+    async fn show_item(state: &Arc<AppState>) -> serde_json::Value {
+        let response = get_work_item(
+            user_auth(),
+            axum::extract::State(Arc::clone(state)),
+            axum::extract::Path("fabro".to_string()),
+            ExtraQuery(WorkItemGetQuery {
+                item_key: "denkhaus/work#1".to_string(),
+            }),
+        )
+        .await
+        .expect("the work show door answers");
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    /// THE EVIDENCE-CAPTURE PIN (ADR-0050, work#1557): the read door
+    /// that died on 2026-11-21 — `work show` against a quota-exhausted
+    /// forge — serves from the materialized view once warm. The forge
+    /// sits under the adapter exactly as production seats it; the door
+    /// is unchanged.
+    #[tokio::test]
+    async fn the_work_show_door_serves_from_the_view_when_the_forge_dies() {
+        let forge = Arc::new(SwitchForge::new());
+        let state = state_with_forge(Arc::clone(&forge)).await;
+
+        let warm = show_item(&state).await;
+        assert_eq!(warm["title"], "Item as the forge serves it");
+
+        // The quota window closes; every forge read now fails.
+        forge.fail_reads();
+
+        let degraded = show_item(&state).await;
+        assert_eq!(
+            degraded["title"], "Item as the forge serves it",
+            "a warm view never fails hard while the forge is down"
+        );
+    }
+
+    /// The refresh door (ADR-0050): a foreign edit made directly at the
+    /// forge stays invisible to reads until the explicit refresh runs;
+    /// the user-only door picks it up, a worker is refused.
+    #[tokio::test]
+    async fn the_refresh_door_picks_up_foreign_edits() {
+        let forge = Arc::new(SwitchForge::new());
+        let state = state_with_forge(Arc::clone(&forge)).await;
+
+        let stale = show_item(&state).await;
+        assert_eq!(stale["title"], "Item as the forge serves it");
+
+        forge.edit_title("Foreignly edited at the forge");
+        let still_stale = show_item(&state).await;
+        assert_eq!(
+            still_stale["title"], "Item as the forge serves it",
+            "write-invalidation only: the foreign edit is invisible"
+        );
+
+        let response = refresh_work_item_view(
+            user_auth(),
+            axum::extract::State(Arc::clone(&state)),
+            axum::extract::Path("fabro".to_string()),
+            axum::Json(fabro_api::types::WorkItemRefreshRequest {
+                item_key: Some("denkhaus/work#1".to_string()),
+            }),
+        )
+        .await
+        .expect("the refresh door answers");
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let report: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(report["refreshed"], 1);
+        assert_eq!(report["changed"], 1);
+
+        let refreshed = show_item(&state).await;
+        assert_eq!(
+            refreshed["title"], "Foreignly edited at the forge",
+            "after the refresh the door serves the foreign edit"
+        );
+
+        // The door is user-only: a worker principal is refused.
+        let run_id = fabro_types::RunId::new();
+        let refused = refresh_work_item_view(
+            RequiredRunManagementActor(Principal::Worker { run_id }),
+            axum::extract::State(Arc::clone(&state)),
+            axum::extract::Path("fabro".to_string()),
+            axum::Json(fabro_api::types::WorkItemRefreshRequest { item_key: None }),
+        )
+        .await
+        .expect_err("a worker may not refresh the view");
+        assert_eq!(refused.status(), axum::http::StatusCode::FORBIDDEN);
+    }
+
+    /// The write-through pin at the door level: a close through the
+    /// seam materializes the closed state, and the next read serves it
+    /// without the forge.
+    #[tokio::test]
+    async fn a_close_through_the_seam_serves_closed_from_the_view() {
+        let forge = Arc::new(SwitchForge::new());
+        let state = state_with_forge(Arc::clone(&forge)).await;
+        let _ = show_item(&state).await;
+
+        let tracker = state.work_tracker_for_project(&project()).await.unwrap();
+        tracker
+            .close(&project(), "denkhaus/work#1", "landed with evidence")
+            .await
+            .unwrap();
+
+        forge.fail_reads();
+        let served = show_item(&state).await;
+        assert_eq!(
+            served["state"], "closed",
+            "the closed state serves from the view while the forge is down"
+        );
     }
 }
