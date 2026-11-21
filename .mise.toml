@@ -17,8 +17,7 @@ just = "1.58.0"
 bun = "1.4.0"
 # Shell for scripts/ helpers: justfile recipes are thin launchers, the
 # logic (clean-target, install-cli, wait-healthy) lives in nushell.
-# Keep aligned with the lab branch pin.
-"aqua:nushell/nushell" = "0.116.1"
+"aqua:nushell/nushell" = "0.117.0"
 # Expertise CLI (git-native, see AGENTS.md); bin: mulch. The native
 # Rust CLI (crates.io, repo denkhaus/mulch) replaced the npm
 # @os-eco/mulch-cli reference tool 2026-10-31 (work#1070, the
@@ -28,13 +27,13 @@ bun = "1.4.0"
 # (crates.io 0.9.0; the denkhaus Rust app replaced the npm
 # @os-eco/seeds-cli reference tool 2026-09-26 — no sd bin; the ubi
 # backend is deprecated). Needs cargo — the toolchain image and dev
-# hosts have it. The repo must not rely on a global install. 0.13.0 is
+# hosts have it. The repo must not rely on a global install. 0.13.0 was
 # the self-referential command strings release (seeds-9667) plus the
 # native mulch coupling (seeds-26c3; 0.11.1 was seeds-95a3, the label
 # id-word refusal). Keep aligned with
 # ARG SEEDS_VERSION in .fabro/Dockerfile.toolchain
 # (run sandboxes install the same release binary).
-"cargo:seeds" = "0.13.0"
+"cargo:seeds" = "0.14.0"
 # Git hooks (lefthook.yml: pre-commit leak + guard + nu lint gates,
 # pre-push full scan). After cloning: just bootstrap (installs mise
 # when absent, every pin above, and the hooks). Mirrors fabro-tofu's
