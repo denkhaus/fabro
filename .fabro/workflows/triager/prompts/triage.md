@@ -40,7 +40,7 @@ For ONE painpoint per response, in order:
      the pass: fire `fabro_observation_manage` with `action:
      filing_blocked` and the reason — the record parks for 6 hours
      and then returns to the untriaged feed — and conclude the
-     painpoint (work#1585).
+     painpoint.
    - **Link an existing item** — `fabro_work_list` found an open item
      that already carries the finding: `fabro_observation_manage` with
      `action: link_existing`, `project`, `itemKey`, and a reason naming
@@ -75,8 +75,7 @@ sentence.
 - The disposition writes are HARD: a failed tool call fails the
   response, never absorb it and move on.
 - **Never conclude without a write.** A disposition that writes no
-  triage decision is not a disposition — the painpoint re-serves
-  (work#1585).
+  triage decision is not a disposition — the painpoint re-serves.
 - A painpoint from a failed or parked run is still friction — judge
   the record, not the run (the adjudicator judges runs).
 - When torn between filing and no_filing, ask what the line would lose:
