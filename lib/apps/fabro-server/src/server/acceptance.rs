@@ -18,9 +18,9 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use fabro_types::{OrchestrationField, OrchestrationVerdict, PullRequestState, RunId};
+use fabro_work::{AcceptanceState, ClaimFold, WorkClaim};
 
 use super::AppState;
-use fabro_work::{AcceptanceState, ClaimFold, WorkClaim};
 
 /// The per-claim run-scoped evidence a [`ClaimFold`] needs besides the
 /// claim row itself. A plain-data carry between the batched verdict
@@ -38,7 +38,10 @@ pub(crate) struct ClaimVerdicts {
 /// claim would pay a full scan per row.
 pub(crate) async fn verdict_maps(
     state: &AppState,
-) -> Result<(HashMap<RunId, OrchestrationVerdict>, HashMap<RunId, OrchestrationVerdict>)> {
+) -> Result<(
+    HashMap<RunId, OrchestrationVerdict>,
+    HashMap<RunId, OrchestrationVerdict>,
+)> {
     let merge = latest_verdict_map(state, OrchestrationField::Merge).await?;
     let closable = latest_verdict_map(state, OrchestrationField::Closable).await?;
     Ok((merge, closable))
@@ -76,7 +79,10 @@ pub(crate) fn verdicts_from_maps(
 /// read off the claim run's stored projection (no projector settle —
 /// the fold re-derives every pass, it never forces one). `None` when
 /// the projection is gone or the link carries no observed state.
-pub(crate) async fn claim_pr_state(state: &AppState, claim: &WorkClaim) -> Option<PullRequestState> {
+pub(crate) async fn claim_pr_state(
+    state: &AppState,
+    claim: &WorkClaim,
+) -> Option<PullRequestState> {
     let projection = state
         .stores
         .run_summaries
@@ -94,11 +100,11 @@ pub(crate) async fn claim_pr_state(state: &AppState, claim: &WorkClaim) -> Optio
 
 /// Assemble one claim's [`ClaimFold`] from maps plus an already-known
 /// PR state (a caller that holds the run's projection reads no store).
-pub(crate) fn claim_fold<'a>(
-    claim: &'a WorkClaim,
+pub(crate) fn claim_fold(
+    claim: &WorkClaim,
     verdicts: ClaimVerdicts,
     pr_state: Option<PullRequestState>,
-) -> ClaimFold<'a> {
+) -> ClaimFold<'_> {
     ClaimFold {
         claim,
         merge_verdict: verdicts.merge,
@@ -136,7 +142,10 @@ pub(crate) async fn item_fold(
     state: &AppState,
     project_id: &str,
     item_key: &str,
-    verdicts: (&HashMap<RunId, OrchestrationVerdict>, &HashMap<RunId, OrchestrationVerdict>),
+    verdicts: (
+        &HashMap<RunId, OrchestrationVerdict>,
+        &HashMap<RunId, OrchestrationVerdict>,
+    ),
 ) -> Result<AcceptanceState> {
     let claims = state
         .work_store()
@@ -186,21 +195,23 @@ pub(crate) fn claim_fold_with<'a>(
 pub(crate) async fn live_claim_fold(
     state: &AppState,
     claim: &WorkClaim,
-    verdicts: (&HashMap<RunId, OrchestrationVerdict>, &HashMap<RunId, OrchestrationVerdict>),
+    verdicts: (
+        &HashMap<RunId, OrchestrationVerdict>,
+        &HashMap<RunId, OrchestrationVerdict>,
+    ),
     projection: Option<&fabro_types::RunProjection>,
 ) -> Result<AcceptanceState> {
     let stored;
-    let projection = match projection {
-        Some(projection) => Some(projection),
-        None => {
-            stored = state
-                .stores
-                .run_summaries
-                .load_petri_projection(&claim.run_id)
-                .await
-                .context("reading the claim run's stored projection")?;
-            stored.as_deref()
-        }
+    let projection = if let Some(projection) = projection {
+        Some(projection)
+    } else {
+        stored = state
+            .stores
+            .run_summaries
+            .load_petri_projection(&claim.run_id)
+            .await
+            .context("reading the claim run's stored projection")?;
+        stored.as_deref()
     };
     let open = item_open(state, &claim.project_id, &claim.item_key).await;
     let claim_verdicts = verdicts_from_maps(&claim.run_id, verdicts.0, verdicts.1);

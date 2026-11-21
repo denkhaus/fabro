@@ -12,15 +12,15 @@
 //!
 //! Inputs (all local rows; no tracker I/O, no network):
 //!
-//! - the item's tracker-visible open/closed state as projected locally
-//!   (the view store's row; a missing row reads open — the safe side
-//!   for every consumer),
-//! - the item's claim history ([`WorkClaim`] rows, oldest or newest —
-//!   order is irrelevant to the fold),
-//! - per claim: the claim's run's latest `merge` and `closable`
-//!   orchestration verdicts (absence = pending),
-//! - per claim: the PR state projection of the claim's pull request
-//!   (`None` = unobserved).
+//! - the item's tracker-visible open/closed state as projected locally (the
+//!   view store's row; a missing row reads open — the safe side for every
+//!   consumer),
+//! - the item's claim history ([`WorkClaim`] rows, oldest or newest — order is
+//!   irrelevant to the fold),
+//! - per claim: the claim's run's latest `merge` and `closable` orchestration
+//!   verdicts (absence = pending),
+//! - per claim: the PR state projection of the claim's pull request (`None` =
+//!   unobserved).
 //!
 //! Consumers: the reconciler's worklist (its refused arm reads
 //! [`AcceptanceState::MergeRefused`] instead of re-deriving the verdict
@@ -39,9 +39,8 @@
 //! the authority (ADR-0032 decision 2) — this module is vocabulary over
 //! store rows, never a second ledger.
 
-use serde::{Deserialize, Serialize};
-
 use fabro_types::{OrchestrationVerdict, PullRequestState};
+use serde::{Deserialize, Serialize};
 
 use crate::store::{ClaimState, WorkClaim};
 
@@ -107,14 +106,14 @@ pub enum AcceptanceState {
 /// fills it; the fold never reaches for I/O.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClaimFold<'a> {
-    pub claim:           &'a WorkClaim,
+    pub claim:            &'a WorkClaim,
     /// The claim run's latest `merge` verdict; `None` is pending.
-    pub merge_verdict:   Option<OrchestrationVerdict>,
+    pub merge_verdict:    Option<OrchestrationVerdict>,
     /// The claim run's latest `closable` verdict; `None` is pending.
     pub closable_verdict: Option<OrchestrationVerdict>,
     /// The PR state projection of the claim's pull request; `None` is
     /// unobserved by the platform.
-    pub pr_state:        Option<PullRequestState>,
+    pub pr_state:         Option<PullRequestState>,
 }
 
 /// The acceptance fold: map one item's rows to its named
@@ -123,24 +122,22 @@ pub struct ClaimFold<'a> {
 ///
 /// Arms, in evaluation order:
 ///
-/// 1. No claims: the chain never entered —
-///    [`AcceptanceState::NoClaimOpenItem`] /
-///    [`AcceptanceState::NoClaimClosedItem`].
+/// 1. No claims: the chain never entered — [`AcceptanceState::NoClaimOpenItem`]
+///    / [`AcceptanceState::NoClaimClosedItem`].
 /// 2. A live claim (`granted`/`active`/`awaiting_merge` — the ledger's
-///    uniqueness keeps at most one): the live lap owns the chain
-///    position, so a landed claim from an earlier lap cannot shadow it.
-///    A closed item with a live claim is the #1463 stuck window
-///    ([`AcceptanceState::ClosedUnlanded`]); an open item climbs the
-///    verdict ladder — integration evidence first (a `closable`
-///    `enabled` verdict or an observed-merged PR outranks even a stale
-///    refusal: the work IS in the target), then the refused verdict,
-///    then the approved merge, then the wait.
-/// 3. No live claim: the terminal history decides — landed plus closed
-///    is [`AcceptanceState::LandedClosed`]; landed without closed is
-///    [`AcceptanceState::ClosableLanded`] (landed-but-open); closed
-///    without landed is [`AcceptanceState::ClosedUnlanded`]; open
-///    without landed returns to [`AcceptanceState::NoClaimOpenItem`]
-///    (the pool).
+///    uniqueness keeps at most one): the live lap owns the chain position, so a
+///    landed claim from an earlier lap cannot shadow it. A closed item with a
+///    live claim is the #1463 stuck window
+///    ([`AcceptanceState::ClosedUnlanded`]); an open item climbs the verdict
+///    ladder — integration evidence first (a `closable` `enabled` verdict or an
+///    observed-merged PR outranks even a stale refusal: the work IS in the
+///    target), then the refused verdict, then the approved merge, then the
+///    wait.
+/// 3. No live claim: the terminal history decides — landed plus closed is
+///    [`AcceptanceState::LandedClosed`]; landed without closed is
+///    [`AcceptanceState::ClosableLanded`] (landed-but-open); closed without
+///    landed is [`AcceptanceState::ClosedUnlanded`]; open without landed
+///    returns to [`AcceptanceState::NoClaimOpenItem`] (the pool).
 #[must_use]
 pub fn acceptance_fold(item_open: bool, claims: &[ClaimFold<'_>]) -> AcceptanceState {
     // Arm 1: the chain never entered.
@@ -152,7 +149,9 @@ pub fn acceptance_fold(item_open: bool, claims: &[ClaimFold<'_>]) -> AcceptanceS
         };
     }
     let Some(live) = claims.iter().find(|row| row.claim.state.holds_item()) else {
-        let landed = claims.iter().any(|row| row.claim.state == ClaimState::Landed);
+        let landed = claims
+            .iter()
+            .any(|row| row.claim.state == ClaimState::Landed);
         return match (item_open, landed) {
             (true, false) => AcceptanceState::NoClaimOpenItem,
             (true, true) => AcceptanceState::ClosableLanded,
@@ -201,18 +200,17 @@ mod tests {
 
     fn claim(state: ClaimState, run_seed: &str) -> WorkClaim {
         WorkClaim {
-            claim_id:       format!("claim-{run_seed}"),
-            project_id:     "fabro".to_string(),
-            item_key:       "denkhaus/work#1555".to_string(),
-            run_id:         run_id(run_seed),
-            lane:           "loop".to_string(),
+            claim_id: format!("claim-{run_seed}"),
+            project_id: "fabro".to_string(),
+            item_key: "denkhaus/work#1555".to_string(),
+            run_id: run_id(run_seed),
+            lane: "loop".to_string(),
             state,
-            granted_at:     Utc::now(),
-            updated_at:     Utc::now(),
-            released_at:    state.is_terminal().then_some(Utc::now()),
-            release_reason: (state == ClaimState::Released)
-                .then(|| "released".to_string()),
-            pr_url:         None,
+            granted_at: Utc::now(),
+            updated_at: Utc::now(),
+            released_at: state.is_terminal().then_some(Utc::now()),
+            release_reason: (state == ClaimState::Released).then(|| "released".to_string()),
+            pr_url: None,
         }
     }
 
@@ -279,15 +277,12 @@ mod tests {
     fn integration_evidence_outranks_a_stale_refusal() {
         let row = claim(ClaimState::AwaitingMerge, "02");
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    Some(OrchestrationVerdict::Refused),
-                    Some(OrchestrationVerdict::Enabled),
-                    Some(PullRequestState::Open),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Refused),
+                Some(OrchestrationVerdict::Enabled),
+                Some(PullRequestState::Open),
+            )],),
             AcceptanceState::ClosableLanded,
             "the merger integrated after the refusal: the work is in the target"
         );
@@ -297,28 +292,22 @@ mod tests {
     fn an_observed_merged_pr_is_integration_evidence() {
         let row = claim(ClaimState::AwaitingMerge, "03");
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    None,
-                    None,
-                    Some(PullRequestState::Merged),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                None,
+                None,
+                Some(PullRequestState::Merged),
+            )],),
             AcceptanceState::ClosableLanded,
             "the platform observed the merge: integrated, not closed"
         );
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    Some(OrchestrationVerdict::Refused),
-                    None,
-                    Some(PullRequestState::Merged),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Refused),
+                None,
+                Some(PullRequestState::Merged),
+            )],),
             AcceptanceState::ClosableLanded,
             "an external merge outranks the stale refusal too"
         );
@@ -328,19 +317,21 @@ mod tests {
     fn a_refused_merge_verdict_names_merge_refused() {
         let row = claim(ClaimState::Active, "04");
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    Some(OrchestrationVerdict::Refused),
-                    None,
-                    Some(PullRequestState::Open),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Refused),
+                None,
+                Some(PullRequestState::Open),
+            )],),
             AcceptanceState::MergeRefused,
         );
         assert_eq!(
-            fold_state(true, &[fold_with(&row, Some(OrchestrationVerdict::Refused), None, None)]),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Refused),
+                None,
+                None
+            )]),
             AcceptanceState::MergeRefused,
             "the refusal fires without PR evidence too"
         );
@@ -350,27 +341,21 @@ mod tests {
     fn an_enabled_merge_verdict_waits_for_the_merger() {
         let row = claim(ClaimState::AwaitingMerge, "05");
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    Some(OrchestrationVerdict::Enabled),
-                    None,
-                    Some(PullRequestState::Open),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Enabled),
+                None,
+                Some(PullRequestState::Open),
+            )],),
             AcceptanceState::WaitingForClosable,
         );
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(
-                    &row,
-                    Some(OrchestrationVerdict::Enabled),
-                    Some(OrchestrationVerdict::Refused),
-                    Some(PullRequestState::Open),
-                )],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Enabled),
+                Some(OrchestrationVerdict::Refused),
+                Some(PullRequestState::Open),
+            )],),
             AcceptanceState::WaitingForClosable,
             "a refused closable verdict is NOT integration: still waiting"
         );
@@ -385,26 +370,32 @@ mod tests {
             "no verdict at all: waiting"
         );
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(&row, Some(OrchestrationVerdict::Parked), None, None)],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                Some(OrchestrationVerdict::Parked),
+                None,
+                None
+            )],),
             AcceptanceState::WaitingForMergeVerdict,
             "an open escalation is an unsettled verdict: waiting"
         );
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(&row, None, None, Some(PullRequestState::Open))],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                None,
+                None,
+                Some(PullRequestState::Open)
+            )],),
             AcceptanceState::WaitingForMergeVerdict,
             "an open PR without a verdict is still the adjudicator's to judge"
         );
         assert_eq!(
-            fold_state(
-                true,
-                &[fold_with(&row, None, None, Some(PullRequestState::Closed))],
-            ),
+            fold_state(true, &[fold_with(
+                &row,
+                None,
+                None,
+                Some(PullRequestState::Closed)
+            )],),
             AcceptanceState::WaitingForMergeVerdict,
             "a dead PR without a verdict is literally waiting for one — \
              the adjudicator's queue still holds the run"
@@ -479,16 +470,40 @@ mod tests {
         let cases: Vec<(bool, Vec<ClaimFold<'_>>, AcceptanceState)> = vec![
             (true, no_claim.clone(), AcceptanceState::NoClaimOpenItem),
             (false, no_claim.clone(), AcceptanceState::NoClaimClosedItem),
-            (true, vec![fold(&released)], AcceptanceState::NoClaimOpenItem),
-            (false, vec![fold(&released)], AcceptanceState::ClosedUnlanded),
+            (
+                true,
+                vec![fold(&released)],
+                AcceptanceState::NoClaimOpenItem,
+            ),
+            (
+                false,
+                vec![fold(&released)],
+                AcceptanceState::ClosedUnlanded,
+            ),
             (true, vec![fold(&landed)], AcceptanceState::ClosableLanded),
             (false, vec![fold(&landed)], AcceptanceState::LandedClosed),
-            (true, vec![fold(&granted)], AcceptanceState::WaitingForMergeVerdict),
+            (
+                true,
+                vec![fold(&granted)],
+                AcceptanceState::WaitingForMergeVerdict,
+            ),
             (false, vec![fold(&granted)], AcceptanceState::ClosedUnlanded),
-            (true, vec![fold(&active)], AcceptanceState::WaitingForMergeVerdict),
+            (
+                true,
+                vec![fold(&active)],
+                AcceptanceState::WaitingForMergeVerdict,
+            ),
             (false, vec![fold(&active)], AcceptanceState::ClosedUnlanded),
-            (true, vec![fold(&awaiting)], AcceptanceState::WaitingForMergeVerdict),
-            (false, vec![fold(&awaiting)], AcceptanceState::ClosedUnlanded),
+            (
+                true,
+                vec![fold(&awaiting)],
+                AcceptanceState::WaitingForMergeVerdict,
+            ),
+            (
+                false,
+                vec![fold(&awaiting)],
+                AcceptanceState::ClosedUnlanded,
+            ),
             // Landed history + a later released claim, item closed: the
             // healthy terminal still reads through the release.
             (
@@ -501,12 +516,22 @@ mod tests {
             // ladder only runs for LIVE claims).
             (
                 true,
-                vec![fold_with(&released, Some(OrchestrationVerdict::Refused), None, None)],
+                vec![fold_with(
+                    &released,
+                    Some(OrchestrationVerdict::Refused),
+                    None,
+                    None,
+                )],
                 AcceptanceState::NoClaimOpenItem,
             ),
             (
                 false,
-                vec![fold_with(&released, Some(OrchestrationVerdict::Refused), None, None)],
+                vec![fold_with(
+                    &released,
+                    Some(OrchestrationVerdict::Refused),
+                    None,
+                    None,
+                )],
                 AcceptanceState::ClosedUnlanded,
             ),
         ];
@@ -529,7 +554,10 @@ mod tests {
     /// spell them identically.
     #[test]
     fn the_state_names_spell_snake_case() {
-        assert_eq!(AcceptanceState::NoClaimOpenItem.to_string(), "no_claim_open_item");
+        assert_eq!(
+            AcceptanceState::NoClaimOpenItem.to_string(),
+            "no_claim_open_item"
+        );
         assert_eq!(
             AcceptanceState::NoClaimClosedItem.to_string(),
             "no_claim_closed_item"
@@ -543,8 +571,14 @@ mod tests {
             AcceptanceState::WaitingForClosable.to_string(),
             "waiting_for_closable"
         );
-        assert_eq!(AcceptanceState::ClosableLanded.to_string(), "closable_landed");
-        assert_eq!(AcceptanceState::ClosedUnlanded.to_string(), "closed_unlanded");
+        assert_eq!(
+            AcceptanceState::ClosableLanded.to_string(),
+            "closable_landed"
+        );
+        assert_eq!(
+            AcceptanceState::ClosedUnlanded.to_string(),
+            "closed_unlanded"
+        );
         assert_eq!(AcceptanceState::LandedClosed.to_string(), "landed_closed");
         for state in [
             AcceptanceState::NoClaimOpenItem,

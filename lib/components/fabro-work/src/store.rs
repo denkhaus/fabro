@@ -635,7 +635,11 @@ LIMIT 1
     /// input rows (denkhaus/work#1555): the item-level fold reads the
     /// whole history (a landed claim from an earlier lap, a live
     /// claim's verdicts), not just the live row the other reads serve.
-    pub async fn claims_for_item(&self, project_id: &str, item_key: &str) -> Result<Vec<WorkClaim>> {
+    pub async fn claims_for_item(
+        &self,
+        project_id: &str,
+        item_key: &str,
+    ) -> Result<Vec<WorkClaim>> {
         let rows = sqlx::query(
             r"
 SELECT claim_id, project_id, item_key, run_id, lane, state,

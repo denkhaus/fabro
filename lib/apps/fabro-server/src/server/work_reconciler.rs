@@ -71,17 +71,16 @@ pub(crate) async fn run_pass(state: &AppState) -> ReconcileReport {
     // degrades to EMPTY maps: without verdicts nothing releases (the
     // hold posture — a failed read never frees an item), and the next
     // pass re-reads.
-    let (merge_verdicts, closable_verdicts) =
-        match super::acceptance::verdict_maps(state).await {
-            Ok(maps) => maps,
-            Err(error) => {
-                tracing::warn!(
-                    error = ?error,
-                    "work reconciler: verdict map read failed; claims hold this pass"
-                );
-                Default::default()
-            }
-        };
+    let (merge_verdicts, closable_verdicts) = match super::acceptance::verdict_maps(state).await {
+        Ok(maps) => maps,
+        Err(error) => {
+            tracing::warn!(
+                error = ?error,
+                "work reconciler: verdict map read failed; claims hold this pass"
+            );
+            Default::default()
+        }
+    };
     for project in projects {
         let tracker = match state.work_tracker_for_project(&project).await {
             Ok(tracker) => tracker,
@@ -383,28 +382,29 @@ async fn reconcile_run_state(
     // A terminal run WITHOUT a pull request: the acceptance fold names
     // the chain state; its release arms fire, the hold seam names the
     // hold.
-    let fold = match super::acceptance::live_claim_fold(
-        state,
-        claim,
-        verdicts,
-        Some(projection.as_ref()),
-    )
-    .await
-    {
-        Ok(fold) => fold,
-        Err(error) => {
-            tracing::warn!(
-                claim_id = %claim.claim_id,
-                error = ?error,
-                "work reconciler: acceptance fold read failed; claim holds"
-            );
-            return;
-        }
-    };
+    let fold =
+        match super::acceptance::live_claim_fold(state, claim, verdicts, Some(projection.as_ref()))
+            .await
+        {
+            Ok(fold) => fold,
+            Err(error) => {
+                tracing::warn!(
+                    claim_id = %claim.claim_id,
+                    error = ?error,
+                    "work reconciler: acceptance fold read failed; claim holds"
+                );
+                return;
+            }
+        };
     match fold {
         fabro_work::AcceptanceState::MergeRefused => {
-            release_verdict(state, claim, "merge refused: the adjudicator rejected the run", report)
-                .await;
+            release_verdict(
+                state,
+                claim,
+                "merge refused: the adjudicator rejected the run",
+                report,
+            )
+            .await;
         }
         fabro_work::AcceptanceState::ClosedUnlanded => {
             release_verdict(
@@ -847,9 +847,9 @@ mod tests {
         let granted = store
             .grant(&fabro_work::GrantRequest {
                 project_id: "fabro".to_string(),
-                item_key:   "denkhaus/work#1555".to_string(),
+                item_key: "denkhaus/work#1555".to_string(),
                 run_id,
-                lane:       "loop".to_string(),
+                lane: "loop".to_string(),
             })
             .await
             .expect("grant");
@@ -858,15 +858,27 @@ mod tests {
         };
         store.activate(&claim.claim_id).await.expect("activate");
         let pr_url = "https://github.com/denkhaus/fabro/pull/1555";
-        store.await_merge(&claim.claim_id, pr_url).await.expect("await merge");
+        store
+            .await_merge(&claim.claim_id, pr_url)
+            .await
+            .expect("await merge");
 
         // A terminal run row WITH the open pull request.
         seed_projection(&state, run_id, "refused PR run", Some((pr_url, None))).await;
         // The adjudicator refused the run.
-        append_verdict(&state, &run_id, fabro_types::OrchestrationField::Merge, fabro_types::OrchestrationVerdict::Refused).await;
+        append_verdict(
+            &state,
+            &run_id,
+            fabro_types::OrchestrationField::Merge,
+            fabro_types::OrchestrationVerdict::Refused,
+        )
+        .await;
 
         let report = run_pass(&state).await;
-        assert_eq!(report.orphans_released, 1, "the fold's refused arm released");
+        assert_eq!(
+            report.orphans_released, 1,
+            "the fold's refused arm released"
+        );
         let released = store.claim(&claim.claim_id).await.unwrap().unwrap();
         assert_eq!(released.state, fabro_work::ClaimState::Released);
         assert_eq!(
@@ -888,9 +900,9 @@ mod tests {
         let granted = store
             .grant(&fabro_work::GrantRequest {
                 project_id: "fabro".to_string(),
-                item_key:   "denkhaus/work#1556".to_string(),
+                item_key: "denkhaus/work#1556".to_string(),
                 run_id,
-                lane:       "loop".to_string(),
+                lane: "loop".to_string(),
             })
             .await
             .expect("grant");
@@ -899,7 +911,10 @@ mod tests {
         };
         store.activate(&claim.claim_id).await.expect("activate");
         let pr_url = "https://github.com/denkhaus/fabro/pull/1556";
-        store.await_merge(&claim.claim_id, pr_url).await.expect("await merge");
+        store
+            .await_merge(&claim.claim_id, pr_url)
+            .await
+            .expect("await merge");
 
         seed_projection(
             &state,
@@ -908,7 +923,13 @@ mod tests {
             Some((pr_url, Some(fabro_types::PullRequestState::Merged))),
         )
         .await;
-        append_verdict(&state, &run_id, fabro_types::OrchestrationField::Merge, fabro_types::OrchestrationVerdict::Refused).await;
+        append_verdict(
+            &state,
+            &run_id,
+            fabro_types::OrchestrationField::Merge,
+            fabro_types::OrchestrationVerdict::Refused,
+        )
+        .await;
 
         let _ = run_pass(&state).await;
         let held = store.claim(&claim.claim_id).await.unwrap().unwrap();
@@ -931,9 +952,9 @@ mod tests {
         let granted = store
             .grant(&fabro_work::GrantRequest {
                 project_id: "fabro".to_string(),
-                item_key:   "denkhaus/work#1463".to_string(),
+                item_key: "denkhaus/work#1463".to_string(),
                 run_id,
-                lane:       "loop".to_string(),
+                lane: "loop".to_string(),
             })
             .await
             .expect("grant");
@@ -950,21 +971,18 @@ mod tests {
         state
             .stores
             .work_item_views
-            .put(
-                "fabro",
-                &fabro_work::WorkItem {
-                    item_key:   "denkhaus/work#1463".to_string(),
-                    title:      "the stuck item".to_string(),
-                    body:       String::new(),
-                    state:      "closed".to_string(),
-                    labels:     Vec::new(),
-                    priority:   0,
-                    url:        "https://github.com/denkhaus/work/issues/1463".to_string(),
-                    updated_at: None,
-                    created_at: None,
-                    closed_at:  Some(chrono::Utc::now()),
-                },
-            )
+            .put("fabro", &fabro_work::WorkItem {
+                item_key:   "denkhaus/work#1463".to_string(),
+                title:      "the stuck item".to_string(),
+                body:       String::new(),
+                state:      "closed".to_string(),
+                labels:     Vec::new(),
+                priority:   0,
+                url:        "https://github.com/denkhaus/work/issues/1463".to_string(),
+                updated_at: None,
+                created_at: None,
+                closed_at:  Some(chrono::Utc::now()),
+            })
             .await
             .expect("view row seed");
 
@@ -990,21 +1008,21 @@ mod tests {
             title.to_string(),
             fabro_types::RunSpec {
                 run_id,
-                settings:            fabro_types::WorkflowSettings::default(),
-                graph:               fabro_types::RunGraph::new("test"),
-                graph_source:        None,
-                workflow_slug:       Some("develop".to_string()),
+                settings: fabro_types::WorkflowSettings::default(),
+                graph: fabro_types::RunGraph::new("test"),
+                graph_source: None,
+                workflow_slug: Some("develop".to_string()),
                 workflow_version_id: None,
-                target:              None,
-                automation:          None,
-                source_directory:    None,
-                labels:              std::collections::HashMap::new(),
-                provenance:          fabro_types::test_support::test_run_provenance(),
-                definition_blob:     None,
-                spec_blob:           None,
-                git:                 None,
-                fork_source_ref:     None,
-                admission:           fabro_types::PetriAdmission::default(),
+                target: None,
+                automation: None,
+                source_directory: None,
+                labels: std::collections::HashMap::new(),
+                provenance: fabro_types::test_support::test_run_provenance(),
+                definition_blob: None,
+                spec_blob: None,
+                git: None,
+                fork_source_ref: None,
+                admission: fabro_types::PetriAdmission::default(),
             },
             chrono::Utc::now(),
         );
@@ -1022,9 +1040,13 @@ mod tests {
         }
         let pool = state.stores.run_summaries.pool();
         let mut tx = pool.begin().await.expect("seed tx");
-        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
-            .await
-            .expect("run row seed");
+        fabro_store::RunSummaryStore::write_petri_run_row_on_connection(
+            &mut tx,
+            &run_id,
+            &projection,
+        )
+        .await
+        .expect("run row seed");
         let projection_json = serde_json::to_string(&projection).expect("projection json");
         sqlx::query(
             "INSERT INTO petri_projection (run_id, projection_json, fold_json, \

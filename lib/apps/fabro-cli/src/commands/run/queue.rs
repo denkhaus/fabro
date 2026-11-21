@@ -146,8 +146,7 @@ pub(super) async fn queue_command(args: &RunQueueArgs, base_ctx: &CommandContext
                 entry
                     .acceptance
                     .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "—".to_string())
+                    .map_or_else(|| "—".to_string(), ToString::to_string)
                     .cell(),
                 entry.run.title.clone().cell(),
             ]

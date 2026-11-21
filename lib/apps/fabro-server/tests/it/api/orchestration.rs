@@ -1866,7 +1866,10 @@ async fn the_queue_carries_the_acceptance_fold_of_the_claimed_item() {
         .await
         .expect("claim active");
     work_store
-        .await_merge(&enabled_claim_id, "https://github.com/denkhaus/fabro/pull/7")
+        .await_merge(
+            &enabled_claim_id,
+            "https://github.com/denkhaus/fabro/pull/7",
+        )
         .await
         .expect("claim awaiting merge");
     let token = state.test_issue_worker_token_with_run_tools(&adjudicator);

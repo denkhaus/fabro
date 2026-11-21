@@ -777,15 +777,14 @@ async fn list_queue(
     // ONE read pair serves both the entry verdicts and the acceptance
     // folds below — the store folds all records per field, so a second
     // read would scan the same rows twice.
-    let (merge_verdicts, closable_verdicts) = match super::super::acceptance::verdict_maps(&state)
-        .await
-    {
-        Ok(maps) => maps,
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    };
+    let (merge_verdicts, closable_verdicts) =
+        match super::super::acceptance::verdict_maps(&state).await {
+            Ok(maps) => maps,
+            Err(err) => {
+                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response();
+            }
+        };
     let verdicts = match field {
         OrchestrationField::Merge => &merge_verdicts,
         OrchestrationField::Closable => &closable_verdicts,
@@ -833,7 +832,11 @@ async fn list_queue(
                             .into_response();
                     }
                 };
-                (Some(claim.item_key.clone()), Some(claim.project_id.clone()), fold)
+                (
+                    Some(claim.item_key.clone()),
+                    Some(claim.project_id.clone()),
+                    fold,
+                )
             }
             None => (None, None, None),
         };
