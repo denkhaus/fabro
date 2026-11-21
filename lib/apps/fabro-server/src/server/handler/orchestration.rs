@@ -143,10 +143,11 @@ async fn list_global_observations(
         Some("in_progress") => Some(ObservationTriageState::InProgress),
         Some("closed") => Some(ObservationTriageState::Closed),
         Some("reviewed") => Some(ObservationTriageState::Reviewed),
+        Some("filing_blocked") => Some(ObservationTriageState::FilingBlocked),
         Some(other) => {
             return Err(ApiError::bad_request(format!(
                 "unknown triage state '{other}' (untriaged | filed | in_progress | closed | \
-                 reviewed)"
+                 reviewed | filing_blocked)"
             )));
         }
     };
@@ -183,7 +184,7 @@ async fn list_global_observations(
     // page's.
     let mut resolver = LinkedItemResolver::new(&state);
     let mut links_by_run: HashMap<RunId, Vec<fabro_work::ObservationLink>> = HashMap::new();
-    let mut decisions_by_run: HashMap<RunId, HashMap<u64, String>> = HashMap::new();
+    let mut decisions_by_run: HashMap<RunId, HashMap<u64, (String, i64)>> = HashMap::new();
     let mut observations = Vec::with_capacity(entries.len());
     for (entry_run, stored) in &entries {
         let PlatformRecord::ObservationRecorded(record) = &stored.record else {
@@ -198,7 +199,13 @@ async fn list_global_observations(
         )
         .await;
         let decision = decision_of_seq(&state, &mut decisions_by_run, entry_run, stored.seq).await;
-        let triage = observation_triage::derive_triage(&states, decision);
+        let decision =
+            decision.map(|(decision, decided_at_ms)| (decision.as_str(), *decided_at_ms));
+        let triage = observation_triage::derive_triage(
+            &states,
+            decision,
+            chrono::Utc::now().timestamp_millis(),
+        );
         // The live overlay: a materialized-matching row whose LIVE
         // derivation has drifted (an item closed in the tracker since
         // the last write) falls out of the filtered page. An unfiltered
@@ -337,14 +344,15 @@ async fn triage_links_of_seq(
     (links, states)
 }
 
-/// One record's decision string (`no_filing` today), from the run's
-/// cached decision rows — one store read per run for the whole request.
+/// One record's decision row (the wire decision beside its `decided_at`
+/// clock — the derivation's park TTL reads both), from the run's cached
+/// decision rows — one store read per run for the whole request.
 async fn decision_of_seq<'a>(
     state: &AppState,
-    decisions_by_run: &'a mut HashMap<RunId, HashMap<u64, String>>,
+    decisions_by_run: &'a mut HashMap<RunId, HashMap<u64, (String, i64)>>,
     run_id: &RunId,
     seq: u64,
-) -> Option<&'a str> {
+) -> Option<&'a (String, i64)> {
     if !decisions_by_run.contains_key(run_id) {
         let decisions = state
             .work_store()
@@ -353,11 +361,16 @@ async fn decision_of_seq<'a>(
             .unwrap_or_default();
         let map = decisions
             .into_iter()
-            .map(|decision| (decision.seq, decision.decision))
+            .map(|decision| {
+                (
+                    decision.seq,
+                    (decision.decision, decision.decided_at.timestamp_millis()),
+                )
+            })
             .collect();
         decisions_by_run.insert(*run_id, map);
     }
-    decisions_by_run.get(run_id)?.get(&seq).map(String::as_str)
+    decisions_by_run.get(run_id)?.get(&seq)
 }
 
 /// The triager's decision door (ADR-0044): records one triage decision
@@ -365,7 +378,11 @@ async fn decision_of_seq<'a>(
 /// identity. `no_filing` is the first action — the triager judged the
 /// friction needs no work item, and the feed derives `reviewed` for the
 /// record; a later filing overrides (link rows beat the decision row).
-/// Upsert: the latest decision on a record wins. Authorization mirrors
+/// `filing_blocked` (work#1585) parks a record whose filing write
+/// FAILED (rate limited, 4xx): the decision row lands alone — never a
+/// link — and the record derives `filing_blocked` until the park TTL
+/// passes, when the derivation re-reads it `untriaged`. Upsert: the
+/// latest decision on a record wins. Authorization mirrors
 /// the verdict door's chain: user principals write unconditionally, a
 /// workflow run only when its workflow is the triager (the hardcoded
 /// allowlist posture — the door's twin surfaces are the agent tool
@@ -416,7 +433,11 @@ async fn manage_observation(
                 }
             }
         }
-        ObservationManageRequestAction::NoFiling => None,
+        // The decision-only actions: neither writes a link. `filing_blocked`
+        // (work#1585) parks a record whose filing write FAILED — the
+        // decision row lands alone and the derivation owns the park TTL.
+        ObservationManageRequestAction::NoFiling
+        | ObservationManageRequestAction::FilingBlocked => None,
     };
     let by_run = match principal {
         Principal::User(_) => None,

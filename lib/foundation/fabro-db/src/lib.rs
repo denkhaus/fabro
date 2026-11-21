@@ -84,6 +84,13 @@ pub const OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL: &str =
 pub const OBSERVATION_TRIAGE_STATE_MIGRATION_SQL: &str =
     include_str!("../migrations/2026111601_observation_triage_state.sql");
 
+/// The `filing_blocked` triage state migration (work#1585): the read
+/// model's CHECK-constraint rebuild that widens the triage vocabulary,
+/// exposed so fixtures in other crates can install the production schema
+/// without a filesystem path into this crate.
+pub const OBSERVATION_TRIAGE_FILING_BLOCKED_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026112102_observation_triage_filing_blocked.sql");
+
 /// The Ask Fabro session record migration, exposed so fixtures in other
 /// crates can install the production schema without a filesystem path into
 /// this crate.

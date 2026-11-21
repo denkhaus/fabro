@@ -7520,8 +7520,8 @@ paths:
         one server-paged listing, newest first. Each item carries the
         run id, the workflow name, the record's category and text, and
         the derived triage state (untriaged, filed, in_progress,
-        closed, reviewed) with the linked work items and their live
-        item states. Filters
+        closed, reviewed, filing_blocked) with the linked work items
+        and their live item states. Filters
         compose; the triage filter applies after derivation.
       parameters:
         - name: category
@@ -7539,10 +7539,12 @@ paths:
             triage decision), filed (linked, open), in_progress
             (linked, open with a live claim), closed (every linked item
             closed), reviewed (a no-filing decision exists; a later
-            filing overrides it).
+            filing overrides it), filing_blocked (a failed filing write
+            parked the record; it re-derives untriaged after the park's
+            TTL, work#1585).
           schema:
             type: string
-            enum: [untriaged, filed, in_progress, closed, reviewed]
+            enum: [untriaged, filed, in_progress, closed, reviewed, filing_blocked]
         - name: run
           in: query
           required: false
@@ -16140,18 +16142,20 @@ components:
           description: When the record was appended.
         triage_state:
           type: string
-          enum: [untriaged, filed, in_progress, closed, reviewed]
+          enum: [untriaged, filed, in_progress, closed, reviewed, filing_blocked]
           description: >-
             The derived triage state: untriaged (no linked item, no
             triage decision), filed (linked, open), in_progress
             (linked, open with a live claim), closed (every linked item
             closed), reviewed (a triage decision exists and no link —
             the triager judged no item needed; a later filing overrides
-            it). Filter matching rides the state materialized at write
-            time: an `item_state` change in the tracker outside the
-            write doors keeps the record's materialized state until a
-            write touches the record again, while each returned row's
-            links still resolve live.
+            it), filing_blocked (a failed filing write parked the
+            record — work#1585; the record re-derives untriaged once
+            the park's TTL passes). Filter matching rides the state
+            materialized at write time: an `item_state` change in the
+            tracker outside the write doors keeps the record's
+            materialized state until a write touches the record again,
+            while each returned row's links still resolve live.
         linked_work_items:
           type: array
           items:
@@ -21189,13 +21193,18 @@ components:
           type: integer
         action:
           type: string
-          enum: [no_filing, link_existing]
+          enum: [no_filing, link_existing, filing_blocked]
           description: >-
             The triage action. `no_filing`: no work item is warranted;
             the record derives `reviewed`. `link_existing`: an already
             filed work item carries this finding — the link is written
             (dedupe at the link, ADR-0038 decision 5), never a second
-            item; requires `projectId` and `itemKey`.
+            item; requires `projectId` and `itemKey`. `filing_blocked`:
+            the filing write failed (rate limited, 4xx) — the record
+            parks as `filing_blocked` for a bounded TTL (6 hours,
+            work#1585) and then re-derives `untriaged`, so the next
+            pass picks it up instead of re-chewing it blindly; writes
+            the decision only, never a link.
         reason:
           type: string
           description: >-
@@ -21242,7 +21251,8 @@ components:
         itemKey:
           type: ["string", "null"]
           description: >-
-            The linked item on `link_existing`; null on `no_filing`. An
+            The linked item on `link_existing`; null on the
+            decision-only actions (`no_filing`, `filing_blocked`). An
             already-linked pair reports `already_linked` in the reason,
             never a second row.
 

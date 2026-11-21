@@ -499,6 +499,56 @@ mod tests {
         );
     }
 
+    /// The never-stuck pin (work#1585): a PARKED-ONLY feed still admits.
+    /// The parked record's materialized `filing_blocked` column rides the
+    /// same widened untriaged count the sweep reads, so the gear fires on
+    /// a parked-only feed and the sweep picks the record back up after
+    /// the TTL — a feed that read as empty here would never re-serve a
+    /// parked painpoint. (Accepted economy: the lap exits "Feed empty"
+    /// while the park is young; safety beats economy.)
+    #[tokio::test]
+    async fn triager_admits_on_a_parked_only_feed() {
+        use fabro_store::platform_records::{
+            ObservationRecordedRecord, ObservationTriageState, PlatformRecord,
+        };
+
+        let state = test_state();
+        let run = RunId::new();
+        let records = state.stores.run_summaries.platform_records();
+        let stored = records
+            .append(
+                &run,
+                &PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "parked-only painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                }),
+                None,
+            )
+            .await
+            .expect("observation seed");
+        // The park write path: the decision row beside the materialized
+        // `filing_blocked` column — the shape a real park leaves.
+        state
+            .work_store()
+            .decide_observation(&run, stored.seq, "filing_blocked", "rate-limited", None)
+            .await
+            .expect("park decision writes");
+        records
+            .materialize_observation_triage(&run, stored.seq, ObservationTriageState::FilingBlocked)
+            .await
+            .expect("parked state materializes");
+
+        let decision = admission_decision(&state, &automation_with_workflow("triager")).await;
+        assert_eq!(
+            decision,
+            AdmissionDecision::Fire,
+            "a parked-only feed is not an empty feed — the gear must admit, or the \
+             record never comes back after the TTL"
+        );
+    }
+
     #[tokio::test]
     async fn ungated_workflows_fire_without_a_consult() {
         let state = test_state();

@@ -16,6 +16,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use fabro_api::types::{GlobalObservationTriageState, ObservationWorkItemLinkItemState};
 use fabro_store::platform_records::ObservationTriageState;
 use fabro_types::RunId;
@@ -28,30 +29,58 @@ use super::super::AppState;
 /// has one owner beside the OpenAPI enum.
 pub(super) const NO_FILING_DECISION: &str = "no_filing";
 
+/// The wire name of the `filing_blocked` decision (work#1585) — the park
+/// decision a FAILED filing write leaves behind; a const beside
+/// [`NO_FILING_DECISION`] so the wire vocabulary has one owner beside the
+/// OpenAPI enum.
+pub(super) const FILING_BLOCKED_DECISION: &str = "filing_blocked";
+
 /// The bounded concurrency of one record's tracker resolution joins
 /// (work#1379): a page with hundreds of distinct linked items must not
 /// fire unbounded concurrent tracker reads — the secondary-rate-limit
 /// generator the #570 stale-degradation backoff then pays for.
 pub(super) const RESOLVE_CONCURRENCY: usize = 16;
 
+/// The `filing_blocked` park's TTL (work#1585, user call): 6 hours. The
+/// decision row's `decided_at` is the clock; each retry re-parks with a
+/// fresh timestamp. The TTL's ONE truth lives in the derivation — never
+/// as a cutoff in SQL.
+pub(super) const FILING_BLOCKED_TTL_MS: i64 = 6 * 60 * 60 * 1000;
+
 /// The derivation (work#1385): one observation record's triage state
 /// from its linked items' resolved live states and its decision row.
 /// Link presence beats the decision row (ADR-0044): a filing overrides
 /// wherever both exist. Linkless, a `no_filing` decision reads
 /// `reviewed` — the triager judged and no item was warranted — and
-/// everything else reads `untriaged`. An unresolved item (the tracker
-/// answered not-found, or the read failed) counts as not-closed: the
-/// record keeps `filed` rather than guessing a terminal state.
+/// everything else reads `untriaged`. A `filing_blocked` decision
+/// (work#1585) reads `filing_blocked` while it is YOUNGER than the park
+/// TTL ([`FILING_BLOCKED_TTL_MS`], clocked against `now_ms` on the
+/// decision's `decided_at`) and re-derives `untriaged` once the park
+/// expires — the record comes back without a write touching it. An
+/// unresolved item (the tracker answered not-found, or the read failed)
+/// counts as not-closed: the record keeps `filed` rather than guessing
+/// a terminal state.
 pub(super) fn derive_triage(
     linked_items: &[Option<LinkedItemState>],
-    decision: Option<&str>,
+    decision: Option<(&str, i64)>,
+    now_ms: i64,
 ) -> ObservationTriageState {
     if linked_items.is_empty() {
-        return if decision == Some(NO_FILING_DECISION) {
-            ObservationTriageState::Reviewed
-        } else {
-            ObservationTriageState::Untriaged
+        let Some((decision, decided_at_ms)) = decision else {
+            return ObservationTriageState::Untriaged;
         };
+        if decision == NO_FILING_DECISION {
+            return ObservationTriageState::Reviewed;
+        }
+        // The park arm (work#1585): a young `filing_blocked` decision
+        // keeps the record parked; past the TTL the record re-derives
+        // `untriaged` and re-serves — the decision row's `decided_at` is
+        // the clock, each retry re-parks fresh. A negative age (clock
+        // skew after the park) still parks.
+        if decision == FILING_BLOCKED_DECISION && now_ms - decided_at_ms < FILING_BLOCKED_TTL_MS {
+            return ObservationTriageState::FilingBlocked;
+        }
+        return ObservationTriageState::Untriaged;
     }
     if linked_items.contains(&Some(LinkedItemState::InProgress)) {
         return ObservationTriageState::InProgress;
@@ -74,6 +103,7 @@ pub(super) fn wire_triage_state(triage: ObservationTriageState) -> GlobalObserva
         ObservationTriageState::InProgress => GlobalObservationTriageState::InProgress,
         ObservationTriageState::Closed => GlobalObservationTriageState::Closed,
         ObservationTriageState::Reviewed => GlobalObservationTriageState::Reviewed,
+        ObservationTriageState::FilingBlocked => GlobalObservationTriageState::FilingBlocked,
     }
 }
 
@@ -285,12 +315,16 @@ async fn try_rederive_and_materialize(
         .await?
         .into_iter()
         .find(|decision| decision.seq == seq)
-        .map(|decision| decision.decision);
+        .map(|decision| (decision.decision, decision.decided_at.timestamp_millis()));
+    let now_ms = Utc::now().timestamp_millis();
+    let decision = decision
+        .as_ref()
+        .map(|(decision, decided_at_ms)| (decision.as_str(), *decided_at_ms));
     let derived = if links.is_empty() {
         // Linkless records derive from the decision row alone — no
         // tracker I/O (the presence short-circuit, work#1379, holds at
         // write time too).
-        derive_triage(&[], decision.as_deref())
+        derive_triage(&[], decision, now_ms)
     } else {
         // The distinct linked items resolve once each, in bounded
         // concurrent joins; the resolver memoizes across the record.
@@ -314,7 +348,7 @@ async fn try_rederive_and_materialize(
             .iter()
             .map(LinkedItemResolution::state)
             .collect();
-        derive_triage(&states, decision.as_deref())
+        derive_triage(&states, decision, now_ms)
     };
     state
         .stores
@@ -561,19 +595,20 @@ mod link_resolution_tests {
         use super::derive_triage;
 
         assert_eq!(
-            derive_triage(&[], None),
+            derive_triage(&[], None, 0),
             fabro_store::platform_records::ObservationTriageState::Untriaged,
             "a linkless record without a decision reads untriaged"
         );
         assert_eq!(
-            derive_triage(&[], Some(super::NO_FILING_DECISION)),
+            derive_triage(&[], Some((super::NO_FILING_DECISION, 0)), 0),
             fabro_store::platform_records::ObservationTriageState::Reviewed,
             "a linkless no_filing decision reads reviewed"
         );
         assert_eq!(
             derive_triage(
                 &[Some(LinkedItemState::Open)],
-                Some(super::NO_FILING_DECISION)
+                Some((super::NO_FILING_DECISION, 0)),
+                0
             ),
             fabro_store::platform_records::ObservationTriageState::Filed,
             "link rows beat the decision row — a filing overrides (ADR-0044)"
@@ -584,31 +619,90 @@ mod link_resolution_tests {
                     Some(LinkedItemState::Open),
                     Some(LinkedItemState::InProgress)
                 ],
-                None
+                None,
+                0
             ),
             fabro_store::platform_records::ObservationTriageState::InProgress,
             "a live claim outranks the plain open state"
         );
         assert_eq!(
-            derive_triage(&[Some(LinkedItemState::Open)], None),
+            derive_triage(&[Some(LinkedItemState::Open)], None, 0),
             fabro_store::platform_records::ObservationTriageState::Filed
         );
         assert_eq!(
             derive_triage(
                 &[Some(LinkedItemState::Closed), Some(LinkedItemState::Merged)],
-                None
+                None,
+                0
             ),
             fabro_store::platform_records::ObservationTriageState::Filed,
             "a merged item is not a plain close — the record keeps filed"
         );
         assert_eq!(
-            derive_triage(&[Some(LinkedItemState::Closed)], None),
+            derive_triage(&[Some(LinkedItemState::Closed)], None, 0),
             fabro_store::platform_records::ObservationTriageState::Closed
         );
         assert_eq!(
-            derive_triage(&[None], None),
+            derive_triage(&[None], None, 0),
             fabro_store::platform_records::ObservationTriageState::Filed,
             "an unresolved item counts as not-closed, never a guessed terminal state"
+        );
+    }
+
+    /// The park's derivation truth table (work#1585): a linkless YOUNG
+    /// `filing_blocked` decision derives `filing_blocked`; past the
+    /// 6-hour TTL it re-derives `untriaged` — the record returns to the
+    /// feed with no write touching it. The boundary is exclusive (an age
+    /// of exactly the TTL reads untriaged), a negative age (clock skew)
+    /// still parks, link presence beats the park decision like any other,
+    /// and `no_filing` is unchanged. The clock is INJECTED — no sleeps,
+    /// no real time.
+    #[test]
+    fn the_filing_blocked_park_derives_by_the_decision_clock() {
+        use fabro_store::platform_records::ObservationTriageState as State;
+
+        use super::{FILING_BLOCKED_DECISION, FILING_BLOCKED_TTL_MS, derive_triage};
+
+        let decided_at = 1_000_000_000_000i64;
+        let young = decided_at + FILING_BLOCKED_TTL_MS - 1;
+        let boundary = decided_at + FILING_BLOCKED_TTL_MS;
+        let past = decided_at + FILING_BLOCKED_TTL_MS + 1;
+        let park = Some((FILING_BLOCKED_DECISION, decided_at));
+
+        assert_eq!(
+            derive_triage(&[], park, young),
+            State::FilingBlocked,
+            "a linkless young park reads filing_blocked"
+        );
+        assert_eq!(
+            derive_triage(&[], park, boundary),
+            State::Untriaged,
+            "the TTL boundary is exclusive — an age of exactly the TTL releases the park"
+        );
+        assert_eq!(
+            derive_triage(&[], park, past),
+            State::Untriaged,
+            "a past-TTL park re-derives untriaged — the record re-serves"
+        );
+        assert_eq!(
+            derive_triage(&[], Some((FILING_BLOCKED_DECISION, young)), decided_at),
+            State::FilingBlocked,
+            "a negative age (clock skew after the park) still parks"
+        );
+        assert_eq!(
+            derive_triage(&[Some(LinkedItemState::Open)], park, young),
+            State::Filed,
+            "link presence beats the park decision — a filing overrides (ADR-0044)"
+        );
+        assert_eq!(
+            derive_triage(&[], Some((super::NO_FILING_DECISION, decided_at)), young),
+            State::Reviewed,
+            "no_filing is unchanged by the park arm"
+        );
+        assert_eq!(
+            derive_triage(&[], Some(("something_else", decided_at)), young),
+            State::Untriaged,
+            "any other decision keeps the record untriaged"
         );
     }
 }
