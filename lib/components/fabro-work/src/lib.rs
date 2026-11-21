@@ -7,6 +7,7 @@
 //! Issues in one central private repository; a Forgejo adapter slots in
 //! beside it without changes here.
 
+mod acceptance;
 mod forge_pr;
 mod hold;
 mod materialization;
@@ -14,6 +15,7 @@ mod store;
 mod tracker;
 mod tracker_error;
 
+pub use acceptance::{AcceptanceState, ClaimFold, acceptance_fold};
 pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
 pub use hold::{HoldReason, hold_reason};
 pub use materialization::{MaterializedItem, MaterializedTracker, WalkReport, WorkItemViewStore};
