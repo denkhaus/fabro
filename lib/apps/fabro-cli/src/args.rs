@@ -2431,7 +2431,8 @@ pub(crate) enum ObservationCommand {
     Feed(ObservationFeedArgs),
     /// Record one triage decision on an observation record (ADR-0044):
     /// `no_filing` — no work item is warranted; the record reads
-    /// `reviewed`
+    /// `reviewed`; `filing_blocked` — a failed filing write parks the
+    /// record for the park TTL (work#1585)
     Manage(ObservationManageArgs),
 }
 
@@ -2448,7 +2449,7 @@ pub(crate) struct ObservationFeedArgs {
     #[arg(long)]
     pub(crate) category: Option<ObservationCategoryArg>,
     /// The derived triage state; absent lists all (untriaged | filed |
-    /// in_progress | closed | reviewed)
+    /// in_progress | closed | reviewed | filing_blocked)
     #[arg(long)]
     pub(crate) triage:   Option<String>,
     /// Exact run id; narrows the feed to one run
@@ -2477,8 +2478,10 @@ pub(crate) struct ObservationManageArgs {
     /// The record's per-run seq — its identity beside the run id
     #[arg(long)]
     pub(crate) seq:      u64,
-    /// The triage action: `no-filing` (no work item is warranted) or
-    /// `link-existing` (an already-filed item carries the finding)
+    /// The triage action: `no-filing` (no work item is warranted),
+    /// `link-existing` (an already-filed item carries the finding), or
+    /// `filing-blocked` (the filing write failed; the record parks for
+    /// the park TTL, work#1585)
     #[arg(long = "action", value_enum)]
     pub(crate) action:   ObservationManageActionArg,
     /// Why — the durable rationale the operator and the next pass read
@@ -2505,6 +2508,10 @@ pub(crate) enum ObservationManageActionArg {
     NoFiling,
     #[value(name = "link-existing")]
     LinkExisting,
+    /// The park arm (work#1585): the filing write failed — the record
+    /// parks for the park TTL and then re-derives untriaged.
+    #[value(name = "filing-blocked")]
+    FilingBlocked,
 }
 
 #[derive(Args)]

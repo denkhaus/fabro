@@ -2437,3 +2437,258 @@ async fn a_triage_filtered_page_resolves_only_its_own_rows() {
         "only the PAGE's row resolved live — the walk that resolved every match is gone"
     );
 }
+
+/// The park arm (work#1585): `filing_blocked` writes the DECISION only —
+/// never a link row, the tracker was not asked — the record materializes
+/// `filing_blocked`, the young park is DROPPED from the untriaged page
+/// (the live overlay derives `filing_blocked`, not `untriaged`) while
+/// the materialized total keeps counting it (the documented asymmetry),
+/// the `filing_blocked` page serves the parked row, and a non-triager
+/// worker is refused — the allowlist is action-independent.
+#[tokio::test]
+async fn the_manage_door_parks_a_failed_filing_for_the_ttl() {
+    let (app, state, store) = orchestration_app();
+    let recording = RunId::new();
+    let triager = RunId::new();
+    let develop = RunId::new();
+    seed_run(&store, recording, "develop", true).await;
+    seed_run(&store, triager, "triager", true).await;
+    seed_run(&store, develop, "develop", true).await;
+    let records = store.run_summary_store().platform_records();
+    for text in ["parked painpoint", "untouched painpoint"] {
+        records
+            .append(
+                &recording,
+                &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                    fabro_store::platform_records::ObservationRecordedRecord {
+                        category:  fabro_types::ObservationCategory::Painpoint,
+                        text:      text.to_owned(),
+                        execution: 1,
+                        firing:    1,
+                    },
+                ),
+                None,
+            )
+            .await
+            .expect("observation seed");
+    }
+    seed_work_project(&state).await;
+    let develop_token = state.test_issue_worker_token_with_run_tools(&develop);
+    let triager_token = state.test_issue_worker_token_with_run_tools(&triager);
+    let park_body = |token: &str, seq: u64| {
+        Request::builder()
+            .method(Method::POST)
+            .uri(api("/observations/manage"))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&json!({
+                    "runId": recording.to_string(),
+                    "seq": seq,
+                    "action": "filing_blocked",
+                    "reason": "GitHub filing rate-limited (403); the record parks for the TTL",
+                }))
+                .expect("park body serializes"),
+            ))
+            .expect("park request builds")
+    };
+
+    // A develop worker is NOT the triager: the refusal is
+    // action-independent.
+    let response = app
+        .clone()
+        .oneshot(park_body(&develop_token, 1))
+        .await
+        .expect("request runs");
+    let body = response_json(response, StatusCode::FORBIDDEN, "develop worker refused").await;
+    assert_eq!(body["errors"][0]["code"], "triage_manage_not_allowed");
+
+    // The triager parks seq 1: the decision lands, the response names
+    // the action and carries no item half.
+    let response = app
+        .clone()
+        .oneshot(park_body(&triager_token, 1))
+        .await
+        .expect("request runs");
+    let body = response_json(response, StatusCode::OK, "triager parks").await;
+    assert_eq!(body["action"], "filing_blocked");
+    assert_eq!(body["itemKey"], Value::Null, "a park writes no link");
+
+    // The decision row landed; no link row did.
+    let work = fabro_work::WorkStore::new(fabro_server::test_support::test_app_db_pool(&state));
+    let decisions = work
+        .decisions_for_run(&recording)
+        .await
+        .expect("decisions read");
+    assert_eq!(
+        decisions
+            .iter()
+            .find(|decision| decision.seq == 1)
+            .map(|decision| decision.decision.as_str()),
+        Some("filing_blocked"),
+        "the park wrote the decision row: {decisions:?}"
+    );
+    assert!(
+        work.linked_items_for_run(&recording)
+            .await
+            .expect("links read")
+            .iter()
+            .all(|link| link.seq != 1),
+        "a park never writes a link row"
+    );
+
+    // The materialized column reads filing_blocked.
+    assert_eq!(
+        materialized_triage(&store, &recording, 1).await.as_deref(),
+        Some("filing_blocked"),
+        "the park write materializes filing_blocked for the linkless record"
+    );
+
+    // The filing_blocked page serves the young park.
+    let parked = triage_feed_page(
+        &app,
+        &triager_token,
+        "triage=filing_blocked&category=painpoint",
+    )
+    .await;
+    assert_eq!(
+        parked["total"].as_i64(),
+        Some(1),
+        "the parked record is the filing_blocked page's match: {parked}"
+    );
+    assert_eq!(parked["observations"][0]["text"], "parked painpoint");
+
+    // The untriaged page DROPS the young park (its live derivation
+    // reads filing_blocked) but keeps the untouched record — the drop
+    // is per-row, not a page coincidence. The total counts the
+    // MATERIALIZED membership, young parks included — the documented
+    // asymmetry (the design names it, the admission gate rides it).
+    let untriaged =
+        triage_feed_page(&app, &triager_token, "triage=untriaged&category=painpoint").await;
+    let feed = untriaged["observations"].as_array().expect("feed array");
+    assert!(
+        !feed
+            .iter()
+            .any(|item| item["text"].as_str() == Some("parked painpoint")),
+        "the young park is dropped from the untriaged page: {untriaged}"
+    );
+    assert!(
+        feed.iter()
+            .any(|item| item["text"].as_str() == Some("untouched painpoint")),
+        "the untouched record stays served: {untriaged}"
+    );
+    assert_eq!(
+        untriaged["total"].as_i64(),
+        Some(2),
+        "the total counts the materialized membership — the young park stays counted \
+         until the TTL or a write moves it: {untriaged}"
+    );
+}
+
+/// The park's release (work#1585): once the park decision is PAST the
+/// 6-hour TTL the record re-derives `untriaged` and IS SERVED by the
+/// untriaged page — no write door touches the record (the materialized
+/// column still reads `filing_blocked`; the store carries no clock), the
+/// derivation owns the TTL and the live overlay owns the correction.
+/// This is the never-stuck property: a parked feed that could never
+/// re-serve would strand the painpoint forever.
+#[tokio::test]
+async fn a_park_past_the_ttl_returns_to_the_untriaged_page() {
+    let (app, state, store) = orchestration_app();
+    let recording = RunId::new();
+    let triager = RunId::new();
+    seed_run(&store, recording, "develop", true).await;
+    seed_run(&store, triager, "triager", true).await;
+    store
+        .run_summary_store()
+        .platform_records()
+        .append(
+            &recording,
+            &fabro_store::platform_records::PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Painpoint,
+                    text:      "parked then expired painpoint".to_owned(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("observation seed");
+    seed_work_project(&state).await;
+    let triager_token = state.test_issue_worker_token_with_run_tools(&triager);
+
+    // The triager parks the record through the real write door.
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api("/observations/manage"))
+        .header(header::AUTHORIZATION, format!("Bearer {triager_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "runId": recording.to_string(),
+                "seq": 1,
+                "action": "filing_blocked",
+                "reason": "filing rate-limited; parks for the TTL",
+            }))
+            .expect("park body serializes"),
+        ))
+        .expect("park request builds");
+    let response = app.clone().oneshot(request).await.expect("request runs");
+    response_json(response, StatusCode::OK, "triager parks").await;
+    assert_eq!(
+        materialized_triage(&store, &recording, 1).await.as_deref(),
+        Some("filing_blocked"),
+        "the park materialized"
+    );
+
+    // The TTL passes OUTSIDE any write door: the decision's clock moves
+    // back past the park window. Nothing re-derives the materialized
+    // column — the derive is the only TTL truth.
+    let pool = fabro_server::test_support::test_app_db_pool(&state);
+    // Seven hours: the park's 6-hour TTL (the derive's private const —
+    // its ONE truth) plus an hour of margin.
+    sqlx::query(
+        "UPDATE observation_triage_decisions \
+         SET decided_at_ms = decided_at_ms - ? WHERE run_id = ? AND seq = 1",
+    )
+    .bind(7 * 3_600_000i64)
+    .bind(recording.to_string())
+    .execute(&pool)
+    .await
+    .expect("decision aged");
+
+    // The untriaged page serves the expired park: the widened SQL
+    // membership offers the materialized filing_blocked row, the live
+    // derivation reads untriaged again, and the wire names it honestly.
+    let untriaged =
+        triage_feed_page(&app, &triager_token, "triage=untriaged&category=painpoint").await;
+    let feed = untriaged["observations"].as_array().expect("feed array");
+    assert!(
+        feed.iter()
+            .any(|item| item["text"].as_str() == Some("parked then expired painpoint")),
+        "the expired park returns to the untriaged page without a write touching it: {untriaged}"
+    );
+    assert_eq!(
+        feed.iter()
+            .find(|item| item["text"].as_str() == Some("parked then expired painpoint"))
+            .map(|item| item["triage_state"].as_str()),
+        Some(Some("untriaged")),
+        "the served row derives untriaged — the park is over: {untriaged}"
+    );
+
+    // The filing_blocked page drops the expired park (its live
+    // derivation no longer matches) — the park is honest in both
+    // directions.
+    let parked = triage_feed_page(
+        &app,
+        &triager_token,
+        "triage=filing_blocked&category=painpoint",
+    )
+    .await;
+    assert!(
+        parked["observations"].as_array().expect("feed").is_empty(),
+        "the expired park falls off the filing_blocked page: {parked}"
+    );
+}

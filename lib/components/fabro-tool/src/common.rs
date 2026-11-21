@@ -622,11 +622,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroObservationManageParams>(
             FABRO_OBSERVATION_MANAGE_TOOL_NAME,
-            "Record one triage decision on one observation record (ADR-0044), keyed to its (runId, seq) identity: action `no_filing` with a durable reason means no work item is warranted — the record then reads `reviewed` in the feed, never `untriaged`. A later filing overrides the decision. This is the triager's door; a filing decision always wants its reason.",
+            "Record one triage decision on one observation record (ADR-0044), keyed to its (runId, seq) identity: action `no_filing` with a durable reason means no work item is warranted — the record then reads `reviewed` in the feed, never `untriaged`. Action `link_existing` writes the covering item's link (needs project + itemKey). Action `filing_blocked` parks the record when your filing write FAILED (rate limited, 4xx): it re-derives `untriaged` after the park TTL and returns to the feed (work#1585). A later filing overrides a decision. This is the triager's door; a decision always wants its reason.",
         ),
         tool_definition::<crate::FabroObservationFeedParams>(
             FABRO_OBSERVATION_FEED_TOOL_NAME,
-            "Read the global observations feed (ADR-0044): every run's observation records in one server-paged listing, newest first, with the DERIVED triage state (untriaged, filed, in_progress, closed, reviewed) and linked work items. Filters compose: category (painpoint|note), triage, one exact run, text query `q`. The triager's worklist is triage=untriaged.",
+            "Read the global observations feed (ADR-0044): every run's observation records in one server-paged listing, newest first, with the DERIVED triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) and linked work items. Filters compose: category (painpoint|note), triage, one exact run, text query `q`. The triager's worklist is triage=untriaged; `filing_blocked` rows are parked (a failed filing write) and return to untriaged after the park TTL.",
         ),
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,

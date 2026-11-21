@@ -35,10 +35,10 @@ import type { ObservationManageResponse } from '../models';
 export const ObservationsApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it), filing_blocked (a failed filing write parked the record; it re-derives untriaged after the park\&#39;s TTL, work#1585).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -156,10 +156,10 @@ export const ObservationsApiFp = function(configuration?: Configuration) {
     const localVarAxiosParamCreator = ObservationsApiAxiosParamCreator(configuration)
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it), filing_blocked (a failed filing write parked the record; it re-derives untriaged after the park\&#39;s TTL, work#1585).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -197,10 +197,10 @@ export const ObservationsApiFactory = function (configuration?: Configuration, b
     const localVarFp = ObservationsApiFp(configuration)
     return {
         /**
-         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+         * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
          * @summary List Observations across Runs (the global feed)
          * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
+         * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it), filing_blocked (a failed filing write parked the record; it re-derives untriaged after the park\&#39;s TTL, work#1585).
          * @param {string} [run] Exact run id; narrows the feed to one run.
          * @param {string} [q] Case-insensitive text containment over the record body.
          * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -230,10 +230,10 @@ export const ObservationsApiFactory = function (configuration?: Configuration, b
  */
 export class ObservationsApi extends BaseAPI {
     /**
-     * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
+     * The global observations feed: every run\'s observation records in one server-paged listing, newest first. Each item carries the run id, the workflow name, the record\'s category and text, and the derived triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) with the linked work items and their live item states. Filters compose; the triage filter applies after derivation.
      * @summary List Observations across Runs (the global feed)
      * @param {ListObservationsCategoryEnum} [category] The record category; absent lists both.
-     * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it).
+     * @param {ListObservationsTriageEnum} [triage] The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a no-filing decision exists; a later filing overrides it), filing_blocked (a failed filing write parked the record; it re-derives untriaged after the park\&#39;s TTL, work#1585).
      * @param {string} [run] Exact run id; narrows the feed to one run.
      * @param {string} [q] Case-insensitive text containment over the record body.
      * @param {ListObservationsSortEnum} [sort] Server-side sort key: &#x60;recorded&#x60; (oldest first) or &#x60;-recorded&#x60; (newest first, the default). Sorting applies before paging.
@@ -268,7 +268,8 @@ export const ListObservationsTriageEnum = {
     FILED: 'filed',
     IN_PROGRESS: 'in_progress',
     CLOSED: 'closed',
-    REVIEWED: 'reviewed'
+    REVIEWED: 'reviewed',
+    FILING_BLOCKED: 'filing_blocked'
 } as const;
 export type ListObservationsTriageEnum = typeof ListObservationsTriageEnum[keyof typeof ListObservationsTriageEnum];
 export const ListObservationsSortEnum = {

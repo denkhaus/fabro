@@ -627,6 +627,13 @@ pub enum ObservationTriageState {
     /// A `no_filing` decision and no link — the triager judged no item
     /// was warranted. A later filing overrides it.
     Reviewed,
+    /// A `filing_blocked` decision and no link (work#1585) — the
+    /// triager's filing write FAILED (rate limited, 4xx) and the record
+    /// parked for the decision's bounded TTL. Past the TTL the
+    /// derivation (the server layer owns the clock) re-derives
+    /// `untriaged`, so the record re-serves; the materialized column
+    /// keeps the parked state until a write touches the record.
+    FilingBlocked,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1053,14 +1060,37 @@ impl PlatformRecordStore {
                     .push(") > 0");
             }
             if let Some(triage) = triage {
-                query
-                    .push(
-                        " AND EXISTS (SELECT 1 FROM observation_triage_state t \
-                           WHERE t.run_id = platform_records.run_id \
-                           AND t.seq = platform_records.seq AND t.triage_state = ",
-                    )
-                    .push_bind(triage.to_string())
-                    .push(")");
+                // The untriaged filter's membership is WIDENED to the
+                // parked rows (work#1585): a `filing_blocked` decision
+                // materializes `filing_blocked` for the park's whole
+                // TTL — nothing rewrites the column until a write door
+                // touches the record — so an exact match would never
+                // offer an expired park to the page again. The widened
+                // membership rides the SQL; the TTL judgment stays in
+                // the derivation: the page's live overlay drops young
+                // parks (they derive filing_blocked) and keeps
+                // past-TTL rows (they derive untriaged again). The
+                // queried `filing_blocked` state itself stays an exact
+                // match — the park page shows young parks only.
+                let matches: &[ObservationTriageState] = match &triage {
+                    ObservationTriageState::Untriaged => &[
+                        ObservationTriageState::Untriaged,
+                        ObservationTriageState::FilingBlocked,
+                    ],
+                    other => std::slice::from_ref(other),
+                };
+                query.push(
+                    " AND EXISTS (SELECT 1 FROM observation_triage_state t \
+                       WHERE t.run_id = platform_records.run_id \
+                       AND t.seq = platform_records.seq AND t.triage_state IN (",
+                );
+                for (index, state) in matches.iter().enumerate() {
+                    if index > 0 {
+                        query.push(", ");
+                    }
+                    query.push_bind(state.to_string());
+                }
+                query.push("))");
             }
         }
 
@@ -1311,6 +1341,7 @@ mod tests {
             fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
             fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
             fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
+            fabro_db::OBSERVATION_TRIAGE_FILING_BLOCKED_MIGRATION_SQL,
         ]))
     }
 
@@ -1844,6 +1875,101 @@ mod tests {
                 .expect("the re-materialized state reads"),
             Some(State::Untriaged)
         );
+    }
+
+    /// The untriaged filter's widened membership (work#1585): the SQL
+    /// matches a materialized `filing_blocked` column beside `untriaged`
+    /// — the materialized park outlives the TTL (nothing rewrites it
+    /// until a write door touches the record), so an exact-match filter
+    /// would never offer an expired park to the page again and the
+    /// painpoint would strand forever. The widening rides the SQL; the
+    /// TTL judgment itself stays in the derivation — the store carries
+    /// no clock. `filing_blocked` as the QUERIED state stays an exact
+    /// match: the park page shows young parks only.
+    #[tokio::test]
+    async fn the_untriaged_filter_matches_parked_rows_too() {
+        use ObservationTriageState as State;
+
+        let store = store();
+        let run = fixtures::RUN_1;
+        let observation = PlatformRecord::ObservationRecorded(ObservationRecordedRecord {
+            category:  fabro_types::ObservationCategory::Painpoint,
+            text:      "parked and plain painpoints".to_string(),
+            execution: 0,
+            firing:    1,
+        });
+        let plain = store
+            .append(&run, &observation, None)
+            .await
+            .expect("the plain record stores");
+        let parked = store
+            .append(&run, &observation, None)
+            .await
+            .expect("the parked record stores");
+        store
+            .materialize_observation_triage(&run, parked.seq, State::FilingBlocked)
+            .await
+            .expect("the parked state materializes — the migration's CHECK accepts it");
+
+        // The untriaged query matches BOTH materialized states: the
+        // plain record and the parked one (the widened membership).
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+                Some(State::Untriaged),
+            )
+            .await
+            .expect("the untriaged feed reads");
+        assert_eq!(
+            total, 2,
+            "the untriaged filter matches untriaged AND parked rows — the widened membership \
+             is what lets an expired park re-enter the page"
+        );
+        let matched: Vec<u64> = entries.iter().map(|(_run, stored)| stored.seq).collect();
+        assert!(
+            matched.contains(&plain.seq) && matched.contains(&parked.seq),
+            "the page carries the plain record beside the parked one: {matched:?}"
+        );
+
+        // The parked state queried directly stays an exact match: only
+        // the parked row.
+        let (entries, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+                Some(State::FilingBlocked),
+            )
+            .await
+            .expect("the filing_blocked feed reads");
+        assert_eq!((entries.len(), total), (1, 1));
+        assert_eq!(entries[0].1.seq, parked.seq);
+
+        // Other states are untouched: nothing derives filed here.
+        let (_, total) = store
+            .read_kind_global(
+                PlatformRecordKind::ObservationRecorded,
+                false,
+                10,
+                0,
+                None,
+                None,
+                None,
+                Some(State::Filed),
+            )
+            .await
+            .expect("the filed feed reads");
+        assert_eq!(total, 0, "the widening never leaks into other states");
     }
 
     /// The migration's backfill (work#1385): records that predate the

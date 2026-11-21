@@ -38,6 +38,9 @@ const TRIAGE_STYLE: Record<string, string> = {
   filed: "border-line text-fg-3",
   in_progress: "border-teal-500/40 text-teal-500",
   closed: "border-line text-fg-muted",
+  // The park (work#1585) shares the untriaged amber family — the record
+  // returns to the untriaged feed once the park TTL passes.
+  filing_blocked: "border-amber/40 text-amber",
 };
 
 const COLUMNS: Array<DataTableColumn<FeedRow>> = [
@@ -138,6 +141,7 @@ const FILTERS: DataTableFilter[] = [
       { value: "in_progress", label: "in progress" },
       { value: "closed", label: "closed" },
       { value: "reviewed", label: "reviewed" },
+      { value: "filing_blocked", label: "filing blocked" },
     ],
   },
   { key: "q", label: "Search", kind: "text", placeholder: "Text contains…" },
@@ -153,7 +157,13 @@ export default function ObservationsFeedView() {
       fetcher={async ({ page, limit, sort, filters }) => {
         const response = await observationsApi.listObservations(
           (filters.category as "painpoint" | "note") ?? undefined,
-          (filters.triage as "untriaged" | "filed" | "in_progress" | "closed" | "reviewed") ?? undefined,
+          (filters.triage as
+            | "untriaged"
+            | "filed"
+            | "in_progress"
+            | "closed"
+            | "reviewed"
+            | "filing_blocked") ?? undefined,
           undefined,
           filters.q || undefined,
           (sort === "recorded" ? "recorded" : "-recorded") as "-recorded" | "recorded",

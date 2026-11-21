@@ -38,6 +38,7 @@ const RUN_SUMMARY_MIGRATIONS: &[&str] = &[
     fabro_db::WORK_OBSERVATION_LINKS_MIGRATION_SQL,
     fabro_db::OBSERVATION_TRIAGE_DECISIONS_MIGRATION_SQL,
     fabro_db::OBSERVATION_TRIAGE_STATE_MIGRATION_SQL,
+    fabro_db::OBSERVATION_TRIAGE_FILING_BLOCKED_MIGRATION_SQL,
 ];
 
 /// Returns an isolated SQLite run-summary store backed by its own in-memory
