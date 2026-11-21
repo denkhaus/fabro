@@ -1835,6 +1835,90 @@ async fn the_queue_decorates_work_items_keeps_parked_and_filters_by_workflow() {
     );
 }
 
+/// The queue entries carry the claimed item's acceptance fold
+/// (denkhaus/work#1555), re-derived per read and never stored: a
+/// claimed-but-unadjudicated run reads `waiting_for_merge_verdict`, a
+/// merge-enabled claim reads `waiting_for_closable`, and an unclaimed
+/// run reads null. Read under `field=closable` so both runs stay on the
+/// anti-join (a settled MERGE verdict would drop the enabled run from
+/// the merge queue, but its fold reads BOTH fields' verdicts).
+#[tokio::test]
+async fn the_queue_carries_the_acceptance_fold_of_the_claimed_item() {
+    let (app, state, store) = orchestration_app();
+    let adjudicator = RunId::new();
+    let pending = RunId::new();
+    let enabled = RunId::new();
+    let unclaimed = RunId::new();
+    seed_run(&store, adjudicator, "adjudicator", true).await;
+    seed_run(&store, pending, "develop", true).await;
+    seed_run(&store, enabled, "develop", true).await;
+    seed_run(&store, unclaimed, "smoke", true).await;
+    seed_work_project(&state).await;
+    let enabled_claim_id = seed_claim(&state, &enabled, "denkhaus/work#2").await;
+    seed_claim(&state, &pending, "denkhaus/work#1").await;
+
+    // The enabled claim walks to awaiting_merge (the reconciler's path
+    // to that state), and the adjudicator enables its merge.
+    let work_store =
+        fabro_work::WorkStore::new(fabro_server::test_support::test_app_db_pool(&state));
+    work_store
+        .activate(&enabled_claim_id)
+        .await
+        .expect("claim active");
+    work_store
+        .await_merge(
+            &enabled_claim_id,
+            "https://github.com/denkhaus/fabro/pull/7",
+        )
+        .await
+        .expect("claim awaiting merge");
+    let token = state.test_issue_worker_token_with_run_tools(&adjudicator);
+    let response = mark_call(
+        &app,
+        &token,
+        &enabled,
+        json!({"field": "merge", "verdict": "enabled"}),
+    )
+    .await;
+    response_json(response, StatusCode::OK, "seed enabled verdict").await;
+
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api("/runs/queue?field=closable"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("queue request builds");
+    let response = app.oneshot(request).await.expect("queue request runs");
+    let body = response_json(response, StatusCode::OK, "queue read").await;
+    let entry_of = |run: &RunId| {
+        body["data"]
+            .as_array()
+            .expect("queue entries")
+            .iter()
+            .find(|entry| entry["run"]["id"].as_str() == Some(run.to_string().as_str()))
+            .cloned()
+            .unwrap_or_else(|| panic!("run {run} is not queued: {body}"))
+    };
+    let enabled_entry = entry_of(&enabled);
+    assert_eq!(
+        enabled_entry["acceptance"].as_str(),
+        Some("waiting_for_closable"),
+        "the merge-enabled awaiting_merge claim waits for the merger: {enabled_entry}"
+    );
+    let pending_entry = entry_of(&pending);
+    assert_eq!(
+        pending_entry["acceptance"].as_str(),
+        Some("waiting_for_merge_verdict"),
+        "the unadjudicated claim waits for the adjudicator: {pending_entry}"
+    );
+    let unclaimed_entry = entry_of(&unclaimed);
+    assert_eq!(
+        unclaimed_entry["acceptance"],
+        Value::Null,
+        "an unclaimed run carries no acceptance fold: {unclaimed_entry}"
+    );
+}
+
 /// The manage door (ADR-0044): the triage decision's keyed home. A
 /// develop worker is refused (the allowlist keys on the triager
 /// workflow), the triager worker and user principals write `no_filing`

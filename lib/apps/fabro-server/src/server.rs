@@ -167,6 +167,7 @@ use crate::{
     static_files, web_auth,
 };
 
+pub(crate) mod acceptance;
 mod automation_admission;
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
