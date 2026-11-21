@@ -30,12 +30,15 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use anyhow::Context as _;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sha2::{Digest as _, Sha256};
 use sqlx::{Row as _, SqlitePool};
 
-use crate::tracker::{TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemPage};
+use crate::tracker::{
+    TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemPage, WorkItemStateFilter,
+};
 use crate::{Error, Result, WorkProject};
 
 /// One materialized view row: the item as last fetched, beside the
@@ -377,10 +380,255 @@ impl std::fmt::Debug for MaterializedTracker {
     }
 }
 
+/// One walk page: 100 items — the tracker port's per-page maximum, so
+/// the walk's page boundaries line up with every provider's paging.
+const WALK_PAGE: usize = 100;
+
+/// The walk's page budget: ~3000 items. A project whose listing exceeds
+/// it walks incomplete (no universe replacement, the seed retries on
+/// the next listing) instead of burning an unbounded quota on one read.
+const WALK_MAX_PAGES: usize = 30;
+
 impl MaterializedTracker {
     #[must_use]
     pub fn new(forge: Arc<dyn TrackerProvider>, views: Arc<WorkItemViewStore>) -> Self {
         Self { forge, views }
+    }
+
+    /// Read one item through the view (ADR-0050): a cached row serves
+    /// without any forge call — the quota saver — and a miss loads on
+    /// demand, materializing what the forge answers. A miss whose load
+    /// fails fails as today: there is nothing to serve.
+    async fn get_through_view(
+        &self,
+        project: &WorkProject,
+        item_key: &str,
+    ) -> anyhow::Result<Option<WorkItem>> {
+        if let Some(row) = self
+            .views
+            .get(&project.project_id, item_key)
+            .await
+            .with_context(|| format!("reading the materialized view of {item_key}"))?
+        {
+            return Ok(Some(row.item));
+        }
+        match self.forge.get(project, item_key).await {
+            Ok(Some(item)) => {
+                self.views
+                    .put(&project.project_id, &item)
+                    .await
+                    .with_context(|| format!("materializing {item_key}"))?;
+                Ok(Some(item))
+            }
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// List through the view: assemble locally from the materialized
+    /// rows, with the exact total within the universe. Filter, sort
+    /// (`(priority, updated_at)` ascending, the port contract's list
+    /// order) and page are all local — a warm listing costs the forge
+    /// nothing.
+    ///
+    /// The search arm (`filter.query`) ranks by the same local order,
+    /// not by the forge's relevance ranking — an honest boundary of the
+    /// materialized view: the dedupe checks that use it need the
+    /// matches, not the forge's ordering.
+    async fn list_from_view(
+        &self,
+        project: &WorkProject,
+        filter: WorkItemFilter,
+    ) -> anyhow::Result<WorkItemPage> {
+        let rows = self.materialized_rows(project).await?;
+        let mut items: Vec<WorkItem> = rows
+            .into_iter()
+            .map(|row| row.item)
+            .filter(|item| item_matches_filter(project, &filter, item))
+            .collect();
+        items.sort_by_key(|item| (item.priority, item.updated_at));
+        let total = u64::try_from(items.len()).unwrap_or(u64::MAX);
+        let page = filter.page.max(1);
+        let limit = filter.limit.clamp(1, 100);
+        let items = items
+            .into_iter()
+            .skip(page.saturating_sub(1).saturating_mul(limit))
+            .take(limit)
+            .collect();
+        Ok(WorkItemPage {
+            items,
+            total: Some(total),
+        })
+    }
+
+    /// The project's materialized rows, complete within the universe:
+    ///
+    /// - No universe, nothing cached: cold — the seed walk runs, and a failed
+    ///   walk with nothing to serve fails as today.
+    /// - No universe but rows cached (reads materialized before any listing
+    ///   completed): retry the seed; a failure degrades to the rows the view
+    ///   holds, with the oldest row's age named.
+    /// - Warm universe: fill keys missing from the view on demand; a failed
+    ///   load drops just that key from this assembly.
+    async fn materialized_rows(
+        &self,
+        project: &WorkProject,
+    ) -> anyhow::Result<Vec<MaterializedItem>> {
+        let project_id = project.project_id.as_str();
+        let universe = self
+            .views
+            .universe(project_id)
+            .await
+            .context("reading the work-item universe")?;
+        let mut rows = self
+            .views
+            .items(project_id)
+            .await
+            .context("reading the materialized work items")?;
+        if universe.is_empty() {
+            if rows.is_empty() {
+                self.walk_and_materialize(project)
+                    .await
+                    .context("seeding the work-item view from the forge")?;
+                rows = self
+                    .views
+                    .items(project_id)
+                    .await
+                    .context("reading the materialized work items")?;
+            } else if let Err(error) = self.walk_and_materialize(project).await {
+                let oldest_age = rows
+                    .iter()
+                    .map(|row| row.fetched_at)
+                    .min()
+                    .map(|oldest| (Utc::now() - oldest).num_seconds());
+                tracing::warn!(
+                    project = project_id,
+                    rows = rows.len(),
+                    oldest_row_age_secs = oldest_age,
+                    error = ?error,
+                    "work-item view seed failed; the listing serves the materialized rows"
+                );
+            } else {
+                rows = self
+                    .views
+                    .items(project_id)
+                    .await
+                    .context("reading the materialized work items")?;
+            }
+            return Ok(rows);
+        }
+        let cached: HashSet<String> = rows.iter().map(|row| row.item.item_key.clone()).collect();
+        let missing: Vec<String> = universe
+            .into_iter()
+            .filter(|key| !cached.contains(key))
+            .collect();
+        for key in missing {
+            match self.forge.get(project, &key).await {
+                Ok(Some(item)) => {
+                    self.views
+                        .put(project_id, &item)
+                        .await
+                        .with_context(|| format!("materializing {key}"))?;
+                    rows.push(MaterializedItem {
+                        item,
+                        // The row's own age fields are irrelevant to the
+                        // assembly; put just wrote the honest ones.
+                        fetched_at: Utc::now(),
+                        content_hash: String::new(),
+                    });
+                }
+                Ok(None) => {
+                    // The forge no longer knows the key as this
+                    // project's item — it leaves the universe and the
+                    // view, so listings stop assembling it.
+                    self.views
+                        .evict(project_id, &key)
+                        .await
+                        .with_context(|| format!("evicting {key}"))?;
+                    self.views
+                        .remove_from_universe(project_id, &key)
+                        .await
+                        .with_context(|| format!("removing {key} from the universe"))?;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        project = project_id,
+                        item_key = %key,
+                        error = ?error,
+                        "on-demand work-item load failed; the listing degrades without the key"
+                    );
+                }
+            }
+        }
+        Ok(rows)
+    }
+
+    /// One full walk of the forge's project listing (every state), every
+    /// item materialized, the universe replaced with exactly the keys
+    /// the walk saw — but only when the walk completed. An
+    /// incomplete walk records no universe, so the next listing retries
+    /// the seed.
+    async fn walk_and_materialize(&self, project: &WorkProject) -> anyhow::Result<WalkReport> {
+        let project_id = project.project_id.as_str();
+        let mut report = WalkReport::default();
+        let mut keys = Vec::new();
+        for page in 1..=WALK_MAX_PAGES {
+            let filter = WorkItemFilter {
+                lane: None,
+                limit: WALK_PAGE,
+                query: None,
+                label: None,
+                page,
+                state: WorkItemStateFilter::All,
+            };
+            let batch = self.forge.list(project, filter).await?;
+            let exhausted = batch.len() < WALK_PAGE;
+            for item in batch {
+                if self
+                    .views
+                    .put(project_id, &item)
+                    .await
+                    .with_context(|| format!("materializing {}", item.item_key))?
+                {
+                    report.changed += 1;
+                }
+                report.refreshed += 1;
+                keys.push(item.item_key);
+            }
+            if exhausted {
+                report.complete = true;
+                break;
+            }
+        }
+        if report.complete {
+            self.views
+                .replace_universe(project_id, &keys)
+                .await
+                .context("replacing the work-item universe")?;
+        }
+        Ok(report)
+    }
+
+    /// Write-through for writes that return the updated item: the view
+    /// moves in the same action as the forge write, so the next read is
+    /// already fresh. A view-write failure fails the operation — the
+    /// forge already moved, and a stale row would serve the pre-write
+    /// content until an explicit refresh; the caller retries the write.
+    async fn materialize_write(
+        &self,
+        project: &WorkProject,
+        item: &WorkItem,
+    ) -> anyhow::Result<()> {
+        let project_id = project.project_id.as_str();
+        self.views
+            .put(project_id, item)
+            .await
+            .with_context(|| format!("materializing {}", item.item_key))?;
+        self.views
+            .record_universe(project_id, &[item.item_key.clone()])
+            .await
+            .with_context(|| format!("recording {} in the universe", item.item_key))?;
+        Ok(())
     }
 
     /// The refresh door, one item: force-load the item from the forge
@@ -394,7 +642,32 @@ impl MaterializedTracker {
         project: &WorkProject,
         item_key: &str,
     ) -> anyhow::Result<Option<WorkItem>> {
-        self.forge.get(project, item_key).await
+        let project_id = project.project_id.as_str();
+        match self.forge.get(project, item_key).await {
+            Ok(Some(item)) => {
+                self.views
+                    .put(project_id, &item)
+                    .await
+                    .with_context(|| format!("materializing {item_key}"))?;
+                self.views
+                    .record_universe(project_id, &[item.item_key.clone()])
+                    .await
+                    .with_context(|| format!("recording {item_key} in the universe"))?;
+                Ok(Some(item))
+            }
+            Ok(None) => {
+                self.views
+                    .evict(project_id, item_key)
+                    .await
+                    .with_context(|| format!("evicting {item_key}"))?;
+                self.views
+                    .remove_from_universe(project_id, item_key)
+                    .await
+                    .with_context(|| format!("removing {item_key} from the universe"))?;
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// The refresh door, the whole project: one full walk of the forge
@@ -403,8 +676,7 @@ impl MaterializedTracker {
     /// universe; a page-capped walk reports `complete == false` and
     /// leaves the universe as it was.
     pub async fn refresh_project(&self, project: &WorkProject) -> anyhow::Result<WalkReport> {
-        let _ = (self, project);
-        Ok(WalkReport::default())
+        self.walk_and_materialize(project).await
     }
 }
 
@@ -415,7 +687,7 @@ impl TrackerProvider for MaterializedTracker {
         project: &WorkProject,
         filter: WorkItemFilter,
     ) -> anyhow::Result<Vec<WorkItem>> {
-        self.forge.list(project, filter).await
+        Ok(self.list_from_view(project, filter).await?.items)
     }
 
     async fn list_with_total(
@@ -423,11 +695,11 @@ impl TrackerProvider for MaterializedTracker {
         project: &WorkProject,
         filter: WorkItemFilter,
     ) -> anyhow::Result<WorkItemPage> {
-        self.forge.list_with_total(project, filter).await
+        self.list_from_view(project, filter).await
     }
 
     async fn get(&self, project: &WorkProject, item_key: &str) -> anyhow::Result<Option<WorkItem>> {
-        self.forge.get(project, item_key).await
+        self.get_through_view(project, item_key).await
     }
 
     async fn create(
@@ -435,7 +707,9 @@ impl TrackerProvider for MaterializedTracker {
         project: &WorkProject,
         draft: WorkItemDraft,
     ) -> anyhow::Result<WorkItem> {
-        self.forge.create(project, draft).await
+        let item = self.forge.create(project, draft).await?;
+        self.materialize_write(project, &item).await?;
+        Ok(item)
     }
 
     async fn update(
@@ -445,7 +719,9 @@ impl TrackerProvider for MaterializedTracker {
         title: Option<&str>,
         body: Option<&str>,
     ) -> anyhow::Result<WorkItem> {
-        self.forge.update(project, item_key, title, body).await
+        let item = self.forge.update(project, item_key, title, body).await?;
+        self.materialize_write(project, &item).await?;
+        Ok(item)
     }
 
     async fn set_lane(
@@ -454,7 +730,9 @@ impl TrackerProvider for MaterializedTracker {
         item_key: &str,
         lane: Option<&str>,
     ) -> anyhow::Result<WorkItem> {
-        self.forge.set_lane(project, item_key, lane).await
+        let item = self.forge.set_lane(project, item_key, lane).await?;
+        self.materialize_write(project, &item).await?;
+        Ok(item)
     }
 
     async fn close(
@@ -463,7 +741,16 @@ impl TrackerProvider for MaterializedTracker {
         item_key: &str,
         reason: &str,
     ) -> anyhow::Result<()> {
-        self.forge.close(project, item_key, reason).await
+        self.forge.close(project, item_key, reason).await?;
+        // The close is one of our writes: the row's state moves to
+        // exactly what the forge write set, no re-read needed. A row
+        // that was never cached stays absent — the next read
+        // materializes the closed item on demand.
+        self.views
+            .apply_close(&project.project_id, item_key)
+            .await
+            .with_context(|| format!("materializing the close of {item_key}"))?;
+        Ok(())
     }
 
     async fn comment(
@@ -472,6 +759,9 @@ impl TrackerProvider for MaterializedTracker {
         item_key: &str,
         body: &str,
     ) -> anyhow::Result<()> {
+        // First cut is item content; a comment moves none of it (the
+        // forge's `updated_at` drift is accepted — the refresh door
+        // reconciles it), so the view stays untouched.
         self.forge.comment(project, item_key, body).await
     }
 
@@ -480,6 +770,7 @@ impl TrackerProvider for MaterializedTracker {
         project: &WorkProject,
         item_key: &str,
     ) -> anyhow::Result<Vec<crate::tracker::WorkItemComment>> {
+        // Comments are part 2: never cached, always the forge's answer.
         self.forge.list_comments(project, item_key).await
     }
 
@@ -489,7 +780,15 @@ impl TrackerProvider for MaterializedTracker {
         item_key: &str,
         run_id: &str,
     ) -> anyhow::Result<()> {
-        self.forge.project_claim(project, item_key, run_id).await
+        self.forge.project_claim(project, item_key, run_id).await?;
+        // The claim label moves the item's label set — first-cut
+        // content. Evict: the next read re-materializes the item with
+        // its claim label, one forge call per claim.
+        self.views
+            .evict(&project.project_id, item_key)
+            .await
+            .with_context(|| format!("evicting {item_key} after a claim projection"))?;
+        Ok(())
     }
 
     async fn clear_claim(
@@ -498,11 +797,65 @@ impl TrackerProvider for MaterializedTracker {
         item_key: &str,
         run_id: &str,
     ) -> anyhow::Result<()> {
-        self.forge.clear_claim(project, item_key, run_id).await
+        self.forge.clear_claim(project, item_key, run_id).await?;
+        self.views
+            .evict(&project.project_id, item_key)
+            .await
+            .with_context(|| format!("evicting {item_key} after a claim clear"))?;
+        Ok(())
     }
 
     async fn gc_claim_labels(&self, project: &WorkProject) -> anyhow::Result<u64> {
         self.forge.gc_claim_labels(project).await
+    }
+}
+
+/// The labels a filtered list requires (the port contract the GitHub
+/// adapter serves): the project label, the lane's label when a lane is
+/// filtered, and the raw label filter.
+fn required_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
+    let mut labels = vec![project.project_label.clone()];
+    if let Some(lane) = filter.lane.as_deref() {
+        let label = project
+            .lane_labels
+            .get(lane)
+            .cloned()
+            .unwrap_or_else(|| format!("lane:{lane}"));
+        labels.push(label);
+    }
+    if let Some(label) = filter.label.as_deref() {
+        labels.push(label.to_string());
+    }
+    labels
+}
+
+/// Whether one item belongs to a filter's result, judged locally over
+/// the materialized content: the state match (list arm), the label
+/// containment, and — for the search arm — every whitespace-separated
+/// term hitting title or body, case-insensitively, across states.
+fn item_matches_filter(project: &WorkProject, filter: &WorkItemFilter, item: &WorkItem) -> bool {
+    let required = required_labels(project, filter);
+    let labels_ok = required
+        .iter()
+        .all(|label| item.labels.iter().any(|carried| carried == label));
+    match filter.query.as_deref() {
+        Some(query) => {
+            let title = item.title.to_lowercase();
+            let body = item.body.to_lowercase();
+            labels_ok
+                && query
+                    .to_lowercase()
+                    .split_whitespace()
+                    .all(|term| title.contains(term) || body.contains(term))
+        }
+        None => {
+            let state_ok = match filter.state {
+                WorkItemStateFilter::Open => item.state == "open",
+                WorkItemStateFilter::Closed => item.state == "closed",
+                WorkItemStateFilter::All => true,
+            };
+            state_ok && labels_ok
+        }
     }
 }
 
