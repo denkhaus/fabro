@@ -815,16 +815,12 @@ impl TrackerProvider for MaterializedTracker {
                 self.views
                     .evict(&project.project_id, item_key)
                     .await
-                    .with_context(|| {
-                        format!("evicting {item_key} after a claim projection")
-                    })?;
+                    .with_context(|| format!("evicting {item_key} after a claim projection"))?;
                 self.views
                     .remove_from_universe(&project.project_id, item_key)
                     .await
                     .with_context(|| {
-                        format!(
-                            "removing {item_key} from the universe after a claim projection"
-                        )
+                        format!("removing {item_key} from the universe after a claim projection")
                     })?;
             }
             Err(error) => {
@@ -854,17 +850,13 @@ impl TrackerProvider for MaterializedTracker {
                 self.views
                     .put(&project.project_id, &item)
                     .await
-                    .with_context(|| {
-                        format!("materializing {item_key} after a claim clear")
-                    })?;
+                    .with_context(|| format!("materializing {item_key} after a claim clear"))?;
             }
             Ok(None) => {
                 self.views
                     .evict(&project.project_id, item_key)
                     .await
-                    .with_context(|| {
-                        format!("evicting {item_key} after a claim clear")
-                    })?;
+                    .with_context(|| format!("evicting {item_key} after a claim clear"))?;
                 self.views
                     .remove_from_universe(&project.project_id, item_key)
                     .await
@@ -1590,7 +1582,11 @@ mod tests {
             .unwrap();
         let views = WorkItemViewStore::new(database.clone_pool());
         assert!(
-            views.get("fabro", "denkhaus/work#1").await.unwrap().is_some(),
+            views
+                .get("fabro", "denkhaus/work#1")
+                .await
+                .unwrap()
+                .is_some(),
             "a claim refreshes the row in place — the next read stays local"
         );
     }
