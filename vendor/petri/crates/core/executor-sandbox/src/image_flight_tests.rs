@@ -243,3 +243,285 @@ mod cross_process {
         assert!(!image_flight::is_built(tag));
     }
 }
+
+/// THE STORM PIN (work#1551): N concurrent FIRST cooks of the same fresh
+/// tip against a real Docker daemon must yield exactly ONE build and N-1
+/// reuses. Every earlier fix looked green because no test ever drove
+/// concurrent cooks — the in-process guard serializes same-process cooks,
+/// so the pin spawns REAL CHILD PROCESSES (the gears run one cook process
+/// each, work#1463) and counts builds on the daemon's own event stream:
+/// every cook that runs the build one-shot starts one exit-0 container
+/// FROM the cooked tag, so `container create` events carrying
+/// `image == <tag>` count the builds that ran, whatever the tree under
+/// test reports about itself.
+///
+/// Requires a reachable Docker daemon; the pin passes trivially without
+/// one, as the conformance run does. Runs only on the fork feature
+/// (`env-image-evict`): the cook path it drives is the fork's.
+#[cfg(feature = "env-image-evict")]
+mod storm {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::process;
+    use std::env::current_exe;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use bollard::Docker;
+    use bollard::image::RemoveImageOptions;
+    use bollard::system::EventsOptions;
+    use futures_util::StreamExt;
+    use sandbox_driver_docker::DockerProvider;
+    use std::sync::Arc;
+
+    use crate::image_build::{EnvironmentBuild, ensure_environment_image};
+
+    /// How many concurrent first cooks the storm drives (the incident:
+    /// five gears, load 42; the decided pin floor is three).
+    const LANES: usize = 4;
+    /// The build's slow layer, widening the first-probe window so every
+    /// lane probes before any mint — the storm the incident observed.
+    const BUILD_SLEEP_SECS: u64 = 6;
+    /// The child lane's environment: the context root, the Dockerfile's
+    /// path, the holder name, and the result file to write.
+    const CHILD_FIXTURE: &str = "PETRI_STORM_FIXTURE";
+    const CHILD_DOCKERFILE: &str = "PETRI_STORM_DOCKERFILE";
+    const CHILD_HOLDER: &str = "PETRI_STORM_HOLDER";
+    const CHILD_RESULT: &str = "PETRI_STORM_RESULT";
+
+    fn read_dockerfile(fixture: &std::path::Path) -> String {
+        std::fs::read_to_string(fixture.join("Dockerfile.toolchain"))
+            .expect("the fixture's dockerfile reads back")
+    }
+
+    fn nonce() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the clock is past the epoch")
+            .as_nanos()
+    }
+
+    /// One throwaway git checkout with a manifest and a source file: a
+    /// fresh tip good enough to cook — a REAL committed repository, as
+    /// `pack_context` clones it. The Dockerfile carries the run's nonce
+    /// in a LABEL — Dockerfile text is a digest input in every digest
+    /// mode, so each pin run mints its own tag and cannot collide with
+    /// a leftover from an earlier run.
+    fn storm_fixture(run: u128) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "petri-image-flight-storm-{run}-{}",
+            process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).expect("create fixture dirs");
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"storm-pin\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write fixture manifest");
+        std::fs::write(root.join("src/lib.rs"), "pub fn probe() {}\n")
+            .expect("write fixture source");
+        std::fs::write(root.join("src/only-source.txt"), "source-only content\n")
+            .expect("write fixture source-only file");
+        std::fs::write(
+            root.join("Dockerfile.toolchain"),
+            format!(
+                "FROM busybox:1.36\n\
+                 LABEL petri.storm-nonce=\"{run}\"\n\
+                 RUN sleep {BUILD_SLEEP_SECS}\n\
+                 COPY . /src\n"
+            ),
+        )
+        .expect("write fixture dockerfile");
+        let git = |args: &[&str]| {
+            let status = process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args([
+                    "-c",
+                    "user.email=storm@example.invalid",
+                    "-c",
+                    "user.name=storm pin",
+                ])
+                .args(args)
+                .status()
+                .expect("run git");
+            assert!(status.success(), "git {args:?} must succeed: {status}");
+        };
+        git(&["init", "--quiet"]);
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "storm fixture"]);
+        root
+    }
+
+    /// One cook lane, run exactly as a gear's process runs it. Started by
+    /// the parent through the test binary's own name; without the
+    /// environment it is a no-op, so an ordinary test run never fires it.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn storm_child_lane() {
+        let (Ok(fixture), Ok(dockerfile), Ok(holder), Ok(result)) = (
+            std::env::var(CHILD_FIXTURE),
+            std::env::var(CHILD_DOCKERFILE),
+            std::env::var(CHILD_HOLDER),
+            std::env::var(CHILD_RESULT),
+        ) else {
+            return;
+        };
+        let provider: Arc<dyn sandbox_driver::SandboxProvider> = Arc::new(
+            DockerProvider::connect()
+                .await
+                .expect("the parent only spawns lanes against a live daemon"),
+        );
+        let cooked = ensure_environment_image(
+            &provider,
+            &EnvironmentBuild {
+                dockerfile,
+                context: fixture,
+            },
+            &holder,
+        )
+        .await;
+        let report = match &cooked {
+            Ok(tag) => serde_json::json!({ "tag": tag }),
+            Err(error) => serde_json::json!({ "error": error.to_string() }),
+        };
+        std::fs::write(&result, report.to_string()).expect("write the lane's result");
+        cooked.expect("the lane's cook must succeed");
+    }
+
+    /// Drives LANES concurrent first cooks of one fresh tip, one cook
+    /// process per lane, then asserts the daemon saw exactly one build.
+    /// RED against the probe-only tree (work#1463): every lane probes
+    /// before the first mint, every lane builds, and the count is LANES,
+    /// not 1 (the 2026-11-21 incident: five builds, load 42).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn concurrent_first_cooks_of_one_tip_build_exactly_once() {
+        if DockerProvider::connect().await.is_err() {
+            return; // no daemon: trivially green, as the conformance run is
+        }
+        let Ok(docker) = Docker::connect_with_local_defaults() else {
+            return;
+        };
+        let run = nonce();
+        let fixture = storm_fixture(run);
+        let scratch = std::env::temp_dir().join(format!(
+            "petri-image-flight-storm-results-{run}-{}",
+            process::id()
+        ));
+        std::fs::create_dir_all(&scratch).expect("create result dir");
+
+        let since = unix_now();
+        let mut lanes = Vec::new();
+        for lane in 0..LANES {
+            lanes.push(
+                process::Command::new(current_exe().expect("the test binary"))
+                    .args(["image_flight_tests::storm::storm_child_lane", "--exact"])
+                    .env(CHILD_FIXTURE, fixture.to_string_lossy().as_ref())
+                    .env(CHILD_DOCKERFILE, read_dockerfile(&fixture))
+                    .env(CHILD_HOLDER, format!("petri-storm-{run}-{lane}-env-build"))
+                    .env(
+                        CHILD_RESULT,
+                        scratch.join(format!("lane-{lane}.json")).to_string_lossy().as_ref(),
+                    )
+                    .spawn()
+                    .expect("spawn a cook lane"),
+            );
+        }
+        for mut lane in lanes {
+            let status = lane.wait().expect("wait for the cook lane");
+            assert!(status.success(), "a cook lane failed: {status}");
+        }
+        let until = unix_now();
+
+        let mut tags = Vec::new();
+        for lane in 0..LANES {
+            let report = std::fs::read_to_string(scratch.join(format!("lane-{lane}.json")))
+                .expect("every lane writes its result");
+            let report: serde_json::Value =
+                serde_json::from_str(&report).expect("a lane's result is JSON");
+            assert!(
+                report["error"].is_null(),
+                "lane {lane} failed its cook: {report}"
+            );
+            tags.push(
+                report["tag"]
+                    .as_str()
+                    .expect("a lane names its tag")
+                    .to_owned(),
+            );
+        }
+        let tag = tags[0].clone();
+        assert!(
+            tags.iter().all(|other| other == &tag),
+            "one tip must mint one tag across lanes: {tags:?}"
+        );
+
+        // The daemon's own account of how many builds ran: one exit-0
+        // container from the tag per build one-shot.
+        let builds = count_build_containers(&docker, &tag, since, until).await;
+
+        let _ = std::fs::remove_dir_all(&scratch);
+        let _ = std::fs::remove_dir_all(&fixture);
+        let _ = docker
+            .remove_container(
+                &format!("petri-cook-lock-{tag}"),
+                None::<bollard::container::RemoveContainerOptions>,
+            )
+            .await;
+        let _ = docker
+            .remove_image(
+                &tag,
+                Some(RemoveImageOptions {
+                    force: true,
+                    ..Default::default()
+                }),
+                None,
+            )
+            .await;
+
+        assert_eq!(
+            builds, 1,
+            "exactly one build must serve {LANES} concurrent first cooks of one tip \
+             (observed {builds} build containers; the 2026-11-21 storm class, work#1551)"
+        );
+    }
+
+    /// Counts `container create` events whose image is `tag` between the
+    /// two unix timestamps: the daemon-side build counter.
+    async fn count_build_containers(
+        docker: &Docker,
+        tag: &str,
+        since: i64,
+        until: i64,
+    ) -> usize {
+        let mut filters = HashMap::new();
+        filters.insert("type".to_owned(), vec!["container".to_owned()]);
+        filters.insert("event".to_owned(), vec!["create".to_owned()]);
+        let options = EventsOptions::<String> {
+            since: Some(since.to_string()),
+            until: Some(until.to_string()),
+            filters,
+        };
+        let mut stream = docker.events(Some(options));
+        let mut builds = 0;
+        while let Some(event) = stream.next().await {
+            let event = event.expect("the daemon's event stream must read");
+            if event
+                .actor
+                .as_ref()
+                .and_then(|actor| actor.attributes.as_ref())
+                .and_then(|attributes| attributes.get("image"))
+                .is_some_and(|image| image == tag)
+            {
+                builds += 1;
+            }
+        }
+        builds
+    }
+
+    fn unix_now() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("the clock is past the epoch")
+            .as_secs() as i64
+    }
+}
