@@ -9,8 +9,15 @@ use fabro_types::{
     RunIntent, RunPairStatusResponse, RunProjection, RunStreamItem, SessionId, StageId,
     WorkItemComment,
 };
+use tokio::time::sleep;
 
 use crate::{FabroToolBackend, RunMarkOutcome, RunMergeResult, RunPushResolutionResult, common};
+
+/// Transient title-update failures absorbed inside ONE tool call
+/// (denkhaus/work#1545): retries beyond the first attempt.
+const TITLE_UPDATE_RETRIES: u32 = 3;
+/// Linear backoff between those retries: 250ms, 500ms, 750ms.
+const TITLE_UPDATE_RETRY_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
 
 #[derive(Clone)]
 pub struct ClientBackend {
@@ -139,7 +146,39 @@ impl FabroToolBackend for ClientBackend {
             },
         };
         self.ensure_run_scope(&run_id)?;
-        self.client.update_run_title(&run_id, title).await
+        // The title door is quota-free and idempotent (the server
+        // short-circuits an unchanged title), but its store reads and
+        // the platform-record append run beside the run's own writes —
+        // denkhaus/work#1545 watched three transient failures then a
+        // clean success inside one planner stage, and every surfaced
+        // failure counted toward the stage's error budget until the
+        // pass sank. Absorb the transient tagged statuses here (429
+        // and 5xx) so the agent's ONE tool call rides out the blip;
+        // deterministic refusals (400/403/404) still fail immediately,
+        // and the last error surfaces once the retries are spent.
+        let mut attempt = 0;
+        loop {
+            match self.client.update_run_title(&run_id, title).await {
+                Ok(run) => return Ok(run),
+                Err(error) => {
+                    let transient =
+                        ::fabro_client::api_failure_for(&error).is_some_and(|failure| {
+                            matches!(failure.status.as_u16(), 429 | 500 | 502 | 503 | 504)
+                        });
+                    if !transient || attempt >= TITLE_UPDATE_RETRIES {
+                        return Err(error);
+                    }
+                    attempt += 1;
+                    tracing::debug!(
+                        attempt,
+                        run_id = %run_id,
+                        error = %error,
+                        "run title update failed transiently; retrying"
+                    );
+                    sleep(TITLE_UPDATE_RETRY_BACKOFF.mul_f64(f64::from(attempt))).await;
+                }
+            }
+        }
     }
 
     async fn mark_run_orchestration(
@@ -785,5 +824,131 @@ mod tests {
                 crate::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME
             )
         );
+    }
+
+    /// A `Run` fixture shaped like the server's decorated summary —
+    /// enough JSON for the title door's response to decode.
+    fn title_run(run_id: &fabro_types::RunId, title: &str) -> fabro_types::Run {
+        use chrono::TimeZone;
+        use fabro_types::test_support::test_principal;
+        fabro_types::Run {
+            id:                  *run_id,
+            parent_id:           None,
+            children_count:      0,
+            claimed_seed_id:     None,
+            title:               title.to_string(),
+            goal:                "the workflow goal".to_string(),
+            workflow:            fabro_types::WorkflowRef {
+                slug:       Some("develop".to_string()),
+                name:       Some("Develop".to_string()),
+                graph_name: None,
+                node_count: 0,
+                edge_count: 0,
+            },
+            automation:          None,
+            repository:          None,
+            created_by:          test_principal(),
+            origin:              fabro_types::RunOrigin::default(),
+            labels:              std::collections::HashMap::new(),
+            lifecycle:           fabro_types::RunLifecycle {
+                conclusion_failure: None,
+                status:             fabro_types::RunStatus::Pending {
+                    reason: fabro_types::PendingReason::ApprovalRequired,
+                },
+                approval:           None,
+                pending_control:    None,
+                queue_position:     None,
+                error:              None,
+                archived:           false,
+                archived_at:        None,
+            },
+            sandbox:             None,
+            workflow_version_id: None,
+            models:              Vec::new(),
+            source_directory:    None,
+            timestamps:          fabro_types::RunTimestamps {
+                created_at:    chrono::Utc.with_ymd_and_hms(2026, 11, 21, 0, 0, 0).unwrap(),
+                started_at:    None,
+                last_event_at: None,
+                completed_at:  None,
+            },
+            timing:              None,
+            usage:               types::Usage::default(),
+            size:                fabro_types::RunSize::default(),
+            ask_fabro:           fabro_types::AskFabro::default(),
+            diff:                None,
+            pull_request:        None,
+            current_question:    None,
+            superseded_by:       None,
+            retried_from:        None,
+            links:               fabro_types::RunLinks { web: None },
+        }
+    }
+
+    /// denkhaus/work#1545: the title door failed transiently three
+    /// times then succeeded inside one planner stage, and every
+    /// surfaced error counted toward the stage's budget until it sank.
+    /// The backend now absorbs transient failures (429/5xx) inside one
+    /// tool call: a persistent 500 is retried exactly
+    /// `TITLE_UPDATE_RETRIES` extra times before surfacing, and a
+    /// deterministic refusal (400) fails on the first attempt.
+    #[tokio::test]
+    async fn set_run_title_retries_transient_failures_but_not_deterministic_ones() {
+        let server = httpmock::MockServer::start_async().await;
+        let run_id = fabro_types::RunId::new();
+        let path = format!("/api/v1/runs/{run_id}");
+        let client = ::fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let backend = ClientBackend::new(Arc::new(client)).with_run_scope(run_id);
+
+        // A transient 500 (httpmock matches the earliest mock first, so
+        // this one owns the endpoint until deleted): four attempts in
+        // total — the original call plus three retries — then the last
+        // error surfaces.
+        let transient = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::PATCH).path(&path);
+                then.status(500);
+            })
+            .await;
+        let error = backend.set_run_title(None, "a meaningful run title").await;
+        assert!(error.is_err(), "a persistent transient failure surfaces");
+        transient.assert_calls_async(4).await;
+
+        // Recovery: with the transient mock gone, the very next call
+        // succeeds on its first attempt.
+        transient.delete_async().await;
+        let run = title_run(&run_id, "a meaningful run title");
+        let success = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::PATCH).path(&path);
+                then.status(200).json_body_obj(&run);
+            })
+            .await;
+        let titled = backend
+            .set_run_title(None, "a meaningful run title")
+            .await
+            .expect("the title lands once the blip is gone");
+        assert_eq!(titled.title, "a meaningful run title");
+        success.assert_calls_async(1).await;
+
+        // A deterministic refusal (400: the server rejected the title
+        // itself) never retries.
+        success.delete_async().await;
+        let refused = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::PATCH).path(&path);
+                then.status(400).json_body(json!({
+                    "errors": [{"detail": "run title exceeds the 100-character limit"}]
+                }));
+            })
+            .await;
+        assert!(
+            backend
+                .set_run_title(None, "a meaningful run title")
+                .await
+                .is_err(),
+            "the deterministic refusal still fails"
+        );
+        refused.assert_calls_async(1).await;
     }
 }
