@@ -12,6 +12,7 @@ mod hold;
 mod materialization;
 mod store;
 mod tracker;
+mod tracker_error;
 
 pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
 pub use hold::{HoldReason, hold_reason};
@@ -24,6 +25,7 @@ pub use tracker::{
     NullTracker, TrackerProvider, WorkItem, WorkItemComment, WorkItemDraft, WorkItemFilter,
     WorkItemPage, WorkItemStateFilter,
 };
+pub use tracker_error::TrackerError;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

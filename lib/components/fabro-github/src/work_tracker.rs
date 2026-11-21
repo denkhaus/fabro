@@ -16,7 +16,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use fabro_http::{HeaderMap, HttpClient, HttpError, Method, RequestBuilder, StatusCode, header};
 use fabro_work::{
-    TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemStateFilter, WorkProject,
+    TrackerError, TrackerProvider, WorkItem, WorkItemDraft, WorkItemFilter, WorkItemStateFilter,
+    WorkProject,
 };
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::Value;
@@ -36,17 +37,22 @@ const RATE_LIMIT_MAX_WAIT: Duration = Duration::from_secs(20);
 /// Typed GitHub API failure so callers can tell an exhausted rate-limit
 /// budget from any other GitHub answer (denkhaus/work#1364): the
 /// observation feed marks such reads stale instead of silently null.
+/// The port-side classification ([`TrackerError`], work#1556) is mapped
+/// out of these at [`GitHubTracker::classified`] — the quota class and
+/// the 404/409 answers keep their types across the seam; everything
+/// else travels as the prose chain.
 #[derive(Debug, thiserror::Error)]
 pub enum TrackerApiError {
     /// GitHub refused the call for rate-limit reasons and the retry
     /// budget is spent. The installation token's API budget is
-    /// exhausted; `retry_after_secs` is the last `Retry-After` hint.
+    /// exhausted; `window_secs` is the last announced wait (`Retry-After`,
+    /// or the delta to the `X-RateLimit-Reset` instant).
     #[error(
-        "GitHub API rate limit exhausted (status {status}); last Retry-After hint: {retry_after_secs:?}"
+        "GitHub API rate limit exhausted (status {status}); last announced window: {window_secs:?}"
     )]
     RateLimitExhausted {
-        status:           u16,
-        retry_after_secs: Option<u64>,
+        status:      u16,
+        window_secs: Option<u64>,
     },
 
     /// GitHub answered a non-success status that is not a rate limit.
@@ -133,6 +139,27 @@ impl GitHubTracker {
             .and_then(|value| value.parse().ok())
     }
 
+    /// The announced quota window (denkhaus/work#1556): `Retry-After`
+    /// seconds when the answer carries one, otherwise the delta to the
+    /// epoch-seconds `X-RateLimit-Reset` instant — the primary quota's
+    /// reset rides the instant, the secondary limits' wait rides
+    /// `Retry-After`. A reset instant already in the past advises no
+    /// window: it should have reopened, so nothing is waitable.
+    fn window_hint(headers: &HeaderMap, now: std::time::SystemTime) -> Option<Duration> {
+        if let Some(secs) = Self::retry_after_hint(headers) {
+            return Some(Duration::from_secs(secs));
+        }
+        let reset_epoch: u64 = headers
+            .get("x-ratelimit-reset")?
+            .to_str()
+            .ok()?
+            .parse()
+            .ok()?;
+        let elapsed = now.duration_since(std::time::UNIX_EPOCH).ok()?;
+        let window = Duration::from_secs(reset_epoch).saturating_sub(elapsed);
+        (window > Duration::ZERO).then_some(window)
+    }
+
     /// One GitHub API call with rate-limit hygiene (denkhaus/work#1364):
     /// a 403/429 rate-limit answer is retried with a backoff that
     /// honors `Retry-After` (capped at [`RATE_LIMIT_MAX_WAIT`]), and a
@@ -169,21 +196,22 @@ impl GitHubTracker {
                     body:   text,
                 });
             }
-            let retry_after_secs = Self::retry_after_hint(&headers);
+            let window_secs = Self::window_hint(&headers, std::time::SystemTime::now())
+                .map(|window| window.as_secs());
             if attempt >= RATE_LIMIT_MAX_ATTEMPTS {
                 return Err(TrackerApiError::RateLimitExhausted {
                     status: status.as_u16(),
-                    retry_after_secs,
+                    window_secs,
                 });
             }
             let backoff = Duration::from_secs(1 << (attempt - 1));
-            let wait = retry_after_secs
+            let wait = window_secs
                 .map_or(backoff, Duration::from_secs)
                 .min(RATE_LIMIT_MAX_WAIT);
             tracing::warn!(
                 attempt,
                 wait_secs = wait.as_secs(),
-                retry_after_secs = ?retry_after_secs,
+                window_secs = ?window_secs,
                 "github tracker rate limited, backing off"
             );
             sleep(wait).await;
@@ -191,11 +219,43 @@ impl GitHubTracker {
         }
     }
 
+    /// Map a GitHub API failure into the port's typed classification
+    /// (denkhaus/work#1556) where callers branch on it: the quota class
+    /// carries the announced window, the forge's own 404/409 answers
+    /// become `NotFound`/`Conflict`, and 5xx answers become
+    /// `Unavailable` (retryable, the status kept as context). Every
+    /// other failure keeps its typed API error as the chain — no
+    /// classification for a class nobody acts on, no lost prose.
+    /// Transport failures stay on that prose path too: their `HttpError`
+    /// source is the diagnosis, and no door branches on the transport
+    /// shape.
+    fn classified(error: TrackerApiError) -> anyhow::Error {
+        match error {
+            TrackerApiError::RateLimitExhausted { window_secs, .. } => {
+                anyhow::Error::new(TrackerError::RateLimited {
+                    window: window_secs.map(Duration::from_secs),
+                })
+            }
+            TrackerApiError::Status { status: 404, .. } => {
+                anyhow::Error::new(TrackerError::NotFound)
+            }
+            TrackerApiError::Status { status: 409, .. } => {
+                anyhow::Error::new(TrackerError::Conflict)
+            }
+            TrackerApiError::Status { status, .. } if status >= 500 => {
+                anyhow::Error::new(TrackerError::Unavailable { retryable: true })
+                    .context(format!("GitHub API answered {status}"))
+            }
+            other => other.into(),
+        }
+    }
+
     /// The failure of an `issue_json` call whose caller tolerates one
     /// specific status (422 for an already-existing label, 404 for an
     /// already-gone one; `None` tolerates nothing): the tolerated
-    /// status is success, every other failure keeps the
-    /// operation-specific message.
+    /// status is success, every other failure keeps its classification
+    /// and the operation name as context — the operation never
+    /// flattens the typed failure into prose (work#1556).
     fn tolerate_status(
         err: TrackerApiError,
         tolerated: Option<u16>,
@@ -203,10 +263,7 @@ impl GitHubTracker {
     ) -> anyhow::Result<()> {
         match err {
             TrackerApiError::Status { status, .. } if Some(status) == tolerated => Ok(()),
-            TrackerApiError::Status { status, body } => {
-                anyhow::bail!("GitHub {what} {status}: {body}")
-            }
-            other => Err(other.into()),
+            other => Err(Self::classified(other).context(format!("GitHub {what}"))),
         }
     }
 
@@ -216,7 +273,9 @@ impl GitHubTracker {
         issue_number: u64,
     ) -> anyhow::Result<Value> {
         let url = self.url(&format!("issues/{issue_number}"));
-        Ok(self.issue_json(Method::GET, &url, None).await?)
+        self.issue_json(Method::GET, &url, None)
+            .await
+            .map_err(Self::classified)
     }
 
     async fn ensure_label(&self, name: &str) -> anyhow::Result<()> {
@@ -420,7 +479,10 @@ impl GitHubTracker {
             "{}?state={state}&labels={encoded_labels}&per_page={limit}&page={page}",
             self.url("issues")
         );
-        let value = self.issue_json(Method::GET, &url, None).await?;
+        let value = self
+            .issue_json(Method::GET, &url, None)
+            .await
+            .map_err(Self::classified)?;
         let values = value
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("GitHub issue list was not an array"))?;
@@ -492,7 +554,10 @@ impl GitHubTracker {
             "{}/search/issues?q={encoded}&per_page={limit}&page={page}",
             self.base_url
         );
-        let value = self.issue_json(Method::GET, &url, None).await?;
+        let value = self
+            .issue_json(Method::GET, &url, None)
+            .await
+            .map_err(Self::classified)?;
         let total = value
             .get("total_count")
             .and_then(Value::as_u64)
@@ -604,7 +669,8 @@ impl TrackerProvider for GitHubTracker {
         });
         let value = self
             .issue_json(Method::POST, &self.url("issues"), Some(body))
-            .await?;
+            .await
+            .map_err(Self::classified)?;
         self.json_item(&value)
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
@@ -633,7 +699,8 @@ impl TrackerProvider for GitHubTracker {
                 &self.url(&format!("issues/{number}")),
                 Some(Value::Object(patch)),
             )
-            .await?;
+            .await
+            .map_err(Self::classified)?;
         self.json_item(&value)
             .ok_or_else(|| anyhow::anyhow!("GitHub did not return an issue"))
     }
@@ -737,7 +804,10 @@ impl TrackerProvider for GitHubTracker {
             "{}?per_page=100",
             self.url(&format!("issues/{number}/comments"))
         );
-        let value = self.issue_json(Method::GET, &url, None).await?;
+        let value = self
+            .issue_json(Method::GET, &url, None)
+            .await
+            .map_err(Self::classified)?;
         let values = value
             .as_array()
             .ok_or_else(|| anyhow::anyhow!("GitHub issue comments were not an array"))?;
@@ -811,7 +881,10 @@ impl TrackerProvider for GitHubTracker {
         let mut removed = 0;
         for page in 1..=3 {
             let url = format!("{}?per_page=100&page={page}", self.url("labels"));
-            let value = self.issue_json(Method::GET, &url, None).await?;
+            let value = self
+                .issue_json(Method::GET, &url, None)
+                .await
+                .map_err(Self::classified)?;
             let labels = value
                 .as_array()
                 .ok_or_else(|| anyhow::anyhow!("GitHub label list was not an array"))?;
@@ -830,7 +903,10 @@ impl TrackerProvider for GitHubTracker {
                     "{}?state=all&per_page=1&labels={encoded}",
                     self.url("issues")
                 );
-                let issues = self.issue_json(Method::GET, &issues_url, None).await?;
+                let issues = self
+                    .issue_json(Method::GET, &issues_url, None)
+                    .await
+                    .map_err(Self::classified)?;
                 let empty = issues.as_array().is_some_and(Vec::is_empty);
                 if empty && self.delete_label(name).await.is_ok() {
                     removed += 1;
@@ -844,9 +920,12 @@ impl TrackerProvider for GitHubTracker {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
-    use fabro_http::HttpClientBuilder;
-    use fabro_work::{TrackerProvider as _, WorkItemFilter, WorkItemStateFilter, WorkProject};
+    use fabro_http::{HeaderMap, HttpClientBuilder, header};
+    use fabro_work::{
+        TrackerError, TrackerProvider as _, WorkItemFilter, WorkItemStateFilter, WorkProject,
+    };
     use httpmock::HttpMockResponse;
 
     use super::{GitHubTracker, TrackerApiError};
@@ -906,24 +985,165 @@ mod tests {
         mock.assert_calls(3);
     }
 
+    /// THE CLASSIFICATION PIN (denkhaus/work#1556): an exhausted
+    /// rate-limit budget surfaces as the port's `TrackerError::RateLimited`
+    /// WITH the announced window — the adapter maps instead of erasing
+    /// the quota class into prose, so doors can answer a structured
+    /// rate-limited error and gear laps can park. `Retry-After: 1`
+    /// keeps the two capped backoff waits at 2s. This pin owns the
+    /// exhausted-budget contract; the pre-#1556 form asserted the raw
+    /// `TrackerApiError` as the chain, which the mapping replaced.
     #[tokio::test]
-    async fn an_exhausted_rate_limit_fails_as_rate_limit_exhausted() {
-        let (mock, base_url) = rate_limited_then_issue(usize::MAX);
-        let error = tracker(&base_url)
+    async fn an_exhausted_rate_limit_classifies_as_rate_limited_with_the_window() {
+        let server = httpmock::MockServer::start();
+        let mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.respond_with(|_req| {
+                HttpMockResponse::builder()
+                    .status(403)
+                    .header("Retry-After", "1")
+                    .body("API rate limit exceeded for installation ID 161242007")
+                    .build()
+            });
+        });
+
+        let error = tracker(&server.base_url())
             .get(&project(), "denkhaus/work#1")
             .await
             .expect_err("the budget stays exhausted");
         mock.assert_calls(3);
-        let typed = error
-            .downcast_ref::<TrackerApiError>()
-            .expect("the failure is the typed rate-limit marker");
-        assert!(
-            matches!(typed, TrackerApiError::RateLimitExhausted {
-                status: 403,
-                ..
-            }),
-            "unexpected error: {error}"
+        let classified = error
+            .downcast_ref::<TrackerError>()
+            .expect("the failure carries the port's classification (work#1556)");
+        assert_eq!(
+            classified,
+            &TrackerError::RateLimited {
+                window: Some(Duration::from_secs(1)),
+            },
+            "the announced window rides the classification"
         );
+    }
+
+    /// THE 404 CLASSIFICATION PIN (denkhaus/work#1556): the forge's own
+    /// not-found answer carries the port's `NotFound` class across the
+    /// seam — a key-addressed door answers 404 with an honest code.
+    #[tokio::test]
+    async fn a_forged_404_classifies_as_not_found() {
+        let server = httpmock::MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.status(404).body("Not Found");
+        });
+
+        let error = tracker(&server.base_url())
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("the missing issue fails");
+        assert_eq!(
+            error.downcast_ref::<TrackerError>(),
+            Some(&TrackerError::NotFound),
+            "the forge's own 404 is the NotFound class: {error}"
+        );
+    }
+
+    /// A 5xx answer is the retryable `Unavailable` class, the status
+    /// kept as context.
+    #[tokio::test]
+    async fn a_5xx_answer_classifies_as_retryable_unavailable() {
+        let server = httpmock::MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.status(502).body("upstream error");
+        });
+
+        let error = tracker(&server.base_url())
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("the 502 fails");
+        assert_eq!(
+            error.downcast_ref::<TrackerError>(),
+            Some(&TrackerError::Unavailable { retryable: true }),
+            "a 5xx is the retryable outage class: {error}"
+        );
+        assert!(
+            format!("{error:#}").contains("502"),
+            "the status stays in the chain: {error:#}"
+        );
+    }
+
+    /// A plain scope 403 keeps its prose path — no forced
+    /// classification for a failure nobody branches on (the taxonomy
+    /// rule: typed variants only where callers act).
+    #[tokio::test]
+    async fn a_scope_403_carries_no_classification() {
+        let server = httpmock::MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/repos/denkhaus/work/issues/1");
+            then.status(403)
+                .body("Resource not accessible by integration");
+        });
+
+        let error = tracker(&server.base_url())
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("the scope 403 fails");
+        assert!(
+            error.downcast_ref::<TrackerError>().is_none(),
+            "an unclassifiable failure must not wear a classification"
+        );
+        assert!(
+            error
+                .downcast_ref::<TrackerApiError>()
+                .is_some_and(|typed| matches!(typed, TrackerApiError::Status { status: 403, .. })),
+            "the typed API error stays the chain: {error}"
+        );
+    }
+
+    /// The window knowledge beyond `Retry-After` (work#1556): the
+    /// primary quota answers carry the epoch-seconds
+    /// `X-RateLimit-Reset` instant — the window is its delta to now,
+    /// `Retry-After` preferred when both ride.
+    #[test]
+    fn the_window_hint_prefers_retry_after_and_falls_back_to_the_reset_instant() {
+        use std::time::UNIX_EPOCH;
+
+        let mut both = HeaderMap::new();
+        both.insert(header::RETRY_AFTER, "7".parse().expect("header value"));
+        both.insert("x-ratelimit-reset", "900".parse().expect("header value"));
+        let now = UNIX_EPOCH + Duration::from_secs(800);
+        assert_eq!(
+            GitHubTracker::window_hint(&both, now),
+            Some(Duration::from_secs(7)),
+            "Retry-After wins when it rides"
+        );
+
+        let mut reset_only = HeaderMap::new();
+        reset_only.insert("x-ratelimit-reset", "900".parse().expect("header value"));
+        assert_eq!(
+            GitHubTracker::window_hint(&reset_only, now),
+            Some(Duration::from_secs(100)),
+            "the window is the delta to the reset instant"
+        );
+
+        let neither = HeaderMap::new();
+        assert_eq!(GitHubTracker::window_hint(&neither, now), None);
+    }
+
+    /// A reset instant already in the past advises no window — the
+    /// quota window should have reopened; the answer carries nothing a
+    /// caller could wait on.
+    #[test]
+    fn a_past_reset_instant_carries_no_window() {
+        use std::time::UNIX_EPOCH;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-ratelimit-reset", "10".parse().expect("header value"));
+        let now = UNIX_EPOCH + Duration::from_secs(100);
+        assert_eq!(GitHubTracker::window_hint(&headers, now), None);
     }
 
     #[tokio::test]

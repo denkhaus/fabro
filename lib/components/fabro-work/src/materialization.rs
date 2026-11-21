@@ -815,16 +815,12 @@ impl TrackerProvider for MaterializedTracker {
                 self.views
                     .evict(&project.project_id, item_key)
                     .await
-                    .with_context(|| {
-                        format!("evicting {item_key} after a claim projection")
-                    })?;
+                    .with_context(|| format!("evicting {item_key} after a claim projection"))?;
                 self.views
                     .remove_from_universe(&project.project_id, item_key)
                     .await
                     .with_context(|| {
-                        format!(
-                            "removing {item_key} from the universe after a claim projection"
-                        )
+                        format!("removing {item_key} from the universe after a claim projection")
                     })?;
             }
             Err(error) => {
@@ -854,17 +850,13 @@ impl TrackerProvider for MaterializedTracker {
                 self.views
                     .put(&project.project_id, &item)
                     .await
-                    .with_context(|| {
-                        format!("materializing {item_key} after a claim clear")
-                    })?;
+                    .with_context(|| format!("materializing {item_key} after a claim clear"))?;
             }
             Ok(None) => {
                 self.views
                     .evict(&project.project_id, item_key)
                     .await
-                    .with_context(|| {
-                        format!("evicting {item_key} after a claim clear")
-                    })?;
+                    .with_context(|| format!("evicting {item_key} after a claim clear"))?;
                 self.views
                     .remove_from_universe(&project.project_id, item_key)
                     .await
@@ -962,11 +954,15 @@ mod tests {
     }
 
     struct ScriptedForge {
-        project:    WorkProject,
-        state:      Mutex<ForgeState>,
-        fail_reads: AtomicBool,
-        list_calls: AtomicUsize,
-        get_calls:  AtomicUsize,
+        project:          WorkProject,
+        state:            Mutex<ForgeState>,
+        fail_reads:       AtomicBool,
+        /// The quota switch (denkhaus/work#1556): reads fail as the
+        /// port's typed `RateLimited` class with an announced window
+        /// while set — the decorator-passthrough pin's script.
+        rate_limit_reads: AtomicBool,
+        list_calls:       AtomicUsize,
+        get_calls:        AtomicUsize,
     }
 
     impl ScriptedForge {
@@ -978,6 +974,7 @@ mod tests {
                     next_number: 1,
                 }),
                 fail_reads: AtomicBool::new(false),
+                rate_limit_reads: AtomicBool::new(false),
                 list_calls: AtomicUsize::new(0),
                 get_calls: AtomicUsize::new(0),
             }
@@ -985,6 +982,21 @@ mod tests {
 
         fn fail_reads(&self) {
             self.fail_reads.store(true, Ordering::SeqCst);
+        }
+
+        fn rate_limit_reads(&self) {
+            self.rate_limit_reads.store(true, Ordering::SeqCst);
+        }
+
+        /// The read failure the switches script: the typed quota class
+        /// first, the plain prose failure otherwise.
+        fn read_failure(&self) -> anyhow::Error {
+            if self.rate_limit_reads.load(Ordering::SeqCst) {
+                return anyhow::Error::new(crate::TrackerError::RateLimited {
+                    window: Some(std::time::Duration::from_secs(45)),
+                });
+            }
+            anyhow::anyhow!("forge unavailable")
         }
 
         fn list_calls(&self) -> usize {
@@ -1042,7 +1054,11 @@ mod tests {
             filter: WorkItemFilter,
         ) -> anyhow::Result<Vec<WorkItem>> {
             self.list_calls.fetch_add(1, Ordering::SeqCst);
-            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            if self.fail_reads.load(Ordering::SeqCst)
+                || self.rate_limit_reads.load(Ordering::SeqCst)
+            {
+                return Err(self.read_failure());
+            }
             let required = Self::required_labels(project, &filter);
             let state = self.state.lock().expect("forge state lock");
             let mut items: Vec<WorkItem> = state
@@ -1067,7 +1083,11 @@ mod tests {
             item_key: &str,
         ) -> anyhow::Result<Option<WorkItem>> {
             self.get_calls.fetch_add(1, Ordering::SeqCst);
-            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            if self.fail_reads.load(Ordering::SeqCst)
+                || self.rate_limit_reads.load(Ordering::SeqCst)
+            {
+                return Err(self.read_failure());
+            }
             let state = self.state.lock().expect("forge state lock");
             Ok(state.items.get(item_key).cloned())
         }
@@ -1590,7 +1610,11 @@ mod tests {
             .unwrap();
         let views = WorkItemViewStore::new(database.clone_pool());
         assert!(
-            views.get("fabro", "denkhaus/work#1").await.unwrap().is_some(),
+            views
+                .get("fabro", "denkhaus/work#1")
+                .await
+                .unwrap()
+                .is_some(),
             "a claim refreshes the row in place — the next read stays local"
         );
     }
@@ -1624,6 +1648,58 @@ mod tests {
         assert!(
             tracker.list(&project(), open_filter()).await.is_err(),
             "nothing materialized, nothing to serve: the listing fails as today"
+        );
+    }
+
+    /// THE DECORATOR-PASSTROUGH PIN (denkhaus/work#1556): a
+    /// `RateLimited` from the inner forge surfaces as the SAME
+    /// classification through the decorator — serve-stale is
+    /// deliberately failure-class independent, and the one thing it may
+    /// never do is erase the class a door needs for the park posture.
+    /// A cold listing has nothing to serve, so the failure propagates
+    /// with the classification intact.
+    #[tokio::test]
+    async fn a_rate_limited_forge_surfaces_the_classification_through_the_decorator() {
+        let (_directory, forge, tracker) = fixture().await;
+        seed_forge(&forge, &project());
+        forge.rate_limit_reads();
+
+        let error = tracker
+            .list(&project(), open_filter())
+            .await
+            .expect_err("nothing materialized: the quota failure propagates");
+        let classified = error
+            .downcast_ref::<crate::TrackerError>()
+            .expect("the classification survives the decorator");
+        assert_eq!(
+            classified,
+            &crate::TrackerError::RateLimited {
+                window: Some(std::time::Duration::from_secs(45)),
+            },
+            "the window rides through untouched"
+        );
+    }
+
+    /// The same passthrough on the item read: a total miss whose forge
+    /// load fails as `RateLimited` keeps the classification through the
+    /// decorator's on-demand path (a warm view would serve stale — the
+    /// cold miss is the honest propagation).
+    #[tokio::test]
+    async fn a_rate_limited_forge_keeps_the_classification_on_a_cold_item_miss() {
+        let (_directory, forge, tracker) = fixture().await;
+        seed_forge(&forge, &project());
+        forge.rate_limit_reads();
+
+        let error = tracker
+            .get(&project(), "denkhaus/work#1")
+            .await
+            .expect_err("a total miss with a quota-dead forge fails");
+        assert_eq!(
+            error.downcast_ref::<crate::TrackerError>(),
+            Some(&crate::TrackerError::RateLimited {
+                window: Some(std::time::Duration::from_secs(45)),
+            }),
+            "the on-demand load propagates the classification unchanged"
         );
     }
 
