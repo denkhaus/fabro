@@ -99,9 +99,10 @@ async fn retention_pass_plans_an_empty_store_with_the_configured_age() {
     );
 }
 
-/// Full chain: a terminal run older than the configured age is planned
-/// AND executed away — store row and scratch dir gone. This is the
-/// retention semantics the manual CLI shares (fabro-b1a4).
+/// Full chain: an ARCHIVED terminal run older than the configured age is
+/// planned AND executed away — store row and scratch dir gone. Since
+/// work#1514 (ADR-0048) the scheduled pass is archive-gated, so the
+/// fixture run carries the operator's archive gesture.
 #[tokio::test]
 async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
     let state = test_app_state_with_isolated_storage();
@@ -140,6 +141,8 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
     projection.status = fabro_types::RunStatus::Succeeded {
         reason: fabro_types::SuccessReason::Completed,
     };
+    // ADR-0048 (work#1514): the scheduled pass plans only archived runs.
+    projection.archived_at = Some(Utc::now());
 
     let pool = state.stores.run_summaries.pool();
     let mut tx = pool.begin().await.expect("seed tx");
@@ -434,7 +437,13 @@ async fn retention_pass_reaps_a_run_whose_every_observation_is_linked() {
         })
         .await
         .expect("seed project");
-    let run_id = seed_old_terminal_run(&state, 15).await;
+    // ADR-0048 (work#1514): the record reap rides the archive gate —
+    // the triage gate alone no longer makes a run reapable unless the
+    // operator archived it.
+    let run_id = seed_old_terminal_run_with(&state, 15, |projection| {
+        projection.archived_at = Some(Utc::now());
+    })
+    .await;
     let seq = seed_observation(&state, &run_id).await;
     state
         .work_store()
