@@ -256,7 +256,7 @@ repository carries no fork history.
 - Sync: `just vendor status` (drift, no clone), `just vendor import <name>`
   (fork tip → tree + PINS), `just vendor export <name> 'message…'`
   (tree → one fork commit, pushed; the message is the third positional
-  and shell-safe since the ADR-0049 vendor-recipe fix). One managed
+  and shell-safe since the work#1522 vendor-recipe fix). One managed
   clone per fork lives at `tmp/vendor/<name>` (gitignored, created on
   demand).
 - The vendored workspaces are their OWN workspaces

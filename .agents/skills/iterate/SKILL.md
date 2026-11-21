@@ -494,4 +494,7 @@ reality.
   a handoff's demands are consumed (landed or filed), the handoff is
   deleted — a markdown file `git rm`ed, an item-handoff CLOSED with
   evidence, references cleaned in the same change. A consumed handoff
-  left in the tree is a finding.
+  left in the tree is a finding. Handoff commit SHAs are verified with
+  `git rev-parse` AT WRITE TIME (the sprint-93 handoff named 2bb728e6d,
+  a sha that never existed — the real commit was ff821f1a7; the
+  divergence cost a cross-machine archaeology round).
