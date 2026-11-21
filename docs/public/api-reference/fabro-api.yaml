@@ -7213,6 +7213,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
   # ── Work Items (ADR-0032) ─────────────────────────────────────────────
+  #
+  # Tracker failures behind these doors answer machine-readable codes
+  # (work#1556): the quota class answers `tracker_rate_limited` (429)
+  # with the forge's announced wait under `meta.window_seconds` — a gear
+  # lap that hits it parks with preserved work instead of failing — and
+  # the port's remaining classes answer `tracker_not_found` (404),
+  # `tracker_conflict` (409), and `tracker_unavailable` (503, with
+  # `meta.retryable`).
 
   /api/v1/projects:
     get:

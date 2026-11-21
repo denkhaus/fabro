@@ -2011,10 +2011,88 @@ async fn tracker_for(
     reason = "map_err hands over ownership; a by-value error keeps call sites closure-free"
 )]
 fn tracker_failed(error: anyhow::Error) -> ApiError {
-    ApiError::new(
-        StatusCode::BAD_GATEWAY,
-        format!("tracker provider failed: {error:#}"),
-    )
+    // The typed classification first (denkhaus/work#1556): the port's
+    // classified failures answer structured, machine-readable errors —
+    // the quota class with the announced window in its meta — and only
+    // unclassified failures fall to the prose chain.
+    match error.downcast_ref::<fabro_work::TrackerError>() {
+        Some(classified) => tracker_classified(classified, &error),
+        None => ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("tracker provider failed: {error:#}"),
+        ),
+    }
+}
+
+/// The classified-tracker-failure answer (denkhaus/work#1556): each
+/// class maps to its honest status and machine-readable code; the
+/// quota class carries the announced window in its meta so callers can
+/// wait precisely instead of guessing a sleep. Every detail keeps the
+/// rendered chain beside the code.
+fn tracker_classified(classified: &fabro_work::TrackerError, chain: &anyhow::Error) -> ApiError {
+    match classified {
+        fabro_work::TrackerError::RateLimited { window } => {
+            let mut meta = serde_json::Map::new();
+            meta.insert(
+                "window_seconds".to_string(),
+                window.map_or(serde_json::Value::Null, |window| {
+                    serde_json::Value::from(window.as_secs())
+                }),
+            );
+            ApiError::with_code_and_meta(
+                StatusCode::TOO_MANY_REQUESTS,
+                rate_limited_detail(*window),
+                "tracker_rate_limited",
+                meta,
+            )
+        }
+        fabro_work::TrackerError::NotFound => ApiError::with_code(
+            StatusCode::NOT_FOUND,
+            format!("the tracker knows no such work item: {chain:#}"),
+            "tracker_not_found",
+        ),
+        fabro_work::TrackerError::Conflict => ApiError::with_code(
+            StatusCode::CONFLICT,
+            format!("the tracker refused the write as conflicting: {chain:#}"),
+            "tracker_conflict",
+        ),
+        fabro_work::TrackerError::Unavailable { retryable } => {
+            let mut meta = serde_json::Map::new();
+            meta.insert("retryable".to_string(), serde_json::Value::from(*retryable));
+            ApiError::with_code_and_meta(
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("tracker provider unavailable: {chain:#}"),
+                "tracker_unavailable",
+                meta,
+            )
+        }
+        other => ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("tracker provider failed ({other}): {chain:#}"),
+        ),
+    }
+}
+
+/// The quota class's detail (denkhaus/work#1556). With an announced
+/// window the detail names the reset instant in the exact prose the
+/// existing run-park fold parses (`… will reset at <RFC3339>` through
+/// `fabro_llm::gateway::reset_window`): a gear lap whose stage records
+/// this failure parks resumable (`Blocked { QuotaRateLimit }`) with its
+/// work preserved instead of hard-failing — the park decision itself
+/// rides the EXISTING quota-park machinery, this door only reports.
+/// Without a window the door stays honest about not knowing.
+fn rate_limited_detail(window: Option<std::time::Duration>) -> String {
+    match window {
+        Some(window) if window > std::time::Duration::ZERO => format!(
+            "tracker quota exhausted; the window will reset at {}",
+            (chrono::Utc::now() + window).to_rfc3339()
+        ),
+        Some(_) => {
+            "tracker quota exhausted; the reset instant has passed — the next attempt may succeed"
+                .to_string()
+        }
+        None => "tracker quota exhausted; the forge announced no reset window".to_string(),
+    }
 }
 
 /// Clear the run-id claim label after a release, best effort: the claim
@@ -3281,28 +3359,34 @@ mod resolve_self_tests {
 mod view_materialization_tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     use async_trait::async_trait;
+    use axum::response::IntoResponse as _;
     use axum_extra::extract::Query as ExtraQuery;
     use fabro_static::EnvVars;
     use fabro_types::Principal;
 
-    use super::{WorkItemGetQuery, get_work_item, refresh_work_item_view};
+    use super::{WorkItemGetQuery, get_work_item, rate_limited_detail, refresh_work_item_view};
     use crate::principal_middleware::RequiredRunManagementActor;
     use crate::server::AppState;
     use crate::test_support::TestAppStateBuilder;
 
     /// The scripted forge for the seam tests: one item, a read-failure
-    /// switch, and a mutable title — the two moves the pins need.
+    /// switch, a quota switch, and a mutable title — the moves the pins
+    /// need.
     struct SwitchForge {
-        item:       Mutex<fabro_work::WorkItem>,
-        fail_reads: AtomicBool,
+        item:             Mutex<fabro_work::WorkItem>,
+        fail_reads:       AtomicBool,
+        /// The quota script (denkhaus/work#1556): reads fail as the
+        /// port's typed `RateLimited` class with an announced window.
+        rate_limit_reads: AtomicBool,
     }
 
     impl SwitchForge {
         fn new() -> Self {
             Self {
-                item:       Mutex::new(fabro_work::WorkItem {
+                item:             Mutex::new(fabro_work::WorkItem {
                     item_key:   "denkhaus/work#1".to_string(),
                     title:      "Item as the forge serves it".to_string(),
                     body:       "the spec body".to_string(),
@@ -3314,12 +3398,28 @@ mod view_materialization_tests {
                     created_at: None,
                     closed_at:  None,
                 }),
-                fail_reads: AtomicBool::new(false),
+                fail_reads:       AtomicBool::new(false),
+                rate_limit_reads: AtomicBool::new(false),
             }
         }
 
         fn fail_reads(&self) {
             self.fail_reads.store(true, Ordering::SeqCst);
+        }
+
+        fn rate_limit_reads(&self) {
+            self.rate_limit_reads.store(true, Ordering::SeqCst);
+        }
+
+        /// The read failure the switches script: the typed quota class
+        /// first, the plain prose failure otherwise.
+        fn read_failure(&self) -> anyhow::Error {
+            if self.rate_limit_reads.load(Ordering::SeqCst) {
+                return anyhow::Error::new(fabro_work::TrackerError::RateLimited {
+                    window: Some(Duration::from_secs(45)),
+                });
+            }
+            anyhow::anyhow!("forge unavailable")
         }
 
         fn edit_title(&self, title: &str) {
@@ -3334,7 +3434,11 @@ mod view_materialization_tests {
             _project: &fabro_work::WorkProject,
             filter: fabro_work::WorkItemFilter,
         ) -> anyhow::Result<Vec<fabro_work::WorkItem>> {
-            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            if self.fail_reads.load(Ordering::SeqCst)
+                || self.rate_limit_reads.load(Ordering::SeqCst)
+            {
+                return Err(self.read_failure());
+            }
             let item = self.item.lock().expect("forge item lock").clone();
             let state_ok = match filter.state {
                 fabro_work::WorkItemStateFilter::Closed => item.state == "closed",
@@ -3349,7 +3453,11 @@ mod view_materialization_tests {
             _project: &fabro_work::WorkProject,
             item_key: &str,
         ) -> anyhow::Result<Option<fabro_work::WorkItem>> {
-            anyhow::ensure!(!self.fail_reads.load(Ordering::SeqCst), "forge unavailable");
+            if self.fail_reads.load(Ordering::SeqCst)
+                || self.rate_limit_reads.load(Ordering::SeqCst)
+            {
+                return Err(self.read_failure());
+            }
             let item = self.item.lock().expect("forge item lock").clone();
             Ok((item.item_key == item_key).then_some(item))
         }
@@ -3493,6 +3601,93 @@ mod view_materialization_tests {
         assert_eq!(
             degraded["title"], "Item as the forge serves it",
             "a warm view never fails hard while the forge is down"
+        );
+    }
+
+    /// The park-posture carrier (denkhaus/work#1556): the door's
+    /// rate-limited detail is parseable by the EXISTING run-park fold —
+    /// `fabro_llm::gateway::reset_window` reads a Reopens window out of
+    /// it, and a window over the fold's park threshold means a gear lap
+    /// whose stage records this failure parks
+    /// (`Blocked { QuotaRateLimit }`, work preserved) instead of
+    /// failing. The no-window answer announces nothing parkable.
+    #[test]
+    fn the_rate_limited_detail_carries_the_prose_the_run_park_fold_parses() {
+        let long = rate_limited_detail(Some(Duration::from_hours(1)));
+        let parsed = fabro_llm::gateway::reset_window(&long, std::time::SystemTime::now());
+        assert!(
+            matches!(
+                parsed,
+                Some(fabro_llm::gateway::RateLimitWindow::Reopens(wait))
+                    if wait > fabro_llm::LONG_RATE_LIMIT_WINDOW
+            ),
+            "a window over the fold's threshold parks the lap: {parsed:?} from {long}"
+        );
+
+        let short = rate_limited_detail(Some(Duration::from_secs(45)));
+        let parsed = fabro_llm::gateway::reset_window(&short, std::time::SystemTime::now());
+        assert!(
+            matches!(
+                parsed,
+                Some(fabro_llm::gateway::RateLimitWindow::Reopens(wait))
+                    if wait <= fabro_llm::LONG_RATE_LIMIT_WINDOW
+            ),
+            "a short window stays on the fold's retry side: {parsed:?} from {short}"
+        );
+
+        let unannounced = rate_limited_detail(None);
+        assert_eq!(
+            fabro_llm::gateway::reset_window(&unannounced, std::time::SystemTime::now()),
+            None,
+            "no announced window, no park prose"
+        );
+    }
+
+    /// THE QUOTA-PARK POSTURE PIN (denkhaus/work#1556): a quota-class
+    /// tracker failure through a work door answers a STRUCTURED,
+    /// machine-readable rate-limited error — an error CODE with the
+    /// announced window in its meta, never prose. The detail carries
+    /// the reset prose the existing run-park fold parses
+    /// (`fabro_llm::gateway::reset_window`), so a gear lap whose stage
+    /// dies on this door parks with preserved work
+    /// (`Blocked { QuotaRateLimit }`) instead of hard-failing.
+    #[tokio::test]
+    async fn a_quota_class_tracker_failure_answers_the_structured_rate_limited_code() {
+        let forge = Arc::new(SwitchForge::new());
+        let state = state_with_forge(Arc::clone(&forge)).await;
+
+        // The quota window closes BEFORE anything is cached: a cold
+        // view has nothing to serve, so the failure reaches the door.
+        forge.rate_limit_reads();
+
+        let error = get_work_item(
+            user_auth(),
+            axum::extract::State(Arc::clone(&state)),
+            axum::extract::Path("fabro".to_string()),
+            ExtraQuery(WorkItemGetQuery {
+                item_key: "denkhaus/work#1".to_string(),
+            }),
+        )
+        .await
+        .expect_err("the quota-class failure answers as an error");
+        let response = error.into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            body["errors"][0]["code"], "tracker_rate_limited",
+            "the door answers a machine-readable code, not prose: {body}"
+        );
+        assert_eq!(
+            body["errors"][0]["meta"]["window_seconds"], 45,
+            "the announced window rides the wire for precise waits: {body}"
+        );
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert!(
+            detail.contains("will reset at"),
+            "the detail carries the reset prose the run-park fold parses: {detail}"
         );
     }
 
