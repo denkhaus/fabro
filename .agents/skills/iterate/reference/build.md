@@ -17,6 +17,17 @@ directives, and verification recipes. Edit mechanics also live in
   mechanical gates of the touched surface (Rust: rust-style-guide +
   the guideline pages covering the diff, loaded and NAMED before the
   first edit cell), verify with real commands, close with evidence.
+- CLOSE = SCOPE ACCOUNTED (the #1463 lesson, user decision 2026-11-21):
+  before `work close`, re-read the item's title, body, and task list
+  and account for EVERY named part — landed (name where), deferred
+  (name the follow-up item), or rejected (name the decision). A part
+  with no account BLOCKS the close. A close reason that verifies only
+  the landed half is the #1463 failure mode: the probe landed, the
+  title's "full serialization" vanished, and the absence surfaced
+  three weeks later as a production storm. The work#1552 door makes
+  this mechanical for task lists; until it ships, the check is this
+  session's own step — it runs BEFORE the close command, every time,
+  and the account lands in the close reason.
 - Run the touched tests IMMEDIATELY after each refactor edit, not at
   the end of the batch: three self-inflicted scanner bugs (two byte
   offsets, chain legs) each cost a hung 120s/20s test round; the unit
