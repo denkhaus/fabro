@@ -42,4 +42,8 @@ export interface PruneRunsRequest {
      * Include only runs older than this duration, such as 24h or 7d.
      */
     'older_than'?: string;
+    /**
+     * Include only archived runs. The scheduled retention pass sets this to true — the operator\'s archive gesture is the drain; manual CLI requests default to false and keep full power.
+     */
+    'archived_only'?: boolean;
 }

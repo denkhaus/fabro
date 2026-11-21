@@ -54,6 +54,10 @@ fn retention_request_names_configured_age_for_execution() {
     assert!(request.workflow.is_none());
     assert!(!request.orphans);
     assert!(request.labels.is_empty());
+    assert!(
+        request.archived_only,
+        "ADR-0048: the scheduled pass is archive-gated (work#1514)"
+    );
 }
 
 /// `0` disables retention: no request, no plan, no deletion.
@@ -95,9 +99,10 @@ async fn retention_pass_plans_an_empty_store_with_the_configured_age() {
     );
 }
 
-/// Full chain: a terminal run older than the configured age is planned
-/// AND executed away — store row and scratch dir gone. This is the
-/// retention semantics the manual CLI shares (fabro-b1a4).
+/// Full chain: an ARCHIVED terminal run older than the configured age is
+/// planned AND executed away — store row and scratch dir gone. Since
+/// work#1514 (ADR-0048) the scheduled pass is archive-gated, so the
+/// fixture run carries the operator's archive gesture.
 #[tokio::test]
 async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
     let state = test_app_state_with_isolated_storage();
@@ -136,6 +141,8 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
     projection.status = fabro_types::RunStatus::Succeeded {
         reason: fabro_types::SuccessReason::Completed,
     };
+    // ADR-0048 (work#1514): the scheduled pass plans only archived runs.
+    projection.archived_at = Some(Utc::now());
 
     let pool = state.stores.run_summaries.pool();
     let mut tx = pool.begin().await.expect("seed tx");
@@ -177,6 +184,91 @@ async fn retention_pass_deletes_terminal_runs_older_than_configured_age() {
         .expect("list after");
     assert!(after.is_empty(), "the run row is gone");
     assert!(!scratch_root.exists(), "the run scratch dir is reclaimed");
+}
+
+//
+// ADR-0048 (work#1514): the archive gate. The SCHEDULED pass deletes
+// only ARCHIVED runs older than the floor — archiving is the
+// operator-controlled drain; non-archived terminal runs keep their
+// metadata forever. The manual CLI request (flag false) stays ungated.
+//
+
+/// Red-first pin (work#1514): a non-archived terminal run older than
+/// the floor is NOT in the retention plan; an archived twin IS. Against
+/// the pre-fix ungated pass both were planned and deleted.
+#[tokio::test]
+async fn retention_pass_is_archive_gated() {
+    let state = test_app_state_with_isolated_storage();
+    set_retention(&state, 14);
+    let unarchived = seed_old_terminal_run(&state, 15).await;
+    let archived = seed_old_terminal_run_with(&state, 15, |projection| {
+        projection.archived_at = Some(Utc::now());
+    })
+    .await;
+
+    let storage = Storage::new(state.server_storage_dir());
+    let unarchived_root = storage.run_scratch(&unarchived).root().to_path_buf();
+    let archived_root = storage.run_scratch(&archived).root().to_path_buf();
+
+    let stats = fork_run_retention::run_retention_pass(&state)
+        .await
+        .expect("pass must not fail")
+        .expect("enabled configuration must report stats");
+
+    assert_eq!(stats.planned, 1, "only the archived run is planned");
+    assert_eq!(stats.deleted_count, 1, "only the archived run is deleted");
+
+    let after = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("list after");
+    assert_eq!(
+        after.len(),
+        1,
+        "the non-archived run keeps its metadata forever (ADR-0048)"
+    );
+    assert_eq!(
+        after[0].id, unarchived,
+        "the survivor is the unarchived run"
+    );
+    assert!(
+        unarchived_root.exists(),
+        "the non-archived run's scratch dir is not reclaimed"
+    );
+    assert!(!archived_root.exists(), "the archived run is fully deleted");
+}
+
+/// The manual CLI shape (flag false) keeps its full ungated power: a
+/// non-archived terminal run past the floor IS in that plan.
+#[tokio::test]
+async fn cli_prune_plan_without_the_archive_gate_names_non_archived_runs() {
+    let state = test_app_state_with_isolated_storage();
+    let unarchived = seed_old_terminal_run(&state, 15).await;
+
+    let summaries = state
+        .stores
+        .run_summaries
+        .list_all(Utc::now())
+        .await
+        .expect("summaries");
+    let cli_request = fabro_api::types::PruneRunsRequest {
+        before:        None,
+        dry_run:       true,
+        labels:        HashMap::default(),
+        older_than:    Some("14d".to_string()),
+        orphans:       false,
+        workflow:      None,
+        archived_only: false,
+    };
+    let plan = build_prune_plan(&cli_request, &summaries, &state.server_storage_dir())
+        .expect("cli-shaped plan");
+    assert_eq!(
+        plan.run_ids,
+        vec![unarchived],
+        "the manual CLI prune still plans non-archived runs"
+    );
 }
 
 //
@@ -345,7 +437,13 @@ async fn retention_pass_reaps_a_run_whose_every_observation_is_linked() {
         })
         .await
         .expect("seed project");
-    let run_id = seed_old_terminal_run(&state, 15).await;
+    // ADR-0048 (work#1514): the record reap rides the archive gate —
+    // the triage gate alone no longer makes a run reapable unless the
+    // operator archived it.
+    let run_id = seed_old_terminal_run_with(&state, 15, |projection| {
+        projection.archived_at = Some(Utc::now());
+    })
+    .await;
     let seq = seed_observation(&state, &run_id).await;
     state
         .work_store()

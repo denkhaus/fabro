@@ -2584,6 +2584,14 @@ fn build_prune_plan(
 
     filtered.retain(|run| !run.status().is_active());
 
+    // ADR-0048 (work#1514): the SCHEDULED retention pass is
+    // archive-gated — only archived runs older than the floor are
+    // auto-deleted (archiving is the operator-controlled drain). The
+    // manual CLI request keeps the flag false and its full power.
+    if request.archived_only {
+        filtered.retain(RunInfo::is_archived);
+    }
+
     let rows = filtered
         .iter()
         .map(|run| PruneRunEntry {

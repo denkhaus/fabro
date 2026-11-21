@@ -15,12 +15,15 @@ pub(super) async fn prune_command(args: &RunsPruneArgs, base_ctx: &CommandContex
     let server = ctx.server().await?;
     let response = server
         .prune_runs(types::PruneRunsRequest {
-            before:     args.filter.before.clone(),
-            dry_run:    !args.yes,
-            labels:     parse_label_filters(&args.filter.label),
-            older_than: args.older_than.map(format_duration),
-            orphans:    args.filter.orphans,
-            workflow:   args.filter.workflow.clone(),
+            before:        args.filter.before.clone(),
+            dry_run:       !args.yes,
+            labels:        parse_label_filters(&args.filter.label),
+            older_than:    args.older_than.map(format_duration),
+            orphans:       args.filter.orphans,
+            // ADR-0048: the manual CLI prune keeps its full ungated power -
+            // only the scheduled retention pass is archive-gated.
+            archived_only: false,
+            workflow:      args.filter.workflow.clone(),
         })
         .await?;
     prune_from(&response, ctx.json_output(), printer)
