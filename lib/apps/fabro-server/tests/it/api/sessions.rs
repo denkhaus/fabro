@@ -563,6 +563,114 @@ async fn the_global_sessions_index_lists_across_runs_and_paginates_in_sql() {
     assert_eq!(by_creation["meta"]["has_more"], false);
 }
 
+/// Explicit session deletion (work#1535): DELETE removes the session's
+/// events and its stored record — the row leaves the global index, the
+/// detail and events doors 404 afterward, and sibling sessions stay
+/// intact. The reset door keeps the old session readable; this door does
+/// not. An unknown id answers 404.
+#[tokio::test]
+async fn delete_session_removes_the_row_and_closes_transcript_access() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+    let (run_id, _run_id_workspace) = create_run(&app).await;
+    let doomed = create_session(&app, &run_id, "Doomed chat").await;
+    let survivor = create_session(&app, &run_id, "Surviving chat").await;
+    let doomed_id = doomed["id"].as_str().unwrap().to_string();
+    let survivor_id = survivor["id"].as_str().unwrap().to_string();
+
+    let delete = Request::builder()
+        .method("DELETE")
+        .uri(api(&format!("/sessions/{doomed_id}")))
+        .body(Body::empty())
+        .expect("delete-session request should build");
+    let response = app.clone().oneshot(delete).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(
+        bytes.is_empty(),
+        "a 204 delete carries no body, got {bytes:?}"
+    );
+
+    // The session itself is gone: detail and transcript access 404.
+    for (method, path, label) in [
+        ("GET", format!("/sessions/{doomed_id}"), "session detail"),
+        (
+            "GET",
+            format!("/sessions/{doomed_id}/events"),
+            "session events",
+        ),
+    ] {
+        let request = Request::builder()
+            .method(method)
+            .uri(api(&path))
+            .body(Body::empty())
+            .expect("post-delete read request should build");
+        response_status(
+            app.clone().oneshot(request).await.unwrap(),
+            StatusCode::NOT_FOUND,
+            format!("post-delete {label} read"),
+        )
+        .await;
+    }
+
+    // The global index no longer lists the deleted session; the sibling
+    // stays.
+    let index = global_sessions_page(&app, "").await;
+    let ids: Vec<&str> = index["data"]
+        .as_array()
+        .expect("sessions response should include data")
+        .iter()
+        .map(|row| {
+            row["id"]
+                .as_str()
+                .expect("session row should include an id")
+        })
+        .collect();
+    assert_eq!(ids, [survivor_id.as_str()]);
+
+    // Deleting an unknown (well-formed) id answers 404, and a repeat
+    // delete of the deleted session 404s too.
+    for target in [fabro_types::SessionId::new().to_string(), doomed_id.clone()] {
+        let request = Request::builder()
+            .method("DELETE")
+            .uri(api(&format!("/sessions/{target}")))
+            .body(Body::empty())
+            .expect("repeat delete request should build");
+        response_status(
+            app.clone().oneshot(request).await.unwrap(),
+            StatusCode::NOT_FOUND,
+            format!("DELETE /api/v1/sessions/{target} after deletion"),
+        )
+        .await;
+    }
+
+    // A malformed session id is a 400, not a 404.
+    let request = Request::builder()
+        .method("DELETE")
+        .uri(api("/sessions/not-a-session-id"))
+        .body(Body::empty())
+        .expect("malformed delete request should build");
+    response_status(
+        app.clone().oneshot(request).await.unwrap(),
+        StatusCode::BAD_REQUEST,
+        "DELETE with a malformed session id",
+    )
+    .await;
+
+    // The survivor is untouched.
+    let get_survivor = Request::builder()
+        .method("GET")
+        .uri(api(&format!("/sessions/{survivor_id}")))
+        .body(Body::empty())
+        .expect("survivor request should build");
+    let fetched = response_json(
+        app.clone().oneshot(get_survivor).await.unwrap(),
+        StatusCode::OK,
+        format!("GET /api/v1/sessions/{survivor_id}"),
+    )
+    .await;
+    assert_eq!(fetched["id"], survivor_id.as_str());
+}
+
 async fn session_sse_events(response: axum::response::Response) -> Vec<serde_json::Value> {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await

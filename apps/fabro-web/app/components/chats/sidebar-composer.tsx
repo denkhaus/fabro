@@ -3,15 +3,17 @@ import { ArrowUpIcon } from "@heroicons/react/24/solid";
 import { StopIcon } from "@heroicons/react/24/outline";
 
 /**
- * Compact single-line composer for the Ask-Fabro sidebar. Stripped of the
- * project/branch/model chips; textarea + send button live on one row inside
- * a rounded pill.
+ * Compact composer for the Ask-Fabro sidebar and the global supervisor
+ * chat. Stripped of the project/branch/model chips; textarea + send
+ * button share the rounded pill. The input starts ~4 rows tall and keeps
+ * auto-growing with typed content (work#1535): react-textarea-autosize
+ * sizes between minRows and the class max-height cap.
  */
 export default function SidebarComposer() {
   return (
     <ComposerPrimitive.Root className="my-3 flex w-auto items-end gap-2 rounded-2xl bg-panel-alt/80 px-3 py-2 shadow-md shadow-black/30 ring-1 ring-line-strong backdrop-blur-sm focus-within:ring-teal-500/40">
       <ComposerPrimitive.Input
-        rows={1}
+        minRows={4}
         autoFocus
         placeholder="Ask Fabro…"
         className="block max-h-40 min-w-0 flex-1 resize-none bg-transparent py-1 text-sm text-fg placeholder:text-fg-muted focus:outline-none"

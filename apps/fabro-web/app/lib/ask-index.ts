@@ -31,3 +31,13 @@ export async function listAllAskSessions({
   const page = await loadPage(limit, offset);
   return page.data;
 }
+
+/**
+ * Explicitly deletes one session (work#1535) through the generated
+ * client's `deleteSession` operation (`DELETE /api/v1/sessions/{id}`):
+ * the session leaves the index and its transcript is no longer
+ * reachable. Unlike the conversation reset door, deletion is final.
+ */
+export async function deleteAskSession(sessionId: string): Promise<void> {
+  await apiData(() => sessionsApi.deleteSession(sessionId));
+}
