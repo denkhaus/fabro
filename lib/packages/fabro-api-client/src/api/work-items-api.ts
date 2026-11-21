@@ -56,6 +56,10 @@ import type { WorkItemListResponse } from '../models';
 // @ts-ignore
 import type { WorkItemLockRequest } from '../models';
 // @ts-ignore
+import type { WorkItemRefreshRequest } from '../models';
+// @ts-ignore
+import type { WorkItemRefreshResponse } from '../models';
+// @ts-ignore
 import type { WorkItemUpdateRequest } from '../models';
 // @ts-ignore
 import type { WorkObservationLinkRequest } from '../models';
@@ -626,6 +630,51 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(workItemLockRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The refresh door of the read-view materialization (ADR-0050): force-load from the forge and re-materialize — one item when the body names `itemKey`, the project\'s whole universe otherwise. The explicit door for foreign edits made directly at the forge; ordinary reads stay write-invalidated only. User-only: a run worker principal is refused (the door spends forge quota).
+         * @summary Refresh the materialized work-item view from the forge
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemRefreshRequest} workItemRefreshRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        refreshWorkItemView: async (projectId: string, workItemRefreshRequest: WorkItemRefreshRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'projectId' is not null or undefined
+            assertParamExists('refreshWorkItemView', 'projectId', projectId)
+            // verify required parameter 'workItemRefreshRequest' is not null or undefined
+            assertParamExists('refreshWorkItemView', 'workItemRefreshRequest', workItemRefreshRequest)
+            const localVarPath = `/api/v1/projects/{projectId}/work-items/refresh`
+                .replace(`{${"projectId"}}`, encodeURIComponent(String(projectId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(workItemRefreshRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -1210,6 +1259,20 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The refresh door of the read-view materialization (ADR-0050): force-load from the forge and re-materialize — one item when the body names `itemKey`, the project\'s whole universe otherwise. The explicit door for foreign edits made directly at the forge; ordinary reads stay write-invalidated only. User-only: a run worker principal is refused (the door spends forge quota).
+         * @summary Refresh the materialized work-item view from the forge
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemRefreshRequest} workItemRefreshRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async refreshWorkItemView(projectId: string, workItemRefreshRequest: WorkItemRefreshRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemRefreshResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.refreshWorkItemView(projectId, workItemRefreshRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.refreshWorkItemView']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          *
          * @summary Release a claim back to the queue
          * @param {string} claimId Claim identifier.
@@ -1478,6 +1541,17 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
             return localVarFp.lockWorkItem(projectId, workItemLockRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * The refresh door of the read-view materialization (ADR-0050): force-load from the forge and re-materialize — one item when the body names `itemKey`, the project\'s whole universe otherwise. The explicit door for foreign edits made directly at the forge; ordinary reads stay write-invalidated only. User-only: a run worker principal is refused (the door spends forge quota).
+         * @summary Refresh the materialized work-item view from the forge
+         * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+         * @param {WorkItemRefreshRequest} workItemRefreshRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        refreshWorkItemView(projectId: string, workItemRefreshRequest: WorkItemRefreshRequest, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemRefreshResponse> {
+            return localVarFp.refreshWorkItemView(projectId, workItemRefreshRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          *
          * @summary Release a claim back to the queue
          * @param {string} claimId Claim identifier.
@@ -1726,6 +1800,18 @@ export class WorkItemsApi extends BaseAPI {
      */
     public lockWorkItem(projectId: string, workItemLockRequest: WorkItemLockRequest, options?: RawAxiosRequestConfig) {
         return WorkItemsApiFp(this.configuration).lockWorkItem(projectId, workItemLockRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The refresh door of the read-view materialization (ADR-0050): force-load from the forge and re-materialize — one item when the body names `itemKey`, the project\'s whole universe otherwise. The explicit door for foreign edits made directly at the forge; ordinary reads stay write-invalidated only. User-only: a run worker principal is refused (the door spends forge quota).
+     * @summary Refresh the materialized work-item view from the forge
+     * @param {string} projectId Stable work-item project identifier, or the literal &#x60;self&#x60; for a run-scoped caller: the server resolves &#x60;self&#x60; to the project bound to the authenticated run\&#39;s target repository (project-agnostic workflows never name their project; ADR-0032 phase 3). Do not name a literal project &#x60;self&#x60;.
+     * @param {WorkItemRefreshRequest} workItemRefreshRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public refreshWorkItemView(projectId: string, workItemRefreshRequest: WorkItemRefreshRequest, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).refreshWorkItemView(projectId, workItemRefreshRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
