@@ -1,9 +1,13 @@
 import { useState } from "react";
-import { PencilSquareIcon } from "@heroicons/react/24/outline";
+import { PencilSquareIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { useSWRConfig } from "swr";
 
 import AskFabroConversation from "../components/chats/ask-fabro-conversation";
+import { useToast } from "../components/toast";
 import { EmptyState } from "../components/state";
 import { useAskSessionIndex, useLatestRunId } from "../lib/queries";
+import { queryKeys } from "../lib/query-keys";
+import { deleteAskSession } from "../lib/ask-index";
 import { formatRelativeTime } from "../lib/format";
 
 /**
@@ -14,6 +18,8 @@ import { formatRelativeTime } from "../lib/format";
  * (every conversation across runs, per-run docked ones included); picking
  * one resumes it with its full transcript. "New conversation" is the reset
  * door: a fresh session starts read-only and the old one stays readable.
+ * Each row also carries a per-session delete affordance (work#1535): one
+ * click deletes the conversation server-side and drops it from the list.
  */
 export const handle = { hideHeader: true, fullHeight: true, wide: true };
 
@@ -24,11 +30,27 @@ export function meta() {
 export default function Ask() {
   const [fresh, setFresh] = useState(false);
   const index = useAskSessionIndex();
+  const { mutate } = useSWRConfig();
+  const { push } = useToast();
 
   const sessions = index.data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected =
     sessions.find((session) => session.id === selectedId) ?? null;
+
+  // Explicit deletion (work#1535): confirm-less by demand — the door
+  // removes the session server-side, the refetched index drops the row.
+  async function handleDelete(sessionId: string) {
+    try {
+      await deleteAskSession(sessionId);
+      await mutate(queryKeys.ask.index());
+      if (selectedId === sessionId) {
+        setSelectedId(null);
+      }
+    } catch {
+      push({ message: "Deleting the conversation failed.", tone: "error" });
+    }
+  }
 
   return (
     // Cancel AppShell's content padding so the chat surface bleeds
@@ -59,33 +81,59 @@ export default function Ask() {
               No conversations yet — start one.
             </p>
           ) : (
-            sessions.map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => {
-                  setFresh(false);
-                  setSelectedId(session.id);
-                }}
-                className={[
-                  "relative block w-full rounded-md px-3 py-2 text-left text-sm transition-colors",
-                  !fresh && session.id === selectedId
-                    ? "bg-overlay text-fg before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-teal-500"
-                    : "text-fg-3 hover:bg-overlay/60 hover:text-fg",
-                ].join(" ")}
-              >
-                <span className="block truncate">
-                  {session.title || "Ask Fabro"}
-                </span>
-                <span className="mt-0.5 block truncate font-mono text-xs text-fg-muted">
-                  {session.run_id}
-                  {session.capability === "full_access" ? " · supervisor" : ""}
-                </span>
-                <span className="block text-xs text-fg-muted">
-                  {formatRelativeTime(session.updated_at)}
-                </span>
-              </button>
-            ))
+            sessions.map((session) => {
+              const title = session.title || "Ask Fabro";
+              return (
+                <div
+                  key={session.id}
+                  className={[
+                    "group relative flex items-start rounded-md transition-colors",
+                    !fresh && session.id === selectedId
+                      ? "bg-overlay before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-teal-500"
+                      : "hover:bg-overlay/60",
+                  ].join(" ")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFresh(false);
+                      setSelectedId(session.id);
+                    }}
+                    className="min-w-0 flex-1 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-teal-500"
+                  >
+                    <span
+                      className={[
+                        "block truncate",
+                        !fresh && session.id === selectedId
+                          ? "text-fg"
+                          : "text-fg-3 group-hover:text-fg",
+                      ].join(" ")}
+                    >
+                      {title}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-xs text-fg-muted">
+                      {session.run_id}
+                      {session.capability === "full_access" ? " · supervisor" : ""}
+                    </span>
+                    <span className="block text-xs text-fg-muted">
+                      {formatRelativeTime(session.updated_at)}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete conversation ${title}`}
+                    title="Delete conversation"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDelete(session.id);
+                    }}
+                    className="m-1.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md text-fg-muted opacity-0 transition-all hover:bg-overlay-strong hover:text-fg focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-teal-500 group-hover:opacity-100"
+                  >
+                    <TrashIcon className="size-3.5" />
+                  </button>
+                </div>
+              );
+            })
           )}
         </nav>
       </aside>

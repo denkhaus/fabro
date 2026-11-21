@@ -113,7 +113,9 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/sessions", get(list_all_sessions))
         .route(
             "/sessions/{id}",
-            get(get_session).fallback(session_method_not_found),
+            get(get_session)
+                .delete(delete_session)
+                .fallback(session_method_not_found),
         )
         .route("/sessions/{id}/events", get(list_session_events))
         .route("/sessions/{id}/attach", get(attach_session_events))
@@ -318,6 +320,43 @@ async fn get_session(
         Err(response) => return response,
     };
     Json(SessionDetail::new(session.record, session.last_seq)).into_response()
+}
+
+/// Explicit deletion (work#1535): removes the session's events and its
+/// stored conversation record — the session leaves the index and its
+/// transcript is no longer reachable. Unlike the conversation reset door,
+/// a deleted session is not kept readable; deleting an unknown id 404s.
+/// Only an authenticated user principal may delete: a worker token (the
+/// stage agent's `fabro_ask` caller) is refused.
+async fn delete_session(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Response {
+    let session_id = match parse_session_id(&id) {
+        Ok(id) => id,
+        Err(err) => return err.into_response(),
+    };
+    if let Err(response) = load_session_owner(&state, session_id).await {
+        return response;
+    }
+    // A cached agent dies with the session: a later turn on this id must
+    // rebuild fresh instead of resuming the deleted conversation.
+    state.session_runtimes().invalidate_agent(session_id).await;
+    // The same order as the run-deletion chain: the events first (the
+    // index and the transcript die with them), then the durable record.
+    if let Err(err) = state
+        .stores
+        .session_events
+        .delete_for_session(session_id)
+        .await
+    {
+        return store_error(&err).into_response();
+    }
+    if let Err(err) = state.stores.session_records.delete(session_id).await {
+        return store_error(&err).into_response();
+    }
+    StatusCode::NO_CONTENT.into_response()
 }
 
 async fn session_method_not_found() -> Response {

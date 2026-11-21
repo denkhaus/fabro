@@ -935,6 +935,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSession
+      tags: [Sessions]
+      summary: Delete a session
+      description: >-
+        Explicit deletion (work#1535): removes the session's events and its
+        stored conversation record. The session disappears from the session
+        index and its transcript is no longer reachable — unlike the
+        conversation reset door, a deleted session is not kept readable.
+        Requires an authenticated user principal; a worker token is refused.
+        Deleting an unknown id answers 404.
+      responses:
+        "204":
+          description: Session deleted
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+        "404":
+          description: Session not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/sessions/{id}/capability:
     parameters:
       - name: id

@@ -12,6 +12,7 @@ import { setupReactTestEnv, textContent } from "../lib/test-utils";
 let indexResolvers: Array<(page: unknown) => void> = [];
 let eventResolvers: Array<(page: unknown) => void> = [];
 let listSessionEventsCalls = 0;
+let deletedSessionIds: string[] = [];
 
 function makeIndexPage(sessionId = "ses_1", title = "Supervisor chat") {
   return {
@@ -75,6 +76,10 @@ mock.module("../lib/api-client", () => ({
       return new Promise((resolve) => {
         eventResolvers.push(resolve);
       }).then((page) => ({ data: page }));
+    }),
+    deleteSession: mock((id: string) => {
+      deletedSessionIds.push(id);
+      return Promise.resolve({});
     }),
   },
 }));
@@ -178,6 +183,7 @@ describe("Ask page rehydration (work#1507)", () => {
     indexResolvers = [];
     eventResolvers = [];
     listSessionEventsCalls = 0;
+    deletedSessionIds = [];
   });
 
   afterEach(() => {
@@ -305,5 +311,95 @@ describe("Ask page rehydration (work#1507)", () => {
     const text = textOf(tree!);
     expect(text).toContain("Where is the deploy log?");
     expect(text).toContain("It is in tmp/deploy.log.");
+  });
+});
+
+describe("Ask page session delete (work#1535)", () => {
+  let teardown: () => void = () => {};
+  let tree: TestRenderer.ReactTestRenderer | null = null;
+
+  beforeEach(() => {
+    teardown = setupReactTestEnv();
+    indexResolvers = [];
+    eventResolvers = [];
+    listSessionEventsCalls = 0;
+    deletedSessionIds = [];
+  });
+
+  afterEach(() => {
+    act(() => {
+      tree?.unmount();
+    });
+    tree = null;
+    teardown();
+  });
+
+  test("a session row's delete affordance calls the door and removes the row", async () => {
+    tree = mountAsk();
+    await resolveAll(indexResolvers, {
+      data: [
+        {
+          id: "ses_1",
+          run_id: "run_1",
+          title: "Supervisor chat",
+          status: "idle",
+          model: null,
+          capability: "full_access",
+          created_at: "2026-11-20T12:00:00Z",
+          updated_at: "2026-11-20T12:05:00Z",
+        },
+        {
+          id: "ses_2",
+          run_id: "run_2",
+          title: "Deploy check",
+          status: "idle",
+          model: null,
+          capability: "read_only",
+          created_at: "2026-11-20T13:00:00Z",
+          updated_at: "2026-11-20T13:05:00Z",
+        },
+      ],
+      meta: { has_more: false },
+    });
+    expect(textOf(tree!)).toContain("Supervisor chat");
+    expect(textOf(tree!)).toContain("Deploy check");
+
+    // The affordance is confirm-less: one click deletes.
+    const deleteButton = buttonsOf(tree!).find(
+      (button) => button.props["aria-label"] === "Delete conversation Supervisor chat",
+    );
+    expect(deleteButton).toBeDefined();
+
+    act(() => {
+      deleteButton!.props.onClick({
+        stopPropagation: () => {},
+      });
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    // The door was called for exactly the picked session.
+    expect(deletedSessionIds).toEqual(["ses_1"]);
+
+    // The refetched index no longer carries the deleted row; the sibling
+    // stays listed.
+    await resolveAll(indexResolvers, {
+      data: [
+        {
+          id: "ses_2",
+          run_id: "run_2",
+          title: "Deploy check",
+          status: "idle",
+          model: null,
+          capability: "read_only",
+          created_at: "2026-11-20T13:00:00Z",
+          updated_at: "2026-11-20T13:05:00Z",
+        },
+      ],
+      meta: { has_more: false },
+    });
+    expect(textOf(tree!)).not.toContain("Supervisor chat");
+    expect(textOf(tree!)).toContain("Deploy check");
   });
 });

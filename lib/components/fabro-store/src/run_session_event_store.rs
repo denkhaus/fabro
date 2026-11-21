@@ -316,6 +316,17 @@ ORDER BY session_id ASC, seq ASC
         Ok(result.rows_affected())
     }
 
+    /// Forget every event of `session_id` — the explicit-delete door's
+    /// store seam (work#1535), the by-session mate of `delete_for_run`:
+    /// the session leaves the index and its transcript is unreachable.
+    pub async fn delete_for_session(&self, session_id: SessionId) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM run_session_events WHERE session_id = ?")
+            .bind(session_id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected())
+    }
+
     /// Every event committed from now on, across all sessions. A receiver
     /// that falls more than the channel's capacity behind gets
     /// `RecvError::Lagged` and replays from `list_from`.
@@ -594,6 +605,52 @@ mod tests {
         );
         assert_eq!(store.owner(first).await.unwrap(), None);
         assert_eq!(store.owner(second).await.unwrap(), Some(fixtures::RUN_2));
+    }
+
+    /// The explicit-delete seam (work#1535): `delete_for_session` removes
+    /// exactly that session's events — it leaves the index and its owner
+    /// run untouched — and a repeat delete removes nothing.
+    #[tokio::test]
+    async fn delete_for_session_removes_only_that_sessions_events() {
+        let store = store();
+        let first = SessionId::new();
+        let second = SessionId::new();
+        let ts = Utc::now();
+        store
+            .append(fixtures::RUN_1, first, created(), ts)
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_1, first, turn_started(TurnId::new()), ts)
+            .await
+            .unwrap();
+        store
+            .append(fixtures::RUN_1, second, created(), ts)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            store.delete_for_session(first).await.unwrap(),
+            2,
+            "both of the first session's events die"
+        );
+        assert!(store.list_from(first, 1, 10).await.unwrap().is_empty());
+        assert_eq!(store.owner(first).await.unwrap(), None);
+        assert_eq!(
+            store.list_from(second, 1, 10).await.unwrap().len(),
+            1,
+            "the sibling session's events survive"
+        );
+        assert_eq!(
+            store.list_for_run(fixtures::RUN_1).await.unwrap().len(),
+            1,
+            "the run's remaining session stays"
+        );
+        assert_eq!(
+            store.delete_for_session(first).await.unwrap(),
+            0,
+            "deleting an already-deleted session removes nothing"
+        );
     }
 
     /// work#1469 pin: the global sessions index door bounds its rows in

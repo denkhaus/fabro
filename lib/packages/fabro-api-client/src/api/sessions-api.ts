@@ -135,6 +135,46 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
+         * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
+         * @summary Delete a session
+         * @param {string} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSession: async (id: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('deleteSession', 'id', id)
+            const localVarPath = `/api/v1/sessions/{id}`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'DELETE', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          *
          * @summary Get session
          * @param {string} id
@@ -502,6 +542,19 @@ export const SessionsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
+         * @summary Delete a session
+         * @param {string} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async deleteSession(id: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.deleteSession(id, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.deleteSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          *
          * @summary Get session
          * @param {string} id
@@ -634,6 +687,16 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.createRunSession(id, createRunSessionRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
+         * @summary Delete a session
+         * @param {string} id
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSession(id: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+            return localVarFp.deleteSession(id, options).then((request) => request(axios, basePath));
+        },
+        /**
          *
          * @summary Get session
          * @param {string} id
@@ -742,6 +805,17 @@ export class SessionsApi extends BaseAPI {
      */
     public createRunSession(id: string, createRunSessionRequest: CreateRunSessionRequest, options?: RawAxiosRequestConfig) {
         return SessionsApiFp(this.configuration).createRunSession(id, createRunSessionRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
+     * @summary Delete a session
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public deleteSession(id: string, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).deleteSession(id, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
