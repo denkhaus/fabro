@@ -101,16 +101,11 @@ fn run_summary_json_matches_openapi_shape() {
         origin:              RunOrigin::default(),
         labels:              HashMap::from([("team".to_string(), "core".to_string())]),
         lifecycle:           RunLifecycle {
-            conclusion_failure: None,
-            status:             RunStatus::Succeeded {
+            archived_at: Some(archived_at),
+            ..RunLifecycle::new(RunStatus::Succeeded {
                 reason: SuccessReason::PartialSuccess,
-            },
-            approval:           None,
-            pending_control:    None,
-            queue_position:     None,
-            error:              None,
-            archived:           true,
-            archived_at:        Some(archived_at),
+            })
+            .with_archived(true)
         },
         sandbox:             None,
         workflow_version_id: None,

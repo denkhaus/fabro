@@ -805,16 +805,7 @@ fn reap_test_run(
         created_by: fabro_types::Principal::Worker { run_id: id },
         origin: RunOrigin::default(),
         labels: HashMap::default(),
-        lifecycle: RunLifecycle {
-            status,
-            conclusion_failure: None,
-            approval: None,
-            pending_control: None,
-            queue_position: None,
-            error: None,
-            archived: false,
-            archived_at: None,
-        },
+        lifecycle: RunLifecycle::new(status),
         sandbox: Some(RunSandbox::ready(
             RunSandboxPlan {
                 provider: fabro_types::SandboxProviderKind::DOCKER,

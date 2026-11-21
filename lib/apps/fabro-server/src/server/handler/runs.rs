@@ -78,6 +78,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/runs", get(list_runs).post(create_run))
         .route("/runs/resolve", get(resolve_run))
+        .route("/runs/live-anchor", get(live_anchor_run))
         .route(
             "/runs/{id}",
             get(get_run_status).patch(update_run).delete(delete_run),
@@ -308,6 +309,56 @@ async fn list_runs(
     ExtraQuery(params): ExtraQuery<ListRunsParams>,
 ) -> Response {
     run_summary_page_response(&state, &params.summary_query()).await
+}
+
+/// `GET /runs/live-anchor` (work#1521): the one server-owned answer to
+/// "which run may anchor a fresh run-less Ask Fabro conversation" — the
+/// newest run whose lifecycle `RunLifecycle::is_anchorable` accepts (not
+/// archived, not terminal). CLI and web consume this door; neither keeps
+/// a local predicate copy. Answers `404` (`no_live_run`) when no
+/// anchorable run exists.
+async fn live_anchor_run(
+    _auth: RequiredRunManagementActor,
+    State(state): State<Arc<AppState>>,
+) -> Response {
+    // Newest-first over the durable summaries (the store's default sort),
+    // scanning pages until the first anchorable lifecycle appears: the
+    // anchor question cannot be a SQL filter, so the door walks the same
+    // pages `GET /runs` serves — once, server-side, instead of once per
+    // client.
+    const PAGE: u32 = 100;
+    let mut offset = 0_u32;
+    loop {
+        let query = RunSummaryListQuery {
+            limit: PAGE,
+            offset,
+            ..RunSummaryListQuery::default()
+        };
+        let page = match state.stores.run_summaries.list(&query, Utc::now()).await {
+            Ok(page) => page,
+            Err(err) => {
+                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response();
+            }
+        };
+        if let Some(run) = page
+            .data
+            .into_iter()
+            .find(|run| run.lifecycle.is_anchorable())
+        {
+            return updated_run_response(&state, &run.id).await;
+        }
+        if !page.has_more {
+            break;
+        }
+        offset += PAGE;
+    }
+    ApiError::with_code(
+        StatusCode::NOT_FOUND,
+        "no live run to anchor a session",
+        "no_live_run",
+    )
+    .into_response()
 }
 
 /// List run summaries matching `query`, decorate them, and wrap them in the

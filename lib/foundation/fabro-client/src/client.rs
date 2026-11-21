@@ -2844,6 +2844,27 @@ impl Client {
         convert_type(response.into_inner())
     }
 
+    /// The one server-owned anchor answer (work#1521): the newest run a
+    /// fresh run-less Ask-Fabro conversation may anchor to, or `None` when
+    /// the server has no anchorable run (`404` `no_live_run`). Clients ask
+    /// this door instead of paginating the store and re-deriving the
+    /// lifecycle predicate locally.
+    pub async fn live_anchor_run(&self) -> Result<Option<Run>> {
+        let response = self
+            .send_api(|client| async move { client.get_live_anchor_run().send().await })
+            .await;
+        match response {
+            Ok(response) => convert_type(response.into_inner()).map(Some),
+            Err(err) => {
+                let is_no_live_run = api_failure_for(&err).is_some_and(|failure| {
+                    failure.status == fabro_http::StatusCode::NOT_FOUND
+                        && failure.code.as_deref() == Some("no_live_run")
+                });
+                if is_no_live_run { Ok(None) } else { Err(err) }
+            }
+        }
+    }
+
     pub async fn get_run_state(&self, run_id: &RunId) -> Result<RunProjection> {
         let response = self
             .send_api(

@@ -213,6 +213,49 @@ pub struct RunLifecycle {
     pub archived_at:        Option<DateTime<Utc>>,
 }
 
+impl RunLifecycle {
+    /// A lifecycle in `status` with no conclusion, approval, control, or
+    /// error state, not archived — the shape every fresh-run construction
+    /// shares. The many hand-rolled field-list copies across the workspace
+    /// collapse onto this (work#1521); tail differences chain the `with_*`
+    /// variants.
+    pub fn new(status: RunStatus) -> Self {
+        Self {
+            status,
+            conclusion_failure: None,
+            approval: None,
+            pending_control: None,
+            queue_position: None,
+            error: None,
+            archived: false,
+            archived_at: None,
+        }
+    }
+
+    /// Attach a pending control action (the demo fixtures' one variance).
+    #[must_use]
+    pub fn with_pending_control(mut self, pending_control: Option<RunControlAction>) -> Self {
+        self.pending_control = pending_control;
+        self
+    }
+
+    /// Flip the archived flag, leaving `archived_at` unset.
+    #[must_use]
+    pub fn with_archived(mut self, archived: bool) -> Self {
+        self.archived = archived;
+        self
+    }
+
+    /// Whether this lifecycle may anchor a run-less Ask-Fabro conversation
+    /// (work#1506, work#1521): not archived and not terminal, so its sandbox
+    /// is either live or restartable by the supervisor's attach path. THE
+    /// named predicate for the anchor decision — clients and the server's
+    /// live-anchor door all ask this one question, never a re-derived copy.
+    pub fn is_anchorable(&self) -> bool {
+        !self.archived && !self.status.is_terminal()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunApproval {
     pub state:         RunApprovalState,
@@ -313,7 +356,35 @@ impl RunSize {
 mod tests {
     use lithos_llm::types::{Cost, CostSource};
 
-    use super::RunSize;
+    use super::{RunLifecycle, RunSize};
+    use crate::{BlockedReason, RunStatus};
+
+    /// The anchor predicate is THE named home of the anchor decision
+    /// (work#1521): a live (non-terminal, non-archived) run anchors; a
+    /// terminal or archived one never does — the incident anchored a global
+    /// conversation to a terminal run whose sandbox was already reaped
+    /// (work#1506).
+    #[test]
+    fn is_anchorable_accepts_only_live_runs() {
+        assert!(RunLifecycle::new(RunStatus::Running).is_anchorable());
+        assert!(
+            RunLifecycle::new(RunStatus::Blocked {
+                blocked_reason: BlockedReason::HumanInputRequired,
+            })
+            .is_anchorable()
+        );
+        assert!(
+            !RunLifecycle::new(RunStatus::Succeeded {
+                reason: crate::SuccessReason::Completed,
+            })
+            .is_anchorable()
+        );
+        assert!(
+            !RunLifecycle::new(RunStatus::Running)
+                .with_archived(true)
+                .is_anchorable()
+        );
+    }
 
     #[test]
     fn run_size_uses_cost_thresholds() {

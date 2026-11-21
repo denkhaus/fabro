@@ -48,6 +48,7 @@ import type {
 
 import {
   apiData,
+  ApiError,
   apiNullableData,
   apiResponse,
   authApi,
@@ -81,7 +82,7 @@ import {
   type RunFileSelection,
   type RunGraphDirection,
 } from "./query-keys";
-import { isTerminalRunStatus, liveAnchorRunId } from "./run-actions";
+import { isTerminalRunStatus } from "./run-actions";
 
 const immutableOptions: SWRConfiguration = {
   revalidateIfStale: false,
@@ -650,20 +651,22 @@ export function useAskSessionTranscript(
 
 /** The newest live run id — the run a brand-new global conversation
  * anchors to (the conversation determines the context; the page itself
- * stays runless). Only non-terminal runs anchor (work#1506): a terminal
- * run's sandbox is reaped, and anchoring to it fails the first turn with
- * `sandbox_unavailable`. */
+ * stays runless). One call to the server's live-anchor door (work#1521):
+ * the anchor predicate is server-owned, and no client re-derives it —
+ * `404 no_live_run` (or an unavailable door) means "no anchor". */
 export function useLatestRunId() {
   return useSWR<string | null>(
-    queryKeys.runs.page({ limit: LIVE_ANCHOR_PAGE_SIZE }),
+    "runs:live-anchor",
     async () => {
-      const page = await apiData(() => runsApi.listRuns(LIVE_ANCHOR_PAGE_SIZE));
-      return liveAnchorRunId(page.data);
+      try {
+        const run = await apiData(() =>
+          generatedAxios.get<{ id: string }>("/api/v1/runs/live-anchor"),
+        );
+        return run.id;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
     },
   );
 }
-
-/** How many newest runs to inspect for a live anchor: terminal runs are
- * common (every finished run), so a single-entry page would usually hold
- * a dead one. */
-const LIVE_ANCHOR_PAGE_SIZE = 25;

@@ -1610,6 +1610,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/live-anchor:
+    get:
+      operationId: getLiveAnchorRun
+      tags: [Runs]
+      summary: Get Live Anchor Run
+      description: |
+        Returns the newest anchorable run: the most recently created run
+        whose lifecycle is neither terminal nor archived — the one server-
+        owned answer to "which run may anchor a fresh run-less Ask Fabro
+        conversation" (work#1521). Clients must not re-derive the predicate
+        locally; this door applies the same lifecycle rule the platform
+        owns (`!archived && !status.is_terminal()`). Responds `404`
+        (`no_live_run`) when no anchorable run exists.
+      responses:
+        "200":
+          description: The newest anchorable run summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Run"
+        "404":
+          description: No anchorable run exists (`no_live_run`)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/preflight:
     post:
       operationId: runPreflight

@@ -969,6 +969,17 @@ impl RunProjection {
         self.status().is_terminal()
     }
 
+    /// Whether the run has settled: a conclusion exists or the status is
+    /// terminal. Deliberately WIDER than [`Self::is_terminal`] — `attach`
+    /// treats a recorded conclusion whose status has not caught up as
+    /// settled, so the wider form lives here under its own name instead of
+    /// a free function in the CLI (work#1521; the old unnamed
+    /// `state_is_terminal` in `attach.rs` was the third terminality
+    /// spelling).
+    pub fn is_settled(&self) -> bool {
+        self.conclusion.is_some() || self.is_terminal()
+    }
+
     pub fn is_archived(&self) -> bool {
         self.archived_at.is_some()
     }

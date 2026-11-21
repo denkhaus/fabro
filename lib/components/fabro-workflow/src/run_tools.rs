@@ -1437,18 +1437,9 @@ mod tests {
             created_by:          fabro_types::test_support::test_principal(),
             origin:              fabro_types::RunOrigin::default(),
             labels:              std::collections::HashMap::new(),
-            lifecycle:           fabro_types::RunLifecycle {
-                conclusion_failure: None,
-                status:             fabro_types::RunStatus::Pending {
-                    reason: fabro_types::PendingReason::ApprovalRequired,
-                },
-                approval:           None,
-                pending_control:    None,
-                queue_position:     None,
-                error:              None,
-                archived:           false,
-                archived_at:        None,
-            },
+            lifecycle:           fabro_types::RunLifecycle::new(fabro_types::RunStatus::Pending {
+                reason: fabro_types::PendingReason::ApprovalRequired,
+            }),
             sandbox:             None,
             workflow_version_id: None,
             models:              Vec::new(),

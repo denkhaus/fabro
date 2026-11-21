@@ -237,7 +237,9 @@ async fn attach_petri_run_with_client(
         }
     }
     if let Some(exit_code) = replayed_exit_code.or_else(|| {
-        state_is_terminal(state).then(|| state_exit_code(state).unwrap_or(ExitCode::from(1)))
+        state
+            .is_settled()
+            .then(|| state_exit_code(state).unwrap_or(ExitCode::from(1)))
     }) {
         finish_progress(&mut progress_ui, opts.json_output);
         return Ok(exit_code);
@@ -303,7 +305,7 @@ async fn attach_petri_run_with_client(
         // more to send past what the grace let through; otherwise this is
         // a lost connection, and the attach resumes from its cursor.
         let state = client.get_run_state(run_id).await?;
-        if state_is_terminal(&state) {
+        if state.is_settled() {
             for item in client.list_run_stream(run_id, cursor).await? {
                 emit_stream_item(&mut progress_ui, &item, opts.json_output)?;
             }
@@ -435,7 +437,7 @@ async fn handle_detach_signal(
                 .get_run_state(run_id)
                 .await
                 .ok()
-                .is_some_and(|state| state_is_terminal(&state))
+                .is_some_and(|state| state.is_settled())
             {
                 break;
             }
@@ -723,10 +725,6 @@ async fn submit_server_interview_answer(
 
 fn json_pending_interview_requires_manual_input(json_output: bool, auto_approve: bool) -> bool {
     json_output && !auto_approve
-}
-
-fn state_is_terminal(state: &server_client::RunProjection) -> bool {
-    state.conclusion.is_some() || state.status.is_terminal()
 }
 
 fn finish_progress(progress_ui: &mut run_progress::ProgressUI, json_output: bool) {

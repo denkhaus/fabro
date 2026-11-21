@@ -66,6 +66,26 @@ pub(crate) async fn create_run_stub(
         .into_response()
 }
 
+/// `GET /runs/live-anchor` in demo mode (work#1521): the newest demo run
+/// whose lifecycle anchors — same predicate as the real door, one answer.
+pub(crate) async fn live_anchor_run(
+    _auth: RequiredUser,
+    State(_state): State<Arc<AppState>>,
+) -> Response {
+    match runs::summaries()
+        .into_iter()
+        .find(|run| run.lifecycle.is_anchorable())
+    {
+        Some(run) => (StatusCode::OK, Json(run)).into_response(),
+        None => ApiError::with_code(
+            StatusCode::NOT_FOUND,
+            "no live run to anchor a session",
+            "no_live_run",
+        )
+        .into_response(),
+    }
+}
+
 pub(crate) async fn resolve_run(
     _auth: RequiredUser,
     State(_state): State<Arc<AppState>>,
@@ -1234,17 +1254,11 @@ mod runs {
             created_by: DEMO_PRINCIPAL.clone(),
             origin: RunOrigin::default(),
             labels: labels(entries),
-            lifecycle: RunLifecycle {
-                conclusion_failure: None,
-                status: parse_run_status(status, status_reason)
+            lifecycle: RunLifecycle::new(
+                parse_run_status(status, status_reason)
                     .unwrap_or_else(|| panic!("demo run status `{status}` is a hardcoded constant and must be a valid RunStatus variant")),
-                approval: None,
-                pending_control,
-                queue_position: None,
-                error: None,
-                archived: false,
-                archived_at: None,
-            },
+            )
+            .with_pending_control(pending_control),
             sandbox: None,
             workflow_version_id: None,
             models: Vec::new(),

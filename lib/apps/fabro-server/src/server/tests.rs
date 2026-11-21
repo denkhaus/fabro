@@ -11689,6 +11689,41 @@ async fn list_runs_returns_run_list_items() {
     assert!(item["usage"].get("cost").is_none());
 }
 
+/// `GET /runs/live-anchor` (work#1521): the one server-owned anchor door.
+/// A live run answers with its summary; a server with no anchorable run
+/// answers `404` `no_live_run` instead of letting clients re-derive the
+/// predicate per language.
+#[tokio::test]
+async fn live_anchor_returns_the_run_list_anchorable_run() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+    let run_id = create_and_start_run(&app, MINIMAL_DOT).await;
+
+    let req = Request::builder()
+        .method("GET")
+        .uri(api("/runs/live-anchor"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    let body = response_json!(response, StatusCode::OK).await;
+    assert_eq!(run_json_id(&body), Some(run_id.as_str()));
+}
+
+#[tokio::test]
+async fn live_anchor_answers_no_live_run_when_nothing_is_anchorable() {
+    let state = test_app_state();
+    let app = crate::test_support::build_test_router(Arc::clone(&state));
+
+    let req = Request::builder()
+        .method("GET")
+        .uri(api("/runs/live-anchor"))
+        .body(Body::empty())
+        .unwrap();
+    let response = app.oneshot(req).await.unwrap();
+    let body = response_json!(response, StatusCode::NOT_FOUND).await;
+    assert_eq!(body["errors"][0]["code"].as_str(), Some("no_live_run"));
+}
+
 #[test]
 fn validate_github_slug_accepts_real_names() {
     assert!(super::validate_github_slug("owner", "anthropic", 39).is_ok());
