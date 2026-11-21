@@ -2598,6 +2598,30 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// Refresh the materialized work-item view (ADR-0050): force-load
+    /// from the forge and re-materialize — one item when `item_key`
+    /// names it, the project's whole universe when it is `None`. The
+    /// explicit door for foreign edits made directly at the forge.
+    pub async fn refresh_work_items(
+        &self,
+        project_id: &str,
+        item_key: Option<&str>,
+    ) -> Result<types::WorkItemRefreshResponse> {
+        let response = self
+            .send_api(|client| async move {
+                client
+                    .refresh_work_item_view()
+                    .project_id(project_id.to_string())
+                    .body(types::WorkItemRefreshRequest {
+                        item_key: item_key.map(str::to_string),
+                    })
+                    .send()
+                    .await
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Close a work item with a reason comment. `force` overrides an
     /// open closure radius (ADR-0038); the response carries the closed
     /// item and, for a forced close, the overridden open items.

@@ -645,6 +645,8 @@ models/work-item-lane-request.ts
 models/work-item-list-response.ts
 models/work-item-lock-request.ts
 models/work-item-radius-response.ts
+models/work-item-refresh-request.ts
+models/work-item-refresh-response.ts
 models/work-item-update-request.ts
 models/work-item.ts
 models/work-observation-link-outcome.ts

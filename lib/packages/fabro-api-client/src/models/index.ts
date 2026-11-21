@@ -613,6 +613,8 @@ export * from './work-item-lane-request';
 export * from './work-item-list-response';
 export * from './work-item-lock-request';
 export * from './work-item-radius-response';
+export * from './work-item-refresh-request';
+export * from './work-item-refresh-response';
 export * from './work-item-update-request';
 export * from './work-observation-link-outcome';
 export * from './work-observation-link-request';

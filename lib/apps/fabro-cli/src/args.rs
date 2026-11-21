@@ -1882,6 +1882,7 @@ impl Commands {
                 WorkCommand::Radius(_) => "work radius",
                 WorkCommand::Comments(_) => "work comments",
                 WorkCommand::Claims(_) => "work claims",
+                WorkCommand::Refresh(_) => "work refresh",
             },
             Self::Observation(ns) => match &ns.command {
                 ObservationCommand::Record(_) => "observation record",
@@ -2594,6 +2595,10 @@ pub(crate) enum WorkCommand {
     Comments(WorkCommentsArgs),
     /// List a project's live claims
     Claims(WorkClaimsArgs),
+    /// Refresh the materialized work-item view from the forge
+    /// (ADR-0050): one item with `--item`, the project's whole universe
+    /// without — the door for foreign edits made directly at the forge
+    Refresh(WorkRefreshArgs),
 }
 
 #[derive(Args)]
@@ -2748,6 +2753,17 @@ pub(crate) struct WorkCommentsArgs {
     pub(crate) project:  String,
     /// Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`)
     pub(crate) selector: String,
+}
+
+#[derive(Args)]
+pub(crate) struct WorkRefreshArgs {
+    /// Work project id
+    #[arg(long)]
+    pub(crate) project: String,
+    /// Item key (`owner/repo#12`), bare number, or legacy id
+    /// (`fabro-d5f0`); omit to refresh the project's whole universe
+    #[arg(long)]
+    pub(crate) item:    Option<String>,
 }
 
 #[derive(Args)]

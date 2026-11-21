@@ -17,11 +17,14 @@ anyhow.workspace = true
 async-trait.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 fabro-types = { path = "../../foundation/fabro-types" }
+hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 strum.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

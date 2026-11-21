@@ -110,6 +110,10 @@ pub struct TestAppStateBuilder {
     automation_materializer:      Option<TestAutomationRunMaterializer>,
     automation_breaker_notifier:  Option<Arc<dyn AutomationBreakerNotifier>>,
     work_tracker:                 Option<Arc<dyn fabro_work::TrackerProvider>>,
+    /// Whether the scripted tracker sits UNDER the materializing adapter
+    /// (ADR-0050) instead of replacing it — the IT seam for read-view
+    /// behavior.
+    work_tracker_materialized:    bool,
     github_api_base_url:          Option<String>,
     #[cfg(test)]
     worker_runtime:               Option<Arc<dyn WorkerRuntime>>,
@@ -137,6 +141,7 @@ impl Default for TestAppStateBuilder {
             automation_materializer:      None,
             automation_breaker_notifier:  None,
             work_tracker:                 None,
+            work_tracker_materialized:    false,
             github_api_base_url:          None,
             #[cfg(test)]
             worker_runtime:               None,
@@ -275,6 +280,20 @@ impl TestAppStateBuilder {
         self
     }
 
+    /// [`Self::work_tracker`] with the scripted tracker seated UNDER the
+    /// materializing adapter (ADR-0050) — the composition production
+    /// uses at its tracker seam. Reads resolve through the read view
+    /// (cache-first, forge on demand); the scripted tracker plays the
+    /// forge.
+    pub fn work_tracker_through_view(
+        mut self,
+        tracker: Arc<dyn fabro_work::TrackerProvider>,
+    ) -> Self {
+        self.work_tracker = Some(tracker);
+        self.work_tracker_materialized = true;
+        self
+    }
+
     fn server_env_path(mut self, server_env_path: PathBuf) -> Self {
         self.server_env_path = Some(server_env_path);
         self
@@ -369,6 +388,7 @@ impl TestAppStateBuilder {
             worker_runtime: self.worker_runtime,
             automation_materializer_override,
             work_tracker_override: self.work_tracker,
+            work_tracker_override_materialized: self.work_tracker_materialized,
             automation_breaker_notifier_override: self.automation_breaker_notifier,
         })
     }

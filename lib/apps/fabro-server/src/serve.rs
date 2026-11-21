@@ -763,6 +763,8 @@ where
         #[cfg(any(test, feature = "test-support"))]
         work_tracker_override: None,
         #[cfg(any(test, feature = "test-support"))]
+        work_tracker_override_materialized: false,
+        #[cfg(any(test, feature = "test-support"))]
         automation_breaker_notifier_override: None,
     })?;
     let reconciled = reconcile_incomplete_runs_on_startup(&state).await?;

@@ -9,11 +9,13 @@
 
 mod forge_pr;
 mod hold;
+mod materialization;
 mod store;
 mod tracker;
 
 pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
 pub use hold::{HoldReason, hold_reason};
+pub use materialization::{MaterializedItem, MaterializedTracker, WalkReport, WorkItemViewStore};
 pub use store::{
     ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
     ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,
