@@ -570,12 +570,17 @@ pub(super) fn retention_request(max_run_age_days: u64) -> Option<PruneRunsReques
         return None;
     }
     Some(PruneRunsRequest {
-        before:     None,
-        dry_run:    false,
-        labels:     HashMap::default(),
-        older_than: Some(format!("{max_run_age_days}d")),
-        orphans:    false,
-        workflow:   None,
+        before:        None,
+        dry_run:       false,
+        labels:        HashMap::default(),
+        older_than:    Some(format!("{max_run_age_days}d")),
+        orphans:       false,
+        workflow:      None,
+        // ADR-0048: the SCHEDULED pass is archive-gated — only archived
+        // runs older than the floor are auto-deleted. The manual CLI
+        // request keeps the flag false (operator explicitness beats
+        // policy).
+        archived_only: true,
     })
 }
 

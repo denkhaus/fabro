@@ -20216,6 +20216,13 @@ components:
         older_than:
           type: string
           description: Include only runs older than this duration, such as 24h or 7d.
+        archived_only:
+          type: boolean
+          description: >-
+            Include only archived runs (ADR-0048). The scheduled retention
+            pass sets this to true — the operator's archive gesture is the
+            drain; manual CLI requests default to false and keep full power.
+          default: false
 
     PruneRunsResponse:
       description: Result of a prune preview or deletion.
