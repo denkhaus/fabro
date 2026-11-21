@@ -78,6 +78,7 @@ fn help() {
       radius    Show a work item's closure radius: the open items linked to the observations of its runs (ADR-0038; read door ADR-0039 stage D)
       comments  Read a work item's comments, oldest first — the answer channel for parked runs (ADR-0039 stage D part 2)
       claims    List a project's live claims
+      refresh   Refresh the materialized work-item view from the forge (ADR-0050): one item with `--item`, the project's whole universe without — the door for foreign edits made directly at the forge
       help      Print this message or the help of the given subcommand(s)
 
     Options:
@@ -145,6 +146,34 @@ fn show_help() {
           --json               Output as JSON [env: FABRO_JSON=]
           --project <PROJECT>  Work project id
           --debug              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --no-upgrade-check   Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
+          --quiet              Suppress non-essential output [env: FABRO_QUIET=]
+          --verbose            Enable verbose output [env: FABRO_VERBOSE=]
+      -h, --help               Print help
+    ----- stderr -----
+    ");
+}
+
+/// The refresh door's own help (ADR-0050): the verb's contract — project
+/// always named, one item or the whole universe.
+#[test]
+fn refresh_help() {
+    let context = test_context!();
+    let mut cmd = context.command();
+    cmd.args(["work", "refresh", "--help"]);
+    fabro_snapshot!(context.filters(), cmd, @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    Refresh the materialized work-item view from the forge (ADR-0050): one item with `--item`, the project's whole universe without — the door for foreign edits made directly at the forge
+
+    Usage: fabro work refresh [OPTIONS] --project <PROJECT>
+
+    Options:
+          --json               Output as JSON [env: FABRO_JSON=]
+          --project <PROJECT>  Work project id
+          --debug              Enable DEBUG-level logging (default is INFO) [env: FABRO_DEBUG=]
+          --item <ITEM>        Item key (`owner/repo#12`), bare number, or legacy id (`fabro-d5f0`); omit to refresh the project's whole universe
           --no-upgrade-check   Disable automatic upgrade check [env: FABRO_NO_UPGRADE_CHECK=true]
           --quiet              Suppress non-essential output [env: FABRO_QUIET=]
           --verbose            Enable verbose output [env: FABRO_VERBOSE=]

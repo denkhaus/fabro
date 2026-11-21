@@ -16,6 +16,7 @@ mod link;
 mod list;
 mod lock;
 mod radius;
+mod refresh;
 mod show;
 mod unlink;
 mod update;
@@ -48,6 +49,7 @@ pub(crate) async fn dispatch(ns: WorkNamespace, base_ctx: &CommandContext) -> Re
         WorkCommand::Radius(args) => radius::radius_command(&args, &ctx).await,
         WorkCommand::Comments(args) => comments::comments_command(&args, &ctx).await,
         WorkCommand::Claims(args) => claims::claims_command(&args, &ctx).await,
+        WorkCommand::Refresh(args) => refresh::refresh_command(&args, &ctx).await,
     }
 }
 
