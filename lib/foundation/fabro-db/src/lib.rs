@@ -64,6 +64,13 @@ pub const WORK_PROJECT_TARGET_MIGRATION_SQL: &str =
 pub const WORK_OBSERVATION_LINKS_MIGRATION_SQL: &str =
     include_str!("../migrations/2026103101_work_observation_links.sql");
 
+/// The work-item read-view materialization migration (`work_item_views`,
+/// `work_item_universe`, ADR-0050), exposed so fixtures in other crates
+/// can install the production schema without a filesystem path into this
+/// crate.
+pub const WORK_ITEM_VIEWS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026112101_work_item_views.sql");
+
 /// The observation triage decision migration (`observation_triage_decisions`,
 /// ADR-0044), exposed so fixtures in other crates can install the
 /// production schema without a filesystem path into this crate.
