@@ -43,6 +43,7 @@ fn system_prune_dry_run_lists_matching_runs_without_deleting() {
         when.method("POST")
             .path("/api/v1/system/prune/runs")
             .json_body_obj(&serde_json::json!({
+                "archived_only": false,
                 "dry_run": true,
                 "labels": {
                     "fabro_test_case": context.test_case_id(),
@@ -107,6 +108,7 @@ fn system_prune_yes_uses_server_target_and_reports_deleted_runs() {
         when.method("POST")
             .path("/api/v1/system/prune/runs")
             .json_body_obj(&serde_json::json!({
+                "archived_only": false,
                 "dry_run": false,
                 "labels": {
                     "fabro_test_case": context.test_case_id(),

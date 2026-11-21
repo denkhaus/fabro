@@ -103,6 +103,15 @@ impl RunInfo {
             .map_or(RunStatus::Submitted, |summary| summary.lifecycle.status)
     }
 
+    /// The operator's archive gesture (ADR-0048): a run is archived when
+    /// its summary row carries the overlay flag. Orphan directories have
+    /// no summary and are never archived.
+    pub fn is_archived(&self) -> bool {
+        self.summary
+            .as_ref()
+            .is_some_and(|summary| summary.lifecycle.archived)
+    }
+
     pub fn status_reason(&self) -> Option<String> {
         match self.status() {
             RunStatus::Succeeded { reason } => Some(reason.to_string()),
