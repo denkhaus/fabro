@@ -168,7 +168,7 @@ RUN set -eux; \
     chmod +x /usr/local/bin/mise; \
     mise use -g \
         bun@1.4.0 \
-        aqua:nushell/nushell@0.116.1 \
+        aqua:nushell/nushell@0.117.0 \
         just@1.58.0 \
         aqua:BurntSushi/ripgrep@15.2.0 \
     && bun --version \
@@ -176,7 +176,8 @@ RUN set -eux; \
     && just --version \
     && rg --version
 
-# seeds (seeds-e160, repinned 0.7.0 2026-10-10 matching .mise.toml): the tracker
+# seeds (seeds-e160, repinned 0.14.0 2026-11-21 matching .mise.toml; 0.7.0
+# 2026-10-10): the tracker
 # CLI comes from the project's musl-static
 # release binaries, NOT mise's cargo backend — seeds 0.5.0 needs library
 # features (result_option_map_or_default et al.) that this image's pinned
@@ -184,9 +185,9 @@ RUN set -eux; \
 # to the seeds pin (2026-09-22) breaks cargo-insta's locked rustix. The
 # release pipeline builds the musl binaries with zero runtime deps, so
 # the download is version-pinned and checksum-verified instead.
-ARG SEEDS_VERSION=0.13.0
-ARG SEEDS_SHA256_X86_64=f9d990883a1af8021940424c16e6542fcedf5ca447d4e9e6211d619906d9d4c0
-ARG SEEDS_SHA256_AARCH64=7da1eaf8abdd04707f3bbc72f2e33ce30875208475f723ee1dc1694395a8456f
+ARG SEEDS_VERSION=0.14.0
+ARG SEEDS_SHA256_X86_64=bf6dcb9787f3cc06e666e0c798840dc092f85bcd7b56cc0a2f49d02451711df6
+ARG SEEDS_SHA256_AARCH64=5526a6e7cf6768ab6829a888c089726234dc68f91c45c8569e6fcb11c768e9e7
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
         amd64) triple=x86_64-unknown-linux-musl; sha="${SEEDS_SHA256_X86_64}";; \
