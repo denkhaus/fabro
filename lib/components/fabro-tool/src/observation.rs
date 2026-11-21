@@ -225,7 +225,9 @@ pub struct FabroObservationManageParams {
     pub seq:      u64,
     /// The triage action. `no_filing`: no work item is warranted.
     /// `link_existing`: an already-filed item carries the finding — the
-    /// link is written, never a second item.
+    /// link is written, never a second item. `filing_blocked`: the
+    /// filing write FAILED (rate limited, 4xx) — the record parks for
+    /// the park TTL and then returns to the untriaged feed (work#1585).
     pub action:   FabroObservationManageAction,
     /// Why — the durable rationale the operator and the next pass
     /// read.
@@ -252,6 +254,11 @@ pub enum FabroObservationManageAction {
     /// An already-filed item carries the finding; the link is written
     /// (dedupe at the link, ADR-0038 decision 5).
     LinkExisting,
+    /// A FAILED filing write parks the record (work#1585): the record
+    /// derives `filing_blocked` for the park's bounded TTL, then
+    /// re-derives `untriaged` and returns to the feed. The decision
+    /// writes alone — never a link.
+    FilingBlocked,
 }
 
 /// Record one triage decision through the backend. The target run must

@@ -21,7 +21,7 @@ export interface ObservationManageRequest {
     'runId': string;
     'seq': number;
     /**
-     * The triage action. `no_filing`: no work item is warranted; the record derives `reviewed`. `link_existing`: an already filed work item carries this finding — the link is written (dedupe at the link, ADR-0038 decision 5), never a second item; requires `projectId` and `itemKey`.
+     * The triage action. `no_filing`: no work item is warranted; the record derives `reviewed`. `link_existing`: an already filed work item carries this finding — the link is written (dedupe at the link, ADR-0038 decision 5), never a second item; requires `projectId` and `itemKey`. `filing_blocked`: the filing write failed (rate limited, 4xx) — the record parks as `filing_blocked` for a bounded TTL (6 hours, work#1585) and then re-derives `untriaged`, so the next pass picks it up instead of re-chewing it blindly; writes the decision only, never a link.
      */
     'action': ObservationManageRequestActionEnum;
     /**
@@ -40,7 +40,8 @@ export interface ObservationManageRequest {
 
 export const ObservationManageRequestActionEnum = {
     NO_FILING: 'no_filing',
-    LINK_EXISTING: 'link_existing'
+    LINK_EXISTING: 'link_existing',
+    FILING_BLOCKED: 'filing_blocked'
 } as const;
 
 export type ObservationManageRequestActionEnum = typeof ObservationManageRequestActionEnum[keyof typeof ObservationManageRequestActionEnum];

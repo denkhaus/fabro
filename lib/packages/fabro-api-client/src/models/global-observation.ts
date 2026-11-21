@@ -43,7 +43,7 @@ export interface GlobalObservation {
      */
     'recorded_at'?: string | null;
     /**
-     * The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a triage decision exists and no link — the triager judged no item needed; a later filing overrides it). Filter matching rides the state materialized at write time: an `item_state` change in the tracker outside the write doors keeps the record\'s materialized state until a write touches the record again, while each returned row\'s links still resolve live.
+     * The derived triage state: untriaged (no linked item, no triage decision), filed (linked, open), in_progress (linked, open with a live claim), closed (every linked item closed), reviewed (a triage decision exists and no link — the triager judged no item needed; a later filing overrides it), filing_blocked (a failed filing write parked the record — work#1585; the record re-derives untriaged once the park\'s TTL passes). Filter matching rides the state materialized at write time: an `item_state` change in the tracker outside the write doors keeps the record\'s materialized state until a write touches the record again, while each returned row\'s links still resolve live.
      */
     'triage_state': GlobalObservationTriageStateEnum;
     /**
@@ -57,7 +57,8 @@ export const GlobalObservationTriageStateEnum = {
     FILED: 'filed',
     IN_PROGRESS: 'in_progress',
     CLOSED: 'closed',
-    REVIEWED: 'reviewed'
+    REVIEWED: 'reviewed',
+    FILING_BLOCKED: 'filing_blocked'
 } as const;
 
 export type GlobalObservationTriageStateEnum = typeof GlobalObservationTriageStateEnum[keyof typeof GlobalObservationTriageStateEnum];

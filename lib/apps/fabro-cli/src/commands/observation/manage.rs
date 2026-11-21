@@ -1,8 +1,9 @@
 //! `fabro observation manage` (ADR-0044): the triage decision door's
 //! CLI facade — `no-filing` records that the triager (or the operator)
 //! judged a painpoint needs no work item; the record then derives
-//! `reviewed` in the feed, never `untriaged`. Door-symmetric with the
-//! `fabro_observation_manage` agent tool.
+//! `reviewed` in the feed, never `untriaged`. `filing-blocked` (work#1585)
+//! parks a record whose filing write failed for the park TTL. Door-symmetric
+//! with the `fabro_observation_manage` agent tool.
 
 use anyhow::Result;
 

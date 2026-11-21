@@ -35,12 +35,20 @@ For ONE painpoint per response, in order:
      (`.fabro/**`, root `scripts/**`, `justfile`), `["lane:develop",
      ...]` when it lands in repo product code (`lib/`, `apps/`,
      `docs/`). A fix spanning both surfaces files TWO items, one per
-     lane. An item without a lane label is claimed by NO gear.
+     lane. An item without a lane label is claimed by NO gear. **On a
+     FAILED filing write** (rate limited, 4xx), do not retry within
+     the pass: fire `fabro_observation_manage` with `action:
+     filing_blocked` and the reason — the record parks for 6 hours
+     and then returns to the untriaged feed — and conclude the
+     painpoint (work#1585).
    - **Link an existing item** — `fabro_work_list` found an open item
      that already carries the finding: `fabro_observation_manage` with
      `action: link_existing`, `project`, `itemKey`, and a reason naming
      the match. Dedupe at the link, never a second item for one
-     finding.
+     finding. **A dedupe-conclusion IS this disposition**: when your
+     read concludes "already covered by #X", that conclusion writes
+     the link_existing decision naming #X — a conclusion that writes
+     nothing re-serves the same painpoint every pass forever.
    - **No filing** — the friction is not worth an item (a one-off
      already explained, a duplicate whose original is filed, context
      the line already knows): `fabro_observation_manage` with `action:
@@ -66,6 +74,9 @@ sentence.
 - One painpoint per response. Never batch dispositions.
 - The disposition writes are HARD: a failed tool call fails the
   response, never absorb it and move on.
+- **Never conclude without a write.** A disposition that writes no
+  triage decision is not a disposition — the painpoint re-serves
+  (work#1585).
 - A painpoint from a failed or parked run is still friction — judge
   the record, not the run (the adjudicator judges runs).
 - When torn between filing and no_filing, ask what the line would lose:
@@ -81,6 +92,6 @@ sentence.
 For this pass: your per-painpoint dispositions already write their own
 platform records (fabro_observation_manage and fabro_work_create file
 their decisions and links); close the session with one `note`
-summarizing the batch — counts per action (filed linked /
-link_existing / no_filing), the targets, and any judgment call worth
-re-reading later.
+summarizing the batch — counts per action (filed /
+link_existing / no_filing / filing_blocked), the targets, and any
+judgment call worth re-reading later.

@@ -28,7 +28,7 @@ export interface ObservationManageResponse {
      */
     'byRun': string | null;
     /**
-     * The linked item on `link_existing`; null on `no_filing`. An already-linked pair reports `already_linked` in the reason, never a second row.
+     * The linked item on `link_existing`; null on the decision-only actions (`no_filing`, `filing_blocked`). An already-linked pair reports `already_linked` in the reason, never a second row.
      */
     'itemKey'?: string | null;
 }

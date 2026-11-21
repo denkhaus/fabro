@@ -128,6 +128,26 @@ describe("ObservationsFeedView", () => {
     expect(JSON.stringify(json)).toContain("/runs/01M6SGVZ4V1DABCDEFGH/observations");
   });
 
+  // work#1585: the park renders in the untriaged amber family — the
+  // board shows the parked state honestly (filing blocked) and the
+  // record returns to the untriaged feed after the park TTL.
+  test("renders a filing_blocked park in the amber family", async () => {
+    const renderer = await flushRows(renderFeed([
+      {
+        run_id: "01M6SGVZ4V1D",
+        seq: 2,
+        category: "painpoint",
+        triage_state: "filing_blocked",
+        text: "filing rate-limited; parks for the TTL",
+        recorded_at: "2026-12-11T11:38:44Z",
+        linked_work_items: [],
+      },
+    ], "/observations?page=1"));
+    const text = textFromNode(renderer.toJSON());
+    expect(text).toContain("filing blocked");
+    expect(JSON.stringify(renderer.toJSON())).toContain("border-amber/40");
+  });
+
   // denkhaus/work#1296: the pager's total is the server's EXACT count,
   // never the page-window estimate — a short first page over a 25-record
   // feed renders 25 items and 3 pages (the estimate showed 2 items).
