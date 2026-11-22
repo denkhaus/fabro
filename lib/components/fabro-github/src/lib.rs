@@ -642,7 +642,13 @@ pub fn sign_app_jwt(app_id: &str, private_key_pem: &str) -> anyhow::Result<Strin
     let claims = Claims {
         iss: app_id.to_string(),
         iat: now - 60,
-        exp: now + 600,
+        // GitHub rejects an App JWT whose exp sits more than 10 minutes
+        // in the future; a boundary-exact mint (now + 600) left zero
+        // drift budget and answered 401 on any host with its clock a
+        // few seconds ahead (2026-11-22 local bench). 9 minutes of
+        // validity keeps the ceiling reachable with 60s of drift
+        // budget.
+        exp: now + 540,
     };
 
     let key =
@@ -2750,8 +2756,36 @@ mod tests {
         let exp = claims["exp"].as_i64().unwrap();
         // iat should be ~60s before now
         assert!((now - 60 - iat).abs() < 5);
-        // exp should be ~10min after now
-        assert!((now + 600 - exp).abs() < 5);
+        // exp should be ~9min after now (GitHub rejects exps more than
+        // 10min in the future, so the mint carries a 60s drift budget)
+        assert!((now + 540 - exp).abs() < 5);
+    }
+
+    // GitHub rejects an App JWT whose exp sits more than 10 minutes in
+    // the future (2026-11-22 local bench: a +6s clock drift put the
+    // boundary-exact mint at 606s and every installation-token mint
+    // answered 401 "Expiration time claim ('exp') is too far in the
+    // future"). The mint therefore budgets drift: validity from iat
+    // stays within the 10-minute ceiling, leaving exp - mint-now at
+    // 540s. This pin reads the DRIFT BUDGET off the signed claims so a
+    // boundary-exact regression (exp = iat + 660) goes red.
+    #[test]
+    fn jwt_exp_leaves_future_drift_budget() {
+        let pem = test_rsa_key();
+        let jwt = sign_app_jwt("12345", pem).unwrap();
+        let payload_b64 = jwt.split('.').nth(1).unwrap();
+        let payload_json = URL_SAFE_NO_PAD.decode(payload_b64).unwrap();
+        let claims: serde_json::Value = serde_json::from_slice(&payload_json).unwrap();
+
+        let iat = claims["iat"].as_i64().expect("iat claim");
+        let exp = claims["exp"].as_i64().expect("exp claim");
+        let validity_seconds = exp - iat;
+        assert!(
+            validity_seconds <= 600,
+            "GitHub rejects exps more than 10min ahead: the mint spent \
+             {validity_seconds}s of validity from iat, leaving no clock-\
+             drift budget before GitHub's ceiling"
+        );
     }
 
     #[test]
