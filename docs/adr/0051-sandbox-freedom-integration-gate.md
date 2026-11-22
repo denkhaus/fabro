@@ -33,9 +33,14 @@ readability.
 **The trust boundary sits at the integration, not in the sandbox.**
 
 1. **Sandbox freedom.** Inside a run's sandbox the agent reads and writes
-   what its work needs. `fs_hide` no longer hides surfaces from stage
-   agents' reads, and no checkpoint violation ends a run. The shell
-   remains deliberately ungoverned — now with nothing to bypass.
+   what its work needs. No checkpoint violation ends a run. `fs_hide`
+   narrows to the DELIVERY exclusion: the paths a stage must not deliver
+   are quarantined from the checkpoint commit and named in the outcome —
+   and where a surface carries that exclusion (the develop line's
+   `.agents/**`, the loop's own bookkeeping), its file-tool reads go
+   through the documented shell bypass as before. Surfaces without a
+   delivery exclusion lose their hides entirely (the reviewer reads
+   free). The shell remains deliberately ungoverned.
 2. **Integration gate.** The stage checkpoint commits only in-scope
    paths. Out-of-scope paths are excluded from the commit, named in the
    stage's outcome (journal painpoint), and never leave the disposable
