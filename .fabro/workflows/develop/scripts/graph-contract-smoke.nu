@@ -49,13 +49,16 @@
 #      its claim.
 #   10. The pull reviewer (work#1624, ADR-0051): the reviewer's
 #      x.fabro_tools names fabro_run_diffs (the discovery door the pull
-#      protocol drives) and keeps fabro_blob (patch paging); the graph
-#      carries NO x.fs_hide anywhere (the read hide is retired — reads
-#      are free, the checkpoint quarantine owns delivery) while the
-#      reviewer's write side stays the empty fs_write capability
-#      denial; the reviewer prompt names the pull doors and no longer
-#      re-teaches the read-only recital (ADR-0051 deletion contract —
-#      the graph attributes are the mechanical owner).
+#      protocol drives) and keeps fabro_blob (patch paging); the
+#      reviewer node carries NO x.fs_hide (reads are free — the review-
+#      time readability class closes) while the reviewer's write side
+#      stays the empty fs_write capability denial; the reviewer prompt
+#      names the pull doors and no longer re-teaches the read-only
+#      recital (ADR-0051 deletion contract — the graph attributes are
+#      the mechanical owner). The planner and implementer KEEP
+#      x.fs_hide=".agents/**" as the DELIVERY exclusion: the checkpoint
+#      quarantines those paths from the commit and names them as
+#      deferrals — the loop's bookkeeping is never the line's delivery.
 
 const GRAPH = ('.fabro/workflows/develop/workflow.fabro' | path expand)
 
@@ -137,12 +140,14 @@ def main [] {
     # 3. retired nodes stay retired (comment-STRIPPED lines only — the
     # rationale comments name them by design)
     let code = ($lines | each {|l| ($l | split row '//' | first)})
-    # 10a. ADR-0051 read-hide retirement: NO develop node hides reads.
-    # The read-hide friction and the shell-bypass teaching die with the
-    # attribute; the checkpoint quarantine owns the delivery side.
-    # (Pinned over $code — comment lines name the history.)
-    if ($code | any {|l| ($l | str contains 'x.fs_hide')}) {
-        fail 'x.fs_hide survived in the develop graph (ADR-0051): the read hide is retired — reads are free; the checkpoint quarantine owns delivery'
+    # 10a. ADR-0051 delivery exclusion: the planner and implementer
+    # KEEP x.fs_hide=".agents/**" — the checkpoint quarantines those
+    # paths from the commit and names them (work#1624's own second
+    # criterion is the live case). The REVIEWER carries no hide (reads
+    # free). Pinned over $code — comment lines name the history.
+    let hiding_nodes = ($code | where {|l| ($l | str contains 'x.fs_hide')})
+    if ($hiding_nodes | length) != 2 {
+        fail $"the develop graph must carry exactly two delivery-exclusion hides — planner and implementer on .agents/**: ($hiding_nodes | to json -r)"
     }
     for node in ["tracker_guard" "claim_check" "gatebounce"] {
         if ($code | any {|l| ($l | str contains $node)}) {
@@ -315,5 +320,5 @@ def main [] {
         fail 'planner prompt names no release tool — the release-before-failed-exit rule is unexecutable without fabro_work_release'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim, the pull reviewer grants fabro_run_diffs+fabro_blob with no fs_hide anywhere and the write denial intact (work#1624, ADR-0051)'
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim, the pull reviewer grants fabro_run_diffs+fabro_blob with no reviewer hide and the write denial intact, planner+implementer keep the .agents delivery exclusion (work#1624, ADR-0051)'
 }
