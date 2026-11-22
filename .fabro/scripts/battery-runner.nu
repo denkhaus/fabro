@@ -142,6 +142,15 @@ const SMOKES = [
     # stage); the battery pins byte-equality with the ONE source file
     # and simulates the engine's sh -c transport end to end.
     '.fabro/scripts/judgment-shadow-sync-smoke.nu'
+    # Tool allow-list admission lint (work#1624, the #1303 class): every
+    # agent node's prompt must name only fabro_* tools its x.fabro_tools
+    # grant admits — a prompt naming an ungranted tool burns discovery
+    # rounds on a denial the engine enforces at call time (work#1303: the
+    # reviewer's prompt commanded fabro_blob and named fabro_work_show
+    # while the grant list had dropped them). HARD findings exit 1 and red
+    # this battery; grants-without-mentions print as advisories and stay
+    # green (the grant may serve the engine's own bookkeeping).
+    '.fabro/scripts/lint-tool-grants.nu'
 ]
 
 # Registered checked-in fixture batteries (seed fabro-ac84): the gate
