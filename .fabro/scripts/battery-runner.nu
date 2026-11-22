@@ -99,6 +99,11 @@ const SMOKES = [
     # read, the empty-radius landing, the open-radius wait, the closed
     # item's idempotent done, the entry's project — through the shim.
     '.fabro/workflows/adjudicator/scripts/closing-pass-smoke.nu'
+    # The reconcile stage (work#1615): the sweep's truth record after
+    # the agent pass — packet runs classify from the queue doors
+    # (enabled/parked/refused), a pending packet names the hole and
+    # routes the soft exit, one truth note per pass — through the shim.
+    '.fabro/workflows/adjudicator/scripts/reconcile-smoke.nu'
     # The merger fast path (ADR-0039 stage E): clean merge + enabled
     # mark through the door, the merge_conflict packet, the malformed
     # PR-less park, parked re-entry, workflow filter — through the shim.

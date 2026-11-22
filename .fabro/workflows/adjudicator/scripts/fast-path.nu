@@ -56,7 +56,7 @@
 use ../../../scripts/lib/fact_head.nu [parse-head, head-of]
 use ../../../scripts/lib/terminal_status.nu [is-human-needed-kind]
 use ../../../scripts/lib/work_channel.nu [
-    server, cli, observation-list-argv, work-radius-argv, work-show-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
+    server, cli, observation-list-argv, observation-record-argv, work-radius-argv, work-show-argv, read-queue-hard, mark-run-hard, emit-envelope, title-own-run
 ]
 
 const CALLER = 'adjudicator-fast-path'
@@ -333,6 +333,23 @@ def main [--smoke]: nothing -> nothing {
     # the attention signal). Advisory (work_channel::title-own-run).
     title-own-run $CALLER $"Adjudicator: marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\); \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked; \(($parked_waiting | length)\) parked waiting"
     print $"($CALLER): marked \(($marked_enabled | length)\) enabled, \(($marked_refused | length)\) refused; \(($packets | length)\) packet\(s\) for the agent pass; \(($parked_human | length)\) human-needed + \(($parked_landed | length)\) already-landed parked; \(($parked_waiting | length)\) parked waiting \(work#1523\)"
+
+    # The packet-list contract (work#1615): the reconcile stage after
+    # the agent pass classifies exactly THESE runs from the queue
+    # doors — the machine-head note is its worklist. HARD: a failed
+    # record fails the stage (the idempotent retry re-writes it; the
+    # reconcile reads the LAST note). Recorded only when packets exist
+    # — the empty-queue route never reaches the agent pass.
+    if ($packets | is-not-empty) {
+        let packet_ids = ($packets | get run_id | str join ',')
+        let srv = (server $CALLER)
+        let res = (cli $CALLER (observation-record-argv $srv 'note' $"fact=packets-emitted runs=($packet_ids)"))
+        if $res.exit_code != 0 {
+            print -e $"($CALLER): packets-emitted record failed: ($res.stderr | str trim | str substring 0..240)"
+            exit 1
+        }
+    }
+
     let adjudication = {
         packets: $packets,
         marked_enabled: $marked_enabled,

@@ -107,6 +107,26 @@ digraph Adjudicator {
         max_retries=1
     ]
 
+    // The reconcile stage (work#1615, the 2026-11-22 incident): the
+    // agent pass's prose journal rewrote itself into "no re-mark"
+    // after its own six marks, and a healthy pipeline read as a
+    // stranded one. This LLM-free stage classifies every packet run
+    // from the queue doors (enabled / parked / refused / holes),
+    // records ONE authoritative observation, and routes: holes take
+    // the soft exit (the queue stays, the next pass re-enters —
+    // gap-safe), a settled sweep continues to the closing pass. The
+    // truth record the operator reads; the journal is prose, this is
+    // the record.
+    reconcile [
+        label="Reconcile: the sweep's truth record",
+        shape=parallelogram,
+        script="nu .fabro/workflows/adjudicator/scripts/reconcile.nu",
+        output_schema="routing",
+        x.context_allow_keys="output.reconcile",
+        timeout="3m",
+        max_retries=1
+    ]
+
     start -> env_guard
     env_guard -> fast_path
 
@@ -120,7 +140,15 @@ digraph Adjudicator {
     // next visit. The self-edge is bounded by max_visits and the
     // generation caps below.
     adjudicate -> adjudicate [label="Next run", condition="preferred_label=\"Next run\""]
-    adjudicate -> closing_pass [label="Queue settled", condition="preferred_label=\"Queue settled\""]
+    adjudicate -> reconcile [label="Queue settled", condition="preferred_label=\"Queue settled\""]
+    // The reconcile's two doors: a settled sweep continues to the
+    // closing pass; a hole (a packet run the agent pass left pending)
+    // takes the SOFT exit — the queue stays, the next pass re-enters,
+    // the truth observation names the hole for the operator.
+    reconcile -> closing_pass [label="Reconciled", condition="preferred_label=\"Reconciled\""]
+    reconcile -> exit [x.kind="soft", label="Holes remain (queue stays, next pass re-enters)", condition="preferred_label=\"Holes remain\""]
+    reconcile -> exit [x.kind="soft", label="Reconcile failed (queue stays, next pass re-enters)", condition="outcome=failed"]
+    reconcile -> exit [x.kind="soft", label="Unrouted reconcile outcome"]
     // A policy fork parks the run and CONTINUES: the sweep never waits
     // on a human. The same edge covers a parked run the operator
     // resolved through the tracker — the next pass re-adjudicates it.

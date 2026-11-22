@@ -113,10 +113,29 @@ adjudicated: the run, the verdict, and the reason in a sentence.
 ## Discipline
 
 - One run per response. Never batch verdicts.
+- **Advance by your own journal.** Before you verdict a packet, read
+  `context.journal` for its run id. A line you wrote earlier THIS pass
+  carrying a verdict for that run means the packet is DONE: route
+  `preferred_next_label: "Next run"` (or `"Queue settled"` when no
+  unmarked packet remains) WITHOUT calling `fabro_run_mark` again — a
+  second mark on a run you already marked is wasted work and pollutes
+  the verdict record stream.
+- **The anti-join drops what you settle.** A run you marked leaves the
+  merge queue: when `fabro_run_queue` no longer lists a run you marked
+  THIS pass, that absence is your own settlement. Say "this pass marked
+  it enabled" — never attribute your own marks to prior passes.
+- **The journal replaces.** Each response's `context_updates.journal`
+  is the WHOLE journal, not a delta: carry every earlier line forward
+  verbatim and append only this firing's lines. A verdict line is never
+  rewritten, retracted, or summarized away; a correction is a NEW line
+  that names the line it corrects.
 - The page boundary (work#1409): when the re-served packet is a run you
   already noted the verdict for, the mark page is full — write NOTHING
   more and route `preferred_next_label: "Queue settled"`. Never re-note
   a run you already noted: the duplicates pollute the observations feed.
+  This rule never licenses a false record: the reconcile stage after
+  you records the sweep's disposition from the queue doors, and your
+  journal must agree with your own mark calls.
 - The pull-request state in the packet is the fast path's read; trust
   it for routing, verify with reads when the verdict hinges on it.
 - A parked run that reappears in a later pass: read the work item's
