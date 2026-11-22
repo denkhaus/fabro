@@ -273,9 +273,9 @@ const SANDBOX_PLUGIN_MANIFEST: &str = "vendor/sandbox-driver/Cargo.toml";
 /// 2026-11-08) and the toolchain's nu — a hook nu older than the scripts
 /// the line authors against re-introduces the 0.115 parse break class
 /// (mx-e606d5) inside the shipped artifact.
-const NU_VERSION: &str = "0.116.1";
-const NU_SHA256_AMD64: &str = "13ef75df08df30f8d7b031df538e82a52c6e74ce839b1a9091c3a3f1969c3742";
-const NU_SHA256_ARM64: &str = "b103770c00bf322c409caa007aad44882d1cc5d24d82f719f877812ac33d6ad1";
+const NU_VERSION: &str = "0.117.0";
+const NU_SHA256_AMD64: &str = "2b808786d44af41170a29f8b9a15b5113bb6ea5dda9221098eca932f8a149924";
+const NU_SHA256_ARM64: &str = "19966b94ae19f52e2cf0402cb99844ddfa06e2361cf6c77b1b2e29abd17e9188";
 
 fn nu_sha256(arch: DockerArch) -> &'static str {
     match arch {
