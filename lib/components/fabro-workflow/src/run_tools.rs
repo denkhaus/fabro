@@ -182,6 +182,18 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::blob_page_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME => {
+            // The diff inventory (ADR-0051): keyed to the calling run —
+            // the dispatcher injects the session's own run id and the
+            // tool takes no arguments (the same worker-identity pattern
+            // as fabro_blob).
+            let _ = parse_fabro_tool_args::<fabro_tool::FabroRunDiffsParams>(name, args)?;
+            let result =
+                fabro_tool::run_diffs(Arc::clone(&services.backend), services.current_run_id)
+                    .await?;
+            let summary = fabro_tool::run_diffs_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_WAIT_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroRunWaitParams>(name, args)?;
             let result =
@@ -796,6 +808,120 @@ mod tests {
             "the result names category and the record's seq: {output}"
         );
         append.assert_async().await;
+    }
+
+    /// `fabro_run_diffs` (ADR-0051) over the REAL client backend: the
+    /// dispatcher injects the session's own run, the read reaches the
+    /// platform-records endpoint for both diff kinds plus the checkpoint
+    /// timeline for the node labels, and the inventory answers with the
+    /// patch blob references the reviewer pages through `fabro_blob`.
+    #[tokio::test]
+    async fn run_diffs_reads_the_run_diff_records_over_the_real_backend() {
+        let server = httpmock::MockServer::start_async().await;
+        let run_id: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let patch: fabro_types::BlobHash = fabro_types::BlobHash::new(b"stage patch");
+        let run_patch: fabro_types::BlobHash = fabro_types::BlobHash::new(b"whole run");
+        let checkpoints = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{run_id}/petri/platform-records"))
+                    .query_param("kind", "checkpoint");
+                then.status(200).json_body(json!({
+                    "records": [{
+                        "seq": 2,
+                        "recorded_at": 1_758_067_200_123_u64,
+                        "record": {
+                            "kind": "checkpoint",
+                            "execution": 1,
+                            "firing": 2,
+                            "attempt": 1,
+                            "git_commit_sha": "c2b0a",
+                            "diff_summary": {"files_changed": 3, "additions": 12, "deletions": 4},
+                            "patch_blob": patch.to_string(),
+                        },
+                        "execution": 1,
+                        "firing": 2
+                    }]
+                }));
+            })
+            .await;
+        let run_diff = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{run_id}/petri/platform-records"))
+                    .query_param("kind", "run.diff");
+                then.status(200).json_body(json!({
+                    "records": [{
+                        "seq": 9,
+                        "recorded_at": 1_758_067_200_456_u64,
+                        "record": {
+                            "kind": "run.diff",
+                            "base_sha": "base0",
+                            "head_sha": "head9",
+                            "diff_summary": {"files_changed": 9, "additions": 40, "deletions": 11},
+                            "patch_blob": run_patch.to_string(),
+                        }
+                    }]
+                }));
+            })
+            .await;
+        let timeline = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{run_id}/timeline"));
+                then.status(200).json_body(json!({
+                    "entries": [{
+                        "ordinal": 1,
+                        "checkpoint_seq": 2,
+                        "execution": 1,
+                        "firing": 2,
+                        "attempt": 1,
+                        "node_name": "implement",
+                        "visit": 1
+                    }]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: run_id,
+            stage:          None,
+        };
+        let output =
+            execute_fabro_run_tool(fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME, json!({}), &services)
+                .await
+                .expect("the tool dispatches over the real backend");
+        checkpoints.assert_calls_async(1).await;
+        run_diff.assert_calls_async(1).await;
+        timeline.assert_calls_async(1).await;
+        assert!(
+            output.contains(&format!("2 diff record(s) on run {run_id}")),
+            "the summary names count and run: {output}"
+        );
+        assert!(
+            output.contains("checkpoint implement (execution 1, firing 2): 3 file(s), +12/-4"),
+            "the checkpoint entry carries its label and summary: {output}"
+        );
+        assert!(
+            output.contains(&format!("blob://sha256/{}", patch)),
+            "the whole blob reference is served for the fabro_blob follow-up: {output}"
+        );
+        assert!(
+            output.contains("run: 9 file(s), +40/-11"),
+            "the run-level entry is last: {output}"
+        );
+        let (rendered, payload) = output
+            .split_once("\n{\n")
+            .expect("summary then JSON object");
+        assert!(rendered.contains("diff record(s)"), "{rendered}");
+        let body: serde_json::Value =
+            serde_json::from_str(&format!("{{\n{payload}")).expect("the payload is the result");
+        assert_eq!(body["run_id"], run_id.to_string());
+        assert_eq!(body["diffs"][0]["node"], "implement");
+        assert_eq!(body["diffs"][0]["kind"], "checkpoint");
+        assert_eq!(body["diffs"][1]["kind"], "run");
+        assert_eq!(body["diffs"][1]["base_sha"], "base0");
     }
 
     /// The stage-session path over the REAL client backend (fabro-9711 spec
