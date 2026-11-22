@@ -269,10 +269,11 @@ const SANDBOX_PLUGIN_MANIFEST: &str = "vendor/sandbox-driver/Cargo.toml";
 /// (fabro-8e13): the official musl tarball, sha256-pinned per arch, staged
 /// through the docker context beside the release binary so `[[run.hooks]]`
 /// script kinds can run nu inside the server container.
-/// Lockstep: 0.116.1, the line's sweep version (78-script sweep green,
-/// 2026-11-08) and the toolchain's nu — a hook nu older than the scripts
-/// the line authors against re-introduces the 0.115 parse break class
-/// (mx-e606d5) inside the shipped artifact.
+/// Lockstep: the version below must match the harness pin (.mise.toml) and
+/// the toolchain image (.fabro/Dockerfile.toolchain) — a hook nu out of
+/// step with the scripts the line authors re-introduces the parse-break
+/// class (mx-e606d5) inside the shipped artifact. The bench's lockstep
+/// row (container nu vs harness nu) catches the drift mechanically.
 const NU_VERSION: &str = "0.117.0";
 const NU_SHA256_AMD64: &str = "2b808786d44af41170a29f8b9a15b5113bb6ea5dda9221098eca932f8a149924";
 const NU_SHA256_ARM64: &str = "19966b94ae19f52e2cf0402cb99844ddfa06e2361cf6c77b1b2e29abd17e9188";
