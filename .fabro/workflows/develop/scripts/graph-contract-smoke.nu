@@ -140,14 +140,17 @@ def main [] {
     # 3. retired nodes stay retired (comment-STRIPPED lines only — the
     # rationale comments name them by design)
     let code = ($lines | each {|l| ($l | split row '//' | first)})
-    # 10a. ADR-0051 delivery exclusion: the planner and implementer
-    # KEEP x.fs_hide=".agents/**" — the checkpoint quarantines those
-    # paths from the commit and names them (work#1624's own second
-    # criterion is the live case). The REVIEWER carries no hide (reads
-    # free). Pinned over $code — comment lines name the history.
+    # 10a. ADR-0051 delivery exclusion: EVERY committing stage carries
+    # x.fs_hide=".agents/**" — planner, implementer, tester, evidence,
+    # reporter. A checkpoint with an inert scope would carry a file a
+    # prior stage quarantined: the committing node's scope is the gate
+    # (work#1624's probe-09 drive proved the hole live — the
+    # unrestricted exit stage re-committed the quarantined file). The
+    # REVIEWER carries no hide: its empty fs_write quarantines every
+    # write anyway.
     let hiding_nodes = ($code | where {|l| ($l | str contains 'x.fs_hide')})
-    if ($hiding_nodes | length) != 2 {
-        fail $"the develop graph must carry exactly two delivery-exclusion hides — planner and implementer on .agents/**: ($hiding_nodes | to json -r)"
+    if ($hiding_nodes | length) != 5 {
+        fail $"the develop graph must carry exactly five delivery-exclusion hides — planner, implementer, tester, evidence, reporter on .agents/**: ($hiding_nodes | to json -r)"
     }
     for node in ["tracker_guard" "claim_check" "gatebounce"] {
         if ($code | any {|l| ($l | str contains $node)}) {
@@ -320,5 +323,5 @@ def main [] {
         fail 'planner prompt names no release tool — the release-before-failed-exit rule is unexecutable without fabro_work_release'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim, the pull reviewer grants fabro_run_diffs+fabro_blob with no reviewer hide and the write denial intact, planner+implementer keep the .agents delivery exclusion (work#1624, ADR-0051)'
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim, the pull reviewer grants fabro_run_diffs+fabro_blob with no reviewer hide and the write denial intact, the five committing stages keep the .agents delivery exclusion (work#1624, ADR-0051)'
 }
