@@ -150,6 +150,15 @@ pub trait FabroToolBackend: Send + Sync {
             FABRO_OBSERVATION_LIST_TOOL_NAME,
         ))
     }
+    /// `fabro_run_diffs` (ADR-0051): the run's diff inventory — one entry
+    /// per stage checkpoint's diff record (node, position, summary, patch
+    /// blob reference) plus the run-level `run.diff` entry. Read-only and
+    /// keyed to the calling run: the dispatcher passes the session's own
+    /// run id, the same worker-identity pattern as `fabro_blob`, and a
+    /// run-scoped session refuses anything else.
+    async fn list_run_diffs(&self, _run_id: &RunId) -> anyhow::Result<Vec<crate::RunDiffEntry>> {
+        Err(read_tool_unavailable_error(FABRO_RUN_DIFFS_TOOL_NAME))
+    }
     /// `fabro_work_radius` (ADR-0038 read door): a work item's closure
     /// radius — the open items linked to the item's runs, what a merge
     /// verdict hinges on.
@@ -544,6 +553,7 @@ pub const FABRO_WORK_RELEASE_TOOL_NAME: &str = "fabro_work_release";
 pub const FABRO_RUN_QUEUE_TOOL_NAME: &str = "fabro_run_queue";
 pub const FABRO_RUN_MERGE_TOOL_NAME: &str = "fabro_run_merge";
 pub const FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME: &str = "fabro_run_push_resolution";
+pub const FABRO_RUN_DIFFS_TOOL_NAME: &str = "fabro_run_diffs";
 pub const FABRO_OBSERVATION_LIST_TOOL_NAME: &str = "fabro_observation_list";
 pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
 pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
@@ -635,6 +645,10 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroBlobParams>(
             FABRO_BLOB_TOOL_NAME,
             "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative.",
+        ),
+        tool_definition::<crate::FabroRunDiffsParams>(
+            FABRO_RUN_DIFFS_TOOL_NAME,
+            "Read THIS run's diff inventory (ADR-0051): one entry per stage checkpoint's diff — node, Petri position, files/additions/deletions, and the patch's blob reference — plus the run-level diff entry with its base and head commits. Takes no arguments; the inventory is always this run's. Page a patch's content with fabro_blob using the entry's blob reference.",
         ),
         tool_definition::<crate::FabroWorkNextParams>(
             FABRO_WORK_NEXT_TOOL_NAME,
@@ -824,6 +838,7 @@ mod tests {
             FABRO_OBSERVATION_FEED_TOOL_NAME,
             FABRO_RUN_WAIT_TOOL_NAME,
             FABRO_BLOB_TOOL_NAME,
+            FABRO_RUN_DIFFS_TOOL_NAME,
             FABRO_WORK_NEXT_TOOL_NAME,
             FABRO_WORK_SHOW_TOOL_NAME,
             FABRO_WORK_LIST_TOOL_NAME,

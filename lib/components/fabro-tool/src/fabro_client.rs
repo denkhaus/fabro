@@ -286,6 +286,30 @@ impl FabroToolBackend for ClientBackend {
             .observations)
     }
 
+    /// `fabro_run_diffs` (ADR-0051): the run's diff records — the
+    /// `checkpoint` records (each stage's diff summary and patch blob)
+    /// and the `run.diff` record — read over the platform-records
+    /// endpoint, labelled through the checkpoint timeline the fork view
+    /// already serves. The run-scope guard stays ON, matching every
+    /// own-run read door.
+    async fn list_run_diffs(&self, run_id: &RunId) -> anyhow::Result<Vec<crate::RunDiffEntry>> {
+        use fabro_store::platform_records::PlatformRecordKind;
+
+        use crate::run_diffs::run_diff_entries;
+
+        self.ensure_run_scope(run_id)?;
+        let checkpoints = self
+            .client
+            .list_petri_platform_records(run_id, Some(&PlatformRecordKind::Checkpoint.to_string()))
+            .await?;
+        let run_diffs = self
+            .client
+            .list_petri_platform_records(run_id, Some(&PlatformRecordKind::RunDiff.to_string()))
+            .await?;
+        let timeline = self.client.run_timeline(run_id).await?;
+        Ok(run_diff_entries(checkpoints, run_diffs, &timeline))
+    }
+
     /// `fabro_work_radius` (ADR-0038 read door): the closure radius the
     /// close gate enforces, read beside it.
     async fn work_item_radius(
