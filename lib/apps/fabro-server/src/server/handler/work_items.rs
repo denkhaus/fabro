@@ -1264,9 +1264,14 @@ async fn refresh_work_item_view(
         .materialized_work_tracker(&project)
         .await
         .map_err(|error| {
+            tracing::warn!(
+                error = ?error,
+                project_id = %project.project_id,
+                "tracker provider is not available"
+            );
             ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("tracker provider is not available: {error:#}"),
+                "tracker provider is not available",
             )
         })?;
     let report = match item_key {
@@ -1362,9 +1367,14 @@ async fn claim_next(
         .work_tracker_for_project(project)
         .await
         .map_err(|error| {
+            tracing::warn!(
+                error = ?error,
+                project_id = %project.project_id,
+                "tracker provider is not available"
+            );
             ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("tracker provider is not available: {error:#}"),
+                "tracker provider is not available",
             )
         })?;
     let items = tracker
@@ -1999,9 +2009,14 @@ async fn tracker_for(
         .work_tracker_for_project(project)
         .await
         .map_err(|error| {
+            tracing::warn!(
+                error = ?error,
+                project_id = %project.project_id,
+                "tracker provider is not available"
+            );
             ApiError::new(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("tracker provider is not available: {error:#}"),
+                "tracker provider is not available",
             )
         })
 }
@@ -2015,20 +2030,21 @@ fn tracker_failed(error: anyhow::Error) -> ApiError {
     // classified failures answer structured, machine-readable errors —
     // the quota class with the announced window in its meta — and only
     // unclassified failures fall to the prose chain.
-    match error.downcast_ref::<fabro_work::TrackerError>() {
-        Some(classified) => tracker_classified(classified, &error),
-        None => ApiError::new(
-            StatusCode::BAD_GATEWAY,
-            format!("tracker provider failed: {error:#}"),
-        ),
+    if let Some(classified) = error.downcast_ref::<fabro_work::TrackerError>() {
+        tracker_classified(classified, &error)
+    } else {
+        tracing::warn!(error = ?error, "tracker provider failed (unclassified)");
+        ApiError::new(StatusCode::BAD_GATEWAY, "tracker provider failed")
     }
 }
 
 /// The classified-tracker-failure answer (denkhaus/work#1556): each
 /// class maps to its honest status and machine-readable code; the
 /// quota class carries the announced window in its meta so callers can
-/// wait precisely instead of guessing a sleep. Every detail keeps the
-/// rendered chain beside the code.
+/// wait precisely instead of guessing a sleep. The full internal chain
+/// goes to the log (structured field), never into the API JSON — the
+/// responses stay curated (the error-handling strategy, "Public vs
+/// internal surfaces").
 fn tracker_classified(classified: &fabro_work::TrackerError, chain: &anyhow::Error) -> ApiError {
     match classified {
         fabro_work::TrackerError::RateLimited { window } => {
@@ -2046,30 +2062,37 @@ fn tracker_classified(classified: &fabro_work::TrackerError, chain: &anyhow::Err
                 meta,
             )
         }
-        fabro_work::TrackerError::NotFound => ApiError::with_code(
-            StatusCode::NOT_FOUND,
-            format!("the tracker knows no such work item: {chain:#}"),
-            "tracker_not_found",
-        ),
-        fabro_work::TrackerError::Conflict => ApiError::with_code(
-            StatusCode::CONFLICT,
-            format!("the tracker refused the write as conflicting: {chain:#}"),
-            "tracker_conflict",
-        ),
+        fabro_work::TrackerError::NotFound => {
+            tracing::debug!(error = ?chain, "tracker work item not found");
+            ApiError::with_code(
+                StatusCode::NOT_FOUND,
+                "the tracker knows no such work item",
+                "tracker_not_found",
+            )
+        }
+        fabro_work::TrackerError::Conflict => {
+            tracing::warn!(error = ?chain, "tracker refused the write as conflicting");
+            ApiError::with_code(
+                StatusCode::CONFLICT,
+                "the tracker refused the write as conflicting",
+                "tracker_conflict",
+            )
+        }
         fabro_work::TrackerError::Unavailable { retryable } => {
+            tracing::warn!(error = ?chain, retryable = retryable, "tracker provider unavailable");
             let mut meta = serde_json::Map::new();
             meta.insert("retryable".to_string(), serde_json::Value::from(*retryable));
             ApiError::with_code_and_meta(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("tracker provider unavailable: {chain:#}"),
+                "tracker provider unavailable",
                 "tracker_unavailable",
                 meta,
             )
         }
-        other => ApiError::new(
-            StatusCode::BAD_GATEWAY,
-            format!("tracker provider failed ({other}): {chain:#}"),
-        ),
+        other => {
+            tracing::warn!(error = ?chain, class = %other, "tracker provider failed (unclassified class)");
+            ApiError::new(StatusCode::BAD_GATEWAY, "tracker provider failed")
+        }
     }
 }
 
