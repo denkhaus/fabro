@@ -13,14 +13,17 @@
 //! - `prepare_result`: the checkpoint commit, before the `StepFinished` record
 //!   is appended, so a durable finish implies a durable snapshot. A stage that
 //!   failed on its own terms is committed like a successful one; only a
-//!   cancelled attempt is not. A failed commit is fatal to the run: the outcome
-//!   becomes a failure of class `checkpoint_failed`, the run is cancelled
-//!   through the coordinator handle, and `transition` refuses the firing's
-//!   routes, so no route is taken. The commit that creates the run branch also
-//!   records where it started: the `run.branch` platform record (the branch
-//!   name and the base commit) and the `git.identity` record (who authors the
-//!   commits, and where that identity came from), both at that checkpoint's
-//!   stage position, so the stream orders them with the firing's finish.
+//!   cancelled attempt is not. Files outside the stage's `fs_write` envelope
+//!   are QUARANTINED, not fatal (ADR-0051): the commit excludes them, a
+//!   `run.notice` names them for the reviewer, and the stage succeeds. A failed
+//!   commit is fatal to the run: the outcome becomes a failure of class
+//!   `checkpoint_failed`, the run is cancelled through the coordinator handle,
+//!   and `transition` refuses the firing's routes, so no route is taken. The
+//!   commit that creates the run branch also records where it started: the
+//!   `run.branch` platform record (the branch name and the base commit) and the
+//!   `git.identity` record (who authors the commits, and where that identity
+//!   came from), both at that checkpoint's stage position, so the stream orders
+//!   them with the firing's finish.
 //! - `transition`: the platform checkpoint record, keyed on the Petri position
 //!   and the checkpoint's operation identity, with the stage's diff from its
 //!   parent commit (`diff_summary`, and the patch as a blob); then the stage's
@@ -79,10 +82,11 @@ use std::time::Duration;
 use fabro_redact::fs_scope::FsScopeError;
 use fabro_store::platform_records::{
     ArtifactCollectedRecord, CheckpointRecord, GitIdentityRecord, RunBranchRecord, RunDiffRecord,
+    RunNoticeRecord,
 };
 use fabro_store::{PlatformRecord, PlatformRecordKind, StagePosition};
 use fabro_types::settings::run::{HookDefinition, RunNamespace};
-use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId};
+use fabro_types::{BlobHash, DiffSummary, GitIdentity, RunId, RunNoticeCode, RunNoticeLevel};
 use fabro_util::error::collect_chain;
 use fabro_util::sync;
 use fabro_util::workspace_glob::{WorkspaceGlobError, WorkspaceGlobSet};
@@ -111,11 +115,6 @@ use crate::workspace::{self, WorkspaceLookup, WorkspaceLookupError};
 
 /// The note kind the hooks record on a firing about its checkpoint.
 pub const CHECKPOINT_NOTE: &str = "fabro.checkpoint";
-
-/// The failure class of a stage-envelope violation (fabro-aa5f): the run
-/// ends, the violating commit never happens, and the projection can name
-/// the class.
-pub const FS_POLICY_VIOLATION_CLASS: &str = "fs_policy_violation";
 
 /// The effect kind of an artifact collection in its operation identity.
 pub const ARTIFACT_EFFECT: &str = "artifact";
@@ -165,11 +164,6 @@ pub enum HookError {
         #[source]
         source: FsScopeError,
     },
-    #[error(
-        "stage envelope violation in `{node}`: {} fall outside the node's fs_write scope",
-        .paths.join(", ")
-    )]
-    EnvelopeViolation { node: String, paths: Vec<String> },
     #[error("the checkpoint commit could not be looked up")]
     Find(#[source] CheckpointError),
     #[error("no checkpoint commit exists for {key}")]
@@ -628,30 +622,38 @@ impl FabroHooks {
         Ok(Some((workspace, site)))
     }
 
-    /// Deny a stage whose staged files fall outside its `x.fs_write`
-    /// scope (fabro-aa5f, ADR-0009 rev). A node without envelope
-    /// attributes, or an envelope that restricts nothing, passes. The
-    /// check runs under the workspace's commit lock over the same staged
-    /// set the commit would snapshot, so a violation is refused before
-    /// anything is committed: an escape never reaches the run branch.
+    /// The staged paths of a stage that fall outside its `x.fs_write`
+    /// scope (fabro-aa5f, ADR-0009 rev), for the checkpoint to QUARANTINE
+    /// (ADR-0051, work#1624): the commit excludes them, a `run.notice`
+    /// names them on the stage's position, and the stage succeeds — the
+    /// reviewer judges the named deferral. Nothing out of scope is ever
+    /// committed, and the files themselves stay in the workspace. A node
+    /// without envelope attributes, or an envelope that restricts
+    /// nothing, excludes nothing. The check runs under the workspace's
+    /// commit lock over the same staged set the commit snapshots, so the
+    /// exclusion is exact.
     ///
     /// Read-side hiding (`x.fs_hide`) is not enforceable at this seam —
     /// the checkpoint sees files, not tool calls; the session-level hook
     /// the ADR names needs a Petri host capability the pinned revision
     /// does not offer, and upstream gets no offers from us.
-    async fn enforce_stage_envelope(&self, site: &Site, node: &str) -> Result<(), HookError> {
+    async fn stage_envelope_quarantine(
+        &self,
+        site: &Site,
+        node: &str,
+    ) -> Result<Vec<String>, HookError> {
         let Some(envelopes) = &self.envelopes else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let Some(scope) = envelopes.fs_scope(node) else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let scope = scope.map_err(|source| HookError::EnvelopeCompile {
             node: node.to_string(),
             source,
         })?;
         if !scope.is_active() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let staged =
             self.workspaces
@@ -665,7 +667,7 @@ impl FabroHooks {
         // files under a root the run's `[[run.hooks]]` wiring declared
         // writable never reach the scope check, so the journal the
         // stage-journal hook appends cannot fail a deny-all planner.
-        let violations: Vec<String> = staged
+        let quarantined: Vec<String> = staged
             .into_iter()
             .filter(|path| {
                 !self
@@ -675,19 +677,48 @@ impl FabroHooks {
             })
             .filter(|path| scope.check_write("", path).is_err())
             .collect();
-        if violations.is_empty() {
-            return Ok(());
+        if !quarantined.is_empty() {
+            warn!(
+                run_id = %self.run_id,
+                node,
+                paths = ?quarantined,
+                "stage envelope quarantine; the paths are excluded from the checkpoint commit"
+            );
         }
-        warn!(
-            run_id = %self.run_id,
-            node,
-            paths = violations.len(),
-            "stage envelope violation; the run ends before committing"
-        );
-        Err(HookError::EnvelopeViolation {
-            node:  node.to_string(),
-            paths: violations,
-        })
+        Ok(quarantined)
+    }
+
+    /// Name a stage's quarantined paths on the run's stream: a
+    /// `run.notice` (warn, `stage_envelope_quarantined`) at the firing's
+    /// position, so the reviewer reads the deferral the stage made
+    /// (ADR-0051). A failed write is logged and swallowed — the notice
+    /// must never be the reason a stage fails.
+    async fn record_quarantine(&self, key: CheckpointKey, node: &str, paths: &[String]) {
+        let notice = PlatformRecord::RunNotice(RunNoticeRecord {
+            level:   RunNoticeLevel::Warn,
+            code:    RunNoticeCode::StageEnvelopeQuarantined.to_string(),
+            message: format!(
+                "stage envelope quarantine in `{node}`: {} fall outside the node's fs_write \
+                 scope; they are excluded from the checkpoint commit and stay in the workspace",
+                paths.join(", ")
+            ),
+        });
+        let position = StagePosition {
+            execution: key.execution,
+            firing:    key.firing,
+        };
+        if let Err(error) = self
+            .records
+            .append(&self.run_id, &notice, Some(position))
+            .await
+        {
+            warn!(
+                run_id = %self.run_id,
+                node,
+                error = %error,
+                "the stage envelope quarantine notice was not recorded"
+            );
+        }
     }
 
     /// The checkpoint commit for one attempt's result. `Ok(Some)` is the
@@ -724,10 +755,10 @@ impl FabroHooks {
         self.gate("commit", node).await;
         let serialized = self.scopes.lock_for(&workspace);
         let _held = serialized.lock().await;
-        self.enforce_stage_envelope(&site, node).await?;
+        let quarantined = self.stage_envelope_quarantine(&site, node).await?;
         match self
             .workspaces
-            .commit(&site, &workspace, key, node, status.tag())
+            .commit(&site, &workspace, key, node, status.tag(), &quarantined)
             .await
         {
             Ok(snapshot) => {
@@ -738,21 +769,26 @@ impl FabroHooks {
                     firing = key.firing,
                     attempt = key.attempt,
                     reused = snapshot.reused,
+                    quarantined = quarantined.len(),
                     site = ?site,
                     "checkpoint committed"
                 );
+                if !quarantined.is_empty() {
+                    self.record_quarantine(key, node, &quarantined).await;
+                }
                 self.committed(key, &workspace, &snapshot).await;
-                Ok(Some(Note::new(
-                    CHECKPOINT_NOTE,
-                    json!({
-                        "execution": key.execution,
-                        "firing": key.firing,
-                        "attempt": key.attempt,
-                        "workspace": workspace,
-                        "git_commit_sha": snapshot.sha,
-                        "reused": snapshot.reused,
-                    }),
-                )))
+                let mut payload = json!({
+                    "execution": key.execution,
+                    "firing": key.firing,
+                    "attempt": key.attempt,
+                    "workspace": workspace,
+                    "git_commit_sha": snapshot.sha,
+                    "reused": snapshot.reused,
+                });
+                if !quarantined.is_empty() {
+                    payload["quarantined"] = json!(quarantined);
+                }
+                Ok(Some(Note::new(CHECKPOINT_NOTE, payload)))
             }
             Err(source) => Err(HookError::Commit {
                 node: node.to_string(),
@@ -1375,16 +1411,8 @@ impl ExecutionHooks for FabroHooks {
                     "checkpoint failed; the run ends"
                 );
                 self.fail_run(&message);
-                let class = if matches!(
-                    error,
-                    HookError::EnvelopeViolation { .. } | HookError::EnvelopeCompile { .. }
-                ) {
-                    FS_POLICY_VIOLATION_CLASS
-                } else {
-                    CHECKPOINT_FAILED_CLASS
-                };
                 prepared.adjustment.status = Some(Status::Failure(
-                    FailureInfo::new(message.clone()).with_class(class),
+                    FailureInfo::new(message.clone()).with_class(CHECKPOINT_FAILED_CLASS),
                 ));
                 prepared.adjustment.reason = Some(message);
             }

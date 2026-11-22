@@ -409,7 +409,10 @@ impl RunWorkspaces {
 
     /// Commit the workspace's files on the run branch as the snapshot of
     /// `key`, and publish it. An earlier commit of the same key that the
-    /// workspace still sits on, unchanged, is reused. On a sandbox site
+    /// workspace still sits on, unchanged, is reused. `excluded` names
+    /// workspace-relative paths the commit must NOT carry: the stage
+    /// envelope quarantine (ADR-0051) — they are unstaged, excluded from
+    /// the `git add`, and left in the working tree. On a sandbox site
     /// `git` runs in the scope through its environment, and the commit
     /// reaches the snapshot repository as a bundle.
     pub async fn commit(
@@ -419,6 +422,7 @@ impl RunWorkspaces {
         key: CheckpointKey,
         node: &str,
         status: &str,
+        excluded: &[String],
     ) -> Result<Snapshot, CheckpointError> {
         if let Site::Host(path) = site {
             if !fs::try_exists(path).await.unwrap_or(false) {
@@ -440,7 +444,8 @@ impl RunWorkspaces {
                 });
             }
         }
-        self.stage(site).await?;
+        self.unstage(site, excluded).await?;
+        self.stage(site, excluded).await?;
         let message = self.message(key, node, status);
         let user_name = format!("user.name={}", self.author.name);
         let user_email = format!("user.email={}", self.author.email);
@@ -468,10 +473,29 @@ impl RunWorkspaces {
         })
     }
 
+    /// Take `paths` back out of the index (ADR-0051). The quarantine
+    /// detection stages the whole workspace, and the exclude pathspecs of
+    /// [`Self::stage`] only filter what `git add` touches — an
+    /// already-staged path stays staged without this. `git reset --
+    /// <paths>` restores each index entry to `HEAD` (the empty tree when
+    /// the workspace has no commit yet), so a tracked file keeps its
+    /// committed version and only the stage's own change is excluded.
+    /// The files stay in the working tree.
+    async fn unstage(&self, site: &Site, paths: &[String]) -> Result<(), CheckpointError> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+        let mut reset = vec!["reset".to_string(), "--".to_string()];
+        reset.extend(paths.iter().cloned());
+        self.git(site, "reset", &reset).await?;
+        Ok(())
+    }
+
     /// Stage the workspace's files exactly as a commit would: everything,
-    /// minus the excluded caches and configured exclusions. Idempotent;
-    /// `commit` stages again without harm.
-    async fn stage(&self, site: &Site) -> Result<(), CheckpointError> {
+    /// minus the excluded caches, the configured exclusions, and the
+    /// quarantined `excluded` paths. Idempotent; `commit` stages again
+    /// without harm.
+    async fn stage(&self, site: &Site, excluded: &[String]) -> Result<(), CheckpointError> {
         let mut add = vec![
             "add".to_string(),
             "-A".to_string(),
@@ -488,17 +512,22 @@ impl RunWorkspaces {
                 .iter()
                 .map(|glob| format!(":(glob,exclude){glob}")),
         );
+        add.extend(
+            excluded
+                .iter()
+                .map(|path| format!(":(literal,exclude){path}")),
+        );
         self.git(site, "add", &add).await?;
         Ok(())
     }
 
     /// The files a commit would snapshot right now: the staged set against
     /// the current head (the empty tree for a workspace with no commits
-    /// yet), after [`Self::stage`]. This is what the stage-envelope guard
-    /// judges (fabro-aa5f): a path here is a path the checkpoint is about
-    /// to make durable.
+    /// yet), after staging. This is what the stage-envelope guard judges
+    /// (fabro-aa5f): a path here is a path the checkpoint is about to make
+    /// durable — or, since ADR-0051, to quarantine.
     pub async fn staged_paths(&self, site: &Site) -> Result<Vec<String>, CheckpointError> {
-        self.stage(site).await?;
+        self.stage(site, &[]).await?;
         let base = self
             .head(site)
             .await?
@@ -1430,6 +1459,7 @@ mod tests {
                 key,
                 "build",
                 "success",
+                &[],
             )
             .await
             .expect("the commit");
@@ -1446,6 +1476,7 @@ mod tests {
                 key,
                 "build",
                 "success",
+                &[],
             )
             .await
             .expect("the second commit");
@@ -1565,6 +1596,7 @@ mod tests {
                 key,
                 "build",
                 "success",
+                &[],
             )
             .await
             .expect_err("the commit fails");
@@ -1625,6 +1657,7 @@ mod tests {
                 first_key,
                 "start",
                 "success",
+                &[],
             )
             .await
             .expect("the first commit");
@@ -1649,6 +1682,7 @@ mod tests {
                 second_key,
                 "write",
                 "success",
+                &[],
             )
             .await
             .expect("the second commit");

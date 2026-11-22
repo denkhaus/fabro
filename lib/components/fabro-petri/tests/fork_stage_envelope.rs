@@ -1,9 +1,13 @@
 //! Stage envelopes on Petri, end to end (fabro-aa5f, ADR-0009 rev):
 //! the `x.fs_write`/`x.fs_hide`/`x.preamble_*` values ride the run's
 //! `graph_source`, the create-time fork lints refuse invalid globs and
-//! warn about inconsistent ones, and the checkpoint guard ends a run
-//! whose staged files fall outside the node's `fs_write` scope before
-//! anything is committed.
+//! warn about inconsistent ones, and the checkpoint guard QUARANTINES
+//! staged files that fall outside the node's `fs_write` scope (ADR-0051,
+//! work#1624 — superseding the run-fatal enforcement, fabro-aa5f): they
+//! are excluded from the commit, named in a `run.notice` on the stage's
+//! position, and the stage succeeds — the reviewer judges the named
+//! deferral. Nothing out of scope ever reaches the committed tree, and
+//! the files stay in the workspace.
 //!
 //! This file is a fork-only presence pin: upstream has no
 //! `fork_stage_envelope`, so a merge that drops the feature reds here
@@ -16,13 +20,14 @@
 #![expect(clippy::print_stderr, reason = "a skipped test says why on its stderr")]
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use fabro_checkpoint::author::GitAuthor;
 use fabro_petri::admission::AdmittedGraphs;
 use fabro_petri::blobs::Blobs;
 use fabro_petri::check::{self, Bundle, CheckError, CheckRequest, Launch};
-use fabro_petri::checkpoint::RunGitSettings;
+use fabro_petri::checkpoint::{RunGitSettings, RunWorkspaces};
 use fabro_petri::controls::RunControls;
 use fabro_petri::engine::{self, Execution, RunRequest, RunStatus};
 use fabro_petri::fork_stage_envelope::StageEnvelopes;
@@ -30,13 +35,22 @@ use fabro_petri::hooks::HooksSpec;
 use fabro_petri::platform_records::PlatformRecords;
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
+use fabro_store::PlatformRecord;
+use fabro_types::settings::run::RunCheckpointSettings;
 use fabro_types::{RunId, SandboxProviderKind};
-use petri_store::MemoryRunStore;
+use petri_execution::inspect;
+use petri_store::{Access, MemoryRunStore, RunKey, RunStore as _};
+use tokio::fs;
+use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 mod support;
 
 const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+
+/// The notice code the checkpoint quarantine names its deferrals under
+/// (ADR-0051): the `RunNoticeCode::StageEnvelopeQuarantined` wire form.
+const QUARANTINE_CODE: &str = "stage_envelope_quarantined";
 
 /// The host plugin check the scenario tests skip without: the same rule
 /// the hooks suite applies.
@@ -185,6 +199,7 @@ fn consistency_findings_warn_without_refusing() {
 struct Harness {
     run_id:  RunId,
     run_dir: PathBuf,
+    store:   Arc<MemoryRunStore>,
     records: Arc<MemoryPlatformRecords>,
     blobs:   Arc<MemoryBlobs>,
     _root:   tempfile::TempDir,
@@ -196,6 +211,7 @@ impl Harness {
         Self {
             run_id:  RunId::new(),
             run_dir: root.path().join("run"),
+            store:   Arc::new(MemoryRunStore::new()),
             records: Arc::new(MemoryPlatformRecords::new()),
             blobs:   Arc::new(MemoryBlobs::new()),
             _root:   root,
@@ -223,7 +239,7 @@ impl Harness {
                 graph:    admitted.graph,
                 children: admitted.children,
             }),
-            store: Arc::new(MemoryRunStore::new()),
+            store: Arc::clone(&self.store) as Arc<dyn petri_store::RunStore>,
             runtime: RuntimeSpec::default(),
             provider: SandboxProviderKind::LOCAL,
             cancel: CancellationToken::new(),
@@ -236,13 +252,81 @@ impl Harness {
         };
         engine::run(request).await.expect("the run executes")
     }
+
+    /// The one workspace the run's root scope used.
+    async fn workspace(&self) -> String {
+        let mut names = Vec::new();
+        let mut entries = fs::read_dir(self.run_dir.join("scopes"))
+            .await
+            .expect("the scopes directory exists");
+        while let Some(entry) = entries.next_entry().await.expect("an entry reads") {
+            names.push(entry.file_name().to_string_lossy().into_owned());
+        }
+        assert_eq!(names.len(), 1, "one workspace: {names:?}");
+        names.remove(0)
+    }
+
+    /// The run's workspaces, as the hooks reach them.
+    fn workspaces(&self) -> RunWorkspaces {
+        RunWorkspaces::new(
+            self.run_dir.clone(),
+            self.run_id.to_string(),
+            GitAuthor::default(),
+            &RunCheckpointSettings::default(),
+        )
+    }
+
+    /// Where `workspace` lives on this host.
+    fn workspace_path(&self, workspace: &str) -> PathBuf {
+        self.workspaces().workspace_path(workspace)
+    }
+
+    /// The sha of `node`'s own checkpoint commit: the tree the stage's
+    /// snapshot carries, as the node's envelope shaped it. A later
+    /// unrestricted stage may carry a quarantined file — the gate is the
+    /// committing node's scope — so the pin reads the enforcing node's
+    /// commit, not the branch head.
+    async fn checkpoint_sha_of(&self, node: &str) -> String {
+        let logs = self
+            .store
+            .open(&RunKey::new(self.run_id.to_string()), Access::Read)
+            .await
+            .expect("the run opens for reading");
+        let inspection = inspect::inspect_run(&*logs)
+            .await
+            .expect("the stored run inspects");
+        let history: Vec<(u64, String)> = inspection
+            .executions
+            .iter()
+            .filter_map(|execution| execution.engine.as_ref())
+            .flat_map(|engine| engine.history.iter())
+            .map(|record| (record.firing, record.node.to_string()))
+            .collect();
+        self.records
+            .records(&self.run_id)
+            .into_iter()
+            .filter_map(|stored| match stored.record {
+                PlatformRecord::Checkpoint(record) => Some(record),
+                _ => None,
+            })
+            .find(|record| {
+                history
+                    .iter()
+                    .any(|(firing, name)| *firing == record.firing && name == node)
+            })
+            .and_then(|record| record.git_commit_sha)
+            .unwrap_or_else(|| panic!("the {node} stage recorded a checkpoint naming its commit"))
+    }
 }
 
-/// A stage that writes outside its `x.fs_write` scope ends the run before
-/// the violating file is committed: the failure names the node and the
-/// path, under the `fs_policy_violation` class.
+/// A stage that writes outside its `x.fs_write` scope is QUARANTINED, not
+/// fatal (ADR-0051, work#1624 — supersedes the run-fatal envelope pin,
+/// fabro-aa5f): the run succeeds, the out-of-scope path is excluded from
+/// the committed tree while the in-scope work lands, the deferral is
+/// named in a `run.notice` on the stage's position, and the file stays
+/// in the workspace.
 #[tokio::test]
-async fn a_write_outside_fs_write_ends_the_run_uncommitted() {
+async fn a_write_outside_fs_write_is_quarantined_and_named_not_fatal() {
     if !host_plugin_ready() {
         return;
     }
@@ -252,13 +336,64 @@ async fn a_write_outside_fs_write_ends_the_run_uncommitted() {
          && echo escape > escape.txt\", x.fs_write=\"allowed/**\"]\n",
     );
     let outcome = harness.run(&workflow).await;
-    assert_eq!(outcome.status, RunStatus::Failed, "{outcome:?}");
-    let failure = outcome.failure.expect("the run failed with a reason");
-    assert!(
-        failure.contains("stage envelope violation in `work`"),
-        "{failure}"
+    assert_eq!(
+        outcome.status,
+        RunStatus::Success,
+        "a quarantined write does not fail the run: {outcome:?}"
     );
-    assert!(failure.contains("escape.txt"), "{failure}");
+    assert!(
+        outcome.failure.is_none(),
+        "the quarantine is not a run failure: {:?}",
+        outcome.failure
+    );
+
+    // The committed tree holds the in-scope work and nothing out of
+    // scope: the quarantining stage's own checkpoint commit. (A later
+    // unrestricted stage may carry a quarantined file — the gate is the
+    // committing node's scope, the file stays in the shared workspace —
+    // so the pin reads the enforcing node's commit, not the branch head.)
+    let workspace = harness.workspace().await;
+    let repository = harness.workspaces().snapshot_repository(&workspace);
+    let sha = harness.checkpoint_sha_of("work").await;
+    let tree = git(&repository, &["ls-tree", "-r", "--name-only", &sha]).await;
+    assert!(
+        tree.lines().any(|path| path == "allowed/a.txt"),
+        "the in-scope work is committed: {tree}"
+    );
+    assert!(
+        !tree.lines().any(|path| path == "escape.txt"),
+        "the out-of-scope path is not committed: {tree}"
+    );
+
+    // The deferral is named on the stage's outcome: the quarantine
+    // notice carries the node and the path.
+    let notice = harness
+        .records
+        .records(&harness.run_id)
+        .into_iter()
+        .find_map(|stored| match stored.record {
+            PlatformRecord::RunNotice(record) => (record.code == QUARANTINE_CODE).then_some(record),
+            _ => None,
+        })
+        .expect("the quarantine is named in a run notice");
+    assert!(
+        notice.message.contains("work"),
+        "the node is named: {notice:?}"
+    );
+    assert!(
+        notice.message.contains("escape.txt"),
+        "the path is named: {notice:?}"
+    );
+
+    // The file stays in the workspace: the sandbox is disposable, the
+    // quarantine never deletes.
+    assert!(
+        harness
+            .workspace_path(&workspace)
+            .join("escape.txt")
+            .is_file(),
+        "the quarantined file stays in the workspace"
+    );
 }
 
 /// A stage that stays inside its scope commits normally: the envelope
@@ -286,4 +421,20 @@ fn no_questions() -> (
     let interviewer = support::no_questions(Arc::new(support::Silent));
     let observers = vec![interviewer.observer()];
     (Arc::new(interviewer), observers)
+}
+
+/// `git` in a repository, its stdout.
+async fn git(path: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(path)
+        .output()
+        .await
+        .expect("git runs");
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
