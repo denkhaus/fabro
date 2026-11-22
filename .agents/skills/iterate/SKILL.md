@@ -403,6 +403,12 @@ reality.
   is canonical, `.agents/skills/rust-style-guide/` its synced mirror —
   after any edit run `just sync-style-guide`. Loop runs never write
   `.agents/**`.
+- A strand/defect verdict reconciles against the run's TOOL history
+  (`events --json`, the mark/observation records) before it files — the
+  agent's prose journal is a claim, the tool calls are the evidence
+  (the #1615 class: a healthy pipeline read as stranded from the pass's
+  own rewritten journal; the fix cost a false report, a needless label,
+  and an archaeology hour).
 - VCS is PLAIN GIT: named-file staging,
   commit -F, ff-only pulls, pushes only behind the gate; never merge
   origin/main (upstream intake frozen, ADR-0024). SUBAGENT WORKTREE

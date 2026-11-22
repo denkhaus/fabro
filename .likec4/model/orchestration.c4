@@ -97,6 +97,20 @@ model {
           '''
         }
 
+        reconcile = stage "Reconcile (the sweep's truth record)" {
+          description '''
+            The LLM-free stage after the review pass (work#1615): the
+            fast path records the packet list as a machine-head
+            observation, and this stage classifies every packet run
+            from the queue doors — enabled, parked, refused, holes —
+            and records the disposition as one authoritative
+            observation. The agent pass's prose journal cannot
+            overwrite it; a pending packet routes the soft exit and the
+            next pass re-enters (gap-safe).
+          '''
+          link ../../.fabro/workflows/adjudicator/scripts/reconcile.nu
+        }
+
         radius-watch = stage "Closure-radius watch" {
           description '''
             Watches the closure radius: the open work items linked to
