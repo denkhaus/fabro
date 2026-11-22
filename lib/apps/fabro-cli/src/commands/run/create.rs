@@ -152,7 +152,7 @@ pub(crate) async fn create_run(
             args: prepared.intent_args,
             environment_id: args.environment.clone(),
             parent_id,
-            title: None,
+            title: args.title.clone(),
             goal: prepared.goal,
             force: args.force.then_some(true),
         })

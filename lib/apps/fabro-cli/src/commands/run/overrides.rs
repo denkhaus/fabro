@@ -168,6 +168,7 @@ mod tests {
             target:               ServerTargetArgs::default(),
             inputs:               InputOverrideArgs::default(),
             workflow:             Some(PathBuf::from("workflow.fabro")),
+            title:                None,
             workflow_repo:        None,
             workflow_ref:         None,
             target_from:          None,
