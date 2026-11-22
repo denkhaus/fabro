@@ -47,6 +47,15 @@
 #      prompt carries the title-retry discipline and the
 #      release-before-failed-exit rule — a failed planner never strands
 #      its claim.
+#   10. The pull reviewer (work#1624, ADR-0051): the reviewer's
+#      x.fabro_tools names fabro_run_diffs (the discovery door the pull
+#      protocol drives) and keeps fabro_blob (patch paging); the graph
+#      carries NO x.fs_hide anywhere (the read hide is retired — reads
+#      are free, the checkpoint quarantine owns delivery) while the
+#      reviewer's write side stays the empty fs_write capability
+#      denial; the reviewer prompt names the pull doors and no longer
+#      re-teaches the read-only recital (ADR-0051 deletion contract —
+#      the graph attributes are the mechanical owner).
 
 const GRAPH = ('.fabro/workflows/develop/workflow.fabro' | path expand)
 
@@ -76,17 +85,48 @@ def main [] {
         fail 'planner x.fabro_tools missing fabro_work_next — the atomic claim grant (ADR-0032) must live on the planner node'
     }
 
-    # 8. #1303: the reviewer's evidence door — the prompt COMMANDS
-    # fabro_blob for blob-demoted captures; without the grant the
-    # reviewer hunts files the engine never materializes and dies at
-    # the all-error-round limit (run 01M7BAS8MN0FWAWCHXE73K1Z5R).
+    # 8. #1303: the reviewer's patch-paging door — patch content arrives
+    # as blob refs and fabro_blob pages it back; without the grant the
+    # reviewer dies at the all-error-round limit
+    # (run 01M7BAS8MN0FWAWCHXE73K1Z5R).
+    # 8b. work#1624 / ADR-0051: the pull-model discovery door — the
+    # evidence stage emits metadata only, so the reviewer ENUMERATES the
+    # run's checkpoint diffs itself through fabro_run_diffs. The engine
+    # tool lands on the parallel branch; fabro-43cf logs a
+    # catalog-missing name as a warning until then, never a refusal —
+    # the assets lead, the binary follows in the same deploy window.
     let r_start = ($lines | enumerate | where {|e| ($e.item | str trim) == 'reviewer ['} | get -o index | first | default null)
     if $r_start == null { fail 'reviewer node not found' }
     let r_end = ($lines | enumerate | where {|e| $e.index > $r_start and ($e.item | str trim) == ']'} | get -o index | first | default null)
     if $r_end == null { fail 'reviewer node block not terminated' }
     let r_block = ($lines | skip ($r_start + 1) | take ($r_end - $r_start - 1))
     if not ($r_block | any {|l| ($l | str contains 'fabro_blob')}) {
-        fail 'reviewer x.fabro_tools missing fabro_blob (#1303) — blob-demoted evidence is unreadable and every large review dies'
+        fail 'reviewer x.fabro_tools missing fabro_blob (#1303) — patch content arrives as blob refs and fabro_blob pages it; without the grant every large review dies'
+    }
+    if not ($r_block | any {|l| ($l | str contains 'fabro_run_diffs')}) {
+        fail 'reviewer x.fabro_tools missing fabro_run_diffs (work#1624, ADR-0051) — the pull model enumerates checkpoint diffs through it; without the grant the reviewer cannot pull'
+    }
+    # 10b. the reviewer's write side stays a capability denial
+    # (fabro-1dae): an empty fs_write denies every file-tool write.
+    # Reads free, writes none (ADR-0051).
+    if not ($r_block | any {|l| ($l | str trim | str trim -r -c ',') == 'x.fs_write=""'}) {
+        fail 'reviewer x.fs_write="" lost — the empty write envelope is the mechanical owner of the write denial (fabro-1dae; ADR-0051 keeps it)'
+    }
+    # 10c. the reviewer prompt carries the pull protocol and has dropped
+    # the read-only recital (ADR-0051 deletion contract: a prompt rule
+    # that re-teaches a mechanical enforcement is deleted with the
+    # mechanism — the graph attributes above are the owner).
+    let REVIEWER_PROMPT = ('.fabro/workflows/develop/prompts/reviewer.md' | path expand)
+    if not ($REVIEWER_PROMPT | path exists) { fail 'reviewer prompt not found' }
+    let rev_text = (open --raw $REVIEWER_PROMPT)
+    if not ($rev_text | str contains 'fabro_run_diffs') {
+        fail 'reviewer prompt lost the pull door — the protocol must name fabro_run_diffs (work#1624, ADR-0051)'
+    }
+    if not ($rev_text | str contains 'fabro_blob') {
+        fail 'reviewer prompt lost the patch-paging door — the protocol must name fabro_blob (work#1624, ADR-0051)'
+    }
+    if ($rev_text | str contains 'BY ENGINE ENFORCEMENT') {
+        fail 'reviewer prompt re-teaches the read-only recital (ADR-0051 deletion contract) — the x.tools/x.fs_write graph attributes are the mechanical owner'
     }
 
     # 2. report-only preflight never exits the run
@@ -97,6 +137,13 @@ def main [] {
     # 3. retired nodes stay retired (comment-STRIPPED lines only — the
     # rationale comments name them by design)
     let code = ($lines | each {|l| ($l | split row '//' | first)})
+    # 10a. ADR-0051 read-hide retirement: NO develop node hides reads.
+    # The read-hide friction and the shell-bypass teaching die with the
+    # attribute; the checkpoint quarantine owns the delivery side.
+    # (Pinned over $code — comment lines name the history.)
+    if ($code | any {|l| ($l | str contains 'x.fs_hide')}) {
+        fail 'x.fs_hide survived in the develop graph (ADR-0051): the read hide is retired — reads are free; the checkpoint quarantine owns delivery'
+    }
     for node in ["tracker_guard" "claim_check" "gatebounce"] {
         if ($code | any {|l| ($l | str contains $node)}) {
             fail $"retired node ($node) reappeared in code — ADR-0032 phase 3 regression: its arms belong to the planner tools / post-claim preflight"
@@ -268,5 +315,5 @@ def main [] {
         fail 'planner prompt names no release tool — the release-before-failed-exit rule is unexecutable without fabro_work_release'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim'
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim, the pull reviewer grants fabro_run_diffs+fabro_blob with no fs_hide anywhere and the write denial intact (work#1624, ADR-0051)'
 }

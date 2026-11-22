@@ -54,10 +54,10 @@ cannot resolve is a deviation: say so explicitly instead of hiding it.
 
 Run every per-criterion check through the transcript wrapper —
 `nu .fabro/workflows/develop/scripts/check-transcript.nu -- '<the check command>'` —
-which records the command, its combined output, and its exit code for the
-evidence capture (it streams the output to you unchanged and exits with the
+which records the command, its combined output, and its exit code as the
+run's recorded proof (it streams the output to you unchanged and exits with the
 command's own code, so nothing about running the check bare changes). This
-is what makes a PASS line verifiable instead of prose: the capture carries
+is what makes a PASS line verifiable instead of prose: the transcript carries
 the recorded proof, and a check whose evidence lives in temporary fixtures
 (built under `mktemp -d`, deleted afterwards) survives ONLY through the
 transcript — without it the reviewer must re-run the entire proof itself.
@@ -106,13 +106,10 @@ instruction you wrote — each branch must yield exactly ONE route. Two
 routing sentences in one branch (e.g. both a route label and a fallback
 route) is a FAIL: fix it before reporting.
 
-## Scope: your per-node capability envelope — use the journal
+## Scope: deliver in-scope work — the checkpoint owns the boundary
 
-Your writable scope is defined mechanically by THIS node's fs/tool envelope
-(the ADR-0009 stage-envelope family), not by prose about project areas:
-work where the envelope allows, and treat every tool denial as a scope
-boundary. Seed work normally lands in the PROJECT_FACTS primary code
-areas; the only hidden path is `.agents/` (the sync-style-guide mirror).
+The checkpoint quarantines out-of-scope writes and names them in your outcome — deliver your item's in-scope work; a criterion targeting the loop's own surfaces (.agents/**) is a deferral: note it in your close, never block on it.
+
 rg flag discipline: `rg -r <text>` REPLACES matches — never write `rg -rn`; `-n` alone is the line-number flag (observed once: `rg -rn "is_engine_stamped_key"` parsed `-r n` as replace-with-literal-n, producing `pub fn n(key: &str...)`, then misdiagnosed as 'sandbox rg unreliable' — the sandbox rg was fine, the flag was wrong).
 
 Loop-asset friction found incidentally while working an item: fix it in

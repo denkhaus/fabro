@@ -14,9 +14,10 @@
 # candidates with flagged anchors for planner adjudication instead of
 # acting on the flags themselves.
 #
-# Path resolution is relative to the CURRENT worktree root (passed in by
-# the caller); loop-asset paths under `.fabro/` etc. are readable here
-# because fs_hide binds file TOOLS, not shell/script reads.
+# Path resolution is relative to the CURRENT worktree root (passed in
+# by the caller); loop-asset paths under `.fabro/` etc. are readable
+# here — fs_hide bound file TOOLS, never shell/script reads, and
+# ADR-0051 retired the read hide entirely.
 
 # Collapse whitespace so quoted claims match across line wrapping.
 export def norm-ws [s: string] {

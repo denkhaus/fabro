@@ -1,16 +1,23 @@
 #!/usr/bin/env nu
-# Smoke test for evidence.nu's PURE helpers (fabro-bfe1): sanitize,
-# resolve-blobrefs, diff-sort-key, is-loop-path, total, stat-map-section
-# — exercised over
-# canned fixtures without git (helpers that shell out — numstat-rows,
-# run-base, worktree-state, claimed-seed — are out of scope here;
-# their logic is covered by the parse check in scripts/qualitygate.nu
-# and manual invocation; ONE exception, fabro-41fa: diff-walk/
-# capped-diff-walk are each pinned once against an invalid base ref —
-# a single read-only bad-object git diff — to prove a failed diff
-# surfaces as a capture ERROR, not an omitted file). The `source` const resolves against THIS
-# file's directory, so the script runs from any cwd (closeout-smoke
-# pattern):
+# Smoke test for evidence.nu's PURE helpers (fabro-bfe1), reshaped for
+# the METADATA stage (work#1624, ADR-0051): sanitize, diff-sort-key,
+# is-loop-path, total, the section printers (stat map, classification,
+# anomaly list, worktree, integrity) — exercised over canned fixtures
+# without git (helpers that shell out — numstat-rows, run-base,
+# worktree-state, claimed-item — are out of scope here; their logic is
+# covered by the channel-resolve arms at the bottom and manual
+# invocation).
+#
+# ADR-0051 deletion contract: the capture machinery is DELETED from
+# evidence.nu (the git-diff text walks, the inline budgets
+# HARD_CAP/EMIT_BUDGET/CHURN_DIFF_LINE_CAP, the blob-ref inlining, the
+# inline spec/checks sections, the truncation disclosures). The pins
+# below ASSERT the absence: the source must not carry the deleted
+# names, and no metadata record may render diff text — the reviewer
+# pulls patches via fabro_run_diffs/fabro_blob instead.
+#
+# The `source` const resolves against THIS file's directory, so the
+# script runs from any cwd (closeout-smoke pattern):
 #   nu .fabro/workflows/develop/scripts/evidence-smoke.nu
 
 const EVIDENCE = "evidence.nu"
@@ -25,6 +32,51 @@ def fail [what: string]: nothing -> nothing {
     print -e $"evidence-smoke: FAIL — ($what)"
     exit 1
 }
+
+# ---------------------------------------------------------------------------
+# ADR-0051 absence pins: the deleted capture machinery must not return.
+# ---------------------------------------------------------------------------
+
+let ev_src = (open --raw ($SCRIPTS_DIR | path join 'evidence.nu'))
+# Code-only scan: nu comments are `#` lines; the header comment NAMES the
+# deleted machinery as documentation (ADR-0051's deletion contract wants
+# the audit trail), so the pins assert absence from CODE, not prose.
+let ev_code = ($ev_src | lines | where {|l| not (($l | str trim) | str starts-with '#') } | str join "\n")
+# The inline budgets and their friends (the capture-era size machinery).
+for gone in ["HARD_CAP" "EMIT_BUDGET" "CHURN_DIFF_LINE_CAP" "hard cap hit"] {
+    if ($ev_code | str contains $gone) {
+        fail $"evidence.nu must not carry deleted inline budget machinery: ($gone) — ADR-0051 deletion contract, the reviewer pulls and the stage emits metadata only"
+    }
+}
+# The git-diff text walks and their disclosures.
+for gone in ["diff-walk" "capped-diff-walk" "cap-changed-lines" "walk-failure-note" "zero-hunk-note" "truncated:" "UNSEEN"] {
+    if ($ev_code | str contains $gone) {
+        fail $"evidence.nu must not carry deleted diff-capture machinery: ($gone) — ADR-0051 deletion contract, no diff text rides the metadata"
+    }
+}
+# The blob-ref inlining and the inline spec/checks sections: blob refs
+# pass through to the reviewer's pull doors untouched, and the proof of
+# record is the check transcript, not an inlined capture section.
+for gone in ["resolve-blobrefs" "blob://sha256" "spec-section" "checks-section" "checks-transcript-path"] {
+    if ($ev_code | str contains $gone) {
+        fail $"evidence.nu must not carry deleted inline-section machinery: ($gone) — ADR-0051 deletion contract, the reviewer pulls diffs and reads the item itself"
+    }
+}
+# Sourced-scope assertion: the deleted commands are really gone (not
+# merely renamed in a comment).
+if (which resolve-blobrefs | is-not-empty) {
+    fail "resolve-blobrefs must not exist in the sourced evidence.nu scope (ADR-0051)"
+}
+if (which diff-walk | is-not-empty) {
+    fail "diff-walk must not exist in the sourced evidence.nu scope (ADR-0051)"
+}
+if (which cap-changed-lines | is-not-empty) {
+    fail "cap-changed-lines must not exist in the sourced evidence.nu scope (ADR-0051)"
+}
+
+# ---------------------------------------------------------------------------
+# kept pure helpers — the metadata shape
+# ---------------------------------------------------------------------------
 
 # sanitize: bare "/word" tokens get backticked (agent skill-reference
 # crash guard); uppercase-led tokens and token-free text pass through.
@@ -43,32 +95,8 @@ if (sanitize "no tokens here") != "no tokens here" {
     fail "sanitize token-free text must be unchanged"
 }
 
-# resolve-blobrefs: no refs -> unchanged; resolvable ref (blob file
-# materialized in cwd's .fabro/blobs/) -> inlined verbatim; unresolvable
-# ref -> passes through as the link, never dropped.
-if (resolve-blobrefs "plain text no refs") != "plain text no refs" {
-    fail "resolve-blobrefs no-refs text must be unchanged"
-}
-let repo_root = $env.PWD
-let tmp = (mktemp -d)
-let sha = "1111111111111111111111111111111111111111111111111111111111111111"
-mkdir $"($tmp)/.fabro/blobs"
-"BLOB-CONTENT-HERE" | save --force $"($tmp)/.fabro/blobs/($sha).json"
-cd $tmp
-let inlined = (resolve-blobrefs $"pre blob://sha256/($sha) post")
-cd $repo_root
-rm -rf $tmp
-if $inlined != "pre BLOB-CONTENT-HERE post" {
-    fail $"resolve-blobrefs resolvable ref must inline: ($inlined)"
-}
-let missing = "2222222222222222222222222222222222222222222222222222222222222222"
-let passthrough = (resolve-blobrefs $"see blob://sha256/($missing) end")
-if $passthrough != $"see blob://sha256/($missing) end" {
-    fail $"resolve-blobrefs unresolvable ref must pass through: ($passthrough)"
-}
-
 # diff-sort-key: source files sort before docs (a:/z: prefixes) — the
-# reviewer sees the complete source diff first.
+# reviewer pulls the source patches first.
 if (diff-sort-key "lib/main.rs") != "a:lib/main.rs" {
     let source_key = (diff-sort-key 'lib/main.rs')
     fail $"diff-sort-key source prefix: ($source_key)"
@@ -103,14 +131,23 @@ if (total $fixture "add") != 13 { fail $"total add, binary as 0: (total $fixture
 if (total $fixture "del") != 8  { fail $"total del: (total $fixture 'del')" }
 if (total [] "add") != 0 { fail "total empty must be 0" }
 
-# stat-map-section (fabro-b798): top-of-capture completeness map —
-# seed rows first tagged `seed`, churn rows tagged `churn`, one
-# +adds/-dels line per file; empty input renders the none note.
+# ---------------------------------------------------------------------------
+# the metadata section printers (work#1624, ADR-0051 shape)
+# ---------------------------------------------------------------------------
+
+# stat-map-section: the completeness checklist and pull list — seed
+# rows first tagged `seed`, churn rows tagged `churn`, one
+# +adds/-dels line per file; empty input renders the none note; the
+# header carries the PULL contract (every listed file must be pulled
+# and adjudicated).
 let map_seed = [{add: "10" del: "2" path: "lib/a.rs"}]
 let map_churn = [{add: "1" del: "1" path: "justfile"}]
 let map = (stat-map-section $map_seed $map_churn)
 if not ($map | str contains "stat map: every changed file since run base") {
     fail "stat-map-section must carry the contract header"
+}
+if not ($map | str contains "must be pulled and adjudicated") {
+    fail "stat-map-section must carry the pull contract (work#1624, ADR-0051)"
 }
 if not ($map | str contains "seed  +10/-2 lib/a.rs") {
     fail $"stat-map-section seed line: ($map)"
@@ -125,33 +162,153 @@ if not ((stat-map-section [] []) | str contains "(no changed files since run bas
     fail "stat-map-section empty input must render the none note"
 }
 
-# checks-transcript-path: pure builder — run id lands in the file name
-# under the shared transcript dir (check-transcript.nu writes it).
-if (checks-transcript-path "abc123") != "/tmp/fabro-check-transcript/abc123.md" {
-    let transcript = (checks-transcript-path 'abc123')
-    fail $"checks-transcript-path: ($transcript)"
+# integrity-section: the header names both bases mechanically and the
+# counts line carries the seed/churn totals plus the worktree label.
+let integ = (integrity-section "abc1234" "denkhaus/work#1: T" "abc1234 (run base)" $map_seed $map_churn "clean")
+if not ($integ | str contains "evidence: base=abc1234 seed=denkhaus/work#1: T diff-base=abc1234 (run base)") {
+    fail $"integrity-section must carry the header line: ($integ)"
+}
+if not ($integ | str contains "integrity: seed-work=1 files +10/-2 | loop-churn=1 files +1/-1 | worktree=clean") {
+    fail $"integrity-section must carry the counts line: ($integ)"
 }
 
-# checks-section: absent file -> "" (no noise for runs without checks);
-# present transcript -> section head + sanitized body; bare /word tokens
-# in the body get backticked like every other emitted text.
-if (checks-section "/tmp/fabro-check-transcript/definitely-missing.md") != "" {
-    fail "checks-section missing file must be empty"
+# seed-work-files-section: the classification's review-scope list —
+# source files before docs, one numstat line each, NO diff text.
+let files_sec = (seed-work-files-section [
+    {add: "1" del: "1" path: "docs/b.md"}
+    {add: "10" del: "2" path: "lib/a.rs"}
+])
+if not ($files_sec | str contains "seed work: changed files (review scope — pull each file's patch)") {
+    fail $"seed-work-files-section must carry the pull-scope header: ($files_sec)"
 }
-let tmp2 = (mktemp -d)
-let tpath = $"($tmp2)/checks.md"
-"$ just lint-nu\nall green\n-> exit 0\n\nrun in /tmp dir\n-> exit 0" | save --force $tpath
-let sec = (checks-section $tpath)
-rm -rf $tmp2
-if not ($sec | str contains "recorded checks: per-criterion transcript") {
-    fail "checks-section must carry the contract header"
+let files_lines = ($files_sec | lines | where {|l| $l | str contains "+"})
+if (($files_lines | get 0) | str contains "lib/a.rs") == false {
+    fail $"seed-work-files-section must list source before docs: ($files_sec)"
 }
-if not ($sec | str contains "just lint-nu") {
-    fail "checks-section must inline the transcript body"
+if ($files_sec | str contains "diff --git") {
+    fail "seed-work-files-section must render NO diff text (ADR-0051 — the reviewer pulls)"
 }
-if not ($sec | str contains "`/tmp` dir") {
-    fail $"checks-section must sanitize bare /word tokens: ($sec)"
+if not ((seed-work-files-section []) | str contains "(none — no project source changed since run base)") {
+    fail "seed-work-files-section empty input must render the none note"
 }
+
+# loop-churn-section: counts only, never seed work.
+let churn_sec = (loop-churn-section [{add: "1" del: "1" path: "justfile"}])
+if not ($churn_sec | str contains "loop churn (dev-loop machinery") {
+    fail $"loop-churn-section must carry its header: ($churn_sec)"
+}
+if not ($churn_sec | str contains "justfile +1/-1") {
+    fail $"loop-churn-section must list the numstat line: ($churn_sec)"
+}
+if not ((loop-churn-section []) | str contains "(none)") {
+    fail "loop-churn-section empty input must render the none note"
+}
+
+# anomaly-section: NUMSTAT ONLY (work#1624, ADR-0051) — the reviewer
+# adjudicates every listed file by pulling its patch, never from
+# capture text; empty churn renders the no-anomaly note.
+let anom = (anomaly-section [{add: "3" del: "4" path: "scripts/x.nu"}])
+if not ($anom | str contains "anomaly: changed files NOT named by the seed spec") {
+    fail $"anomaly-section must carry its header: ($anom)"
+}
+if not ($anom | str contains "adjudicate EVERY listed file") {
+    fail $"anomaly-section must carry the adjudication contract: ($anom)"
+}
+if not ($anom | str contains "scripts/x.nu +3/-4") {
+    fail $"anomaly-section must list the numstat line: ($anom)"
+}
+if ($anom | str contains "diff --git") {
+    fail "anomaly-section must render NO diff text (ADR-0051 — the reviewer pulls)"
+}
+if not ((anomaly-section []) | str contains "(no anomaly files against the run base — loop files changed before the base only)") {
+    fail "anomaly-section empty input must render the no-anomaly note"
+}
+
+# worktree-section: untracked-file visibility, sanitized.
+let wt_sec = (worktree-section ["?? /tmp dir/thing"])
+if not ($wt_sec | str contains "working tree") {
+    fail $"worktree-section must carry its header: ($wt_sec)"
+}
+if not ($wt_sec | str contains "NO checkpoint diff") {
+    fail $"worktree-section must teach the untracked contract: ($wt_sec)"
+}
+if not ($wt_sec | str contains "?? `/tmp` dir/thing") {
+    fail $"worktree-section must sanitize bare /word tokens: ($wt_sec)"
+}
+if not ((worktree-section []) | str contains "(clean)") {
+    fail "worktree-section empty input must render clean"
+}
+
+# spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
+# null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
+# are extracted from the description (sentence punctuation stripped);
+# glob tokens name their subtree; bare root files match as words.
+if (spec-named-paths null) != [] { fail "spec-named-paths null seed must be []" }
+if (spec-named-paths {description: ""}) != [] { fail "spec-named-paths empty description must be []" }
+let d76c_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix; also touch .fabro/workflows/** graphs and the justfile, see docs/internal/x.md. Not paths: fabro-70b5, run 01M2K8TECWAHRR79PQ63V2C0ZP, PR #109."}
+let d76c_paths = (spec-named-paths $d76c_seed)
+if ".fabro/workflows/develop/prompts/implementer.md" not-in $d76c_paths {
+    fail $"spec-named-paths must extract the named prompt file: ($d76c_paths)"
+}
+if "justfile" not-in $d76c_paths { fail $"spec-named-paths must catch bare root justfile: ($d76c_paths)" }
+if "docs/internal/x.md" not-in $d76c_paths { fail $"spec-named-paths must strip trailing sentence dot: ($d76c_paths)" }
+# Glob token promotes its subtree, exact token matches exactly, a bare
+# directory token never promotes children, unrelated paths stay out.
+if not (spec-names-path $d76c_paths ".fabro/workflows/develop/prompts/implementer.md") {
+    fail "spec-names-path exact token must match"
+}
+if not (spec-names-path $d76c_paths ".fabro/workflows/loop/scripts/loop-gate.nu") {
+    fail "spec-names-path glob token (.fabro/workflows/**) must promote subtree"
+}
+if (spec-names-path [] "lib/main.rs") { fail "spec-names-path empty set must never match" }
+if (spec-names-path [".fabro/workflows"] ".fabro/workflows/loop/scripts/x.nu") {
+    fail "spec-names-path bare directory token must not promote children"
+}
+if (spec-names-path ["docs/a.md"] "docs/b.md") { fail "spec-names-path sibling must not match" }
+
+# classify-rows (fabro-d76c, the original incident reproduced): a product
+# run whose seed spec names a loop-path prompt file must classify that
+# file as seed work, not anomaly churn; unnamed loop paths stay churn in
+# product and flip to seed work in loop; product code stays seed work in
+# product and churn (anomaly) in loop unless the spec names it.
+let incident_rows = [
+    {add: "3" del: "1" path: "lib/apps/fabro-cli/src/main.rs"}
+    {add: "5" del: "2" path: ".fabro/workflows/develop/prompts/implementer.md"}
+    {add: "1" del: "1" path: ".fabro/workflows/develop/workflow.fabro"}
+]
+# Incident seed body: names the prompt file ONLY (no glob) — workflow.fabro
+# stays unnamed and must remain anomaly churn in the product lane.
+let incident_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix. Basis: run evidence review."}
+let incident_spec = (spec-named-paths $incident_seed)
+let prod = (classify-rows $incident_rows "product" $incident_spec)
+let prod_seed = ($prod.seed | get path)
+let prod_churn = ($prod.churn | get path)
+if "lib/apps/fabro-cli/src/main.rs" not-in $prod_seed { fail $"product seed work must carry product code: ($prod_seed)" }
+if ".fabro/workflows/develop/prompts/implementer.md" not-in $prod_seed {
+    fail $"fabro-d76c: spec-named loop path must be seed work in product lane: ($prod_seed)"
+}
+if ".fabro/workflows/develop/prompts/implementer.md" in $prod_churn {
+    fail $"fabro-d76c: spec-named loop path must NOT be anomaly churn: ($prod_churn)"
+}
+if ".fabro/workflows/develop/workflow.fabro" not-in $prod_churn {
+    fail $"unnamed loop path must stay churn in product lane: ($prod_churn)"
+}
+let lp = (classify-rows $incident_rows "loop" [])
+if ".fabro/workflows/develop/workflow.fabro" not-in ($lp.seed | get path) {
+    fail $"loop lane: loop assets must be seed work even unnamed: ($lp.seed)"
+}
+if "lib/apps/fabro-cli/src/main.rs" not-in ($lp.churn | get path) {
+    fail $"loop lane: unnamed product code must be anomaly churn: ($lp.churn)"
+}
+let lp_named = (classify-rows $incident_rows "loop" ["lib/apps/fabro-cli/src/main.rs"])
+if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
+    fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
+}
+
+# ---------------------------------------------------------------------------
+# check-transcript.nu wrapper pins (the recording half — unchanged by
+# work#1624: the transcript stays the run's recorded proof)
+# ---------------------------------------------------------------------------
 
 # Negative-path pin (the wrapper records the guarded command's OWN exit
 # code): run check-transcript.nu as a subprocess with an isolated
@@ -313,170 +470,14 @@ if ($rr_other.stdout | str contains "[re-run") {
     fail $"re-run pin: a distinct command must never be stamped: ($rr_other.stdout)"
 }
 
-# spec-named-paths / spec-token-names / spec-names-path (fabro-d76c):
-# null/empty seed -> [] (fail-open, pre-d76c split); path-shaped tokens
-# are extracted from the description (sentence punctuation stripped);
-# glob tokens name their subtree; bare root files match as words.
-if (spec-named-paths null) != [] { fail "spec-named-paths null seed must be []" }
-if (spec-named-paths {description: ""}) != [] { fail "spec-named-paths empty description must be []" }
-let d76c_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix; also touch .fabro/workflows/** graphs and the justfile, see docs/internal/x.md. Not paths: fabro-70b5, run 01M2K8TECWAHRR79PQ63V2C0ZP, PR #109."}
-let d76c_paths = (spec-named-paths $d76c_seed)
-if ".fabro/workflows/develop/prompts/implementer.md" not-in $d76c_paths {
-    fail $"spec-named-paths must extract the named prompt file: ($d76c_paths)"
-}
-if "justfile" not-in $d76c_paths { fail $"spec-named-paths must catch bare root justfile: ($d76c_paths)" }
-if "docs/internal/x.md" not-in $d76c_paths { fail $"spec-named-paths must strip trailing sentence dot: ($d76c_paths)" }
-# Glob token promotes its subtree, exact token matches exactly, a bare
-# directory token never promotes children, unrelated paths stay out.
-if not (spec-names-path $d76c_paths ".fabro/workflows/develop/prompts/implementer.md") {
-    fail "spec-names-path exact token must match"
-}
-if not (spec-names-path $d76c_paths ".fabro/workflows/loop/scripts/loop-gate.nu") {
-    fail "spec-names-path glob token (.fabro/workflows/**) must promote subtree"
-}
-if (spec-names-path [] "lib/main.rs") { fail "spec-names-path empty set must never match" }
-if (spec-names-path [".fabro/workflows"] ".fabro/workflows/loop/scripts/x.nu") {
-    fail "spec-names-path bare directory token must not promote children"
-}
-if (spec-names-path ["docs/a.md"] "docs/b.md") { fail "spec-names-path sibling must not match" }
-
-# classify-rows (fabro-d76c, the original incident reproduced): a product
-# run whose seed spec names a loop-path prompt file must classify that
-# file as seed work, not anomaly churn; unnamed loop paths stay churn in
-# product and flip to seed work in loop; product code stays seed work in
-# product and churn (anomaly) in loop unless the spec names it.
-let incident_rows = [
-    {add: "3" del: "1" path: "lib/apps/fabro-cli/src/main.rs"}
-    {add: "5" del: "2" path: ".fabro/workflows/develop/prompts/implementer.md"}
-    {add: "1" del: "1" path: ".fabro/workflows/develop/workflow.fabro"}
-]
-# Incident seed body: names the prompt file ONLY (no glob) — workflow.fabro
-# stays unnamed and must remain anomaly churn in the product lane.
-let incident_seed = {description: "Part (a): edit .fabro/workflows/develop/prompts/implementer.md as the fix. Basis: run evidence review."}
-let incident_spec = (spec-named-paths $incident_seed)
-let prod = (classify-rows $incident_rows "product" $incident_spec)
-let prod_seed = ($prod.seed | get path)
-let prod_churn = ($prod.churn | get path)
-if "lib/apps/fabro-cli/src/main.rs" not-in $prod_seed { fail $"product seed work must carry product code: ($prod_seed)" }
-if ".fabro/workflows/develop/prompts/implementer.md" not-in $prod_seed {
-    fail $"fabro-d76c: spec-named loop path must be seed work in product lane: ($prod_seed)"
-}
-if ".fabro/workflows/develop/prompts/implementer.md" in $prod_churn {
-    fail $"fabro-d76c: spec-named loop path must NOT be anomaly churn: ($prod_churn)"
-}
-if ".fabro/workflows/develop/workflow.fabro" not-in $prod_churn {
-    fail $"unnamed loop path must stay churn in product lane: ($prod_churn)"
-}
-let lp = (classify-rows $incident_rows "loop" [])
-if ".fabro/workflows/develop/workflow.fabro" not-in ($lp.seed | get path) {
-    fail $"loop lane: loop assets must be seed work even unnamed: ($lp.seed)"
-}
-if "lib/apps/fabro-cli/src/main.rs" not-in ($lp.churn | get path) {
-    fail $"loop lane: unnamed product code must be anomaly churn: ($lp.churn)"
-}
-let lp_named = (classify-rows $incident_rows "loop" ["lib/apps/fabro-cli/src/main.rs"])
-if "lib/apps/fabro-cli/src/main.rs" not-in ($lp_named.seed | get path) {
-    fail $"loop lane: spec-named product path must be seed work: ($lp_named.seed)"
-}
-
-# cap-changed-lines (fabro-020b): a diff within the cap passes through
-# unchanged (cut 0); past the cap, exactly the first `cap` changed lines
-# are kept, the tail is dropped, and the disclosure counts the cut;
-# ---/+++ file headers and @@ hunk headers never count as changed lines.
-let cap_fixture = "diff --git a/x b/x\nindex 1..2 100644\n--- a/x\n+++ b/x\n@@ -1,3 +1,3 @@\n ctx\n-old1\n+new1\n@@ -5,2 +5,2 @@\n ctx2\n-old2\n+new2"
-let cap_under = (cap-changed-lines $cap_fixture 4)
-if $cap_under.cut != 0 { fail $"cap-changed-lines within cap must cut 0: ($cap_under.cut)" }
-if $cap_under.body != $cap_fixture { fail "cap-changed-lines within cap must pass through unchanged" }
-let cap_over = (cap-changed-lines $cap_fixture 3)
-if $cap_over.cut != 1 { fail $"cap-changed-lines past cap must count the cut: ($cap_over.cut)" }
-if not ($cap_over.body | str contains "truncated: 1 further changed lines not shown") {
-    fail $"cap-changed-lines must disclose the cut count: ($cap_over.body)"
-}
-if ($cap_over.body | str contains "+new2") {
-    fail "cap-changed-lines must drop the changed lines past the cap"
-}
-if not ($cap_over.body | str contains "+new1") {
-    fail "cap-changed-lines must keep the changed lines within the cap"
-}
-if not ($cap_over.body | str contains "@@ -5,2 +5,2 @@") {
-    fail "cap-changed-lines must keep hunk headers inside the kept region"
-}
-if (cap-changed-lines $cap_fixture 0).cut != 4 {
-    fail "cap-changed-lines cap 0 must count every changed line as cut"
-}
-
-# walk-failure-note + first-stderr-line (fabro-41fa): a non-zero git diff
-# exit on a LISTED file must surface as a capture ERROR naming the file
-# and exit code — never as an omitted/UNSEEN file. Pure note-building
-# pinned here; the walk-level contract (failed NOT in omitted) is pinned
-# end-to-end against an invalid base ref below.
-if (walk-failure-note []) != null {
-    fail "walk-failure-note with no failures must return null"
-}
-let wfn_rec = {path: "a/b.toml", exit: 128, err: "fatal: bad object"}
-let wfn = (walk-failure-note [$wfn_rec])
-if ($wfn | is-empty) or ($wfn | str contains "UNSEEN") {
-    fail $"walk-failure-note must render an ERROR note without UNSEEN phrasing: ($wfn)"
-}
-if not ($wfn | str contains "a/b.toml (code 128)") {
-    fail $"walk-failure-note must name the file and exit code: ($wfn)"
-}
-if not ($wfn | str contains "capture ERROR") {
-    fail $"walk-failure-note must carry the capture-ERROR phrasing: ($wfn)"
-}
-if not ($wfn | str contains "NOT reviewed") {
-    fail $"walk-failure-note must say the failed files are not reviewed: ($wfn)"
-}
-if (first-stderr-line "fatal: bad object\nwarning: x\n") != "fatal: bad object" {
-    fail "first-stderr-line must return the first non-empty stderr line"
-}
-if (first-stderr-line "\n\n") != "" {
-    fail "first-stderr-line on blank stderr must be empty"
-}
-# End-to-end walk pin: an invalid base ref makes git diff exit 128 for
-# every listed file — the failed files must land in `failed` (with a
-# body ERROR note) and NOT in `omitted`.
-let bad_walk = (diff-walk "41fa-no-such-ref" ["justfile"])
-if ($bad_walk.failed | length) != 1 {
-    fail $"diff-walk on failed git diff must record the failure: ($bad_walk.failed)"
-}
-if ($bad_walk.omitted | length) != 0 {
-    fail $"diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_walk.omitted)"
-}
-if not ($bad_walk.body | str contains "capture ERROR, file NOT reviewed") {
-    fail $"diff-walk body must carry the per-file capture-ERROR note: ($bad_walk.body)"
-}
-# fabro-e042: the walk returns the zero-hunk list, and failed diffs
-# count as failed — never as empty-hunk files.
-if (($bad_walk | get -o empty | default null) == null) {
-    fail "diff-walk must return the empty (zero-hunk) list"
-}
-if ($bad_walk.empty | length) != 0 {
-    fail $"diff-walk failed-diff file must NOT be reported zero-hunk: ($bad_walk.empty)"
-}
-# fabro-e042: the section's disclosure note names zero-hunk files so a
-# listed file with no body never reads as a cap hit.
-if (zero-hunk-note []) != "" {
-    fail "zero-hunk-note with no files must render nothing"
-}
-let zh = (zero-hunk-note [".seeds/issues.jsonl"])
-if not (($zh | str contains "zero per-seed hunks") and ($zh | str contains ".seeds/issues.jsonl")) {
-    fail $"zero-hunk-note must name the file: ($zh)"
-}
-let bad_capped = (capped-diff-walk "41fa-no-such-ref" [{path: "justfile", add: 1, del: 1}])
-if ($bad_capped.failed | length) != 1 {
-    fail $"capped-diff-walk on failed git diff must record the failure: ($bad_capped.failed)"
-}
-if ($bad_capped.omitted | length) != 0 {
-    fail $"capped-diff-walk failed-diff file must NOT be reported omitted/UNSEEN: ($bad_capped.omitted)"
-}
-
+# ---------------------------------------------------------------------------
 # Direct work-item mode through the channel shim (denkhaus/work#990):
-# the capture's integrity check is the pin — the CHANNEL resolves the
-# item (show) and THIS run's live claim must name it (claims). A temp
-# git repo shaped like a run plus a shim state file make every arm
-# deterministic; nothing here may ever touch a real server. Positive
-# AND negative arms, per the edited-script dry-run rule.
+# the metadata stage's claim-integrity check is the pin — the CHANNEL
+# resolves the item (show) and THIS run's live claim must name it
+# (claims). A temp git repo shaped like a run plus a shim state file
+# make every arm deterministic; nothing here may ever touch a real
+# server. Positive AND negative arms, per the edited-script dry-run rule.
+# ---------------------------------------------------------------------------
 const RUN_ID = "01SMOKE0000000000000000000"
 const SHIM = ($SCRIPTS_DIR | path join '..' '..' '..' 'scripts' 'fabro-work-shim.nu')
 let orig_cwd = (pwd)
@@ -490,8 +491,9 @@ try {
     git add base.txt
     git commit -qm "initial"
 
-    # (a) Positive: the run holds a live claim on the item -> the capture's
-    # header names the CHANNEL-resolved key and title.
+    # (a) Positive: the run holds a live claim on the item -> the
+    # metadata header names the CHANNEL-resolved key and title, and the
+    # output carries NO diff text (ADR-0051: metadata only).
     let ok_state = ($erepo | path join 'ok-state.json')
     {items: [{itemKey: "denkhaus/work#1", title: "Channel resolved title", body: "Edit lib/a.rs", state: "open", labels: []}],
      claims: [{claimId: "c1", itemKey: "denkhaus/work#1", runId: $RUN_ID, lane: "", state: "granted"}],
@@ -502,6 +504,12 @@ try {
     }
     if not ($ev_ok.stdout | str contains "seed=denkhaus/work#1: Channel resolved title") {
         fail "evidence header must name the channel-resolved item key and title"
+    }
+    if not ($ev_ok.stdout | str contains "stat map: every changed file since run base") {
+        fail "evidence output must carry the stat map record"
+    }
+    if ($ev_ok.stdout | str contains "diff --git") {
+        fail "evidence output must carry NO diff text (work#1624, ADR-0051 — the reviewer pulls via fabro_run_diffs)"
     }
 
     # (b) Foreign claim: another run holds the item -> hard-fail.
@@ -557,7 +565,7 @@ try {
     rm -rf $erepo
 }
 
-print "evidence-smoke: ok — sanitize/resolve-blobrefs/diff-sort-key/is-loop-path/spec-named-paths/classify-rows/total/cap-changed-lines/checks-section/negative-path-transcript-pin/fail-open-fallback-pin/quoting-hint-pin/nested-shell-refusal-pin/walk-failure-note/zero-hunk-note/channel-resolve-and-claim-integrity verified"
+print "evidence-smoke: ok — absence-pins (budgets/diff-walks/blob-inlining/inline-sections deleted, ADR-0051)/sanitize/diff-sort-key/is-loop-path/total/stat-map/integrity/seed-work-files/loop-churn/anomaly-list/worktree/spec-named-paths/classify-rows/wrapper-pins/channel-resolve-and-claim-integrity verified"
 
 # Sourcing evidence.nu imports its `def main`; nu auto-invokes it after
 # the top level runs — exit explicitly so the smoke never reaches it.

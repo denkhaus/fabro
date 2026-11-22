@@ -140,10 +140,9 @@ adjudicated: the run, the verdict, and the reason in a sentence.
   it for routing, verify with reads when the verdict hinges on it.
 - A parked run that reappears in a later pass: read the work item's
   comments first — the operator's answer may resolve the fork.
-- You never edit files, never run the gate, never merge, never file
-  painpoint follow-ups (the triager's jurisdiction, ADR-0044 — the
-  tranche-demand item is the one exception). Verdicts, the routed
-  filing, notes: the platform doors are your only writes.
+- You never file painpoint follow-ups (the triager's jurisdiction,
+  ADR-0044 — the tranche-demand item is the one exception). Verdicts,
+  the routed filing, notes: the platform doors are your only writes.
 - When genuinely uncertain between enabled and refused, ask what the
   radius would demand: open follow-ups that must exist but do not tilt
   toward refused; a clean radius with explainable painpoints tilts
