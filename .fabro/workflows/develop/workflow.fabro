@@ -164,10 +164,12 @@ digraph Develop {
         x.context_consume_keys="review_verdict,review_feedback,implementation_summary",
         // ADR-0032 phase 3: the tracker left the fs envelope entirely —
         // the claim is the fabro_work_next tool grant (engine-mediated,
-        // server-side mutex). ADR-0051: the read hide is retired —
-        // reads are free, and the checkpoint quarantine owns the
-        // delivery side (out-of-scope paths are named deferrals in the
-        // stage outcome, never a run kill).
+        // server-side mutex). ADR-0051: fs_hide is the DELIVERY
+        // exclusion, not a run kill — the checkpoint quarantines these
+        // paths from the commit and names them as deferrals in the
+        // stage outcome. The loop's bookkeeping surface is the
+        // session's/retro's to deliver, never the line's.
+        x.fs_hide=".agents/**",
         // fabro-900e (envelope write side): the planner's context_updates
         // contract is stable — declare it so the preamble_allow_keys lint
         // (fabro-e47c) can prove producers, and drift (an undocumented new
@@ -288,10 +290,13 @@ digraph Develop {
         x.preamble_allow_keys="current_seed_id,current_seed_title,current_seed_brief,review_feedback,output.preflight",
         // fabro-1dae + ADR-0051: fs_write stays UNSET (an explicit list
         // would pin writes to the list alone and deny the PRODUCT
-        // writes — the implementer's whole job). NO fs_hide: the read
-        // hide is retired (ADR-0051 — reads are free); the checkpoint
-        // quarantine owns the delivery side and names out-of-scope
-        // paths in the stage outcome.
+        // writes — the implementer's whole job). fs_hide is the
+        // DELIVERY exclusion, not a run kill (ADR-0051): the checkpoint
+        // quarantines these paths from the commit and names them as
+        // deferrals in the stage outcome. The loop's bookkeeping
+        // surface is the session's/retro's to deliver, never the
+        // line's; reads go through the documented shell bypass.
+        x.fs_hide=".agents/**",
                 // fabro-900e: stable context_updates contract (see planner).
         // lesson_capture (run 01M1EGK6J8): the
         // implementer prompt REQUIRES the mx-id-or-skip answer as data —
