@@ -315,6 +315,13 @@ digraph Develop {
         label="Quality Gate",
         shape=parallelogram,
         script="just qualitygate",
+        // The delivery exclusion (ADR-0051, narrowed fs_hide): the
+        // gate's checkpoint commits the worktree state — without the
+        // exclusion it would carry a file a prior stage quarantined
+        // (the gate is the committing node's scope). The .agents
+        // surface is the session's/retro's to deliver, never the
+        // line's.
+        x.fs_hide=".agents/**",
         // 20m: the touched-crates gate
         // measures ~15m worst-case COLD in the run container (build 8m46s
         // + clippy + nextest at 8 CPU; scripts/gate-measure-8cpu.log).
@@ -342,6 +349,11 @@ digraph Develop {
     evidence [
         label="Evidence",
         shape=parallelogram,
+        // The delivery exclusion (ADR-0051, narrowed fs_hide): the
+        // metadata checkpoint commits the worktree state — a file a
+        // prior stage quarantined must not ride it.
+        x.fs_hide=".agents/**",
+        // ADR-0032 phase 3, fork 7: stdin is the granted-item packet
         // ADR-0032 phase 3, fork 7: stdin is the granted-item packet
         // (current_item_json, planner-forwarded from its tool result) —
         // the metadata stage resolves the item and diff base for
@@ -499,6 +511,10 @@ digraph Develop {
     reporter [
         label="Reporter",
         shape=parallelogram,
+        // The delivery exclusion (ADR-0051, narrowed fs_hide): the
+        // facts checkpoint commits the worktree state — a file a prior
+        // stage quarantined must not ride it.
+        x.fs_hide=".agents/**",
         script="nu .fabro/workflows/develop/scripts/reporter.nu --work-item",
         stdin_source="current_item_json",
         timeout="3m",
