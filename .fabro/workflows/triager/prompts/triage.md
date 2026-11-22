@@ -81,8 +81,8 @@ sentence.
 - When torn between filing and no_filing, ask what the line would lose:
   a defect a gear could fix later files; an explanation the journal
   already keeps does not.
-- You never edit files, never run gates, never verdict, never merge,
-  never close. The platform doors are your only writes.
+- You never verdict, never merge, never close. The platform doors are
+  your only writes.
 
 ## Observations — every pass
 

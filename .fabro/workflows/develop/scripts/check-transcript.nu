@@ -7,18 +7,20 @@
 # forced the reviewer to re-derive every criterion with tools). The
 # wrapper records the command, its combined output, and its exit code
 # (stamped with the recorder via --by) into a run-scoped transcript
-# file that evidence.nu inlines as a `recorded checks` capture section.
+# file: the run's recorded proof (work#1624, ADR-0051 — the evidence
+# stage emits metadata only and the former inline `recorded checks`
+# section is deleted; the transcript itself stays the durable proof).
 # Motivation (fabro-d89a): an implementer's temp-fixture negative-path
 # proof (fixtures built under `mktemp -d`, deleted afterwards) used to
 # die with the fixtures, so the reviewer re-ran the entire proof
-# itself; the transcript keeps the proof alive inside the capture.
+# itself; the transcript keeps the proof alive inside the run sandbox.
 #
 # The transcript lives under /tmp, keyed by run id (parsed from the run
-# branch `fabro/run/<id>` — the same parse evidence.nu performs, so both
-# halves agree with zero wiring): OUTSIDE the worktree, so no
+# branch `fabro/run/<id>` — the same parse every lane script performs,
+# so all halves agree with zero wiring): OUTSIDE the worktree, so no
 # checkpoint, no diff, no run-scope machinery ever sees it, while the
-# same run sandbox's later evidence capture reads it back. Non-run
-# branches degrade to the id "local" so manual invocations work.
+# same run sandbox's later passes read it back. Non-run branches
+# degrade to the id "local" so manual invocations work.
 #
 # Usage (implementer):
 #   nu .fabro/workflows/develop/scripts/check-transcript.nu -- '<check command>'
@@ -41,9 +43,9 @@
 # immediately after the command, so the recorded `-> exit N` line can
 # never be the exit of a later command in this shell invocation (a
 # hand-rolled `$?` echo in the check command expands at the OUTER shell
-# and once recorded a green code for a failing guard). Keep the
-# transcript dir constant in sync with evidence.nu's checks-section
-# (shared script, two entry points — one file each side).
+# and once recorded a green code for a failing guard). The transcript
+# dir is this file's own constant — the deleted evidence-side twin
+# (checks-transcript-path) left with the capture (work#1624).
 
 # The run-id parse lives in the shared run-anchor module
 # (.fabro/scripts/lib/run_anchor.nu, denkhaus/work#1108) — the same
@@ -51,8 +53,9 @@
 use ../../../scripts/lib/run_anchor.nu
 
 # Shared transcript dir. The env override exists so the transcript
-# battery can isolate its pins; production never sets it. Mirror any
-# change in evidence.nu's checks-transcript-path — change both together.
+# battery can isolate its pins; production never sets it. This file is
+# the single source for the path (work#1624: the evidence-side mirror
+# is gone with the capture).
 def transcript-dir []: nothing -> string {
     $env.FABRO_CHECK_TRANSCRIPT_DIR? | default "/tmp/fabro-check-transcript"
 }
