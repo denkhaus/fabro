@@ -15,7 +15,8 @@ fn completed() -> RunStatus {
 
 /// The rule: a plain Completed success with a recorded failure is refused —
 /// the observed shape of every catch-all-green pass (status=success WITH
-/// failure recorded, fabro-b00c instances 1-7).
+/// failure recorded, fabro-b00c instances 1-7). The examples are
+/// recorded FAILURES: a real leg failure, and a failed checkpoint commit.
 #[test]
 fn a_recorded_failure_refuses_a_completed_green() {
     assert!(refuses_green_conclusion(
@@ -24,8 +25,22 @@ fn a_recorded_failure_refuses_a_completed_green() {
     ));
     assert!(refuses_green_conclusion(
         &completed(),
-        Some("stage envelope violation in `implementer`")
+        Some("the checkpoint of `implementer` failed: git commit exited non-zero")
     ));
+}
+
+/// ADR-0051 (work#1624): the checkpoint quarantine is NOT a recorded
+/// failure, and this guard has no envelope business anymore. A stage
+/// whose out-of-scope writes were excluded from its commit SUCCEEDS; the
+/// deferral rides a `run.notice` the reviewer judges, never the failure
+/// slot — nothing writes quarantine text into the recorded failure, so
+/// the guard can only ever see `None` for a quarantined-but-green run.
+/// (Supersedes the envelope-violation example this file carried while
+/// the violation was run-fatal; the behavioral pin lives in
+/// `tests/fork_stage_envelope.rs`.)
+#[test]
+fn a_quarantined_stage_records_no_failure_the_guard_could_refuse() {
+    assert!(!refuses_green_conclusion(&completed(), None));
 }
 
 /// A clean success with no recorded failure stays green.

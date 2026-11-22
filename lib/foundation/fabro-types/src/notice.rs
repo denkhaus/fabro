@@ -48,6 +48,7 @@ pub enum RunNoticeCode {
     SandboxCleanupFailed,
     SandboxGitUnavailable,
     SandboxPreserved,
+    StageEnvelopeQuarantined,
     WorktreeSkippedNoGit,
 }
 

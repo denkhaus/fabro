@@ -33,6 +33,7 @@ use fabro_petri::providers::{DaytonaCredentials, SandboxProviderConfig};
 use fabro_petri::recovery::{self, Recovery, RecoveryRequest};
 use fabro_petri::runtime::RuntimeSpec;
 use fabro_petri::test_support::{MemoryBlobs, MemoryPlatformRecords};
+use fabro_store::platform_records::RunNoticeRecord;
 use fabro_store::{PlatformRecord, PlatformRecordKind};
 use fabro_types::settings::run::{GitAuthorSettings, RunCheckpointSettings, RunNamespace};
 use fabro_types::{GitIdentitySource, RunId, SandboxProviderKind};
@@ -54,6 +55,12 @@ fn workflow(stages: &str, edges: &str) -> String {
 }
 
 const SETTINGS: &str = "_version = 1\n\n[workflow]\ngraph = \"workflow.fabro\"\n";
+
+/// The notice code the checkpoint quarantine names its deferrals under
+/// (ADR-0051): the `RunNoticeCode::StageEnvelopeQuarantined` wire form,
+/// spelled literally so the pins compile against a tree that predates
+/// the variant.
+const QUARANTINE_CODE: &str = "stage_envelope_quarantined";
 
 /// The host plugin as Petri's lookup finds it: the override variable, else
 /// the executable on `PATH`. `None`, after saying so, when the test should
@@ -656,11 +663,14 @@ async fn a_hook_write_root_exempts_the_journal_from_a_deny_all_stage() {
     assert!(outcome.complete, "{:?}", outcome.incomplete);
 }
 
-/// The exemption is narrow: a stage that also stages a file of its own
-/// outside the hook root still violates its deny-all envelope, and the
-/// run names the path. Hook wiring never widens `x.fs_write`.
+/// The exemption stays narrow (fabro-b6c5): hook wiring never widens
+/// `x.fs_write`. A path outside it is QUARANTINED, not fatal (ADR-0051,
+/// work#1624 — supersedes the run-fatal envelope pin): the deny-all stage
+/// commits only its exempt journal traffic, `leak.txt` is excluded from
+/// the committed tree and named in a `run.notice`, and the stage
+/// succeeds.
 #[tokio::test]
-async fn a_non_journal_staged_path_still_violates_a_deny_all_stage() {
+async fn a_non_journal_staged_path_is_quarantined_out_of_a_deny_all_stage() {
     if host_plugin().is_none() {
         return;
     }
@@ -668,35 +678,111 @@ async fn a_non_journal_staged_path_still_violates_a_deny_all_stage() {
     harness.envelopes = Some(Arc::new(StageEnvelopes::parse(&journal_workflow(true))));
     harness.hook_write_roots = vec![".fabro/journal".to_string()];
     let outcome = harness.run(&journal_workflow(true), SETTINGS).await;
-    assert_ne!(outcome.status, RunStatus::Success, "{outcome:?}");
-    let failure = outcome.failure.as_deref().unwrap_or("no failure recorded");
+    assert_eq!(
+        outcome.status,
+        RunStatus::Success,
+        "a quarantined write does not fail the run: {outcome:?}"
+    );
+
+    let notice = quarantine_notice(&harness).expect("the quarantine is named in a run notice");
     assert!(
-        failure.contains("stage envelope violation"),
-        "the failure names the envelope violation: {failure}"
+        notice.message.contains("leak.txt"),
+        "the leaking path is named: {notice:?}"
+    );
+
+    // The committed tree holds the exempt journal traffic and nothing
+    // out of scope: the quarantining stage's own checkpoint commit. (A
+    // later unrestricted stage may carry a quarantined file — the gate is
+    // the committing node's scope — so the pin reads the planner's commit,
+    // not the branch head.)
+    let nodes = checkpoint_nodes(&harness).await;
+    let planner_firing = nodes
+        .iter()
+        .find(|(node, _)| node == "planner")
+        .map(|(_, firing)| *firing)
+        .expect("the planner stage checkpointed");
+    let sha = harness
+        .checkpoints()
+        .into_iter()
+        .find(|(key, _)| key.firing == planner_firing)
+        .map(|(_, sha)| sha)
+        .expect("the planner stage recorded a checkpoint naming its commit");
+    let workspace = harness.workspace().await;
+    let repository = harness.workspaces().snapshot_repository(&workspace);
+    let tree = git(&repository, &["ls-tree", "-r", "--name-only", &sha]).await;
+    assert!(
+        tree.lines().any(|path| path == ".fabro/journal/j.jsonl"),
+        "the exempt journal traffic commits: {tree}"
     );
     assert!(
-        failure.contains("leak.txt"),
-        "the failure names the leaking path: {failure}"
+        !tree.lines().any(|path| path == "leak.txt"),
+        "the out-of-scope path is not committed: {tree}"
     );
 }
 
-/// Without the hook roots the same journal-only stage violates: the
-/// exemption comes from the declared hook wiring, never from a global
-/// bypass.
+/// Without the hook roots the journal itself is out of scope: it is
+/// QUARANTINED — excluded from the committed tree and named in a
+/// `run.notice` — and the stage still succeeds (ADR-0051, work#1624 —
+/// supersedes the run-fatal envelope pin). The exemption decides what
+/// lands on the committed tree, never whether the run lives.
 #[tokio::test]
-async fn without_hook_write_roots_the_journal_violates_a_deny_all_stage() {
+async fn without_hook_write_roots_the_journal_is_quarantined_out_of_a_deny_all_stage() {
     if host_plugin().is_none() {
         return;
     }
     let mut harness = Harness::new();
     harness.envelopes = Some(Arc::new(StageEnvelopes::parse(&journal_workflow(false))));
     let outcome = harness.run(&journal_workflow(false), SETTINGS).await;
-    assert_ne!(outcome.status, RunStatus::Success, "{outcome:?}");
-    let failure = outcome.failure.as_deref().unwrap_or("no failure recorded");
-    assert!(
-        failure.contains("stage envelope violation"),
-        "the failure names the envelope violation: {failure}"
+    assert_eq!(
+        outcome.status,
+        RunStatus::Success,
+        "a quarantined write does not fail the run: {outcome:?}"
     );
+
+    let notice = quarantine_notice(&harness).expect("the quarantine is named in a run notice");
+    assert!(
+        notice.message.contains(".fabro/journal/j.jsonl"),
+        "the quarantined path is named: {notice:?}"
+    );
+
+    // The quarantining stage's own checkpoint commit carries no
+    // out-of-scope path (see the note on the leak test above: a later
+    // unrestricted stage may carry the file — the gate is the committing
+    // node's scope).
+    let nodes = checkpoint_nodes(&harness).await;
+    let planner_firing = nodes
+        .iter()
+        .find(|(node, _)| node == "planner")
+        .map(|(_, firing)| *firing)
+        .expect("the planner stage checkpointed");
+    let sha = harness
+        .checkpoints()
+        .into_iter()
+        .find(|(key, _)| key.firing == planner_firing)
+        .map(|(_, sha)| sha)
+        .expect("the planner stage recorded a checkpoint naming its commit");
+    let workspace = harness.workspace().await;
+    let repository = harness.workspaces().snapshot_repository(&workspace);
+    let tree = git(&repository, &["ls-tree", "-r", "--name-only", &sha]).await;
+    assert!(
+        !tree.lines().any(|path| path == ".fabro/journal/j.jsonl"),
+        "the out-of-scope journal file is not committed: {tree}"
+    );
+}
+
+/// The run's quarantine notice, when the checkpoint named a deferral
+/// (ADR-0051). The code is the `RunNoticeCode::StageEnvelopeQuarantined`
+/// wire form; spelled literally so the pin compiles against a tree that
+/// predates the variant.
+fn quarantine_notice(harness: &Harness) -> Option<RunNoticeRecord> {
+    harness
+        .records
+        .records(&harness.run_id)
+        .into_iter()
+        .find_map(|stored| match stored.record {
+            PlatformRecord::RunNotice(record) if record.code == QUARANTINE_CODE => Some(record),
+            _ => None,
+        })
 }
 
 /// The deny-all fixture of the journal tests: `prep` commits the tree,
