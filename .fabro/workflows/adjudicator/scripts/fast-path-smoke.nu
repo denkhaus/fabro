@@ -134,6 +134,20 @@ if ($refused | length) != 1 or $refused.0.runId != "01TRIVIALNOPR000000000000000
     fail $"the trivial no-pull-request run must be the only refused mark: ($merge_marks | to json -r)"
 }
 
+# work#1615: the packet-list contract — the sweep records ONE
+# packets-emitted note (the reconcile stage's worklist) and only when
+# packets exist.
+let emitted = ((open --raw $state | from json | get -o observations | default [])
+    | where {|o| $o.runId == $ADJUDICATOR_RUN and $o.category == "note"}
+    | where {|o| $o.text =~ '^fact=packets-emitted runs='})
+let expected_packets = ($adjudication.packets | get run_id | str join ',')
+if ($emitted | length) != 1 {
+    fail $"exactly one packets-emitted note expected: ($emitted | to json -r)"
+}
+if $emitted.0.text != $"fact=packets-emitted runs=($expected_packets)" {
+    fail $"the note must name the packet runs verbatim: ($emitted.0.text)"
+}
+
 # work#1072: the human_needed run parks DIRECTLY, LLM-free — the exit
 # itself means a human decision pends. It carries a pull request and an
 # empty radius: neither the PR split nor any fact read may run — the
