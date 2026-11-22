@@ -43,6 +43,10 @@
 #      fabro_work_next (the atomic claim), the reporter node names
 #      fabro_work_close, and the evidence node runs --work-item with the
 #      packet on stdin (fork 7 context flow).
+#   9. The failed-exit claim hygiene (denkhaus/work#1545): the planner
+#      prompt carries the title-retry discipline and the
+#      release-before-failed-exit rule — a failed planner never strands
+#      its claim.
 
 const GRAPH = ('.fabro/workflows/develop/workflow.fabro' | path expand)
 
@@ -243,5 +247,26 @@ def main [] {
         fail 'the tester deadlock fallback must stay UNCONDITIONAL — a condition on it would leave the third red and unroutable outcomes with no edge (work#1057)'
     }
 
-    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority'
+    # 9. the failed-exit claim hygiene (denkhaus/work#1545): a planner
+    # that claimed and then failed must not strand the claim. The
+    # prompt carries the two teachings the incident demanded — the
+    # title-retry discipline (a transient fabro_run_set_title failure is
+    # re-issued, never counted fatal on its own) and the
+    # release-before-failed-exit rule (a genuine planner error releases
+    # the claim through fabro_work_release BEFORE emitting the failed
+    # JSON; the cycle-guard Blocked route keeps its pin for the human).
+    let PLANNER_PROMPT = ('.fabro/workflows/develop/prompts/planner.md' | path expand)
+    if not ($PLANNER_PROMPT | path exists) { fail 'planner prompt not found' }
+    let prompt_text = (open --raw $PLANNER_PROMPT)
+    if not ($prompt_text | str contains 'TITLE-RETRY DISCIPLINE') {
+        fail 'planner prompt lost the title-retry discipline (denkhaus/work#1545): a transient set-title failure must be retried, never counted fatal alone — the incident sank a stage whose fourth attempt succeeded'
+    }
+    if not ($prompt_text | str contains 'RELEASE-BEFORE-FAILED-EXIT') {
+        fail 'planner prompt lost the release-before-failed-exit rule (denkhaus/work#1545): a genuine planner error must release the held claim before emitting the failed JSON, or the item strands behind a succeeded run'
+    }
+    if not ($prompt_text | str contains 'fabro_work_release') {
+        fail 'planner prompt names no release tool — the release-before-failed-exit rule is unexecutable without fabro_work_release'
+    }
+
+    print 'graph-contract-smoke: OK — planner ungated+tool-claiming, preflight report-only on the granted item, retired nodes absent, placement guard wired, the reporter records facts through the channel, no close authority, failed exits release their claim'
 }
