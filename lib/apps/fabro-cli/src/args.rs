@@ -297,6 +297,13 @@ pub(crate) struct RunArgs {
     #[arg(long, conflicts_with = "goal")]
     pub(crate) goal_file: Option<PathBuf>,
 
+    /// Explicit run title (normalized by the server; at most 100
+    /// characters). The default derives from the workflow name.
+    /// ADR-0051: an expectation prefix must be set at create — the
+    /// title is born right, never patched after the fact.
+    #[arg(long)]
+    pub(crate) title: Option<String>,
+
     /// Override default LLM model
     #[arg(long)]
     pub(crate) model: Option<String>,

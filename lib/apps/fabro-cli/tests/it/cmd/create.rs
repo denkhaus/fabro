@@ -94,6 +94,7 @@ fn help() {
           --force                         Fire although a required LLM provider has no stored credential or sits in a closed usage window; the readiness refusal becomes a warning (fabro-b46e, fabro-b869)
           --goal <GOAL>                   Override the workflow goal (available as {{ goal }} in prompts)
           --goal-file <GOAL_FILE>         Read a per-run goal value from a local file
+          --title <TITLE>                 Explicit run title (normalized by the server; at most 100 characters). The default derives from the workflow name. ADR-0051: an expectation prefix must be set at create — the title is born right, never patched after the fact
           --model <MODEL>                 Override default LLM model
           --provider <PROVIDER>           Override default LLM provider
       -v, --verbose                       Enable verbose output
