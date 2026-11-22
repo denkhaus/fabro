@@ -11,7 +11,7 @@ use fabro_automation::{
 };
 use fabro_types::{AutomationRef, Principal, RunId, SystemActorKind};
 use fabro_util::error as error_util;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 use tracing::{Instrument, error, info, info_span, warn};
 
 use super::{AppState, handler};
@@ -517,6 +517,168 @@ async fn check_automation_lag(
     alerts
 }
 
+/// Total bound for ONE scheduler tick evaluation (denkhaus/work#1510,
+/// the #1143 wedge class). Every incident of this class — fork.30
+/// (work#1143), fork.32, fork.44 (work#1510) — had the same shape: an
+/// await inside the tick body (a credential refresh, a provider probe,
+/// a store read) parked forever on a half-open connection or a stuck
+/// resource, the loop never reached its trailing select, and every
+/// automation fire-drifted together while the HTTP API kept serving.
+/// Bounding individual awaits raced the class (the bounded refresh of
+/// work#1143 did not stop the fork.32 recurrence); the tick itself is
+/// the boundary. A tick that exceeds the bound is dropped (its fires
+/// move on with the schedule, exactly like any other skipped slot) and
+/// the loop continues — the NEXT tick re-lists and re-arms, so an
+/// unpause's notify deterministically reaches a live select within one
+/// bound at the very latest. The bound comfortably exceeds the slowest
+/// legitimate tick (30s probes per distinct closed provider, shared
+/// across automations); anything slower is a hang, not a slow tick.
+const AUTOMATION_SCHEDULER_TICK_TIMEOUT: Duration = Duration::from_mins(10);
+
+/// Run one tick evaluation under [`AUTOMATION_SCHEDULER_TICK_TIMEOUT`].
+/// Returns `false` when the tick was dropped at the bound — the caller
+/// logs and loops on; the scheduler can no longer park forever.
+async fn bounded_scheduler_tick<F>(tick: F) -> bool
+where
+    F: std::future::Future<Output = ()>,
+{
+    bounded_scheduler_tick_with_bound(tick, AUTOMATION_SCHEDULER_TICK_TIMEOUT).await
+}
+
+/// The bound with an explicit deadline, so the regression pin can drive
+/// a hanging tick with a short bound instead of the production ten
+/// minutes (the `refresh_token_bounded` precedent).
+async fn bounded_scheduler_tick_with_bound<F>(tick: F, bound: Duration) -> bool
+where
+    F: std::future::Future<Output = ()>,
+{
+    timeout(bound, tick).await.is_ok()
+}
+
+/// One full scheduler pass: reload automations, run the breaker and
+/// provider-window gates, drain and spawn due fires, then the lag
+/// watchdog. Extracted from the loop so the loop can bound the WHOLE
+/// evaluation (work#1510): an unbounded await anywhere in here must
+/// cost one dropped tick, never the scheduler.
+async fn scheduler_tick(
+    state: &Arc<AppState>,
+    planner: &mut AutomationSchedulePlanner,
+    lag_watchdog: &mut AutomationLagWatchdog,
+) {
+    let automations = match state.automation_store().list().await {
+        Ok(automations) => automations,
+        Err(err) => {
+            // The loop's own error back-off (the trailing select) owns the
+            // retry cadence; a failed tick is simply dropped.
+            error!(error = ?err, "Failed to load automations for scheduler");
+            return;
+        }
+    };
+    let now = Utc::now();
+    // Circuit breaker first (fabro-3d97): a trigger that just tripped
+    // must not fire on this very tick, so reload when anything paused.
+    let automations =
+        if super::automation_breaker::update_automation_breakers(state.as_ref(), &automations, now)
+            .await
+        {
+            match state.automation_store().list().await {
+                Ok(automations) => automations,
+                Err(err) => {
+                    error!(error = ?err, "Failed to reload automations after breaker pause");
+                    Vec::new()
+                }
+            }
+        } else {
+            automations
+        };
+    // Fork seam (fabro-986b, user decision 2026-09-14): the
+    // provider window gate probes the LLM BEFORE any scheduled
+    // fire (one basic completion) — closed windows create no runs;
+    // closed lines poll on the fixed 10-minute cadence and fire
+    // on reopen. No prose-parsed backoff.
+    // Fork state (fabro-986b, shared since fabro-b869 step 4):
+    // the provider window gate lives on the AppState, so the
+    // run-create path and the scheduler feed the same probes.
+    // The tick locks the shared gate internally, in short sections,
+    // so a provider probe never blocks a concurrent create.
+    let tick =
+        super::fork_line_recovery::provider_gate_tick(Arc::clone(state), &automations, now).await;
+    // The gate lock is released above; the trigger read model is
+    // written here, in order, so a clear can never overtake a hold
+    // (fabro-b869 step 5b).
+    for write in &tick.fact_writes {
+        let Some(automation_id) = fabro_automation::AutomationId::new(&write.automation_id).ok()
+        else {
+            continue;
+        };
+        if let Err(err) = state
+            .automation_store()
+            .apply_schedule_provider_window(&automation_id, &write.trigger_id, write.facts.as_ref())
+            .await
+        {
+            warn!(
+                automation_id = %write.automation_id,
+                error = ?err,
+                "line gate: writing provider window facts failed"
+            );
+        }
+    }
+    let held = tick.held;
+    // work#1435: snapshot the overlap state BEFORE draining due
+    // triggers, so a due slot of a gear whose lap overruns it is
+    // held over (coalesced) by the planner instead of being
+    // silently eaten by the overlap guard after the cursor moved
+    // on. The snapshot is pre-tick: a run that starts between this
+    // read and the spawn is still caught by the in-fire guard.
+    let active = active_automation_runs(state.as_ref(), &automations).await;
+    for due in planner.tick(&automations, &active, now) {
+        if due.catch_up {
+            info!(
+                automation_id = %due.automation.id,
+                trigger_id = %due.trigger_id,
+                missed_slot = %due.due_at,
+                "Scheduled catch-up fire: the previous lap overran the slot (work#1435 holdover)"
+            );
+        }
+        if held.contains(due.automation.id.as_str()) {
+            // A withheld catch-up stays owed (work#1435): re-arm
+            // it so the first tick after the window reopens fires
+            // it once. Regular slots keep their own fabro-986b
+            // semantics (the boundary is past; the schedule moves
+            // on).
+            if due.catch_up {
+                planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
+            }
+            info!(
+                automation_id = %due.automation.id,
+                trigger_id = %due.trigger_id,
+                "Scheduled fire held: provider window closed (fabro-986b gate)"
+            );
+            continue;
+        }
+        if !super::fork_line_recovery::cron_fire_allowed(state.as_ref(), &due.automation, now).await
+        {
+            if due.catch_up {
+                planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
+            }
+            continue;
+        }
+        let state = Arc::clone(state);
+        let span = info_span!(
+            "automation_run",
+            automation_id = %due.automation.id,
+            trigger_id = %due.trigger_id,
+        );
+        tokio::spawn(
+            fire_scheduled_automation_run(state, due.automation, due.trigger_id, due.due_at)
+                .instrument(span),
+        );
+    }
+    // fabro-79d8 watchdog: after firing, turn a silent schedule
+    // stall into one WARN per episode (ingestible by log monitors).
+    check_automation_lag(state, lag_watchdog, &automations, now).await;
+}
+
 pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut planner = AutomationSchedulePlanner::default();
@@ -528,145 +690,27 @@ pub(crate) fn spawn_automation_scheduler(state: Arc<AppState>) {
                 break;
             }
 
-            let automations = match state.automation_store().list().await {
-                Ok(automations) => automations,
-                Err(err) => {
-                    error!(error = ?err, "Failed to load automations for scheduler");
-                    tokio::select! {
-                        () = shutdown.cancelled() => break,
-                        () = state.automation_scheduler_notified() => {},
-                        () = sleep(AUTOMATION_SCHEDULER_MAX_SLEEP) => {},
-                    }
-                    continue;
-                }
-            };
-            let now = Utc::now();
-            // Circuit breaker first (fabro-3d97): a trigger that just tripped
-            // must not fire on this very tick, so reload when anything paused.
-            let automations = if super::automation_breaker::update_automation_breakers(
-                state.as_ref(),
-                &automations,
-                now,
-            )
+            // work#1510: the WHOLE tick sits under one bound. A tick that
+            // hits the bound is dropped and logged — the loop continues,
+            // re-lists, and re-arms (an unpause's notify reaches the
+            // select within one bound at the latest). The scheduler can
+            // no longer park on any single unbounded await inside the
+            // evaluation.
+            if !Box::pin(bounded_scheduler_tick(scheduler_tick(
+                &state,
+                &mut planner,
+                &mut lag_watchdog,
+            )))
             .await
             {
-                match state.automation_store().list().await {
-                    Ok(automations) => automations,
-                    Err(err) => {
-                        error!(error = ?err, "Failed to reload automations after breaker pause");
-                        Vec::new()
-                    }
-                }
-            } else {
-                automations
-            };
-            // Fork seam (fabro-986b, user decision 2026-09-14): the
-            // provider window gate probes the LLM BEFORE any scheduled
-            // fire (one basic completion) — closed windows create no runs;
-            // closed lines poll on the fixed 10-minute cadence and fire
-            // on reopen. No prose-parsed backoff.
-            // Fork state (fabro-986b, shared since fabro-b869 step 4):
-            // the provider window gate lives on the AppState, so the
-            // run-create path and the scheduler feed the same probes.
-            // The tick locks the shared gate internally, in short sections,
-            // so a provider probe never blocks a concurrent create.
-            let tick = super::fork_line_recovery::provider_gate_tick(
-                Arc::clone(&state),
-                &automations,
-                now,
-            )
-            .await;
-            // The gate lock is released above; the trigger read model is
-            // written here, in order, so a clear can never overtake a hold
-            // (fabro-b869 step 5b).
-            for write in &tick.fact_writes {
-                let Some(automation_id) =
-                    fabro_automation::AutomationId::new(&write.automation_id).ok()
-                else {
-                    continue;
-                };
-                if let Err(err) = state
-                    .automation_store()
-                    .apply_schedule_provider_window(
-                        &automation_id,
-                        &write.trigger_id,
-                        write.facts.as_ref(),
-                    )
-                    .await
-                {
-                    warn!(
-                        automation_id = %write.automation_id,
-                        error = ?err,
-                        "line gate: writing provider window facts failed"
-                    );
-                }
-            }
-            let held = tick.held;
-            // work#1435: snapshot the overlap state BEFORE draining due
-            // triggers, so a due slot of a gear whose lap overruns it is
-            // held over (coalesced) by the planner instead of being
-            // silently eaten by the overlap guard after the cursor moved
-            // on. The snapshot is pre-tick: a run that starts between this
-            // read and the spawn is still caught by the in-fire guard.
-            let active = active_automation_runs(state.as_ref(), &automations).await;
-            for due in planner.tick(&automations, &active, now) {
-                if due.catch_up {
-                    info!(
-                        automation_id = %due.automation.id,
-                        trigger_id = %due.trigger_id,
-                        missed_slot = %due.due_at,
-                        "Scheduled catch-up fire: the previous lap overran the slot (work#1435 holdover)"
-                    );
-                }
-                if held.contains(due.automation.id.as_str()) {
-                    // A withheld catch-up stays owed (work#1435): re-arm
-                    // it so the first tick after the window reopens fires
-                    // it once. Regular slots keep their own fabro-986b
-                    // semantics (the boundary is past; the schedule moves
-                    // on).
-                    if due.catch_up {
-                        planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
-                    }
-                    info!(
-                        automation_id = %due.automation.id,
-                        trigger_id = %due.trigger_id,
-                        "Scheduled fire held: provider window closed (fabro-986b gate)"
-                    );
-                    continue;
-                }
-                if !super::fork_line_recovery::cron_fire_allowed(
-                    state.as_ref(),
-                    &due.automation,
-                    now,
-                )
-                .await
-                {
-                    if due.catch_up {
-                        planner.rearm_holdover(&due.automation.id, &due.trigger_id, due.due_at);
-                    }
-                    continue;
-                }
-                let state = Arc::clone(&state);
-                let span = info_span!(
-                    "automation_run",
-                    automation_id = %due.automation.id,
-                    trigger_id = %due.trigger_id,
-                );
-                tokio::spawn(
-                    fire_scheduled_automation_run(
-                        state,
-                        due.automation,
-                        due.trigger_id,
-                        due.due_at,
-                    )
-                    .instrument(span),
+                error!(
+                    tick_bound_secs = AUTOMATION_SCHEDULER_TICK_TIMEOUT.as_secs(),
+                    "Automation scheduler tick timed out and was dropped; the loop continues \
+                     (work#1510, the #1143 wedge class — this line is the wedge made visible)"
                 );
             }
-            // fabro-79d8 watchdog: after firing, turn a silent schedule
-            // stall into one WARN per episode (ingestible by log monitors).
-            check_automation_lag(state.as_ref(), &mut lag_watchdog, &automations, now).await;
 
-            let sleep_duration = planner.sleep_duration(now);
+            let sleep_duration = planner.sleep_duration(Utc::now());
             tokio::select! {
                 () = shutdown.cancelled() => break,
                 () = state.automation_scheduler_notified() => {},
@@ -2958,5 +3002,54 @@ dockerfile = { path = "Dockerfile" }
 
         assert_eq!(stored_runs(state.as_ref()).await.len(), 1);
         assert_eq!(materializer.captured_inputs().len(), 1);
+    }
+
+    /// denkhaus/work#1510 (the #1143 wedge class): a tick evaluation that
+    /// hangs forever must be DROPPED at its bound, returning control to the
+    /// loop — the fork.30/fork.32/fork.44 incidents all had the loop parked
+    /// inside the body while the HTTP API kept serving. A never-resolving
+    /// future under a short bound returns false instead of parking.
+    #[tokio::test]
+    async fn a_hanging_scheduler_tick_is_dropped_at_its_bound() {
+        let started = std::time::Instant::now();
+        let completed = bounded_scheduler_tick_with_bound(
+            std::future::pending::<()>(),
+            Duration::from_millis(50),
+        )
+        .await;
+        assert!(
+            !completed,
+            "a hanging tick must be dropped at the bound, not park the loop"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the bound must actually release the caller"
+        );
+    }
+
+    /// The completed-tick control for the pin above: a tick that finishes
+    /// inside its bound reports completion.
+    #[tokio::test]
+    async fn a_completing_scheduler_tick_reports_completion() {
+        let completed = bounded_scheduler_tick_with_bound(async {}, Duration::from_secs(5)).await;
+        assert!(completed, "a completing tick must report completion");
+    }
+
+    /// Source-level pin (the fork_line_recovery scheduler-call pin
+    /// precedent): the spawned loop must route its tick evaluation through
+    /// the bound — an unbounded call of `scheduler_tick` would reintroduce
+    /// the wedge class one refactor away.
+    #[test]
+    fn the_spawned_loop_bounds_the_whole_tick_evaluation() {
+        let source = include_str!("automation_scheduler.rs");
+        assert!(
+            source.contains("bounded_scheduler_tick(scheduler_tick("),
+            "spawn_automation_scheduler must run scheduler_tick under the \
+             tick bound (work#1510): an unbounded tick body is the wedge class"
+        );
+        assert!(
+            source.contains("const AUTOMATION_SCHEDULER_TICK_TIMEOUT"),
+            "the tick bound must stay a named constant"
+        );
     }
 }
