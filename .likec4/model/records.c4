@@ -56,6 +56,11 @@ model {
           resolves cache-first, the forge loads on demand, and a
           failed forge load serves the stale row with an honest age —
           a quota-exhausted forge no longer kills reads.
+
+          The acceptance chain (work#1553, 2026-11-23) reads this
+          ledger's claim history as its run list: item -> claims ->
+          observations -> links is the closure radius, split
+          blocking vs painpoint-born residual at close time.
         '''
         metadata {
           substrate "landed"
