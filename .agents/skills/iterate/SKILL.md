@@ -388,6 +388,10 @@ reality.
 - COMPLEXITY BRAKE (ADR-0028): a SECOND patch on the same mechanism
   within days is a smell — the mandatory response is simplify-or-REVERT
   (citing the owning ADR), never a third patch. A patch contradicting a
+   LANDED-OPEN SWEEP is mechanical too (work#1553 part 5): after
+   each pass run `nu .fabro/scripts/landed-open-sweep.nu` and route its
+   verdicts — a landed-but-open item (PR merged, item open) is a p2
+   filing with the merge citation, never silent bookkeeping.
   standing decision stops for an explicit supersession, never a silent
   additive layer.
 - WRITTEN LANGUAGE IS ENGLISH (ADR-0033): chat German, artifacts
