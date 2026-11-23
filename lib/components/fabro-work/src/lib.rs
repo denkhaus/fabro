@@ -11,6 +11,7 @@ mod acceptance;
 mod forge_pr;
 mod hold;
 mod materialization;
+mod named_parts;
 mod store;
 mod tracker;
 mod tracker_error;
@@ -19,6 +20,9 @@ pub use acceptance::{AcceptanceState, ClaimFold, acceptance_fold};
 pub use forge_pr::{ForgeMergeMethod, ForgePullRequest, ForgePullRequestError, PullRequestForge};
 pub use hold::{HoldReason, hold_reason};
 pub use materialization::{MaterializedItem, MaterializedTracker, WalkReport, WorkItemViewStore};
+pub use named_parts::{
+    NamedPart, PART_VERIFIED_HEAD, named_parts, unaccounted_parts, verified_part,
+};
 pub use store::{
     ClaimState, DEFAULT_CLAIM_LABEL_PREFIX, GrantOutcome, GrantRequest, LinkOutcome,
     ObservationLink, WorkClaim, WorkClaimEvent, WorkOutboxEntry, WorkProject, WorkStore,

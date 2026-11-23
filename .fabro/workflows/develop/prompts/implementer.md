@@ -52,6 +52,15 @@ validation + TestCountFlagRejects`. The reviewer judges from context
 first — this report is what lets it approve without hunting. A FAIL you
 cannot resolve is a deviation: say so explicitly instead of hiding it.
 
+NAMED PARTS (the acceptance chain, work#1553): when the item body
+carries a task list (`- [ ]` / `- [x]` checkboxes), the report's
+criterion lines map ONE-TO-ONE onto the UNCHECKED parts — one line per
+part, quoting the part text verbatim as the criterion, PASS or FAIL
+each. A checked part is landed, never re-reported. The reviewer's
+per-part verdicts, the merge door's accounting, and the close door all
+read those exact texts; a report line that paraphrases a part leaves it
+unaccounted and the merge refuses.
+
 Run every per-criterion check through the transcript wrapper —
 `nu .fabro/workflows/develop/scripts/check-transcript.nu -- '<the check command>'` —
 which records the command, its combined output, and its exit code as the

@@ -124,6 +124,11 @@ const SMOKES = [
     # modes — prompt-lint REDS on an unresolvable family literal, and the
     # predicate mints no id from ordinary repo words ('fabro-workflow').
     '.fabro/scripts/seed-id-fixtures.nu'
+    # landed-open sweep battery (work#1553): pins the acceptance
+    # chain's pool-hygiene predicate — a closable-enabled queue entry
+    # whose item fold reads closable_landed flags, waiting and
+    # claimless entries do not, and the flag line names item + run.
+    '.fabro/scripts/landed-open-fixtures.nu'
     # release-sha battery (fabro-06da): release tags must name the
     # PUSHABLE line tip — only the allow-listed files may derive a short
     # sha, the two release scripts must call the policy site, and the
