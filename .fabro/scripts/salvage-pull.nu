@@ -1,16 +1,16 @@
 #!/usr/bin/env nu
 # salvage-pull.nu — pull a terminal run's stranded work out of its sandbox as a git patch.
 #
-# STATUS (2026-11-17): mechanics proven (inspect → .git copy → overlay → patch),
-# but UNUSABLE IN PRACTICE until the sandbox copy throughput is fixed:
-#   BLOCKED BY denkhaus/work#1416 — recursive `sandbox cp` is per-file round
-#   trips; a 166 MB .git ran ~3 min and a ~30 MB source tree exceeded 4 min
-#   (three aborted drives). Once #1416 lands (bulk archive path + progress),
-#   this script is the executor with NO further changes expected.
-# Serves denkhaus/work#1415 (the salvage pointer for run 01M7MWB3 / work#1159's
-# stranded supplement arm — recoverable until sandbox retention reaps it,
-# ~2026-11-24). Verdict vocabulary pairs with salvage-sweep.nu (which DECIDES;
-# this EXECUTES).
+# STATUS (2026-11-23, repaired): USABLE — denkhaus/work#1416 landed (the
+# bulk sandbox cp: tar in-sandbox, one transfer), so the .git and worktree
+# copies ride one transfer each instead of per-file round trips. First
+# live salvage through this path: run 01M7YV5YAW95ESHAAHENEA0SV3
+# (work#1434's platform arm, the human_needed park). Verdict vocabulary
+# pairs with salvage-sweep.nu (which DECIDES; this EXECUTES).
+# work#1415's own stranded arm was reaped by retention before this
+# repair — the pointer is historical. KNOWN GAP (work#1416 follow-up):
+# the bulk cp's tar refuses single-FILE sources (Not a directory) —
+# directory sources work; pass directories, or fix the tar path join.
 #
 # WHY: a failed run's implementer work usually sits UNCOMMITTED in the sandbox
 # worktree (checkpoint commits only land at stage boundaries), and the run

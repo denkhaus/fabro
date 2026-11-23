@@ -427,7 +427,7 @@ fn work_radius_json_is_the_record_the_fast_path_parses() {
         then.status(200)
             .header("content-type", "application/json")
             .body(
-                r#"{"item":{"itemKey":"denkhaus/work#7","title":"t","body":"b","state":"open","labels":[],"priority":2,"url":"https://example.invalid/i/7"},"radius":[]}"#,
+                r#"{"item":{"itemKey":"denkhaus/work#7","title":"t","body":"b","state":"open","labels":[],"priority":2,"url":"https://example.invalid/i/7"},"radius":[],"residual":[]}"#,
             );
     });
     let url = server.base_url();

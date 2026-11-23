@@ -1894,9 +1894,10 @@ mod closure_radius {
 
     #[tokio::test]
     async fn a_close_over_an_open_radius_is_refused_with_the_listing_and_force_overrides() {
-        // Item 1 closes; its run carries one observation; the
-        // observation links to item 2 (open — blocks) and item 3
-        // (closed — filtered out of the radius).
+        // Item 1 closes; its run carries one NOTE observation (a note
+        // link BLOCKS, work#1434); the observation links to item 2
+        // (open — blocks) and item 3 (closed — filtered out of the
+        // radius).
         let tracker =
             RadiusTracker::with_items(vec![item(1, "open"), item(2, "open"), item(3, "closed")]);
         let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
@@ -1914,7 +1915,9 @@ mod closure_radius {
         .await;
         assert_eq!(granted["outcome"], "granted", "the claim must land first");
 
-        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        // A NOTE-category observation: its links BLOCK the close
+        // (work#1434 — only painpoint-born links are soft).
+        let seq = seed_observation(&records, CLOSING_RUN, false).await;
 
         // Link both radius items to the observation through the
         // user-only surface — link also proves idempotence here.
@@ -2097,6 +2100,112 @@ mod closure_radius {
         );
     }
 
+    /// Soft residuals (work#1434 demand 2): links riding PAINPOINT
+    /// observations are painpoint dispositions — independent follow-up
+    /// asks — and never block the parent's close. The close proceeds
+    /// UNFORCED and the response carries the residual-pointer note; the
+    /// radius read partitions the same way (blocking empty, residual
+    /// listed). This is the live specimen's shape (#1418 held open by
+    /// painpoint-born #1421/#1431 after its fix landed).
+    #[tokio::test]
+    async fn painpoint_born_links_are_soft_residuals_the_close_rides_over() {
+        let tracker = RadiusTracker::with_items(vec![item(7, "open"), item(8, "open")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#7", "runId": CLOSING_RUN, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted");
+
+        // A PAINPOINT observation: a link to an open item through it is
+        // a residual pointer, not a blocker.
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#8", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        // The radius read partitions: blocking empty, residual listed.
+        let radius = body_json(
+            json_call(
+                &app,
+                Method::GET,
+                "/projects/fabro/work-items/denkhaus%2Fwork%237/radius",
+                &json!({}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            radius["radius"].as_array().map(std::vec::Vec::len),
+            Some(0),
+            "a painpoint-born link never blocks: {radius}"
+        );
+        let residual = radius["residual"]
+            .as_array()
+            .expect("the residual listing exists");
+        assert_eq!(
+            residual.len(),
+            1,
+            "exactly the painpoint-linked item: {radius}"
+        );
+        assert_eq!(residual[0]["itemKey"], "denkhaus/work#8");
+
+        // The close lands UNFORCED — no 409, no churn — and carries the
+        // residual-pointer note.
+        let response = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({"itemKey": "denkhaus/work#7", "reason": "landed as ghi789"}),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a soft radius never refuses the close (work#1434)"
+        );
+        let closed = body_json(response).await;
+        assert_eq!(closed["item"]["itemKey"], "denkhaus/work#7");
+        assert_eq!(
+            closed["overriddenRadius"]
+                .as_array()
+                .expect("the override listing exists")
+                .len(),
+            0,
+            "an unforced close overrides nothing: {closed}"
+        );
+        let note = closed["residualRadius"]
+            .as_array()
+            .expect("the residual-pointer note exists");
+        assert_eq!(note.len(), 1, "the note names the residual: {closed}");
+        assert_eq!(note[0]["itemKey"], "denkhaus/work#8");
+
+        // The residual item itself stays open — the note points at
+        // follow-up work, it never closes it.
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#8")
+                .await
+                .expect("tracker read")
+                .expect("item 8")
+                .state,
+            "open"
+        );
+    }
+
     #[tokio::test]
     async fn unlink_removes_the_link_and_reports_an_absent_pair() {
         let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
@@ -2164,9 +2273,10 @@ mod closure_radius {
         let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
         let (app, state, records) = app_with_state(Arc::clone(&tracker)).await;
         let run_id = create_test_run_with_target(&state, "denkhaus/fabro", "denkhaus").await;
-        let seq = seed_observation(&records, &run_id.to_string(), true).await;
-
-        // The worker's own run holds the claim, and the radius is open.
+        // A NOTE observation: the link BLOCKS (work#1434), so the force
+        // path is the only way past the gate — the shape the worker
+        // refusal guards.
+        let seq = seed_observation(&records, &run_id.to_string(), false).await;
         body_json(
             json_call(
                 &app,
@@ -2272,8 +2382,9 @@ mod closure_radius {
             "nothing linked: the radius is empty: {empty}"
         );
 
-        // The close-gate fixture shape: item 1's run observation links
-        // the OPEN item 2 — the radius lists it.
+        // The close-gate fixture shape: item 1's run NOTE observation
+        // (a blocking link, work#1434) links the OPEN item 2 — the
+        // radius lists it.
         let granted = body_json(
             json_call(
                 &app,
@@ -2285,7 +2396,7 @@ mod closure_radius {
         )
         .await;
         assert_eq!(granted["outcome"], "granted");
-        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        let seq = seed_observation(&records, CLOSING_RUN, false).await;
         body_json(
             json_call(
                 &app,
