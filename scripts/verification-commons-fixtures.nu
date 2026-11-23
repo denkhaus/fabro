@@ -103,6 +103,23 @@ def test-crate-extraction []: nothing -> nothing {
     assert-eq (verification_commons crate-of-path 'lib/components/fabro-dot/src/lib.rs') 'fabro-dot' 'crate-of-path yields the crate'
     assert-eq (verification_commons crate-of-path 'apps/fabro-web/src/x.ts') null 'crate-of-path: non-lib path is null'
     assert-eq (verification_commons crate-of-path 'lib/nonworkspace/x.rs') null 'crate-of-path: outside the workspace segments is null'
+    # work#1610: a vendored path NEVER attributes a workspace crate — the
+    # -p-scoped fmt/clippy lanes cannot reach vendor through the crate
+    # extraction, and the fixture holds that exclusion explicit.
+    assert-eq (verification_commons crate-of-path 'vendor/petri/crates/petri/src/lib.rs') null 'a vendor path never attributes a workspace crate (work#1610)'
+    assert-eq (verification_commons crate-of-path 'vendor/PINS.toml') null 'the PINS record never attributes a workspace crate'
+}
+
+# The vendored snapshot files (work#1610): vendor/ minus the PINS record —
+# exactly the files whose blob hashes feed content_sha256, and the only
+# files the whitespace-churn partition judges.
+def test-vendor-snapshot-path []: nothing -> nothing {
+    assert-eq (verification_commons vendor-snapshot-path? 'vendor/petri/crates/petri/src/lib.rs') true 'a vendored tree path is a snapshot file'
+    assert-eq (verification_commons vendor-snapshot-path? 'vendor/pebble/Cargo.toml') true 'a vendored manifest is a snapshot file'
+    assert-eq (verification_commons vendor-snapshot-path? 'vendor/sandbox-driver/src/lib.rs') true 'the third vendored tree is a snapshot file'
+    assert-eq (verification_commons vendor-snapshot-path? 'vendor/PINS.toml') false 'the PINS provenance record is NOT a snapshot file'
+    assert-eq (verification_commons vendor-snapshot-path? 'lib/apps/fabro-cli/src/main.rs') false 'lib paths are not vendor snapshots'
+    assert-eq (verification_commons vendor-snapshot-path? 'vendorx/petri/x') false 'a vendor-prefixed sibling is not a snapshot file'
 }
 
 # --- 1c. pure pins: test-file classification + web predicate ---------------
@@ -484,6 +501,48 @@ def test-added-inline-test-file-is-test-touched []: nothing -> nothing {
     rm -rf $dir
 }
 
+# The vendor whitespace-churn partition (work#1610): the rustfmt-over-
+# vendor incident (run 01M7YV5Y, two gate bounces) — a whitespace-only
+# snapshot edit must land on the churn side (the fail-fast class), a
+# content edit on the content side (the `just vendor export` class),
+# PINS.toml on neither, and added/deleted snapshots always count as
+# content events.
+def test-vendor-churn-split []: nothing -> nothing {
+    let dir = (scratch-repo)
+    cd $dir
+    mkdir vendor/petri/src
+    mkdir vendor/pebble/src
+    'pub fn a() -> i32 { 1 }' | save vendor/petri/src/lib.rs
+    'pub fn b() -> i32 { 2 }' | save vendor/pebble/src/lib.rs
+    'pins' | save vendor/PINS.toml
+    do { ^git add -A } | ignore
+    do { ^git commit -qm 'vendor trees' } | ignore
+    let base = (git rev-parse HEAD)
+    # Whitespace-only churn on one snapshot, content change on another.
+    let churned = ("pub fn a() -> i32 {     1 }" + "\n")
+    $churned | save --force vendor/petri/src/lib.rs
+    'pub fn b() -> i32 { 22 }' | save --force vendor/pebble/src/lib.rs
+    let split = (verification_commons vendor-churn-split $base (verification_commons diff-paths $base))
+    assert-eq $split.churn ['vendor/petri/src/lib.rs'] 'a whitespace-only snapshot edit lands on the churn side'
+    assert-eq $split.content ['vendor/pebble/src/lib.rs'] 'a content snapshot edit lands on the content side'
+    # A PINS-only diff enters NEITHER side (the pins tier judges it).
+    do { ^git checkout -q -- vendor/petri vendor/pebble } | ignore
+    'pins v2' | save --force vendor/PINS.toml
+    let split2 = (verification_commons vendor-churn-split $base (verification_commons diff-paths $base))
+    assert-eq $split2.churn [] 'a PINS-only diff has no churn'
+    assert-eq $split2.content [] 'a PINS-only diff has no content side'
+    # Added and deleted snapshot files are content events, never churn.
+    do { ^git checkout -q -- vendor/PINS.toml } | ignore
+    'new' | save vendor/petri/src/new.rs
+    do { ^git rm -q vendor/pebble/src/lib.rs } | ignore
+    let split3 = (verification_commons vendor-churn-split $base (verification_commons diff-paths $base))
+    assert-eq ($split3.churn | is-empty) true 'added/deleted snapshots never report churn'
+    assert-eq ($split3.content | any {|p| $p == 'vendor/petri/src/new.rs'}) true 'an added snapshot is a content event'
+    assert-eq ($split3.content | any {|p| $p == 'vendor/pebble/src/lib.rs'}) true 'a deleted snapshot is a content event'
+    cd $DIR
+    rm -rf $dir
+}
+
 # --- 3. regrowth pins: the extraction teeth ---------------------------------
 
 def test-consumers-source-the-module []: nothing -> nothing {
@@ -507,6 +566,9 @@ def test-no-mirror-regrows []: nothing -> nothing {
         'def clap-surface-touched?'
         'def help-snapshot-names'
         'def crate-help-snapshot-scope'
+        'def vendor-snapshot-path?'
+        'def vendor-whitespace-only?'
+        'def vendor-churn-split'
     ]
     for pair in [['verify.nu' $VERIFY_SRC] ['qualitygate.nu' $QUALITYGATE_SRC]] {
         for marker in $def_markers {
@@ -584,6 +646,8 @@ def main []: nothing -> nothing {
     test-test-file-classification
     test-web-predicate
     test-vendor-predicate
+    test-vendor-snapshot-path
+    test-vendor-churn-split
     test-clap-surface-predicate
     test-help-snapshot-names
     test-help-snapshot-scope-mapping
