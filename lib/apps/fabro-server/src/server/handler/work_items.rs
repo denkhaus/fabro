@@ -4,7 +4,7 @@
 //! project registry and the atomic claim mutex. A claim is unique per
 //! `(project, item)` and per run while it is non-terminal.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use axum_extra::extract::Query as ExtraQuery;
@@ -743,23 +743,26 @@ async fn close_work_item(
     // (merge-complete) instead of releasing it.
     let adjudicator_claim =
         adjudicator_close_authority(&state, &auth, project, &request.item_key).await?;
-    // The closure-radius gate (ADR-0038): a claimed item whose radius is
-    // open — open work items linked to the observations discovered in
-    // its runs — is refused; `force` overrides, and the response lists
-    // what the override rode over. The gate covers BOTH delivery forms
-    // (agent run tools and user CLI): it lives in the verb, not in a
-    // caller.
+    // The closure-radius gate (ADR-0038), blocking half only (work#1434):
+    // a claimed item whose BLOCKING radius is open — open work items
+    // linked through non-painpoint observations of its runs — is
+    // refused; `force` overrides, and the response lists what the
+    // override rode over. Painpoint-born links are soft residuals: they
+    // ride the response as the residual-pointer note, never the gate.
+    // The gate covers BOTH delivery forms (agent run tools and user
+    // CLI): it lives in the verb, not in a caller.
     let radius = closure_radius(&state, project, &request.item_key).await?;
     let forced = request.force.unwrap_or(false);
-    if !radius.is_empty() && !forced {
+    if !radius.blocking.is_empty() && !forced {
         let listing = radius
+            .blocking
             .iter()
             .map(|item| format!("{} ({})", item.item_key, item.title))
             .collect::<Vec<_>>()
             .join("; ");
         tracing::warn!(
             item_key = %request.item_key,
-            open_radius = radius.len(),
+            open_radius = radius.blocking.len(),
             "close refused: the closure radius is open (ADR-0038)"
         );
         return Err(ApiError::with_code(
@@ -769,12 +772,12 @@ async fn close_work_item(
                  observations of its runs: {listing}. Close them first, or retry the close \
                  with force: true to override with this reason",
                 request.item_key,
-                radius.len()
+                radius.blocking.len()
             ),
             "close_radius_open",
         ));
     }
-    if !radius.is_empty() && forced {
+    if !radius.blocking.is_empty() && forced {
         // The override is the HUMAN surface (rust-security F1, sprint-70
         // gate): the tool client pins force=false for agents, and the
         // verb refuses the worker principal itself — a run posting
@@ -839,16 +842,28 @@ async fn close_work_item(
         .await
         .map_err(tracker_failed)?
         .ok_or_else(|| not_found("work item", &request.item_key))?;
-    if !radius.is_empty() {
+    if !radius.blocking.is_empty() {
         tracing::warn!(
             item_key = %request.item_key,
-            overridden = radius.len(),
+            overridden = radius.blocking.len(),
             "close forced over an open closure radius (ADR-0038); the response lists the items"
+        );
+    }
+    // The residual-pointer note (work#1434): the close rode over soft
+    // painpoint-born links — name them so the landing is visible, the
+    // same evidence discipline the forced override carries.
+    if !radius.residual.is_empty() {
+        tracing::info!(
+            item_key = %request.item_key,
+            residual = radius.residual.len(),
+            "close passed over soft painpoint-born radius links (work#1434); the response \
+             lists the residual pointers"
         );
     }
     Ok(Json(WorkItemCloseResponse {
         item:              api_item(item),
-        overridden_radius: if forced { radius } else { Vec::new() },
+        overridden_radius: if forced { radius.blocking } else { Vec::new() },
+        residual_radius:   radius.residual,
     })
     .into_response())
 }
@@ -872,8 +887,9 @@ async fn get_work_item_radius(
         .ok_or_else(|| ApiError::not_found("Work item not found."))?;
     let radius = closure_radius(&state, project, &item_key).await?;
     Ok(Json(WorkItemRadiusResponse {
-        item: api_item(item),
-        radius,
+        item:     api_item(item),
+        radius:   radius.blocking,
+        residual: radius.residual,
     })
     .into_response())
 }
@@ -908,15 +924,24 @@ async fn list_work_item_comments(
     Ok(Json(WorkItemCommentList { comments }).into_response())
 }
 
-/// The closure radius of one work item (ADR-0038): the OPEN work items
-/// linked to the observation records discovered in the item's runs —
-/// item → runs (the whole claim history: the claim store is the
-/// authority, WorkClaimed records are audit) → their
-/// `observation.recorded` records → the links' items, minus the item
-/// itself (an item linked to its own run's observations is a self-loop,
-/// never a self-block). One level: "transitive" names the multi-edge
-/// chain through runs and observations, never recursion into the radius
-/// items' own radii.
+/// The closure radius of one work item (ADR-0038), split blocking vs
+/// residual (work#1434): the OPEN work items linked to the observation
+/// records discovered in the item's runs — item → runs (the whole claim
+/// history: the claim store is the authority, WorkClaimed records are
+/// audit) → their `observation.recorded` records → the links' items,
+/// minus the item itself (an item linked to its own run's observations
+/// is a self-loop, never a self-block). One level: "transitive" names
+/// the multi-edge chain through runs and observations, never recursion
+/// into the radius items' own radii.
+///
+/// Soft residuals (work#1434 demand 2): a link riding a
+/// PAINPOINT-category observation is a painpoint disposition — an
+/// independent follow-up ask, never an obligation on the parent — so an
+/// item linked ONLY through painpoint observations is a RESIDUAL
+/// pointer: it never blocks the close, it rides the radius read and the
+/// close response as the residual-pointer note. An item with any link
+/// through a non-painpoint record (a note, or a record the store could
+/// not resolve — conservative) still BLOCKS.
 ///
 /// The observation read degrades to empty on a store failure (with a
 /// warn): the radius must never wedge closes on a transient read error —
@@ -924,16 +949,28 @@ async fn list_work_item_comments(
 /// use. The links themselves live in the work store beside the claims;
 /// a failure there propagates (it is the same database the claim check
 /// just read).
+struct ClosureRadius {
+    /// Open linked items that refuse the close (ADR-0038's gate).
+    blocking: Vec<ApiWorkItem>,
+    /// Open linked items linked only through painpoint observations —
+    /// soft pointers the close rides over with a note (work#1434).
+    residual: Vec<ApiWorkItem>,
+}
+
 async fn closure_radius(
     state: &Arc<AppState>,
     project: &WorkProject,
     item_key: &str,
-) -> Result<Vec<ApiWorkItem>, ApiError> {
+) -> Result<ClosureRadius, ApiError> {
     let runs = state
         .work_store()
         .runs_for_item(&project.project_id, item_key)
         .await
         .map_err(store_error)?;
+    // The (run, seq) → category map the soft/residual split keys on: a
+    // link rides the category of ITS observation record. A record that
+    // failed to read is absent — its links stay conservative blockers.
+    let mut categories: HashMap<(RunId, u64), fabro_types::ObservationCategory> = HashMap::new();
     let mut observations = Vec::new();
     for run_id in &runs {
         match state
@@ -944,7 +981,12 @@ async fn closure_radius(
             .await
         {
             Ok(records) => {
-                observations.extend(records.iter().map(|stored| (*run_id, stored.seq)));
+                for stored in &records {
+                    if let PlatformRecord::ObservationRecorded(record) = &stored.record {
+                        categories.insert((*run_id, stored.seq), record.category);
+                    }
+                    observations.push((*run_id, stored.seq));
+                }
             }
             Err(error) => {
                 tracing::warn!(
@@ -960,26 +1002,58 @@ async fn closure_radius(
         .linked_items_for_observations(&project.project_id, &observations)
         .await
         .map_err(store_error)?;
-    let mut radius_keys: Vec<String> = links
-        .into_iter()
-        .map(|link| link.item_key)
-        .filter(|key| key != item_key)
-        .collect();
-    radius_keys.sort_unstable();
-    radius_keys.dedup();
-    if radius_keys.is_empty() {
-        return Ok(Vec::new());
-    }
-    let tracker = tracker_for(state, project).await?;
-    let mut radius = Vec::new();
-    for key in &radius_keys {
-        if let Some(item) = tracker.get(project, key).await.map_err(tracker_failed)? {
-            if item.state == "open" {
-                radius.push(api_item(item));
-            }
+    // Partition by item: blocking wins ties (one non-painpoint or
+    // unknown-category link makes the item a blocker), self-loops drop.
+    let mut blocking_keys: Vec<String> = Vec::new();
+    let mut residual_keys: Vec<String> = Vec::new();
+    for link in links {
+        if link.item_key == item_key {
+            continue;
+        }
+        let soft = matches!(
+            categories.get(&(link.run_id, link.seq)),
+            Some(fabro_types::ObservationCategory::Painpoint)
+        );
+        let list = if soft {
+            &mut residual_keys
+        } else {
+            &mut blocking_keys
+        };
+        if !list.contains(&link.item_key) {
+            list.push(link.item_key);
         }
     }
-    Ok(radius)
+    // A residual candidate that also blocks demotes: remove it from the
+    // residual list when a blocking link names the same item.
+    residual_keys.retain(|key| !blocking_keys.contains(key));
+    blocking_keys.sort_unstable();
+    residual_keys.sort_unstable();
+    if blocking_keys.is_empty() && residual_keys.is_empty() {
+        return Ok(ClosureRadius {
+            blocking: Vec::new(),
+            residual: Vec::new(),
+        });
+    }
+    let tracker = tracker_for(state, project).await?;
+    let resolve = |keys: Vec<String>| {
+        let tracker = &tracker;
+        let project = &project;
+        async move {
+            let mut items = Vec::new();
+            for key in &keys {
+                if let Some(item) = tracker.get(project, key).await.map_err(tracker_failed)? {
+                    if item.state == "open" {
+                        items.push(api_item(item));
+                    }
+                }
+            }
+            Ok::<Vec<ApiWorkItem>, ApiError>(items)
+        }
+    };
+    Ok(ClosureRadius {
+        blocking: resolve(blocking_keys).await?,
+        residual: resolve(residual_keys).await?,
+    })
 }
 
 /// Link a work item to an observation record (ADR-0038): the user-only

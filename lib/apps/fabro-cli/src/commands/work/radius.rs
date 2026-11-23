@@ -2,7 +2,9 @@
 //! D): a work item's closure radius — the open work items linked to the
 //! observations of its runs, the same computation the close gate
 //! enforces. The adjudicator's fast path demands an empty radius for
-//! the trivial case; this verb is the script-facing read.
+//! the trivial case; this verb is the script-facing read. Painpoint-born
+//! links are soft residuals (work#1434): they ride `residual` and never
+//! block.
 
 use anyhow::Result;
 use cli_table::{Cell, CellStruct, Style};
@@ -29,6 +31,17 @@ pub(super) async fn radius_command(args: &WorkRadiusArgs, ctx: &CommandContext) 
             "{} has an empty closure radius — nothing blocks its close.",
             radius.item.item_key
         );
+        // Soft residuals still show (work#1434): the empty BLOCKING
+        // radius is the gate's truth, the residual pointers stay
+        // visible so the follow-ups are not lost in the silence.
+        for residual in &radius.residual {
+            fabro_util::printout!(
+                printer,
+                "  residual pointer (painpoint-born, does not block): {} ({})",
+                residual.item_key,
+                residual.title
+            );
+        }
         return Ok(());
     }
 

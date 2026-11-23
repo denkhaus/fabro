@@ -24,12 +24,14 @@ fn item_json_with_body(item_key: &str, title: &str, state: &str, body: &str) -> 
     })
 }
 
-/// The close response shape (ADR-0038): the item plus the radius items a
-/// forced close overrode — empty for an unforced close.
+/// The close response shape (ADR-0038, work#1434): the item plus the
+/// radius items a forced close overrode — empty for an unforced close —
+/// and the soft residual pointers.
 fn close_response_json(item: &serde_json::Value) -> serde_json::Value {
     json!({
         "item": item,
-        "overriddenRadius": []
+        "overriddenRadius": [],
+        "residualRadius": []
     })
 }
 

@@ -1471,7 +1471,8 @@ mod tests {
                     .path("/api/v1/projects/fabro/work-items/denkhaus%2Fwork%237/radius");
                 then.status(200).json_body(json!({
                     "item": work_item("denkhaus/work#7", "Adjudicate the develop line"),
-                    "radius": [work_item("denkhaus/work#9", "Watchdog tuning")]
+                    "radius": [work_item("denkhaus/work#9", "Watchdog tuning")],
+                    "residual": []
                 }));
             })
             .await;

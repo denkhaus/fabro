@@ -77,6 +77,36 @@ migrated items keep a `seeds:fabro-xxxx` label as their legacy anchor
   body; the item closes when the PR merges AND the fix landed on our
   branch. PRs themselves are not issues.
 
+## The closure radius and the unlink escape hatch (ADR-0038, work#1434)
+
+A claimed item's **closure radius** is the set of OPEN work items
+linked to the observation records of its runs: item → runs (the whole
+claim history) → their `observation.recorded` records → the linked
+items. The close door refuses while the BLOCKING radius is open
+(`409 close_radius_open`); `work radius --project fabro <selector>`
+shows it.
+
+- **Soft residuals (work#1434)**: a link riding a PAINPOINT-category
+  observation is a painpoint disposition — an independent follow-up
+  ask, never an obligation on the parent. Items linked ONLY through
+  painpoint observations ride the radius read's `residual` list and
+  the close response's `residualRadius` pointer note; they never
+  block the close. Only links through non-painpoint records (a note,
+  or an unresolvable record) block.
+- **Empty the radius by hand (the escape hatch)**: when a landed fix's
+  item stays open because the radius still names items that should not
+  block (the work#1418 specimen: a landed residual and a hardening
+  follow-up held it for hours), the unlink door is the two-minute fix —
+  `fabro work --server … unlink --project fabro <selector> --run
+  <run-id> --seq <n>` removes ONE link row (idempotent: an absent pair
+  reports `removed: false`, never errors). Find the (run, seq) pairs
+  with `work radius` (each residual names its item; the run ids ride
+  the item's claims history via `work claims --project fabro`) or the
+  run's observation feed, unlink the stale links, and the next closing
+  pass closes the item on its own. Use `force: true` on the close only
+  as the last resort — it overrides the whole blocking radius and the
+  response lists what it rode over.
+
 ## When a skill says "publish to the issue tracker"
 
 Create via the stdin form above with context, acceptance criteria, and
