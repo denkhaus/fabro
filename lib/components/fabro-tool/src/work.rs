@@ -519,10 +519,21 @@ pub fn work_show_text(result: &WorkItem) -> String {
 /// on.
 pub fn work_radius_text(result: &WorkItemRadiusResponse) -> String {
     if result.radius.is_empty() {
-        return format!(
+        // Soft residuals still show (work#1434): an empty BLOCKING
+        // radius is the gate's truth, the painpoint-born pointers stay
+        // visible so the follow-ups are not lost in the silence.
+        let mut listed = format!(
             "{} radius: empty — nothing blocks its closure",
             result.item.item_key
         );
+        for residual in &result.residual {
+            let _ = write!(
+                listed,
+                "\n{} — {} [{}] prio {} (painpoint-born residual, does not block)",
+                residual.item_key, residual.title, residual.state, residual.priority
+            );
+        }
+        return listed;
     }
     let mut listed = format!(
         "{} radius: {} open work item(s):",
@@ -857,8 +868,9 @@ mod tests {
     #[test]
     fn the_radius_renderer_reports_the_item_and_its_open_items() {
         let listed = work_radius_text(&WorkItemRadiusResponse {
-            item:   work_item("denkhaus/work#7", "Adjudicate", "open"),
-            radius: vec![work_item("denkhaus/work#9", "Watchdog tuning", "open")],
+            item:     work_item("denkhaus/work#7", "Adjudicate", "open"),
+            radius:   vec![work_item("denkhaus/work#9", "Watchdog tuning", "open")],
+            residual: Vec::new(),
         });
         assert_eq!(
             listed.lines().next(),
@@ -871,12 +883,32 @@ mod tests {
         );
 
         let empty = work_radius_text(&WorkItemRadiusResponse {
-            item:   work_item("denkhaus/work#7", "Adjudicate", "open"),
-            radius: Vec::new(),
+            item:     work_item("denkhaus/work#7", "Adjudicate", "open"),
+            radius:   Vec::new(),
+            residual: Vec::new(),
         });
         assert!(
             empty.contains("nothing blocks its closure"),
             "the empty radius blocks nothing: {empty}"
+        );
+
+        // Soft residuals (work#1434): an empty BLOCKING radius with a
+        // painpoint-born residual still names the pointer.
+        let soft = work_radius_text(&WorkItemRadiusResponse {
+            item:     work_item("denkhaus/work#7", "Adjudicate", "open"),
+            radius:   Vec::new(),
+            residual: vec![work_item("denkhaus/work#9", "Watchdog tuning", "open")],
+        });
+        assert!(
+            soft.contains("nothing blocks its closure"),
+            "a soft residual never blocks: {soft}"
+        );
+        assert!(
+            soft.contains(
+                "denkhaus/work#9 — Watchdog tuning [open] prio 2 (painpoint-born \
+                           residual, does not block)"
+            ),
+            "the residual pointer stays visible: {soft}"
         );
     }
 

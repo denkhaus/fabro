@@ -7971,7 +7971,9 @@ paths:
         "200":
           description: >-
             Work item closed. `overriddenRadius` lists the open items a
-            forced close overrode (empty otherwise).
+            forced close overrode (empty otherwise); `residualRadius`
+            lists the soft painpoint-born links the close passed over
+            with a pointer note (work#1434).
           content:
             application/json:
               schema:
@@ -7984,10 +7986,11 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: >-
-            The claimed item's closure radius is open (open work items
-            are linked to the observations discovered in its runs,
-            ADR-0038). Retry with `force` to override; the error message
-            lists the open items.
+            The claimed item's closure radius is open — open work items
+            are linked through non-painpoint observations of the item's
+            runs (ADR-0038; work#1434: painpoint-born links are soft
+            residuals and never block). Retry with `force` to override;
+            the error message lists the open items.
           content:
             application/json:
               schema:
@@ -8118,16 +8121,20 @@ paths:
         to the observation records discovered in the item's runs — item
         to runs (the whole claim history), runs to their
         `observation.recorded` records, records to their linked items,
-        minus the item itself. One level; no recursion. This is the
-        SAME computation the close handler enforces (the close refuses
-        with `409` while the radius is open) — one implementation, two
-        readers: the close gate and the adjudicator's fast path (the
-        trivial case demands an empty radius; ADR-0039 stage D).
-        Workers of the project may read the radius; writing links stays
-        user-only.
+        minus the item itself. One level; no recursion. Soft residuals
+        (work#1434): links riding PAINPOINT-category observations are
+        painpoint dispositions — independent follow-up asks — and ride
+        `residual` instead of `radius`; they never block the close.
+        This is the SAME computation the close handler enforces (the
+        close refuses with `409` while the blocking radius is open) —
+        one implementation, two readers: the close gate and the
+        adjudicator's fast path (the trivial case demands an empty
+        radius; ADR-0039 stage D). Workers of the project may read the
+        radius; writing links stays user-only.
       responses:
         "200":
-          description: The item and its open radius (empty when nothing blocks)
+          description: The item, its blocking radius (empty when nothing
+            blocks), and its soft residual pointers
           content:
             application/json:
               schema:
@@ -16225,7 +16232,7 @@ components:
 
     WorkItemRadiusResponse:
       type: object
-      required: [item, radius]
+      required: [item, radius, residual]
       properties:
         item:
           $ref: "#/components/schemas/WorkItem"
@@ -16233,10 +16240,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WorkItem"
+          description: >-
+            The BLOCKING radius: open items linked through
+            non-painpoint observations — these refuse the close until
+            they close or a forced close overrides.
+        residual:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkItem"
+          description: >-
+            The soft residual pointers (work#1434): open items linked
+            only through painpoint-category observations — painpoint
+            dispositions that never block the parent's close.
       description: |-
-        The item beside its open closure radius: the open work items
-        linked to the observations of the item's runs, minus the item
-        itself. An empty radius blocks nothing.
+        The item beside its closure radius, split blocking/residual
+        (work#1434): an item linked ONLY through painpoint observations
+        is a residual pointer, not a blocker.
 
     TodoStatus:
       type: string
@@ -21326,11 +21345,14 @@ components:
     WorkItemCloseResponse:
       description: >-
         The closed item plus the closure-radius items a forced close
-        overrode (empty when the close needed no override).
+        overrode (empty when the close needed no override) and the soft
+        painpoint-born residuals the close passed over with a pointer
+        note (work#1434).
       type: object
       required:
         - item
         - overriddenRadius
+        - residualRadius
       properties:
         item:
           $ref: "#/components/schemas/WorkItem"
@@ -21339,6 +21361,15 @@ components:
           description: >-
             The open work items the `force` flag overrode, listed so the
             override stays visible; empty without `force`.
+          items:
+            $ref: "#/components/schemas/WorkItem"
+        residualRadius:
+          type: array
+          description: >-
+            The open work items linked only through painpoint
+            observations — soft residuals that never blocked the close;
+            listed so the close leaves a residual-pointer note
+            (work#1434).
           items:
             $ref: "#/components/schemas/WorkItem"
 

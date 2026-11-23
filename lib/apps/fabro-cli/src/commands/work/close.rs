@@ -42,6 +42,16 @@ pub(super) async fn close_command(args: &WorkCloseArgs, ctx: &CommandContext) ->
                 overridden.title
             );
         }
+        // Soft residuals (work#1434): painpoint-born links the close
+        // passed over — the pointer note, never silent.
+        for residual in &response.residual_radius {
+            fabro_util::printerr!(
+                printer,
+                "  residual pointer (painpoint-born, did not block): {} ({})",
+                residual.item_key,
+                residual.title
+            );
+        }
     }
     Ok(())
 }
