@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { BoardColumn, Run } from "@qltysh/fabro-api-client";
+import { createElement } from "react";
 import { MemoryRouter } from "react-router";
 import TestRenderer, { act } from "react-test-renderer";
+import { toast as sonnerToast, useSonner } from "sonner";
 
 import {
   buildBoardColumns,
@@ -18,6 +20,7 @@ import {
 import { summarizeBatchLifecycleAction } from "../components/runs-list/batch-lifecycle";
 import { mapRunListItem, type RunItem } from "../data/runs";
 import { TEST_PRINCIPAL, makeUsage } from "../lib/test-fixtures";
+import { setupReactTestEnv, textContent } from "../lib/test-utils";
 
 function boardRun(id: string, column: BoardColumn, questionText?: string): Run {
   const status =
@@ -641,5 +644,282 @@ describe("board owner-park drop resolution (work#1345)", () => {
     const columns = columnsFor([boardRun("failed-run", "failed")]);
     expect(resolveBoardDrop(columns, "failed-run", "column:succeeded")).toBeNull();
     expect(resolveBoardDrop(columns, "ghost-run", "column:blocked")).toBeNull();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Runs board column menu: "Remove all" beside "Archive all" (work#1664).
+// The menu item composes the existing bulk delete (deleteRuns + canDelete)
+// behind the destructive-action confirm dialog; the tests stub
+// @headlessui/react (the automations render-test convention — plain
+// divs/buttons, so the menu body always renders) and partial-mock
+// ../lib/run-actions so deleteRuns is observable. bun's mock.module is
+// process-wide (restore does not undo it) — spread the REAL module;
+// override only deleteRuns.
+const deleteRunsMock = mock(() =>
+  Promise.resolve({
+    results: [],
+    summary: { requested: 0, succeeded: 0, failed: 0 },
+  }),
+);
+const realRunActions = await import("../lib/run-actions");
+mock.module("../lib/run-actions", () => ({
+  ...realRunActions,
+  deleteRuns: deleteRunsMock,
+}));
+
+const realHeadlessui = await import("@headlessui/react");
+mock.module("@headlessui/react", () => ({
+  ...realHeadlessui,
+  Menu: ({ children }: any) => createElement("div", null, children),
+  MenuButton: ({ children, ...props }: any) =>
+    createElement("button", props, children),
+  MenuItems: ({ children, ...props }: any) =>
+    createElement("div", props, children),
+  MenuItem: ({ children, ...props }: any) =>
+    createElement("div", props, children),
+  Dialog: ({ open, children }: any) =>
+    open ? createElement("div", { role: "dialog" }, children) : null,
+  DialogPanel: ({ children, ...props }: any) =>
+    createElement("div", props, children),
+  DialogTitle: ({ children, ...props }: any) =>
+    createElement("h2", props, children),
+}));
+
+const { ColumnActionsMenu } = await import("./runs");
+
+function menuItem(id: string, lifecycleStatus: NonNullable<RunItem["lifecycleStatus"]>): RunItem {
+  return {
+    id,
+    repo: "repo",
+    title: `Run ${id}`,
+    workflow: "Test",
+    createdBy: TEST_PRINCIPAL,
+    lifecycleStatus,
+  };
+}
+
+function menuColumn(items: RunItem[]): Parameters<typeof ColumnActionsMenu>[0]["column"] {
+  return {
+    id: "succeeded" as BoardColumn,
+    name: "Succeeded",
+    dot: "bg-teal-300",
+    text: "text-teal-300",
+    actions: [],
+    items,
+  };
+}
+
+/** The toast mirror (toast.test.tsx convention): reads the Sonner store. */
+function SonnerToastText() {
+  const { toasts } = useSonner();
+  return (
+    <output aria-live="polite">
+      {toasts.map((toast) => (
+        <p key={toast.id}>
+          {typeof toast.title === "function" ? toast.title() : toast.title}
+        </p>
+      ))}
+    </output>
+  );
+}
+
+const mountedRenderers: TestRenderer.ReactTestRenderer[] = [];
+let teardownReactEnv: (() => void) | undefined;
+
+function renderMenu(
+  column: ReturnType<typeof menuColumn>,
+  withToasts = true,
+): TestRenderer.ReactTestRenderer {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <>
+        {withToasts && <SonnerToastText />}
+        <ColumnActionsMenu column={column} />
+      </>,
+    );
+  });
+  mountedRenderers.push(renderer);
+  return renderer;
+}
+
+function buttonsOf(renderer: TestRenderer.ReactTestRenderer) {
+  return renderer.root.findAll((node) => node.type === "button");
+}
+
+function buttonByLabelPrefix(
+  renderer: TestRenderer.ReactTestRenderer,
+  prefix: string,
+): TestRenderer.ReactTestInstance {
+  const matches = buttonsOf(renderer).filter((node) =>
+    textContent(node).startsWith(prefix),
+  );
+  expect(matches.length).toBe(1);
+  return matches[0]!;
+}
+
+async function clickButton(instance: TestRenderer.ReactTestInstance) {
+  await act(async () => {
+    instance.props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+async function flushSonnerUpdates() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+describe("runs board column menu: Remove all (work#1664)", () => {
+  beforeEach(() => {
+    teardownReactEnv = setupReactTestEnv();
+    deleteRunsMock.mockClear();
+  });
+
+  afterEach(() => {
+    for (const renderer of mountedRenderers.splice(0)) {
+      act(() => renderer.unmount());
+    }
+    sonnerToast.dismiss();
+    teardownReactEnv?.();
+    teardownReactEnv = undefined;
+  });
+
+  test("the menu renders Remove all only when the column holds deletable runs", () => {
+    // Neither archivable nor deletable: the whole menu stays hidden
+    // (the archive arm's null-shape, now over both arms).
+    const inert = renderMenu(menuColumn([menuItem("live-1", "running")]), false);
+    expect(inert.toJSON()).toBeNull();
+
+    // Terminal runs are deletable AND archivable: both items show.
+    const both = renderMenu(
+      menuColumn([menuItem("done-1", "succeeded"), menuItem("live-2", "running")]),
+    );
+    const bothJson = JSON.stringify(both.toJSON());
+    expect(bothJson).toContain("Archive all");
+    expect(bothJson).toContain("Remove all");
+    act(() => both.unmount());
+
+    // The archived column shape: archived runs are deletable but not
+    // archivable — only Remove all shows.
+    const archivedOnly = renderMenu(menuColumn([menuItem("gone-1", "archived")]));
+    const archivedJson = JSON.stringify(archivedOnly.toJSON());
+    expect(archivedJson).not.toContain("Archive all");
+    expect(archivedJson).toContain("Remove all");
+    act(() => archivedOnly.unmount());
+  });
+
+  test("the Remove all click never fires: the confirm dialog gates the delete", async () => {
+    const renderer = renderMenu(
+      menuColumn([menuItem("done-1", "succeeded"), menuItem("gone-1", "archived")]),
+    );
+    const removeAll = buttonByLabelPrefix(renderer, "Remove all");
+    await clickButton(removeAll);
+
+    expect(deleteRunsMock).toHaveBeenCalledTimes(0);
+    const json = JSON.stringify(renderer.toJSON());
+    // The dialog names the column and the run count.
+    expect(json).toContain("Delete 2 runs in Succeeded permanently?");
+    expect(json).toContain("unrecoverable");
+  });
+
+  test("confirm fires deleteRuns with exactly the deletable ids", async () => {
+    deleteRunsMock.mockResolvedValueOnce({
+      results: [],
+      summary: { requested: 3, succeeded: 3, failed: 0 },
+    });
+    const renderer = renderMenu(
+      menuColumn([
+        menuItem("del-1", "succeeded"),
+        menuItem("keep-1", "running"),
+        menuItem("del-2", "failed"),
+        menuItem("del-3", "dead"),
+      ]),
+    );
+    await clickButton(buttonByLabelPrefix(renderer, "Remove all"));
+    await clickButton(buttonByLabelPrefix(renderer, "Delete runs"));
+
+    expect(deleteRunsMock).toHaveBeenCalledTimes(1);
+    expect(deleteRunsMock.mock.calls[0][0]).toEqual(["del-1", "del-2", "del-3"]);
+    await flushSonnerUpdates();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Deleted 3 runs.");
+  });
+
+  test("cancel closes the dialog without firing", async () => {
+    const renderer = renderMenu(menuColumn([menuItem("done-1", "succeeded")]));
+    await clickButton(buttonByLabelPrefix(renderer, "Remove all"));
+    expect(JSON.stringify(renderer.toJSON())).toContain("permanently?");
+
+    await clickButton(buttonByLabelPrefix(renderer, "Cancel"));
+    expect(deleteRunsMock).toHaveBeenCalledTimes(0);
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("permanently?");
+  });
+
+  test("the in-flight delete relabels Removing N… and disables the dialog until it settles", async () => {
+    let settle!: (value: { results: never[]; summary: { requested: number; succeeded: number; failed: number } }) => void;
+    deleteRunsMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const renderer = renderMenu(
+      menuColumn([menuItem("done-1", "succeeded"), menuItem("done-2", "failed")]),
+    );
+    await clickButton(buttonByLabelPrefix(renderer, "Remove all"));
+    await clickButton(buttonByLabelPrefix(renderer, "Delete runs"));
+
+    const inflight = JSON.stringify(renderer.toJSON());
+    expect(inflight).toContain("Removing 2…");
+    expect(inflight).toContain("Deleting…");
+    for (const button of buttonsOf(renderer)) {
+      expect(button.props.disabled).toBe(true);
+    }
+    expect(deleteRunsMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      settle({ results: [], summary: { requested: 2, succeeded: 2, failed: 0 } });
+    });
+    await flushSonnerUpdates();
+    expect(JSON.stringify(renderer.toJSON())).toContain("Deleted 2 runs.");
+    expect(JSON.stringify(renderer.toJSON())).not.toContain("permanently?");
+  });
+
+  test("the partial and total failure paths toast through the Delete summarizer", async () => {
+    // Partial: one of two deletions fails.
+    deleteRunsMock.mockResolvedValueOnce({
+      results: [],
+      summary: { requested: 2, succeeded: 1, failed: 1 },
+    });
+    const partial = renderMenu(
+      menuColumn([menuItem("done-1", "succeeded"), menuItem("done-2", "failed")]),
+    );
+    await clickButton(buttonByLabelPrefix(partial, "Remove all"));
+    await clickButton(buttonByLabelPrefix(partial, "Delete runs"));
+    await flushSonnerUpdates();
+    expect(JSON.stringify(partial.toJSON())).toContain(
+      "Deleted 1 of 2 runs. 1 failed.",
+    );
+    act(() => partial.unmount());
+
+    // Total: the request itself rejects — every run counts as failed.
+    deleteRunsMock.mockRejectedValueOnce(new Error("server down"));
+    const total = renderMenu(
+      menuColumn([menuItem("done-3", "succeeded"), menuItem("done-4", "failed")]),
+    );
+    await clickButton(buttonByLabelPrefix(total, "Remove all"));
+    await clickButton(buttonByLabelPrefix(total, "Delete runs"));
+    await flushSonnerUpdates();
+    expect(JSON.stringify(total.toJSON())).toContain(
+      "Couldn't delete 2 runs. Try again.",
+    );
+    act(() => total.unmount());
   });
 });
