@@ -1,12 +1,12 @@
-# /iterate (fabro only)
+---
+name: iterate
+description: "One development cycle, end to end. The user starts a cycle by invoking /iterate; the agent drives everything else. Chat replies in German, every written artifact in English (ADR-0033)
+— in every repo of the line (fabro, fabro-test, fabro-tofu): docs, ADRs, code comments, workflow prompts, work-item notes, commit messages, PR bodies."
+---
 
-One development cycle, end to end. The user starts a cycle by invoking
-/iterate; the agent drives everything else. Chat replies in German,
-every written artifact in English (ADR-0033) — in every repo of the
-line (fabro, fabro-test, fabro-tofu): docs, ADRs, code comments,
-workflow prompts, work-item notes, commit messages, PR bodies.
+# Scope
 
-Scope: LOCAL session instrument for the human-side agent. Fabro
+LOCAL session instrument for the human-side agent. Fabro
 workflows never load or reference this skill; skills a run's agent
 stages need are vendored into `.fabro/skills/<name>/`.
 
@@ -17,14 +17,14 @@ phase's binding rules and completion criterion. Mechanics, commands,
 traps, and incident stories live in `reference/` — load the named file
 WHEN its phase begins, never speculatively:
 
-| File | Load at | Holds |
-|---|---|---|
-| `reference/orient.md` | Phase 0 | one-world invariants, sibling/roster protocol, PR sweep, ledger + review-gate arithmetic, friction score, line-state incidents |
-| `reference/select.md` | Phase 1 | sprint composition, family order, the grilling format, lane tranches, vetting, local-first rules |
-| `reference/build.md` | Phase 2 | design-first filing, mechanical gates, pin-power proofs, edit traps, Rust gates, vendoring, bench directives, verification recipes |
-| `reference/review.md` | Phase 3–4 | two-axis review, language gate, presence suites, prompt fact-checks, battery sweep, salvage, environment-repair classes, the architecture gate |
-| `reference/integrate.md` | Phase 5 | commit ceremony, tracker-write traps, push policy, deploy windows, tofu, toolchain pins, fork releases, bench landing |
-| `reference/incidents.md` | on demand | the evidence index: every incident id, date, and one-line story, mapped to the rule it owns |
+| File                     | Load at   | Holds                                                                                                                                          |
+| ------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `reference/orient.md`    | Phase 0   | one-world invariants, sibling/roster protocol, PR sweep, ledger + review-gate arithmetic, friction score, line-state incidents                 |
+| `reference/select.md`    | Phase 1   | sprint composition, family order, the grilling format, lane tranches, vetting, local-first rules                                               |
+| `reference/build.md`     | Phase 2   | design-first filing, mechanical gates, pin-power proofs, edit traps, Rust gates, vendoring, bench directives, verification recipes             |
+| `reference/review.md`    | Phase 3–4 | two-axis review, language gate, presence suites, prompt fact-checks, battery sweep, salvage, environment-repair classes, the architecture gate |
+| `reference/integrate.md` | Phase 5   | commit ceremony, tracker-write traps, push policy, deploy windows, tofu, toolchain pins, fork releases, bench landing                          |
+| `reference/incidents.md` | on demand | the evidence index: every incident id, date, and one-line story, mapped to the rule it owns                                                    |
 
 Routing (where knowledge lives, by phase need):
 
@@ -186,9 +186,10 @@ filed), the language gate is clean, and every battery named in
 `scripts/qualitygate.nu` ran green.
 
 - ONE review per sprint over the batch's diff (frozen to a patch file
-  first): the code-review skill, two axes (standards = rust-style-guide
-  + strategy docs; spec = the tracker's design bodies). Fixpoint
-  derivation and the execution shape: `reference/review.md`.
+  first): the code-review skill, two axes (standards =
+  rust-style-guide + strategy docs; spec = the tracker's design
+  bodies). Fixpoint derivation and the execution shape:
+  `reference/review.md`.
 - GATE FINDINGS ARE PRESENTED, NOT ONLY FILED: every gate run's
   findings (code-review, architecture, rust-security) are surfaced to
   the user in the chat when the gate runs — a summary with severities —
@@ -212,10 +213,10 @@ filed), the language gate is clean, and every battery named in
 - Salvage: a failed (or green-lie succeeded) run with noteworthy stage
   work is SALVAGED — dump, apply, verify, land citing the run, or file
   a salvage-pointer item. The mechanical executor is
-  `nu .fabro/scripts/salvage-pull.nu <run-id>` (pulls the sandbox .git
-  + declared worktree paths, emits salvage.patch — see the script
-  header; UNUSABLE until work#1416 fixes the sandbox copy throughput).
-  Never let stranded work vanish silently.
+  `nu .fabro/scripts/salvage-pull.nu <run-id>` (pulls the sandbox
+  .git + declared worktree paths, emits salvage.patch — see the
+  script header; UNUSABLE until work#1416 fixes the sandbox copy
+  throughput). Never let stranded work vanish silently.
 - Environment artifacts vs regressions: compile errors on untouched
   deps, expect-panics across sandbox suites, and default-profile
   timeouts under dev-host conditions are repair-the-environment-first
@@ -234,7 +235,7 @@ foundation pass found the foundation's deepest candidates exactly where
 that binding pointed the reviewers away): findings cover the WHOLE
 fork — the entire Rust codebase AND the loop surface TOGETHER, so
 synergies surface. Platform candidates (lib/**, apps/**) are
-first-class and actionable as lane:develop work items. Vendor/** is IN
+first-class and actionable as lane:develop work items. Vendor/\*\* is IN
 scope: the vendored forks are fork-owned (ADR-0034), candidates there
 are develop-landable (precedents: work#1440's cook single-flight,
 work#1454's manifest digest), and the working rules are constraints,
@@ -297,11 +298,11 @@ in its proper store, the ledger carries the
 sprint record (counted per the rule), and the heartbeat matches
 reality.
 
-1. END-OF-SPRINT CEREMONY: every sprint close ends with a Zusammenfassung
-   + Ausblick in the chat, WAIT-WHAT style — context first (which
-   sprint, which items, where landed), then what was done with
-   verification evidence, then the AUSBLICK: the next sprint's items
-   and WHERE the user is needed (decisions, gates, credentials,
+1. END-OF-SPRINT CEREMONY: every sprint close ends with a
+   Zusammenfassung + Ausblick in the chat, WAIT-WHAT style — context
+   first (which sprint, which items, where landed), then what was done
+   with verification evidence, then the AUSBLICK: the next sprint's
+   items and WHERE the user is needed (decisions, gates, credentials,
    reviews). Simplified short sentences, the repo's ubiquitous
    language; chat stays German. The next sprint starts IMMEDIATELY
    unless a user gate blocks it.
@@ -346,7 +347,7 @@ reality.
    closures never count; docs-only and verify-only closures never
    count. Notes live in the `sprints` array, ONE record per sprint,
    several notes possible. Rotation: `just rotate-notes` when sprints
-   > 10. The counting history and rotation mechanics:
+   exceed 10. The counting history and rotation mechanics:
    `reference/orient.md`.
 6. Heartbeat cadence tracks reality: 20m while anything autonomous
    runs (pass, build, deploy chain); PAUSED (not 60m) when everything
@@ -367,7 +368,7 @@ reality.
    show where it stands. Validate with `bunx likec4 validate --json
    --no-layout` from `.likec4/` before committing; English only
    (ADR-0033).
-7. Line-watch: pull, evaluate journals/reviews (premise-checked
+8. Line-watch: pull, evaluate journals/reviews (premise-checked
    against the tree), dispatch per ADR-0018 with dispatch-dedupe, push
    through the gate, rootprint correlation for every evaluated run,
    report compactly in German. SALVAGE SWEEP is mechanical first:
@@ -414,7 +415,7 @@ reality.
   origin/main (upstream intake frozen, ADR-0024). SUBAGENT WORKTREE
   BUILDS (operator directive 2026-11-17): isolated trees for building
   subagents are created and managed through worktrunk (`wt switch
-  --create <branch> --no-cd`, `wt remove <branch>`) — never hand-rolled
+--create <branch> --no-cd`, `wt remove <branch>`) — never hand-rolled
   `git worktree add`. The one-world rule is unchanged: the SESSION's own
   line work stays on denkhaus in the main checkout; worktrees are the
   subagent-isolation pattern only.
