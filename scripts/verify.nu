@@ -112,7 +112,12 @@ def touched [] {
     # workspace:*-consumed by the web app, so its diffs verify through
     # the web suite too.
     let web = ($paths | any {|p| web-surface-path? $p})
-    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, help_scope: $help_scope, web: $web}
+    # The vendor whitespace partition (work#1610): the diff's vendored
+    # snapshot files split into formatting churn and content changes —
+    # the implementer stage fails fast on a churn-only vendor diff (the
+    # run-01M7YV5Y class) before any crate lane.
+    let vendor = (vendor-churn-split $base $paths)
+    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, help_scope: $help_scope, web: $web, vendor: $vendor}
 }
 
 # Test function names declared under a test attribute in a file's Rust
@@ -250,6 +255,17 @@ def stage-web [] {
 
 def stage-implementer [] {
     let t = (touched)
+    # Vendor whitespace fail-fast (work#1610): a whitespace-only vendor
+    # diff is formatting churn the snapshots are exempt from by design.
+    # BEFORE the nothing-to-verify early return — a vendor-only diff must
+    # still red here, it never verifies silently.
+    if (($t.vendor.churn | is-not-empty) and ($t.vendor.content | is-empty)) {
+        print $"verify: FAIL vendor-whitespace — ($t.vendor.churn | length) vendored file\(s\) changed whitespace-only \(formatting churn\): ($t.vendor.churn | str join ', ')"
+        print 'vendored snapshots are exempt from formatting drift by design — the repo fmt/clippy tiers never touch vendor/, and neither may a run'
+        print 'content changes must ride `just vendor export`; revert the churn (git checkout -- <path>) or redo the change through the fork'
+        $env.LAST_VERIFY_FAIL = "vendor-whitespace"
+        exit 1
+    }
     if (($t.code | is-empty) and (not $t.web)) {
         print "verify: no lib/ crates and no web surface touched — nothing to verify (parse-level checks belong to the brief)"
         return

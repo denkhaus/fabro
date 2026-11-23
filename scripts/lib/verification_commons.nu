@@ -15,6 +15,8 @@
 #     (work#1427) + the HEAD^ last resort;
 #   - the crate-extraction regex (four former sites: verify.nu x3,
 #     qualitygate.nu x1);
+#   - the vendor whitespace-churn partition (work#1610): snapshot files
+#     vs PINS.toml, whitespace-only diff vs content change;
 #   - test-file / inline-cfg(test) classification (fabro-2f70);
 #   - the web-surface predicate (work#1304);
 #   - the vendor-surface predicate (denkhaus/work#1444);
@@ -273,6 +275,46 @@ export def web-surface-path? [p: string]: nothing -> bool {
 # predicate and gates `just vendor-pins`.
 export def vendor-surface-path? [p: string]: nothing -> bool {
     $p | str starts-with 'vendor/'
+}
+
+# The vendored snapshot files (work#1610): vendor/ paths MINUS the PINS
+# provenance record itself — exactly the files whose blob hashes feed
+# content_sha256. Formatting churn here is BY DESIGN never an editable
+# surface: the snapshots sit outside the repo's fmt/clippy scope, and a
+# real change must ride `just vendor export`.
+export def vendor-snapshot-path? [p: string]: nothing -> bool {
+    ($p | str starts-with 'vendor/') and ($p != 'vendor/PINS.toml')
+}
+
+# Pure per-path verdict (work#1610): the diff against `base` is
+# WHITESPACE-ONLY when both blob contents are equal after stripping ALL
+# whitespace — the rustfmt churn class (re-indent, rewrap, blank lines,
+# trailing space). Anything else is a content event:
+#   added file    (no base blob)     -> false
+#   deleted file   (no worktree file)-> false
+# Non-vendor paths (PINS.toml included) are never whitespace events.
+export def vendor-whitespace-only? [base: string, p: string]: nothing -> bool {
+    if not (vendor-snapshot-path? $p) { return false }
+    let old_blob = (do { git show $"($base):($p)" } | complete)
+    if $old_blob.exit_code != 0 { return false }
+    if not ($p | path exists) { return false }
+    let old_stripped = ($old_blob.stdout | str replace --all --regex '\s' '')
+    let new_stripped = ((open --raw $p) | str replace --all --regex '\s' '')
+    $old_stripped == $new_stripped
+}
+
+# The vendor diff partition (work#1610): among the touched paths, the
+# vendored snapshot files split into whitespace-only churn (formatting,
+# the fail-fast class) and content changes (the `just vendor export`
+# class the vendor-pins tier judges). PINS.toml and non-vendor paths
+# never enter either side. Duplicate calls per path are deliberate — the
+# lists stay independent and the shape stays battery-testable.
+export def vendor-churn-split [base: string, paths: list<string>]: nothing -> record<churn: list<string>, content: list<string>> {
+    let snapshots = ($paths | where {|p| vendor-snapshot-path? $p})
+    {
+        churn: ($snapshots | where {|p| vendor-whitespace-only? $base $p}),
+        content: ($snapshots | where {|p| not (vendor-whitespace-only? $base $p)}),
+    }
 }
 
 # The clap surface (denkhaus/work#1429): a crate's arg-surface source

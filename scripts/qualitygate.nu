@@ -75,7 +75,25 @@ def cargo-env [block: closure]: nothing -> any {
     with-env {FABRO_SERVER: null} { do $block }
 }
 
+# work#1610: `--all` scopes fmt to the workspace members; vendor/ stays
+# out ONLY while root Cargo.toml keeps the vendored dirs in [workspace]
+# exclude. The exclusion is asserted explicitly — a members/exclude edit
+# that would silently pull vendor into fmt scope reds here instead of
+# rustfmt-ing the snapshots (the run-01M7YV5Y churn class).
+def vendor-fmt-exclusion-guard []: nothing -> bool {
+    let manifest = (open Cargo.toml)
+    let excluded = ($manifest | get -o workspace.exclude | default [])
+    let missing = (['vendor/petri' 'vendor/pebble' 'vendor/sandbox-driver'] | where {|d| $d not-in $excluded})
+    if ($missing | is-not-empty) {
+        print $"vendor fmt exclusion RED: root Cargo.toml [workspace].exclude no longer names every vendored dir \(missing: ($missing | str join ', ')\) — cargo fmt --all would reach the vendored snapshots"
+        return false
+    }
+    print "vendor fmt exclusion: all vendored dirs stay workspace-excluded"
+    true
+}
+
 def check-fmt [] {
+    if not (vendor-fmt-exclusion-guard) { return false }
     print "== cargo fmt --check --all =="
     let res = (cargo-env { do { ^cargo $'+($PINNED_TOOLCHAIN)' fmt --check --all } | complete })
     if $res.exit_code != 0 {
@@ -332,6 +350,38 @@ def vendor-diff? [base: record]: nothing -> bool {
     run-diff-paths $base | any {|p| vendor-surface-path? $p}
 }
 
+# ── Vendor whitespace tier (denkhaus/work#1610) ────────────────────────
+# Fail fast BEFORE any expensive tier when the run diff's vendor/ story
+# is formatting churn only: every changed vendored snapshot file differs
+# from the base by whitespace alone (the rustfmt-over-vendor incident,
+# run 01M7YV5Y — two gate bounces). The rule it names: vendored snapshots
+# are exempt from formatting drift by design — the repo's fmt/clippy
+# tiers never reach vendor/, and neither may a run; content changes must
+# ride `just vendor export`. A content-changed vendor diff does NOT trip
+# here — the vendor-pins tier judges provenance. Cheap by construction:
+# git show + strip-compare, no cargo.
+def check-vendor-whitespace [base: record]: nothing -> bool {
+    let paths = (run-diff-paths $base)
+    if (not ($paths | any {|p| vendor-surface-path? $p})) {
+        print '== vendor whitespace tier skipped — no vendor/ files in the diff =='
+        return true
+    }
+    let split = (vendor-churn-split $base.base $paths)
+    if ($split.content | is-not-empty) {
+        print $"== vendor whitespace tier — ($split.content | length) content-changed vendor file\(s\), provenance rides the vendor-pins tier =="
+        return true
+    }
+    if ($split.churn | is-empty) {
+        print '== vendor whitespace tier skipped — only PINS.toml changed in vendor/ =='
+        return true
+    }
+    print $"== vendor whitespace RED — ($split.churn | length) vendored file\(s\) changed whitespace-only \(formatting churn\):"
+    for p in $split.churn { print $"  ($p)" }
+    print 'vendored snapshots are exempt from formatting drift by design — the repo fmt/clippy tiers never touch vendor/, and neither may a run'
+    print 'content changes must ride `just vendor export`; revert the churn (git checkout -- <path>) or redo the change through the fork'
+    false
+}
+
 def check-vendor-pins [base: record]: nothing -> bool {
     if (not (vendor-diff? $base)) {
         print '== vendor tier skipped — no vendor/ files in the diff =='
@@ -552,6 +602,17 @@ def "main check-vendor-pins" []: nothing -> nothing {
     if not (check-vendor-pins $base) { exit 1 }
 }
 
+# Subcommand surface: `nu scripts/qualitygate.nu check-vendor-whitespace`
+# is the whitespace tier's direct probe (denkhaus/work#1610) — the same
+# fail-fast the product gate runs inline.
+def "main check-vendor-whitespace" []: nothing -> nothing {
+    let base = (run-base)
+    if not $base.grounded {
+        print "vendor-whitespace base ungrounded: interactive or pre-checkpoint, diffing working tree"
+    }
+    if not (check-vendor-whitespace $base) { exit 1 }
+}
+
 def main [] {
     let crates = (touched-crates)
     let base = (run-base)
@@ -565,6 +626,14 @@ def main [] {
     let scope = (scope-violations (run-diff-paths $base) "product")
     if ($scope | is-not-empty) {
         for v in $scope { print $"run-scope: product lane diff touches out-of-scope path: ($v)" }
+        print "GATE RED"
+        exit 1
+    }
+    # Vendor whitespace tier (denkhaus/work#1610): first of the vendor
+    # checks and ahead of EVERY expensive tier — a whitespace-only vendor
+    # diff is formatting churn the snapshots are exempt from by design;
+    # name the rule and stop here. First red stops (qualitygate style).
+    if not (check-vendor-whitespace $base) {
         print "GATE RED"
         exit 1
     }
