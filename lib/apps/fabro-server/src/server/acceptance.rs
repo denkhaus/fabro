@@ -17,8 +17,11 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
+use fabro_store::platform_records::PlatformRecord;
 use fabro_types::{OrchestrationField, OrchestrationVerdict, PullRequestState, RunId};
-use fabro_work::{AcceptanceState, ClaimFold, WorkClaim};
+use fabro_work::{
+    AcceptanceState, ClaimFold, WorkClaim, named_parts, unaccounted_parts, verified_part,
+};
 
 use super::AppState;
 
@@ -217,4 +220,70 @@ pub(crate) async fn live_claim_fold(
     let claim_verdicts = verdicts_from_maps(&claim.run_id, verdicts.0, verdicts.1);
     let fold = claim_fold_with(claim, claim_verdicts, projection);
     Ok(fabro_work::acceptance_fold(open, &[fold]))
+}
+
+/// The merge door's acceptance backstop (denkhaus/work#1553): the
+/// claimed item's UNACCOUNTED named parts — the unchecked task-list
+/// checkboxes no `part=verified:` review observation accounts. `None`
+/// means the chain is clear to land (no claim, no view row, no parts,
+/// or every part accounted); `Some(texts)` is the refusal's named
+/// parts, in document order.
+///
+/// Accountability is two-sourced by design: a part is accounted by the
+/// BODY (its box checked — a landed part the chain maintains) or by
+/// the RUN's review (the reviewer's per-part verified record — the
+/// parts THIS pull request delivers). The door never judges content;
+/// it refuses while the item's own machine-checkable criteria say work
+/// remains, the same refusal the close door (work#1552) lands later —
+/// here BEFORE the merge, not after.
+pub(crate) async fn merge_refusal_parts(
+    state: &AppState,
+    target: &RunId,
+) -> Result<Option<Vec<String>>> {
+    let Some(claim) = state
+        .work_store()
+        .active_claim_for_run(target)
+        .await
+        .context("reading the target run's live claim")?
+    else {
+        return Ok(None);
+    };
+    let Some(item) = state
+        .stores
+        .work_item_views
+        .get(&claim.project_id, &claim.item_key)
+        .await
+        .context("reading the claimed item's view row")?
+    else {
+        // No materialized row: no body, no named parts to hold the
+        // merge — the fold's missing-row posture (it reads content it
+        // cannot have as absent, never invents a refusal).
+        return Ok(None);
+    };
+    let parts = named_parts(&item.item.body);
+    if parts.is_empty() || parts.iter().all(|part| part.checked) {
+        return Ok(None);
+    }
+    let records = state
+        .stores
+        .run_summaries
+        .platform_records()
+        .read(target)
+        .await
+        .context("reading the target run's platform records")?;
+    let verified_texts: Vec<&str> = records
+        .iter()
+        .filter_map(|stored| match &stored.record {
+            PlatformRecord::ObservationRecorded(observed) => verified_part(&observed.text),
+            _ => None,
+        })
+        .collect();
+    let verified = |text: &str| verified_texts.contains(&text);
+    let unaccounted = unaccounted_parts(&parts, &verified);
+    Ok((!unaccounted.is_empty()).then(|| {
+        unaccounted
+            .into_iter()
+            .map(|part| part.text.clone())
+            .collect()
+    }))
 }

@@ -358,3 +358,183 @@ async fn merged_records_of(state: &Arc<AppState>, target: &RunId) -> usize {
         .expect("the merged records read")
         .len()
 }
+
+/// Seed the acceptance-chain fixture half (work#1553): the fabro work
+/// project, a live claim of the item by the target run, and the item's
+/// materialized view row carrying `body`.
+async fn seed_claimed_item(state: &Arc<AppState>, target: &RunId, body: &str) {
+    let store = state.work_store();
+    store
+        .upsert_project(&fabro_work::WorkProject {
+            project_id:               "fabro".to_string(),
+            display_name:             "Fabro".to_string(),
+            tracker_provider:         "github".to_string(),
+            tracker_repo:             "denkhaus/work".to_string(),
+            target_repo:              None,
+            project_label:            "project:fabro".to_string(),
+            lane_labels:              [("loop".to_string(), "lane:loop".to_string())]
+                .into_iter()
+                .collect(),
+            claim_label_prefix:       "fabro:run:".to_string(),
+            claim_comment_enabled:    false,
+            backpressure_open_pr_cap: 0,
+        })
+        .await
+        .expect("project upserts");
+    store
+        .grant(&fabro_work::GrantRequest {
+            project_id: "fabro".to_string(),
+            item_key:   "denkhaus/work#1600".to_string(),
+            run_id:     *target,
+            lane:       "loop".to_string(),
+        })
+        .await
+        .expect("grant");
+    state
+        .stores
+        .work_item_views
+        .put("fabro", &fabro_work::WorkItem {
+            item_key:   "denkhaus/work#1600".to_string(),
+            title:      "A task-list item".to_string(),
+            body:       body.to_string(),
+            state:      "open".to_string(),
+            labels:     vec!["lane:develop".to_string()],
+            priority:   1,
+            url:        "https://github.com/denkhaus/work/issues/1600".to_string(),
+            updated_at: None,
+            created_at: None,
+            closed_at:  None,
+        })
+        .await
+        .expect("item view seed");
+}
+
+/// The acceptance backstop (work#1553), refusal arm: the item carries
+/// an unchecked named part no review observation accounts — the door
+/// refuses with `merge_acceptance_unaccounted` BEFORE any GitHub call,
+/// even though the reviewer approved and the adjudicator enabled. This
+/// is the work#1463 class's mechanical cure: the half-landed item
+/// cannot land through an approving chain.
+#[tokio::test]
+async fn the_merge_door_refuses_an_unaccounted_named_part() {
+    let github = MockServer::start();
+    let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+    let merger = RunId::new();
+    let adjudicator = RunId::new();
+    let target = RunId::new();
+    seed_run(&state, &merger, "merger", None).await;
+    seed_run(&state, &adjudicator, "adjudicator", None).await;
+    seed_run(
+        &state,
+        &target,
+        "develop",
+        Some(fabro_types::PullRequestLink {
+            owner:  "denkhaus".to_string(),
+            repo:   "fabro".to_string(),
+            number: 501,
+            state:  None,
+        }),
+    )
+    .await;
+    seed_mergeable_target(&state, &target, &adjudicator).await;
+    seed_claimed_item(
+        &state,
+        &target,
+        "## Parts\n\n- [ ] Reviewer: per-part verdicts\n- [x] Close door: filed\n",
+    )
+    .await;
+
+    let merge_mock = github.mock(|when, then| {
+        when.method("PUT")
+            .path("/repos/denkhaus/fabro/pulls/501/merge");
+        then.status(200).json_body(json!({"sha": "abc1234"}));
+    });
+
+    let response = merge_call(&state, &merger, &target).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "the door refuses while a named part is unaccounted"
+    );
+    let body = body_json(response).await;
+    assert_eq!(
+        body["errors"][0]["code"], "merge_acceptance_unaccounted",
+        "the refusal code names the acceptance backstop: {body}"
+    );
+    let message = body["errors"][0]["detail"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("Reviewer: per-part verdicts"),
+        "the refusal names the unaccounted part verbatim: {message}"
+    );
+    assert_eq!(
+        merge_mock.calls(),
+        0,
+        "the refusal precedes the GitHub merge call"
+    );
+}
+
+/// The acceptance backstop, accounted arm: the run's own review
+/// recorded `part=verified:` for the unchecked part — the pull request
+/// delivers it — and the door merges. Accountability is two-sourced:
+/// the body's checked boxes and the review's verified records.
+#[tokio::test]
+async fn a_part_verified_review_observation_accounts_the_part() {
+    let github = MockServer::start();
+    let state = create_github_token_app_state(Some("ghu_test"), Some(github.base_url()));
+    let merger = RunId::new();
+    let adjudicator = RunId::new();
+    let target = RunId::new();
+    seed_run(&state, &merger, "merger", None).await;
+    seed_run(&state, &adjudicator, "adjudicator", None).await;
+    seed_run(
+        &state,
+        &target,
+        "develop",
+        Some(fabro_types::PullRequestLink {
+            owner:  "denkhaus".to_string(),
+            repo:   "fabro".to_string(),
+            number: 501,
+            state:  None,
+        }),
+    )
+    .await;
+    seed_mergeable_target(&state, &target, &adjudicator).await;
+    seed_claimed_item(
+        &state,
+        &target,
+        "## Parts\n\n- [ ] Reviewer: per-part verdicts\n- [x] Close door: filed\n",
+    )
+    .await;
+    state
+        .stores
+        .run_summaries
+        .platform_records()
+        .append(
+            &target,
+            &PlatformRecord::ObservationRecorded(
+                fabro_store::platform_records::ObservationRecordedRecord {
+                    category:  fabro_types::ObservationCategory::Note,
+                    text:      "part=verified: Reviewer: per-part verdicts".to_string(),
+                    execution: 1,
+                    firing:    1,
+                },
+            ),
+            None,
+        )
+        .await
+        .expect("part observation seed");
+
+    let merge_mock = github.mock(|when, then| {
+        when.method("PUT")
+            .path("/repos/denkhaus/fabro/pulls/501/merge");
+        then.status(200).json_body(json!({"sha": "abc1234"}));
+    });
+
+    let response = merge_call(&state, &merger, &target).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the verified part accounts the item and the merge proceeds"
+    );
+    assert_eq!(merge_mock.calls(), 1, "exactly one GitHub merge call");
+}

@@ -1115,6 +1115,46 @@ async fn merge_run(
             "merge_not_enabled",
         ));
     }
+    // The acceptance backstop (denkhaus/work#1553): the claimed item's
+    // named parts must be ACCOUNTED before the PR lands — every
+    // unchecked task-list checkbox covered by a `part=verified:`
+    // review observation or checked in the body. The correlated-failure
+    // cure's mechanical half: a deliberately half-landed item cannot
+    // pass the chain even when the reviewer approved and the
+    // adjudicator enabled — the door refuses BEFORE landing, not after.
+    let refusal_parts = super::super::acceptance::merge_refusal_parts(&state, &target)
+        .await
+        .map_err(|err| {
+            tracing::error!(error = ?err, target_run_id = %target, "merge acceptance read failed");
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Reading the claimed item's acceptance state failed.",
+            )
+        })?;
+    if let Some(parts) = refusal_parts {
+        let listed = parts
+            .iter()
+            .take(3)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("; ");
+        let more = parts.len().saturating_sub(3);
+        return Err(ApiError::with_code(
+            StatusCode::FORBIDDEN,
+            format!(
+                "The claimed item carries {} unaccounted named part(s): {listed}{}. The item's \
+                 task list says work remains — the reviewer's per-part verified record accounts \
+                 the parts this pull request delivers, the body's checked boxes the landed ones.",
+                parts.len(),
+                if more > 0 {
+                    format!(" (+{more} more)")
+                } else {
+                    String::new()
+                },
+            ),
+            "merge_acceptance_unaccounted",
+        ));
+    }
 
     // The merge itself: server-side GitHub credentials (the supervisor's
     // machinery — squash, the line's merge shape).

@@ -41,7 +41,18 @@ For ONE run per response, in order:
    - `merge=enabled` — the run's work is content-mergeable: its
      painpoints are resolved or explainable, its facts support the
      claim, and the work item's demand is plausibly delivered by the
-     run's pull request.
+     run's pull request. ACCEPTANCE ACCOUNTED (work#1553, the
+     correlated-failure cure): when the item's body carries a task
+     list (`- [ ]` / `- [x]` checkboxes), enabling ALSO requires every
+     UNCHECKED named part to be accounted — read the item with
+     `fabro_work_show` and the run's facts with
+     `fabro_observation_list`: a part is accounted by the reviewer's
+     `part=verified: <part text>` record on the run (the parts this
+     pull request delivers) or by its checked box (landed). An
+     unchecked part with neither is UNACCOUNTED: refuse — the merge
+     door enforces the same rule mechanically after you, and an
+     enabled run the door refuses parks in the conflict lane for
+     nothing.
    - `merge=refused` — the run's work is not mergeable: the run failed
      without a pull request, its painpoints name real defects, the
      patch does not carry the claimed demand, or the radius holds open
