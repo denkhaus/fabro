@@ -7787,6 +7787,17 @@ paths:
             search modes.
           schema:
             type: string
+        - name: priority
+          in: query
+          required: false
+          description: >-
+            Priority name (canonical values `p0`-`p3`); filters by the
+            `prio:<priority>` tracker label in addition to the project
+            (and lane) labels, in both list and search modes — the same
+            label mechanism the tracker's lane and raw-label filters ride
+            (denkhaus/work#1665).
+          schema:
+            type: string
         - name: sort
           in: query
           required: false

@@ -2,7 +2,7 @@ import { Link, useOutlet, useSearchParams } from "react-router";
 import useSWR from "swr";
 
 import { workItemsApi } from "../lib/api-client";
-import type { ListWorkItemsSortEnum } from "@qltysh/fabro-api-client";
+import type { ListWorkItemsSortEnum, ListWorkItemsStateEnum } from "@qltysh/fabro-api-client";
 import { DataTable, estimatePageTotal, type DataTableColumn, type DataTableFilter } from "../components/data-table";
 import { EmptyState, ErrorState, LoadingState } from "../components/state";
 import { Markdown } from "../components/stage-renderers/primitives";
@@ -12,9 +12,10 @@ import { labelBadgeClass, prioBadgeClass, trackerItemState, typeBadgeClass, work
  * The work items view (denkhaus/work#1199): the tracker's read surface
  * in the web app — read-only (mutations stay on the CLI in v1), paged
  * and filtered through the shared data table control (#1201), with the
- * lane/priority/type filters the tracker's labels carry. The key link
- * colors by the item's own live state (#1298 — the same palette the
- * observation surfaces share).
+ * lane/priority/type filters the tracker's labels carry and the status
+ * (open/closed/all) door the state param serves (denkhaus/work#1665).
+ * The key link colors by the item's own live state (#1298 — the same
+ * palette the observation surfaces share).
  */
 
 export const handle = { wide: true };
@@ -92,10 +93,27 @@ const COLUMNS: Array<DataTableColumn<WorkItemRow>> = [
   { id: "lane", header: "Lane", cell: (row) => (row.lane === "—" ? "" : <span className="font-mono">{row.lane}</span>) },
 ];
 
+const PRIORITY_OPTIONS = [
+  { value: "p0", label: "p0" },
+  { value: "p1", label: "p1" },
+  { value: "p2", label: "p2" },
+  { value: "p3", label: "p3" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "open", label: "open" },
+  { value: "closed", label: "closed" },
+  { value: "all", label: "all" },
+];
+
+// Selects first, free-text Search last — the observations table's
+// toolbar order.
 const FILTERS: DataTableFilter[] = [
-  { key: "query", label: "Search", kind: "text", placeholder: "Search title and body…" },
   { key: "lane", label: "Lane", kind: "select", options: LANE_OPTIONS },
   { key: "label", label: "Type", kind: "select", options: TYPE_OPTIONS },
+  { key: "priority", label: "Priority", kind: "select", options: PRIORITY_OPTIONS },
+  { key: "status", label: "Status", kind: "select", options: STATUS_OPTIONS },
+  { key: "query", label: "Search", kind: "text", placeholder: "Search title and body…" },
 ];
 
 export default function WorkItemsView() {
@@ -123,10 +141,16 @@ export default function WorkItemsView() {
           filters.query || undefined,
           limit,
           filters.label || undefined,
+          // The priority filter rides the prio: label prefix server-side
+          // (denkhaus/work#1665) — the same label mechanism as the lane
+          // and raw label filters.
+          filters.priority || undefined,
           (sort ?? undefined) as ListWorkItemsSortEnum | undefined,
-          // work#1476 inserted state + cursor before page: the two stay
-          // unset (the table filters client-side; the pager walks pages).
-          undefined,
+          // The status filter is the state param (denkhaus/work#1665):
+          // unset stays the server's open default, "all" is the census
+          // read. work#1476 inserted state + cursor before page; the
+          // cursor stays unset (the pager walks pages).
+          (filters.status || undefined) as ListWorkItemsStateEnum | undefined,
           undefined,
           page,
         );

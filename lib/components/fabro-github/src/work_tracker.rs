@@ -346,15 +346,16 @@ impl GitHubTracker {
             .search_items(
                 project,
                 &WorkItemFilter {
-                    lane:  None,
-                    limit: 5,
-                    query: None,
-                    label: None,
-                    page:  1,
+                    lane:     None,
+                    limit:    5,
+                    query:    None,
+                    label:    None,
+                    priority: None,
+                    page:     1,
                     // Legacy ids resolve in ANY state (closed migrated
                     // items stay resolvable); the search arm ignores
                     // the state filter — `All` states the intent.
-                    state: WorkItemStateFilter::All,
+                    state:    WorkItemStateFilter::All,
                 },
                 &format!("label:\"{label}\""),
             )
@@ -369,8 +370,9 @@ impl GitHubTracker {
     }
 
     /// The labels every list/search carries: the project label, the
-    /// lane's label when a lane is filtered, and the raw label filter
-    /// (denkhaus/work#1001).
+    /// lane's label when a lane is filtered, the raw label filter, and
+    /// the `prio:` label a priority filter names (denkhaus/work#1001,
+    /// denkhaus/work#1665).
     fn filter_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
         let mut labels = vec![project.project_label.clone()];
         if let Some(lane) = filter.lane.as_deref() {
@@ -383,6 +385,9 @@ impl GitHubTracker {
         }
         if let Some(label) = filter.label.as_deref() {
             labels.push(label.to_string());
+        }
+        if let Some(priority) = filter.priority.as_deref() {
+            labels.push(format!("prio:{priority}"));
         }
         labels
     }
@@ -1236,12 +1241,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let items = tracker
             .list(&project(), WorkItemFilter {
-                lane:  Some("loop".to_string()),
-                limit: 25,
-                query: Some("watchdog".to_string()),
-                label: None,
-                page:  1,
-                state: WorkItemStateFilter::Open,
+                lane:     Some("loop".to_string()),
+                limit:    25,
+                query:    Some("watchdog".to_string()),
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the search arm resolves");
@@ -1278,12 +1284,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let page = tracker
             .list_with_total(&project(), WorkItemFilter {
-                lane:  None,
-                limit: 10,
-                query: Some("watchdog".to_string()),
-                label: None,
-                page:  2,
-                state: WorkItemStateFilter::Open,
+                lane:     None,
+                limit:    10,
+                query:    Some("watchdog".to_string()),
+                label:    None,
+                priority: None,
+                page:     2,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the counting search resolves");
@@ -1332,12 +1339,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let page = tracker
             .list_with_total(&project(), WorkItemFilter {
-                lane:  Some("loop".to_string()),
-                limit: 10,
-                query: None,
-                label: None,
-                page:  1,
-                state: WorkItemStateFilter::Open,
+                lane:     Some("loop".to_string()),
+                limit:    10,
+                query:    None,
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the counting list resolves");
@@ -1353,12 +1361,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let error = tracker
             .list(&project(), WorkItemFilter {
-                lane:  None,
-                limit: 50,
-                query: Some("   ".to_string()),
-                label: None,
-                page:  1,
-                state: WorkItemStateFilter::Open,
+                lane:     None,
+                limit:    50,
+                query:    Some("   ".to_string()),
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect_err("a blank query must fail");
@@ -1384,12 +1393,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let items = tracker
             .list(&project(), WorkItemFilter {
-                lane:  Some("loop".to_string()),
-                limit: 50,
-                query: None,
-                label: None,
-                page:  1,
-                state: WorkItemStateFilter::Open,
+                lane:     Some("loop".to_string()),
+                limit:    50,
+                query:    None,
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the open-list arm resolves");
@@ -1417,15 +1427,49 @@ mod tests {
         let tracker = tracker(&server.base_url());
         tracker
             .list(&project(), WorkItemFilter {
-                lane:  None,
-                limit: 100,
-                query: None,
-                label: Some("arch".to_string()),
-                page:  3,
-                state: WorkItemStateFilter::Open,
+                lane:     None,
+                limit:    100,
+                query:    None,
+                label:    Some("arch".to_string()),
+                priority: None,
+                page:     3,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the labeled paged list resolves");
+        listed.assert_calls_async(1).await;
+    }
+
+    /// The priority filter rides the `prio:` label beside the project
+    /// and lane labels — the same label composition the raw label
+    /// filter uses (denkhaus/work#1665).
+    #[tokio::test]
+    async fn priority_filter_rides_the_prio_label_beside_the_lane_label() {
+        let server = httpmock::MockServer::start_async().await;
+        let listed = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path("/repos/denkhaus/work/issues")
+                    .query_param("state", "open")
+                    .query_param("labels", "project:fabro,lane:loop,prio:p1")
+                    .query_param("per_page", "50")
+                    .query_param("page", "1");
+                then.status(200).json_body(serde_json::json!([]));
+            })
+            .await;
+        let tracker = tracker(&server.base_url());
+        tracker
+            .list(&project(), WorkItemFilter {
+                lane:     Some("loop".to_string()),
+                limit:    50,
+                query:    None,
+                label:    None,
+                priority: Some("p1".to_string()),
+                page:     1,
+                state:    WorkItemStateFilter::Open,
+            })
+            .await
+            .expect("the priority-filtered list resolves");
         listed.assert_calls_async(1).await;
     }
 
@@ -1455,12 +1499,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         let items = tracker
             .list(&project(), WorkItemFilter {
-                lane:  None,
-                limit: 100,
-                query: None,
-                label: None,
-                page:  1,
-                state: WorkItemStateFilter::All,
+                lane:     None,
+                limit:    100,
+                query:    None,
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    WorkItemStateFilter::All,
             })
             .await
             .expect("the all-state list resolves");
@@ -1495,12 +1540,13 @@ mod tests {
         let tracker = tracker(&server.base_url());
         tracker
             .list(&project(), WorkItemFilter {
-                lane:  None,
-                limit: 100,
-                query: Some("census".to_string()),
-                label: Some("prio:p0".to_string()),
-                page:  2,
-                state: WorkItemStateFilter::Open,
+                lane:     None,
+                limit:    100,
+                query:    Some("census".to_string()),
+                label:    Some("prio:p0".to_string()),
+                priority: None,
+                page:     2,
+                state:    WorkItemStateFilter::Open,
             })
             .await
             .expect("the labeled paged search resolves");

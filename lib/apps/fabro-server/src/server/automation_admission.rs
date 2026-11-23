@@ -239,12 +239,13 @@ async fn develop_claim_pool(
     for lane in project.lane_labels.keys() {
         let items = tracker
             .list(&project, WorkItemFilter {
-                lane:  Some(lane.clone()),
-                limit: pool.page,
-                query: None,
-                label: None,
-                page:  1,
-                state: pool.state,
+                lane:     Some(lane.clone()),
+                limit:    pool.page,
+                query:    None,
+                label:    None,
+                priority: None,
+                page:     1,
+                state:    pool.state,
             })
             .await
             .map_err(|error| error.to_string())?;

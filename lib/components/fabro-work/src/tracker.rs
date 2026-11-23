@@ -70,24 +70,29 @@ pub enum WorkItemStateFilter {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WorkItemFilter {
-    pub lane:  Option<String>,
-    pub limit: usize,
+    pub lane:     Option<String>,
+    pub limit:    usize,
     /// Plain-keyword text search over title and body, INCLUDING closed
     /// items (ADR-0032 phase 3: the pre-create duplicate check needs the
     /// closed half). When set, the provider searches instead of listing
     /// open items and relevance replaces the priority ordering; the
     /// state filter does not apply (the search spans states).
-    pub query: Option<String>,
+    pub query:    Option<String>,
     /// Raw tracker label name (e.g. `prio:p0`), filtered in addition to
     /// the project (and lane) labels in both list and search modes —
     /// the label census seam (denkhaus/work#1001).
-    pub label: Option<String>,
+    pub label:    Option<String>,
+    /// Priority name (canonical values `p0`-`p3`), filtered as the
+    /// `prio:<priority>` label beside the project (and lane) labels in
+    /// both list and search modes — the same label mechanism the lane
+    /// and raw-label filters ride (denkhaus/work#1665).
+    pub priority: Option<String>,
     /// 1-based results page; `limit` is the page size. Providers that
     /// cannot page ignore it (denkhaus/work#1001).
-    pub page:  usize,
+    pub page:     usize,
     /// Which states the listing enumerates; the default (OPEN) is every
     /// pre-#1476 caller's behavior (work#1476).
-    pub state: WorkItemStateFilter,
+    pub state:    WorkItemStateFilter,
 }
 
 /// A paged list read that also names the TOTAL the filter matches —
