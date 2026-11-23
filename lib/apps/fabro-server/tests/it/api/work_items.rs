@@ -2206,6 +2206,222 @@ mod closure_radius {
         );
     }
 
+    /// The released-claim pin (work#1660): a RELEASED claim must never
+    /// blind the category resolution. The live specimen: the source
+    /// run's claim was released by the fork.45-window disposition
+    /// ("claims cleared"), and the then-deployed build classified all
+    /// five of the item's links as blocking. The contract: the claim
+    /// store keeps released rows, the radius resolves runs over the
+    /// WHOLE claim history, and the category map reads the platform
+    /// records directly — so the released run's painpoint-born link
+    /// rides residual (the residual-pointer note on the close), while a
+    /// non-painpoint link from a second released run still blocks
+    /// conservatively (the unforced close refuses, force overrides).
+    #[tokio::test]
+    async fn a_released_claim_run_s_painpoint_born_link_stays_a_residual_pointer() {
+        let tracker =
+            RadiusTracker::with_items(vec![item(7, "open"), item(8, "open"), item(9, "open")]);
+        let (app, _state, records) = app_with_state(Arc::clone(&tracker)).await;
+
+        // The specimen run claims the closing item, then its claim is
+        // RELEASED before any close is attempted — the row stays in the
+        // claim history (state released, never deleted).
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#7", "runId": CLOSING_RUN, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted["outcome"], "granted");
+        let claim_id = granted["claim"]["claimId"]
+            .as_str()
+            .expect("the seeded claim id")
+            .to_string();
+        let released = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                &format!("/claims/{claim_id}/release"),
+                &json!({"reason": "fork.45-window disposition: claims cleared"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(
+            released["state"], "released",
+            "the fixture releases the claim the disposition way"
+        );
+
+        // The released run's PAINPOINT observation carries the follow-up
+        // link — the residual shape (the live specimen's #1515 and kin).
+        let seq = seed_observation(&records, CLOSING_RUN, true).await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#8", "runId": CLOSING_RUN, "seq": seq}),
+            )
+            .await,
+        )
+        .await;
+
+        // A second run's NOTE observation carries the other link — the
+        // conservative blocker shape (#1410). Its claim is released too:
+        // the disposition cleared every claim, none is live at close
+        // time.
+        let note_run = RunId::new().to_string();
+        let granted_note = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({"itemKey": "denkhaus/work#7", "runId": note_run, "lane": "loop"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(granted_note["outcome"], "granted");
+        let note_claim = granted_note["claim"]["claimId"]
+            .as_str()
+            .expect("the note run's claim id")
+            .to_string();
+        let released_note = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                &format!("/claims/{note_claim}/release"),
+                &json!({"reason": "run ended"}),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(released_note["state"], "released");
+        let note_seq = seed_observation(&records, &note_run, false).await;
+        body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/work-items/link",
+                &json!({"itemKey": "denkhaus/work#9", "runId": note_run, "seq": note_seq}),
+            )
+            .await,
+        )
+        .await;
+
+        // The radius read partitions over the released-claim history:
+        // the painpoint-born item rides residual, the note-born one
+        // blocks.
+        let radius = body_json(
+            json_call(
+                &app,
+                Method::GET,
+                "/projects/fabro/work-items/denkhaus%2Fwork%237/radius",
+                &json!({}),
+            )
+            .await,
+        )
+        .await;
+        let blocking = radius["radius"].as_array().expect("the blocking listing");
+        assert_eq!(
+            blocking.len(),
+            1,
+            "exactly the note-born link blocks: {radius}"
+        );
+        assert_eq!(blocking[0]["itemKey"], "denkhaus/work#9");
+        let residual = radius["residual"]
+            .as_array()
+            .expect("the residual listing exists");
+        assert_eq!(
+            residual.len(),
+            1,
+            "the released run's painpoint-born link stays soft: {radius}"
+        );
+        assert_eq!(residual[0]["itemKey"], "denkhaus/work#8");
+
+        // The conservative half still holds: the note-born link refuses
+        // the UNFORCED close even though every claim is released.
+        let unforced = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({"itemKey": "denkhaus/work#7", "reason": "landed as jkl012"}),
+        )
+        .await;
+        assert_eq!(
+            unforced.status(),
+            StatusCode::CONFLICT,
+            "a non-painpoint link still blocks conservatively (work#1660)"
+        );
+
+        // The forced close rides over the blocker, and the response
+        // names both halves: the overridden blocker AND the
+        // residual-pointer note for the released run's painpoint-born
+        // link.
+        let response = json_call(
+            &app,
+            Method::POST,
+            "/projects/fabro/work-items/close",
+            &json!({"itemKey": "denkhaus/work#7", "reason": "landed as jkl012", "force": true}),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "a released-claim radius never wedges the close (work#1660)"
+        );
+        let closed = body_json(response).await;
+        let overridden = closed["overriddenRadius"]
+            .as_array()
+            .expect("the override listing exists");
+        assert_eq!(
+            overridden.len(),
+            1,
+            "the forced close overrides exactly the note-born blocker: {closed}"
+        );
+        assert_eq!(overridden[0]["itemKey"], "denkhaus/work#9");
+        let note = closed["residualRadius"]
+            .as_array()
+            .expect("the residual-pointer note exists");
+        assert_eq!(note.len(), 1, "the note names the residual: {closed}");
+        assert_eq!(note[0]["itemKey"], "denkhaus/work#8");
+
+        // The close landed: the item is closed, the residual pointers
+        // stay open — the note points at follow-up work, it never
+        // closes it.
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#7")
+                .await
+                .expect("tracker read")
+                .expect("item 7")
+                .state,
+            "closed"
+        );
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#8")
+                .await
+                .expect("tracker read")
+                .expect("item 8")
+                .state,
+            "open"
+        );
+        assert_eq!(
+            tracker
+                .get(&fake_project(), "denkhaus/work#9")
+                .await
+                .expect("tracker read")
+                .expect("item 9")
+                .state,
+            "open"
+        );
+    }
+
     #[tokio::test]
     async fn unlink_removes_the_link_and_reports_an_absent_pair() {
         let tracker = RadiusTracker::with_items(vec![item(1, "open"), item(2, "open")]);
