@@ -277,6 +277,23 @@ def 'main export' [
         error make {msg: "vendor-sync: export needs --message (the fork commit message)"}
     }
 
+    # The vendored workspace is its own workspace with its own rustfmt
+    # scope: run its pinned fmt pass BEFORE the fork commit so a fork edit
+    # can never land unformatted and bounce the consuming runs' qualitygate
+    # (work#1609, run 01M7YV5Y). The pass may rewrite the vendored tree in
+    # place; a fmt failure fails the whole export. Dry-run only previews
+    # and must not rewrite the tree.
+    if not $dry_run {
+        print $"== ($name): pinned fmt \(nightly-2026-04-14\) over ($dest)"
+        let fmt = (do {
+            cd $dest
+            ^cargo +nightly-2026-04-14 fmt --all
+        } | complete)
+        if $fmt.exit_code != 0 {
+            error make {msg: $"vendor-sync: pinned fmt failed in ($dest) — export aborted: ($fmt.stderr | str trim)"}
+        }
+    }
+
     let clone = (ensure-clone $fork $branch)
     # The clone is a scratch copy of the fork branch: make it byte-equal to
     # the tree, .git excluded. `target/` is excluded too: the vendored
