@@ -39,7 +39,7 @@ import { RunsListView } from "../components/runs-list/runs-list-view";
 import { mutateRunListCaches } from "../lib/board-cache";
 import { shouldRefreshBoardForEvent, useBoardEvents } from "../lib/board-events";
 import { useAllRuns, useAuthConfig, useRunsPage, useSystemInfo } from "../lib/queries";
-import { approveRun, archiveRuns, canArchive, canOwnerPark, isOwnerPark, isQuotaPark, mapError, ownerParkRun, ownerUnparkRun, retryRun } from "../lib/run-actions";
+import { approveRun, archiveRuns, canArchive, canDelete, canOwnerPark, deleteRuns, isOwnerPark, isQuotaPark, mapError, ownerParkRun, ownerUnparkRun, retryRun } from "../lib/run-actions";
 import { plural } from "../lib/plural";
 import { formatAbsoluteTs, formatRelativeAge, formatTileTimestamp } from "../lib/format";
 import { useToast } from "../components/toast";
@@ -48,6 +48,7 @@ import type {
   ListRunsSortEnum,
   Run,
 } from "@qltysh/fabro-api-client";
+import { ConfirmDialog } from "../components/ui";
 import { RunsToolbar } from "./runs/toolbar";
 import { useRunsWorkspacePreferences } from "./runs/workspace-preferences";
 
@@ -664,13 +665,20 @@ function archivableItems(items: RunItem[]): RunItem[] {
   return items.filter((item) => canArchive(item.lifecycleStatus));
 }
 
-function ColumnActionsMenu({ column }: { column: Column }) {
+function deletableItems(items: RunItem[]): RunItem[] {
+  return items.filter((item) => canDelete(item.lifecycleStatus));
+}
+
+// Exported for the board-column-menu tests (the PrCard precedent).
+export function ColumnActionsMenu({ column }: { column: Column }) {
   const archivable = archivableItems(column.items);
+  const deletable = deletableItems(column.items);
   const [pending, setPending] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { mutate } = useSWRConfig();
   const { push } = useToast();
 
-  if (archivable.length === 0) return null;
+  if (archivable.length === 0 && deletable.length === 0) return null;
 
   async function handleArchiveAll() {
     if (pending) return;
@@ -693,39 +701,110 @@ function ColumnActionsMenu({ column }: { column: Column }) {
     }
   }
 
-  const label = pending
+  async function handleRemoveAll() {
+    if (pending) return;
+    setPending(true);
+    const total = deletable.length;
+    try {
+      const response = await deleteRuns(deletable.map((item) => item.id));
+      push(summarizeBatchLifecycleAction("Delete", response.summary));
+    } catch {
+      push(
+        summarizeBatchLifecycleAction("Delete", {
+          requested: total,
+          succeeded: 0,
+          failed:    total,
+        }),
+      );
+    } finally {
+      setPending(false);
+      mutateRunListCaches(mutate);
+    }
+  }
+
+  // A column-wide delete is destructive: the menu click only opens the
+  // confirm dialog (work#1664); the delete fires from the dialog's
+  // confirm alone.
+  function onClickRemoveAll() {
+    if (pending) return;
+    setDeleteDialogOpen(true);
+  }
+
+  async function onConfirmRemoveAll() {
+    await handleRemoveAll();
+    setDeleteDialogOpen(false);
+  }
+
+  const archiveLabel = pending
     ? `Archiving ${archivable.length}…`
     : `Archive all`;
+  const removeLabel = pending
+    ? `Removing ${deletable.length}…`
+    : `Remove all`;
 
   return (
-    <Menu as="div" className="relative ml-auto">
-      <MenuButton
-        type="button"
-        disabled={pending}
-        title={`Actions for ${column.name}`}
-        aria-label={`Actions for ${column.name}`}
-        className="flex size-6 shrink-0 items-center justify-center rounded text-fg-muted transition-colors hover:bg-overlay hover:text-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <EllipsisVerticalIcon className="size-4" aria-hidden="true" />
-      </MenuButton>
-      <MenuItems
-        transition
-        anchor={{ to: "bottom end", gap: 4 }}
-        className="z-20 w-44 origin-top-right rounded-md bg-panel py-1 outline-1 -outline-offset-1 outline-line-strong transition data-closed:scale-95 data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
-      >
-        <MenuItem>
-          <button
-            type="button"
-            onClick={handleArchiveAll}
-            disabled={pending}
-            className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-fg-3 transition-colors data-focus:bg-overlay data-focus:text-fg data-focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span>{label}</span>
-            <span className="font-mono text-xs text-fg-muted">{archivable.length}</span>
-          </button>
-        </MenuItem>
-      </MenuItems>
-    </Menu>
+    <>
+      <Menu as="div" className="relative ml-auto">
+        <MenuButton
+          type="button"
+          disabled={pending}
+          title={`Actions for ${column.name}`}
+          aria-label={`Actions for ${column.name}`}
+          className="flex size-6 shrink-0 items-center justify-center rounded text-fg-muted transition-colors hover:bg-overlay hover:text-fg-3 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <EllipsisVerticalIcon className="size-4" aria-hidden="true" />
+        </MenuButton>
+        <MenuItems
+          transition
+          anchor={{ to: "bottom end", gap: 4 }}
+          className="z-20 w-44 origin-top-right rounded-md bg-panel py-1 outline-1 -outline-offset-1 outline-line-strong transition data-closed:scale-95 data-closed:opacity-0 data-enter:duration-100 data-enter:ease-out data-leave:duration-75 data-leave:ease-in"
+        >
+          {archivable.length > 0 && (
+            <MenuItem>
+              <button
+                type="button"
+                onClick={handleArchiveAll}
+                disabled={pending}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-fg-3 transition-colors data-focus:bg-overlay data-focus:text-fg data-focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>{archiveLabel}</span>
+                <span className="font-mono text-xs text-fg-muted">{archivable.length}</span>
+              </button>
+            </MenuItem>
+          )}
+          {deletable.length > 0 && (
+            <MenuItem>
+              <button
+                type="button"
+                onClick={onClickRemoveAll}
+                disabled={pending}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-fg-3 transition-colors data-focus:bg-overlay data-focus:text-fg data-focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span>{removeLabel}</span>
+                <span className="font-mono text-xs text-fg-muted">{deletable.length}</span>
+              </button>
+            </MenuItem>
+          )}
+        </MenuItems>
+      </Menu>
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title={`Delete ${deletable.length} ${plural(deletable.length, "run", "runs")} in ${column.name} permanently?`}
+        description={
+          <>
+            This permanently removes the {deletable.length} {plural(deletable.length, "run", "runs")} in
+            the {column.name} column — each record, its sandbox and durable state, its salvage windows,
+            and its observations and journal. The runs are unrecoverable: archive keeps the records,
+            delete does not.
+          </>
+        }
+        confirmLabel={`Delete ${plural(deletable.length, "run", "runs")}`}
+        pendingLabel="Deleting…"
+        pending={pending}
+        onConfirm={() => void onConfirmRemoveAll()}
+        onCancel={() => setDeleteDialogOpen(false)}
+      />
+    </>
   );
 }
 
