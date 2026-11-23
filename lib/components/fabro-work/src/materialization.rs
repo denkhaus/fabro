@@ -580,6 +580,7 @@ impl MaterializedTracker {
                 limit: WALK_PAGE,
                 query: None,
                 label: None,
+                priority: None,
                 page,
                 state: WorkItemStateFilter::All,
             };
@@ -883,7 +884,8 @@ impl TrackerProvider for MaterializedTracker {
 
 /// The labels a filtered list requires (the port contract the GitHub
 /// adapter serves): the project label, the lane's label when a lane is
-/// filtered, and the raw label filter.
+/// filtered, the raw label filter, and the `prio:` label a priority
+/// filter names (denkhaus/work#1001, denkhaus/work#1665).
 fn required_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String> {
     let mut labels = vec![project.project_label.clone()];
     if let Some(lane) = filter.lane.as_deref() {
@@ -896,6 +898,9 @@ fn required_labels(project: &WorkProject, filter: &WorkItemFilter) -> Vec<String
     }
     if let Some(label) = filter.label.as_deref() {
         labels.push(label.to_string());
+    }
+    if let Some(priority) = filter.priority.as_deref() {
+        labels.push(format!("prio:{priority}"));
     }
     labels
 }
@@ -1306,12 +1311,13 @@ mod tests {
 
     fn open_filter() -> WorkItemFilter {
         WorkItemFilter {
-            lane:  None,
-            limit: 50,
-            query: None,
-            label: None,
-            page:  1,
-            state: WorkItemStateFilter::Open,
+            lane:     None,
+            limit:    50,
+            query:    None,
+            label:    None,
+            priority: None,
+            page:     1,
+            state:    WorkItemStateFilter::Open,
         }
     }
 
@@ -1771,6 +1777,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["denkhaus/work#4"],
             "the closed item's body matches from the view"
+        );
+    }
+
+    #[tokio::test]
+    async fn priority_filter_matches_the_prio_label_locally() {
+        let (_directory, forge, tracker) = fixture().await;
+        seed_forge(&forge, &project());
+        tracker.list(&project(), open_filter()).await.unwrap();
+        forge.fail_reads();
+        let mut p0_filter = open_filter();
+        p0_filter.priority = Some("p0".to_string());
+        let p0 = tracker.list(&project(), p0_filter).await.unwrap();
+        assert_eq!(
+            p0.iter()
+                .map(|item| item.item_key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["denkhaus/work#3"],
+            "the prio:p0 item answers the p0 filter from the view"
         );
     }
 

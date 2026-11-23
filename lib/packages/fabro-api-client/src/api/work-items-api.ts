@@ -483,6 +483,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {string} [priority] Priority name (canonical values &#x60;p0&#x60;-&#x60;p3&#x60;); filters by the &#x60;prio:&lt;priority&gt;&#x60; tracker label in addition to the project (and lane) labels, in both list and search modes — the same label mechanism the tracker\&#39;s lane and raw-label filters ride (denkhaus/work#1665).
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
          * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
          * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
@@ -490,7 +491,7 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+        listWorkItems: async (projectId: string, lane?: string, query?: string, limit?: number, label?: string, priority?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             // verify required parameter 'projectId' is not null or undefined
             assertParamExists('listWorkItems', 'projectId', projectId)
             const localVarPath = `/api/v1/projects/{projectId}/work-items`
@@ -526,6 +527,10 @@ export const WorkItemsApiAxiosParamCreator = function (configuration?: Configura
 
             if (label !== undefined) {
                 localVarQueryParameter['label'] = label;
+            }
+
+            if (priority !== undefined) {
+                localVarQueryParameter['priority'] = priority;
             }
 
             if (sort !== undefined) {
@@ -1219,6 +1224,7 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {string} [priority] Priority name (canonical values &#x60;p0&#x60;-&#x60;p3&#x60;); filters by the &#x60;prio:&lt;priority&gt;&#x60; tracker label in addition to the project (and lane) labels, in both list and search modes — the same label mechanism the tracker\&#39;s lane and raw-label filters ride (denkhaus/work#1665).
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
          * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
          * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
@@ -1226,8 +1232,8 @@ export const WorkItemsApiFp = function(configuration?: Configuration) {
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
-            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options);
+        async listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, priority?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<WorkItemListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listWorkItems(projectId, lane, query, limit, label, priority, sort, state, cursor, page, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['WorkItemsApi.listWorkItems']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
@@ -1510,6 +1516,7 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
          * @param {number} [limit] Maximum items to return (1-100); also the page size.
          * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+         * @param {string} [priority] Priority name (canonical values &#x60;p0&#x60;-&#x60;p3&#x60;); filters by the &#x60;prio:&lt;priority&gt;&#x60; tracker label in addition to the project (and lane) labels, in both list and search modes — the same label mechanism the tracker\&#39;s lane and raw-label filters ride (denkhaus/work#1665).
          * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
          * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
          * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
@@ -1517,8 +1524,8 @@ export const WorkItemsApiFactory = function (configuration?: Configuration, base
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
-        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
-            return localVarFp.listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options).then((request) => request(axios, basePath));
+        listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, priority?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig): AxiosPromise<WorkItemListResponse> {
+            return localVarFp.listWorkItems(projectId, lane, query, limit, label, priority, sort, state, cursor, page, options).then((request) => request(axios, basePath));
         },
         /**
          * Returns every configured work-item project, sorted by project id.
@@ -1769,6 +1776,7 @@ export class WorkItemsApi extends BaseAPI {
      * @param {string} [query] Plain-keyword text search over item title and body, INCLUDING closed items (duplicate checks before filing need the closed half). Without &#x60;query&#x60; the call lists items per &#x60;state&#x60; (open by default), sorted by priority then recency; with &#x60;query&#x60; the tracker\&#39;s search ranks by relevance instead and &#x60;state&#x60; does not apply.
      * @param {number} [limit] Maximum items to return (1-100); also the page size.
      * @param {string} [label] Raw tracker label name (e.g. &#x60;prio:p0&#x60;); filters by this label in addition to the project (and lane) labels, in both list and search modes.
+     * @param {string} [priority] Priority name (canonical values &#x60;p0&#x60;-&#x60;p3&#x60;); filters by the &#x60;prio:&lt;priority&gt;&#x60; tracker label in addition to the project (and lane) labels, in both list and search modes — the same label mechanism the tracker\&#39;s lane and raw-label filters ride (denkhaus/work#1665).
      * @param {ListWorkItemsSortEnum} [sort] Server-side sort key: &#x60;priority&#x60; or &#x60;updated&#x60;; a &#x60;-&#x60; prefix inverts (e.g. &#x60;-updated&#x60; &#x3D; newest first). Without it the listing keeps the tracker\&#39;s own order (priority, then recency). Sorting applies before paging.
      * @param {ListWorkItemsStateEnum} [state] Which states the listing enumerates (work#1476): &#x60;open&#x60; (the default — every established caller\&#39;s answer), &#x60;closed&#x60;, or &#x60;all&#x60; (the full census read; friction-score enumerates the project\&#39;s whole item population through this).
      * @param {string} [cursor] The previous response\&#39;s opaque &#x60;nextCursor&#x60; token, verbatim (work#1476); absent or empty serves the first page. When present it overrides &#x60;page&#x60; — a cursor walker never double-reads a page boundary. Walk until the response\&#39;s &#x60;nextCursor&#x60; is null (a page shorter than &#x60;limit&#x60;).
@@ -1776,8 +1784,8 @@ export class WorkItemsApi extends BaseAPI {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
-    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig) {
-        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, label, sort, state, cursor, page, options).then((request) => request(this.axios, this.basePath));
+    public listWorkItems(projectId: string, lane?: string, query?: string, limit?: number, label?: string, priority?: string, sort?: ListWorkItemsSortEnum, state?: ListWorkItemsStateEnum, cursor?: string, page?: number, options?: RawAxiosRequestConfig) {
+        return WorkItemsApiFp(this.configuration).listWorkItems(projectId, lane, query, limit, label, priority, sort, state, cursor, page, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

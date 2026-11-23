@@ -18,9 +18,16 @@
 import type { WorkItem } from './work-item';
 
 /**
- * The item beside its open closure radius: the open work items linked to the observations of the item\'s runs, minus the item itself. An empty radius blocks nothing.
+ * The item beside its closure radius, split blocking/residual (work#1434): an item linked ONLY through painpoint observations is a residual pointer, not a blocker.
  */
 export interface WorkItemRadiusResponse {
     'item': WorkItem;
+    /**
+     * The BLOCKING radius: open items linked through non-painpoint observations — these refuse the close until they close or a forced close overrides.
+     */
     'radius': Array<WorkItem>;
+    /**
+     * The soft residual pointers (work#1434): open items linked only through painpoint-category observations — painpoint dispositions that never block the parent\'s close.
+     */
+    'residual': Array<WorkItem>;
 }

@@ -342,18 +342,32 @@ mod next_item {
                 .lock()
                 .expect("work-item test step should succeed")
                 .iter()
-                .filter(|item| match filter.query.as_deref() {
-                    // Search mode mirrors the GitHub adapter: both states,
-                    // case-insensitive title+body text match, relevance
-                    // approximated by recency (the fake has no ranking
-                    // signal).
-                    Some(query) => {
-                        let needle = query.trim().to_lowercase();
-                        item.title.to_lowercase().contains(&needle)
-                            || item.body.to_lowercase().contains(&needle)
+                .filter(|item| {
+                    // The priority filter rides the prio: label, the
+                    // adapters' composition (denkhaus/work#1665); the
+                    // lane and raw-label filters stay recording-only in
+                    // this fake (their tests assert the filter record).
+                    let priority_ok = match filter.priority.as_deref() {
+                        Some(priority) => item
+                            .labels
+                            .iter()
+                            .any(|label| label == &format!("prio:{priority}")),
+                        None => true,
+                    };
+                    match filter.query.as_deref() {
+                        // Search mode mirrors the GitHub adapter: both states,
+                        // case-insensitive title+body text match, relevance
+                        // approximated by recency (the fake has no ranking
+                        // signal).
+                        Some(query) => {
+                            let needle = query.trim().to_lowercase();
+                            priority_ok
+                                && (item.title.to_lowercase().contains(&needle)
+                                    || item.body.to_lowercase().contains(&needle))
+                        }
+                        // List mode mirrors the open-only listing.
+                        None => priority_ok && item.state == "open",
                     }
-                    // List mode mirrors the open-only listing.
-                    None => item.state == "open",
                 })
                 .cloned()
                 .collect();
@@ -946,6 +960,51 @@ mod next_item {
             "state=all reaches the tracker"
         );
         assert_eq!(filters[1].page, 2, "the cursor names the page");
+    }
+
+    /// The priority door (denkhaus/work#1665): the `priority` query
+    /// param reaches the tracker filter, and the prio: label
+    /// containment answers `priority=p1` with only the item carrying
+    /// the `prio:p1` label.
+    #[tokio::test]
+    async fn priority_filter_selects_the_items_carrying_the_prio_label() {
+        let mut p1 = item(1, 1);
+        p1.labels.push("prio:p1".to_string());
+        let mut p2 = item(2, 2);
+        p2.labels.push("prio:p2".to_string());
+        let tracker = FakeTracker::with_items(vec![p1, p2]);
+        let app = app_with_tracker(Arc::clone(&tracker)).await;
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri(api("/projects/fabro/work-items?priority=p1"))
+                    .body(Body::empty())
+                    .expect("work-item test step should succeed"),
+            )
+            .await
+            .expect("work-item test step should succeed");
+        let page = response_json(response, StatusCode::OK, "priority list").await;
+        let keys = page["data"]
+            .as_array()
+            .expect("the list returns an array")
+            .iter()
+            .map(|item| item["itemKey"].as_str().expect("keys are strings"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            keys,
+            vec!["denkhaus/work#1"],
+            "only the p1-labeled item answers: {page}"
+        );
+
+        let filters = tracker.filters.lock().await;
+        assert_eq!(
+            filters[0].priority.as_deref(),
+            Some("p1"),
+            "the param reaches the tracker filter"
+        );
     }
 
     /// The comment READ verb over HTTP (ADR-0039 stage D part 2,

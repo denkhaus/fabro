@@ -18,7 +18,7 @@
 import type { WorkItem } from './work-item';
 
 /**
- * The closed item plus the closure-radius items a forced close overrode (empty when the close needed no override).
+ * The closed item plus the closure-radius items a forced close overrode (empty when the close needed no override) and the soft painpoint-born residuals the close passed over with a pointer note (work#1434).
  */
 export interface WorkItemCloseResponse {
     'item': WorkItem;
@@ -26,4 +26,8 @@ export interface WorkItemCloseResponse {
      * The open work items the `force` flag overrode, listed so the override stays visible; empty without `force`.
      */
     'overriddenRadius': Array<WorkItem>;
+    /**
+     * The open work items linked only through painpoint observations — soft residuals that never blocked the close; listed so the close leaves a residual-pointer note (work#1434).
+     */
+    'residualRadius': Array<WorkItem>;
 }

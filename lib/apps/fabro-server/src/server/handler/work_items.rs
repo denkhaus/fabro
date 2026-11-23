@@ -501,6 +501,7 @@ async fn list_work_items(
                     limit: page_size,
                     query: params.query,
                     label: params.label,
+                    priority: params.priority,
                     page,
                     state: state_filter,
                 })
@@ -520,12 +521,13 @@ async fn list_work_items(
             let mut accumulated: Vec<fabro_work::WorkItem> = Vec::new();
             for tracker_page in 1..=pages_needed.min(3) {
                 let filter = WorkItemFilter {
-                    lane:  params.lane.clone(),
-                    limit: TRACKER_PAGE,
-                    query: params.query.clone(),
-                    label: params.label.clone(),
-                    page:  tracker_page,
-                    state: state_filter,
+                    lane:     params.lane.clone(),
+                    limit:    TRACKER_PAGE,
+                    query:    params.query.clone(),
+                    label:    params.label.clone(),
+                    priority: params.priority.clone(),
+                    page:     tracker_page,
+                    state:    state_filter,
                 };
                 let batch = if tracker_page == 1 {
                     let page = tracker
@@ -590,24 +592,28 @@ async fn list_work_items(
 
 #[derive(Debug, Default, serde::Deserialize)]
 struct WorkItemQuery {
-    lane:   Option<String>,
-    limit:  Option<u32>,
-    query:  Option<String>,
+    lane:     Option<String>,
+    limit:    Option<u32>,
+    query:    Option<String>,
     /// Raw tracker label name, filtered beside the project/lane labels
     /// (denkhaus/work#1001).
-    label:  Option<String>,
+    label:    Option<String>,
+    /// Priority name (canonical values `p0`-`p3`), served as the
+    /// `prio:<priority>` label beside the project/lane labels
+    /// (denkhaus/work#1665).
+    priority: Option<String>,
     /// 1-based results page; `limit` is the page size (denkhaus/work#1001).
-    page:   Option<u32>,
+    page:     Option<u32>,
     /// Server-side sort key: `priority` or `updated`, `-` inverts.
     /// Applies before paging: the handler accumulates tracker pages
     /// (bounded), sorts, and slices the requested page.
-    sort:   Option<String>,
+    sort:     Option<String>,
     /// Which states the listing enumerates: `open` (the default),
     /// `closed`, or `all` — the census read (work#1476).
-    state:  Option<String>,
+    state:    Option<String>,
     /// The previous response's opaque next-page token (work#1476);
     /// absent or empty starts at the first page. Overrides `page`.
-    cursor: Option<String>,
+    cursor:   Option<String>,
 }
 
 /// One work item by key, including closed items (denkhaus/work#1235):
@@ -1453,15 +1459,16 @@ async fn claim_next(
         })?;
     let items = tracker
         .list(project, WorkItemFilter {
-            lane:  Some(request.lane.clone()),
+            lane:     Some(request.lane.clone()),
             // The pool read is the table's claim-pool spec (work#1488):
             // the admission gate's consult walks the same page and the
             // same OPEN filter, so the two answers cannot disagree.
-            limit: gear_worklist::CLAIM_POOL.page,
-            query: None,
-            label: None,
-            page:  1,
-            state: gear_worklist::CLAIM_POOL.state,
+            limit:    gear_worklist::CLAIM_POOL.page,
+            query:    None,
+            label:    None,
+            priority: None,
+            page:     1,
+            state:    gear_worklist::CLAIM_POOL.state,
         })
         .await
         .map_err(tracker_failed)?;

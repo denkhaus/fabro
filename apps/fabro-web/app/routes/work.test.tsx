@@ -6,6 +6,9 @@ import type { WorkItem } from "@qltysh/fabro-api-client";
 
 let currentItem: WorkItem | null = null;
 let listResult: { data: WorkItem[]; total: number | null } | undefined;
+// The denkhaus/work#1665 wiring probe: the list call's filter params,
+// captured for the fetcher-wiring assertions.
+let listCall: { priority?: string; state?: string } | null = null;
 
 // Partial-mock (the run-observations test's pattern): spread the REAL
 // module so every export stays available to later files in the same
@@ -21,9 +24,19 @@ mock.module("../lib/api-client", () => ({
           ? currentItem
           : null,
     }),
-    listWorkItems: async () => ({
-      data: { data: listResult?.data ?? [], total: listResult?.total ?? null },
-    }),
+    listWorkItems: async (
+      _project: string,
+      _lane?: string,
+      _query?: string,
+      _limit?: number,
+      _label?: string,
+      priority?: string,
+      _sort?: unknown,
+      state?: string,
+    ) => {
+      listCall = { priority, state };
+      return { data: { data: listResult?.data ?? [], total: listResult?.total ?? null } };
+    },
   },
 }));
 
@@ -192,6 +205,47 @@ describe("WorkItemsView", () => {
 // violet stand-in, closed fg-muted; anything unresolved stays plain
 // fg-3 — never a false color). Each test rides a distinct `?page=` so
 // SWR's two-second key dedupe can't replay another test's rows.
+// denkhaus/work#1665: the priority and status filters wire into the
+// list call — priority rides the new `priority` param, status rides
+// the `state` param. Unset filters stay undefined, so the default
+// table keeps the server's open-only answer.
+describe("WorkItemsView filter wiring", () => {
+  afterEach(() => {
+    listResult = undefined;
+    listCall = null;
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  async function renderListWithFilters(query: string, page: number): Promise<TestRenderer.ReactTestRenderer> {
+    listResult = { data: [{ ...ITEM, itemKey: "denkhaus/work#41" }], total: 1 };
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const router = createMemoryRouter([
+      { path: "/work", element: <WorkItemsView /> },
+      { path: "/work/item", element: <div>detail</div> },
+    ], { initialEntries: [`/work?${query}&page=${page}`] });
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    TestRenderer.act(() => {
+      renderer = TestRenderer.create(<RouterProvider router={router} />);
+    });
+    await TestRenderer.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    return renderer!;
+  }
+
+  test("priority and status filters reach the list call", async () => {
+    const renderer = await renderListWithFilters("priority=p1&status=closed", 7);
+    expect(textFromNode(renderer.toJSON())).toContain("denkhaus/work#41");
+    expect(listCall).toEqual({ priority: "p1", state: "closed" });
+  });
+
+  test("unset filters stay undefined — the server's open default answers", async () => {
+    const renderer = await renderListWithFilters("", 8);
+    expect(textFromNode(renderer.toJSON())).toContain("denkhaus/work#41");
+    expect(listCall).toEqual({ priority: undefined, state: undefined });
+  });
+});
+
 describe("WorkItemsView key link state colors", () => {
   afterEach(() => {
     listResult = undefined;
