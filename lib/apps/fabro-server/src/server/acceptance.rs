@@ -19,9 +19,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use fabro_store::platform_records::PlatformRecord;
 use fabro_types::{OrchestrationField, OrchestrationVerdict, PullRequestState, RunId};
-use fabro_work::{
-    AcceptanceState, ClaimFold, WorkClaim, named_parts, unaccounted_parts, verified_part,
-};
+use fabro_work::{AcceptanceState, ClaimFold, WorkClaim};
 
 use super::AppState;
 
@@ -260,7 +258,7 @@ pub(crate) async fn merge_refusal_parts(
         // cannot have as absent, never invents a refusal).
         return Ok(None);
     };
-    let parts = named_parts(&item.item.body);
+    let parts = fabro_work::named_parts(&item.item.body);
     if parts.is_empty() || parts.iter().all(|part| part.checked) {
         return Ok(None);
     }
@@ -274,12 +272,12 @@ pub(crate) async fn merge_refusal_parts(
     let verified_texts: Vec<&str> = records
         .iter()
         .filter_map(|stored| match &stored.record {
-            PlatformRecord::ObservationRecorded(observed) => verified_part(&observed.text),
+            PlatformRecord::ObservationRecorded(observed) => fabro_work::verified_part(&observed.text),
             _ => None,
         })
         .collect();
     let verified = |text: &str| verified_texts.contains(&text);
-    let unaccounted = unaccounted_parts(&parts, &verified);
+    let unaccounted = fabro_work::unaccounted_parts(&parts, &verified);
     Ok((!unaccounted.is_empty()).then(|| {
         unaccounted
             .into_iter()
