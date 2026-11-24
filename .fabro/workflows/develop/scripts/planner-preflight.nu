@@ -33,6 +33,14 @@
 # never dead-end or block the run; it exits 0 on every degraded path and
 # reserves non-zero for invocation bugs.
 #
+# Goal-vs-grant contract (work#263, sprint 99): the same non-zero class
+# as the packet-form failures - a run goal naming a work item key the
+# granted claim does not carry exits 1 with the teaching refusal (the
+# graph's "Claim contract failed, re-plan" edge bounces the planner).
+# Everything unprovable degrades open: no run id, no server target, a
+# failed or unparseable goal fetch, a key-less generic goal - each
+# records its shape in the report's goal_check field.
+#
 # Relationship to open fabro-a01f (claim race / stale tracker snapshot):
 # this preflight NARROWS that window — it catches the merged-but-still-
 # open state at pre-planner time — but does NOT close it: a PR can still
@@ -373,6 +381,8 @@ def row [v: record, desc: string, root: string, claims: list, base: string, refs
 # self` is parse-time only, so the anchor must be a const.
 const SCRIPT_DIR = (path self | path dirname)
 
+use ../../../scripts/lib/work_key.nu [goal-named-keys, goal-from-inspect, keys-match, inspect-argv]
+
 
 # Lane parameter (fabro-70b5): the preflight serves BOTH lanes — develop
 # (default, assignee fabro) and the loop meta lane (--assignee loop,
@@ -382,7 +392,7 @@ const SCRIPT_DIR = (path self | path dirname)
 # the primary surface is repo-visible); the loop lane flags PRODUCT
 # surfaces (the misroute detector the loop planner's surface router
 # adjudicates).
-def main [--base: string = "origin/denkhaus", --candidates: string, --candidates-file: string, --top: int = 5, --assignee: string = "fabro", --work-item]: nothing -> nothing {
+def main [--base: string = "origin/denkhaus", --candidates: string, --candidates-file: string, --top: int = 5, --assignee: string = "fabro", --work-item, --goal: string = ""]: nothing -> nothing {
     # Petri has no internal.run_id run state (fabro-96c6): the invoking
     # run id comes from FABRO_RUN_ID when something binds it; empty
     # degrades the self-closure identity to a no-op exclusion.
@@ -413,6 +423,58 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
             print -e "claim preflight: granted-item packet must carry a non-empty itemKey and a string body (copy the fabro_work_show result fields verbatim)"
             exit 1
         }
+        # Goal-vs-grant claim check (work#263): the implementer follows
+        # the GOAL text, so a goal naming a different item key than the
+        # granted claim would work the wrong item (the f394/2093
+        # incident). Fail-closed on a real mismatch (exit 1, the
+        # claim-contract edge bounces the planner); unprovable shapes
+        # degrade open into the goal_check record. --goal is the
+        # fixture/dry-run seam; the live path fetches the run goal
+        # through the channel router (inspect over the explicit
+        # FABRO_SERVER - parity with the run agent's fabro_run_get).
+        let goal_text = (if not ($goal | is-empty) {
+            {text: $goal, note: null}
+        } else if ($run_id | is-empty) {
+            {text: null, note: "no run id (FABRO_RUN_ID unset) - goal check skipped"}
+        } else {
+            let srv = ($env.FABRO_SERVER? | default '' | str trim)
+            if ($srv | is-empty) {
+                {text: null, note: "no server target (FABRO_SERVER unset) - goal check skipped"}
+            } else {
+                let argv = (inspect-argv $srv $run_id)
+                # try: a missing fabro binary RAISES before complete can
+                # wrap it - the never-dead-end contract covers this shape
+                # too (the dup-run-check-fixtures case b2 class).
+                let res = (try { run-external 'fabro' ...$argv | complete } catch { {exit_code: -1, stdout: '', stderr: 'fabro binary missing'} })
+                if $res.exit_code != 0 {
+                    {text: null, note: $"goal fetch failed with inspect exit ($res.exit_code) - goal check skipped"}
+                } else {
+                    let spec = (try { $res.stdout | from json } catch { null })
+                    let goal_val = (goal-from-inspect $spec)
+                    if (($goal_val | describe) != "string") {
+                        {text: null, note: "run goal missing or not a string - goal check skipped"}
+                    } else {
+                        {text: $goal_val, note: null}
+                    }
+                }
+            }
+        })
+        let named_keys = (if (($goal_text.text | describe) == "string") { goal-named-keys $goal_text.text } else { [] })
+        let mismatch = ($named_keys | any {|k| not (keys-match $k $key)})
+        if $mismatch {
+            let named = ($named_keys | str join ', ')
+            print -e $"claim preflight: goal names '($named)' but the granted claim is '($key)' - assign the named item or drop the name from the goal; the implementer follows the goal text and would work the wrong item - work#263, the f394/2093 incident"
+            exit 1
+        }
+        let goal_check = (if (($goal_text.text | describe) == "string") {
+            if ($named_keys | is-empty) {
+                {status: "pass", named_key: null, granted_key: $key, note: "no item key named in goal - nothing to compare"}
+            } else {
+                {status: "pass", named_key: ($named_keys | first), granted_key: $key, note: null}
+            }
+        } else {
+            {status: "skipped", named_key: null, granted_key: $key, note: $goal_text.note}
+        })
         # Already-landed verdict over the item key (fail-open: a
         # dup-run-check failure degrades the row, never the run).
         let dup = ($SCRIPT_DIR | path join '../../..' 'scripts' 'dup-run-check.nu')
@@ -435,6 +497,7 @@ def main [--base: string = "origin/denkhaus", --candidates: string, --candidates
         let report = {mode: "checked",
                       run_id: ($run_id | default null),
                       item: $key,
+                      goal_check: $goal_check,
                       # lane via --assignee (fabro-bd55): the loop passes
                       # --assignee loop so envelope_risk flags PRODUCT
                       # surfaces (the misroute detector); the develop

@@ -170,6 +170,13 @@ const BATTERIES = [
     # planner-preflight anchor battery (fabro-83df report-only
     # end-to-end case included; 0.5s measured 2026-09-19)
     '.fabro/scripts/planner-preflight-anchor-fixtures.nu'
+    # planner-preflight goal-vs-grant claim-check battery (work#263):
+    # the pure key helpers (extraction, normalization, match, inspect
+    # argv) plus the end-to-end contract - a goal naming a foreign item
+    # key REDS the claim contract with the full refusal, a matching key
+    # (bare or full form) passes with goal_check, a generic key-less
+    # goal passes un-compared, the no-run-id path skips open.
+    '.fabro/scripts/planner-preflight-claim-goal-fixtures.nu'
     # Revisor overflow-ledger + filing-dedupe batteries (fabro-552a,
     # ADR-0032 phase 3): RETIRED with the revisor workflow (ADR-0038
     # stage 4) — the freshness/dedupe discipline they pinned lives in
