@@ -20,6 +20,8 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use fabro_admission::petri_check;
+use fabro_admission::run_rebase::{self as run_rebase_ops, RunRebaseError};
 use fabro_api::types as api;
 use fabro_automation::AutomationId;
 use fabro_config::Storage;
@@ -46,8 +48,6 @@ use super::lifecycle::{
 };
 use super::runs::run_provenance;
 use crate::automation_materializer::{AutomationRunMaterializeInput, RunMaterializeError};
-use crate::petri_check;
-use crate::run_rebase::{self as run_rebase_ops, RunRebaseError};
 use crate::server::run_publish::{find_snapshot_repository, snapshots_dir};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {

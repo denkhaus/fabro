@@ -19,7 +19,7 @@ use tokio::{fs, task};
 use crate::run_compiler::{RunCompilerError, settings_layer_with_resolved_dockerfiles};
 
 #[derive(Debug, Error)]
-pub(crate) enum RunIntentAdmissionError {
+pub enum RunIntentAdmissionError {
     #[error("workflow-version closure could not be loaded")]
     VersionStore {
         #[source]
@@ -51,7 +51,7 @@ pub(crate) enum RunIntentAdmissionError {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum FolderTargetValidationError {
+pub enum FolderTargetValidationError {
     #[error("folder target path must be absolute")]
     Relative,
     #[error("folder target path does not name an accessible filesystem entry")]
@@ -66,9 +66,9 @@ pub(crate) enum FolderTargetValidationError {
 }
 
 #[derive(Debug)]
-pub(crate) struct PreparedIntentTarget {
-    pub(crate) target: RunTarget,
-    pub(crate) git:    Option<GitContext>,
+pub struct PreparedIntentTarget {
+    pub target: RunTarget,
+    pub git:    Option<GitContext>,
 }
 
 /// Materialize filesystem-backed target facts after the effective environment
@@ -76,7 +76,7 @@ pub(crate) struct PreparedIntentTarget {
 /// canonicalized once for durable identity and their optional Git metadata is
 /// observed under the same provider gate, so rejected requests never scan host
 /// repositories. Other targets pass through with their validated projection.
-pub(crate) async fn prepare_intent_target(
+pub async fn prepare_intent_target(
     target: RunTarget,
     git: Option<GitContext>,
 ) -> Result<PreparedIntentTarget, FolderTargetValidationError> {
@@ -130,7 +130,7 @@ fn canonical_folder_text(path: &Path) -> Result<String, FolderTargetValidationEr
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum EnvironmentSelectionError {
+pub enum EnvironmentSelectionError {
     #[error("invalid environment ID `{value}`")]
     InvalidId {
         value:  String,
@@ -164,10 +164,10 @@ pub(crate) enum EnvironmentSelectionError {
 }
 
 #[derive(Debug)]
-pub(crate) struct LoweredWorkflowClosure {
-    pub(crate) workflow_bundle: WorkflowBundle,
-    pub(crate) entrypoint:      ManifestPath,
-    pub(crate) workflow_layer:  Option<SettingsLayer>,
+pub struct LoweredWorkflowClosure {
+    pub workflow_bundle: WorkflowBundle,
+    pub entrypoint:      ManifestPath,
+    pub workflow_layer:  Option<SettingsLayer>,
 }
 
 /// Ceiling on the number of distinct workflow mounts one closure may expand
@@ -177,7 +177,7 @@ pub(crate) struct LoweredWorkflowClosure {
 const MAX_WORKFLOW_MOUNTS: usize = 256;
 
 #[derive(Debug, Error)]
-pub(crate) enum WorkflowClosureLoweringError {
+pub enum WorkflowClosureLoweringError {
     #[error("workflow version `{id}` is missing from the loaded closure")]
     MissingVersion { id: WorkflowVersionId },
     #[error("workflow path `{path}` cannot be mounted at `{mount}`")]
@@ -301,7 +301,7 @@ fn lower_workflow_closure_view(
     })
 }
 
-pub(crate) fn lower_workflow_closure(
+pub fn lower_workflow_closure(
     closure: &LoadedWorkflowVersionClosure,
 ) -> Result<LoweredWorkflowClosure, WorkflowClosureLoweringError> {
     lower_workflow_closure_view(closure)
@@ -314,7 +314,7 @@ pub(crate) fn lower_collected_workflow_closure(
     lower_workflow_closure_view(&view)
 }
 
-pub(crate) fn pin_workflow_environment_authority(layer: &mut SettingsLayer, environment_id: &str) {
+pub fn pin_workflow_environment_authority(layer: &mut SettingsLayer, environment_id: &str) {
     // Both blocks destructure without `..` so adding a field to either layer
     // type forces a compile-time decision here: server-owned facts are
     // cleared off the immutable workflow layer, workflow-owned facts pass
@@ -523,6 +523,7 @@ mod tests {
     use fabro_workflow_version::{ValidatedWorkflowVersion, WorkflowVersionStore};
 
     use super::*;
+    use crate::test_support::test_store_bundle;
 
     fn workflow_path(value: &str) -> WorkflowPath {
         WorkflowPath::new(value).unwrap()
@@ -574,7 +575,7 @@ mod tests {
         let collected =
             fabro_manifest::collect_workflow_versions(&root.join("workflow.toml"), temp.path())
                 .unwrap();
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let store = WorkflowVersionStore::new(database.blobs());
         for (_, version) in collected.versions() {
             store.put(version).await.unwrap();
@@ -676,7 +677,7 @@ mod tests {
 
     #[tokio::test]
     async fn lowers_nested_entrypoints_and_inlines_goal_files() {
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let grandchild = version(
@@ -744,7 +745,7 @@ mod tests {
 
     #[tokio::test]
     async fn lowers_same_version_at_distinct_mount_paths() {
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let child = version(
@@ -785,7 +786,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_closures_that_expand_past_the_mount_limit() {
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         // A chain of tiny versions where each level mounts the next twice is
@@ -818,7 +819,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_distinct_versions_that_converge_on_one_mount_path() {
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let first_leaf = version(
@@ -875,7 +876,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_rebased_files_that_escape_the_runtime_root() {
-        let (database, _) = crate::test_support::test_store_bundle();
+        let (database, _) = test_store_bundle();
         let blobs = database.blobs();
         let store = WorkflowVersionStore::new(blobs);
         let child = version(

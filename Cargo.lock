@@ -2006,6 +2006,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "fabro-admission"
+version = "0.362.0-fork.45"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "fabro-api",
+ "fabro-auth",
+ "fabro-config",
+ "fabro-dot",
+ "fabro-environment",
+ "fabro-github",
+ "fabro-graphviz",
+ "fabro-http",
+ "fabro-llm",
+ "fabro-manifest",
+ "fabro-petri",
+ "fabro-proc",
+ "fabro-static",
+ "fabro-store",
+ "fabro-types",
+ "fabro-util",
+ "fabro-variable",
+ "fabro-vault",
+ "fabro-workflow",
+ "fabro-workflow-version",
+ "futures-util",
+ "lithos-llm",
+ "object_store",
+ "sandbox-driver",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
 name = "fabro-api"
 version = "0.362.0-fork.45"
 dependencies = [
@@ -2109,6 +2148,7 @@ dependencies = [
  "core-foundation 0.9.4",
  "dialoguer",
  "dirs",
+ "fabro-admission",
  "fabro-api",
  "fabro-auth",
  "fabro-automation",
@@ -2647,6 +2687,7 @@ dependencies = [
  "clap",
  "cookie",
  "croner",
+ "fabro-admission",
  "fabro-api",
  "fabro-auth",
  "fabro-automation",

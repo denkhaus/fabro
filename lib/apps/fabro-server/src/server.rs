@@ -22,6 +22,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use fabro_admission::{
+    AdmissionContext, GithubCredentialsSource, ProviderHealthSource, run_manifest,
+};
 pub use fabro_api::types::{
     AggregateUsage, AggregateUsageTotals, ApiQuestion, ArtifactEntry, ArtifactListResponse,
     BatchDeleteRunsRequest, BatchDeleteRunsResponse, BatchDeleteRunsResult,
@@ -163,8 +166,7 @@ use crate::worker_runtime::{
 };
 use crate::worker_token::{WorkerScopeSet, WorkerTokenKeys, issue_worker_token_with_scopes};
 use crate::{
-    canonical_host, demo, diagnostics, fork_hook_assets, run_manifest, security_headers,
-    static_files, web_auth,
+    canonical_host, demo, diagnostics, fork_hook_assets, security_headers, static_files, web_auth,
 };
 
 pub(crate) mod acceptance;
@@ -1587,6 +1589,42 @@ impl AppState {
                 .read()
                 .expect("manifest run defaults lock poisoned"),
         )
+    }
+
+    /// The admission cluster's view of this app state (work#1672): plain
+    /// inputs plus the two callbacks that stand in for the vault and the
+    /// sandbox-access machinery. The callback contracts carry the app's
+    /// error semantics: a github-credentials miss that is not a vault error
+    /// reads as "no credentials", exactly as the preflight did when this
+    /// logic lived here.
+    pub(crate) fn admission_context(self: &Arc<Self>) -> AdmissionContext {
+        let github_state = Arc::clone(self);
+        let github_credentials: GithubCredentialsSource = Arc::new(move |settings| {
+            let github_state = Arc::clone(&github_state);
+            let settings = settings.clone();
+            Box::pin(async move {
+                match github_state.github_credentials(&settings).await {
+                    Ok(credentials) => Ok(credentials),
+                    Err(err) if err.is::<SecretStoreError>() => Err(err),
+                    Err(_) => Ok(None),
+                }
+            })
+        });
+        let health_state = Arc::clone(self);
+        let provider_health: ProviderHealthSource = Arc::new(move |kind| {
+            let health_state = Arc::clone(&health_state);
+            let kind = kind.clone();
+            Box::pin(async move {
+                let access = health_state.provider_access().await?;
+                sandbox_access::provider_health(&kind, &access).await
+            })
+        });
+        AdmissionContext {
+            catalog: self.catalog(),
+            server_settings: self.server_settings(),
+            github_credentials,
+            provider_health,
+        }
     }
 
     pub(crate) fn server_settings(&self) -> Arc<ServerSettings> {

@@ -4,7 +4,7 @@ use super::super::{
     ApiError, AppState, AsyncWriteExt, Command, EnvVars, IntoResponse, Json, LazyLock, Path,
     PathBuf, Query, RenderWorkflowGraphDirection, RenderWorkflowGraphRequest, RequiredUser,
     Response, Router, RunId, Semaphore, State, StatusCode, Stdio, apply_render_graph_env, get,
-    parse_run_id_path, post, run_manifest,
+    parse_run_id_path, petri_runs, post, run_manifest,
 };
 
 pub(super) fn manifest_routes() -> Router<Arc<AppState>> {
@@ -61,7 +61,8 @@ async fn render_graph_from_manifest(
     };
     let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
     let check = match run_manifest::check_prepared_manifest(
-        &state,
+        &state.admission_context(),
+        petri_runs::prepared_manifest_runtime_spec(state.as_ref(), &prepared, &ready_providers),
         &prepared,
         vars,
         &ready_providers,

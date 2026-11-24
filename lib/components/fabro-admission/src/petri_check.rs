@@ -31,26 +31,26 @@ use fabro_workflow::workflow_bundle::WorkflowBundle;
 use lithos_llm::catalog::ProviderId;
 
 /// Fabro's rule for a model node with no provider ready to run it.
-pub(crate) const NO_READY_PROVIDER_RULE: &str = "fabro.model.no_ready_provider";
+pub const NO_READY_PROVIDER_RULE: &str = "fabro.model.no_ready_provider";
 
 /// Fabro's rule for a stage whose resolved provider has no stored
 /// credential (fabro-b46e): the fire is refused naming provider and model.
-pub(crate) const PROVIDER_NOT_READY_RULE: &str = "fabro.model.provider_not_ready";
+pub const PROVIDER_NOT_READY_RULE: &str = "fabro.model.provider_not_ready";
 
 /// What a readiness check needs (fabro-b46e): the catalog to resolve
 /// selectors with, the providers with stored credentials, and whether an
 /// operator override downgrades the refusal to a warning.
-pub(crate) struct ModelReadiness<'a> {
-    pub(crate) catalog: &'a Catalog,
-    pub(crate) ready:   &'a [ProviderId],
-    pub(crate) force:   bool,
+pub struct ModelReadiness<'a> {
+    pub catalog: &'a Catalog,
+    pub ready:   &'a [ProviderId],
+    pub force:   bool,
 }
 
 /// Owned readiness inputs for a check that crosses a thread boundary
 /// (fabro-b46e): the server's catalog and ready providers, or no
 /// credential knowledge at all for an offline check, where neither
 /// readiness rule fires.
-pub(crate) enum Readiness {
+pub enum Readiness {
     Offline,
     Server {
         catalog: std::sync::Arc<Catalog>,
@@ -89,7 +89,7 @@ impl Readiness {
 /// ([`NO_READY_PROVIDER_RULE`]): the launch has no model to run on. Built
 /// by the check at create and re-built over a stored admission when a
 /// successor re-checks readiness (fabro-f93b).
-pub(crate) fn no_ready_provider_diagnostic() -> FabroDiagnostic {
+pub fn no_ready_provider_diagnostic() -> FabroDiagnostic {
     FabroDiagnostic {
         rule: NO_READY_PROVIDER_RULE.to_string(),
         severity: Severity::Error,
@@ -110,7 +110,7 @@ pub(crate) fn no_ready_provider_diagnostic() -> FabroDiagnostic {
 /// would pick one of these. `model` names the stage's selector when one
 /// was stated, for probes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct RequiredProvider {
+pub struct RequiredProvider {
     pub provider: ProviderId,
     pub model:    Option<String>,
 }
@@ -140,7 +140,7 @@ fn requirement_providers(catalog: &Catalog, requirement: &ModelRequirement) -> V
 /// provider maps to those ready candidates — the selection would pick one
 /// of them. Requirements with no ready candidate are readiness misses
 /// ([`model_readiness_diagnostics`]) and never reach a window check.
-pub(crate) fn required_providers(
+pub fn required_providers(
     catalog: &Catalog,
     admitted: Option<&Admitted>,
     ready: &[ProviderId],
@@ -184,7 +184,7 @@ pub(crate) fn required_providers(
 /// (Petri's admission owns unknown models and providers) or the node states
 /// neither (the launch default is ready by construction). `force` keeps the
 /// finding but downgrades it to a warning, so an override stays visible.
-pub(crate) fn model_readiness_diagnostics(
+pub fn model_readiness_diagnostics(
     readiness: &ModelReadiness<'_>,
     requirements: &[ModelRequirement],
 ) -> Vec<FabroDiagnostic> {
@@ -278,7 +278,7 @@ impl ProviderMiss {
 /// default offering of the eligible providers is bound as the launch model
 /// alone: a node that names no model runs on it, and a node that names a model
 /// the catalog lacks stays unqualified, so Petri's admission refuses it.
-pub(crate) fn launch(
+pub fn launch(
     catalog: &Catalog,
     settings: &WorkflowSettings,
     eligible: &[ProviderId],
@@ -340,7 +340,7 @@ pub(crate) fn launch_without_catalog(settings: &WorkflowSettings) -> Launch {
 /// variables, the launch and the runtime. `unbound_is_warning` makes a
 /// template that reads an input nothing binds a warning, for a validation
 /// before the run's inputs exist; a run's admission never sets it.
-pub(crate) fn check_request(
+pub fn check_request(
     bundle: &WorkflowBundle,
     entrypoint: &ManifestPath,
     settings: &WorkflowSettings,
@@ -388,13 +388,13 @@ pub(crate) fn check_request(
 
 /// What a check said: the admitted graphs when Petri admitted the workflow,
 /// and every diagnostic, Petri's and Fabro's, in Fabro's shape.
-pub(crate) struct Checked {
-    pub(crate) admitted:    Option<Admitted>,
-    pub(crate) diagnostics: Vec<FabroDiagnostic>,
+pub struct Checked {
+    pub admitted:    Option<Admitted>,
+    pub diagnostics: Vec<FabroDiagnostic>,
 }
 
 impl Checked {
-    pub(crate) fn has_errors(&self) -> bool {
+    pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
             .any(|diagnostic| diagnostic.severity == Severity::Error)
@@ -405,10 +405,7 @@ impl Checked {
 /// graphs; an admission as the graphs with Petri's warnings, plus Fabro's
 /// refusal of a model node when `has_ready_provider` is false. Blocking: it
 /// lowers the graph and runs the admission passes synchronously.
-pub(crate) fn check(
-    request: &CheckRequest,
-    has_ready_provider: bool,
-) -> Result<Checked, WorkflowError> {
+pub fn check(request: &CheckRequest, has_ready_provider: bool) -> Result<Checked, WorkflowError> {
     match check::check(request) {
         Ok(admitted) => {
             let mut diagnostics = admitted
