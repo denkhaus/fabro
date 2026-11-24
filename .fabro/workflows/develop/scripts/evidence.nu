@@ -41,6 +41,12 @@
 # every lane script a consumer.
 use ../../../scripts/lib/run_anchor.nu
 use ../../../scripts/lib/work_channel.nu
+# The loop-lane classifier (fabro-70b5): in the LOOP lane the loop assets
+# ARE the seed work (the review scope), everything else is out-of-lane
+# churn. The classifier is the shared lib's loop-asset? (work#264: the
+# loop-work-path mirror retired - one implementation in lib/spec_paths.nu;
+# the run-scope fixtures pin the sourcing).
+source ../../../scripts/lib/spec_paths.nu
 
 # Dev-loop machinery this repo owns; never part of a seed's review scope.
 const LOOP_PREFIXES = [".fabro/" ".mulch/" ".seeds/" ".prime/" ".agents/" "docs/" "scripts/"]
@@ -72,22 +78,6 @@ def diff-sort-key [path: string]: nothing -> string {
 
 def is-loop-path [path: string]: nothing -> bool {
     ($LOOP_PREFIXES | any {|p| $path | str starts-with $p}) or ($path in $LOOP_ROOTS)
-}
-
-# Loop-lane classification (fabro-70b5): in the LOOP lane the loop
-# assets ARE the seed work (the review scope), and everything else is
-# out-of-lane churn for the anomaly list. The set mirrors the loop
-# implementer's write scope plus the tracker file: .fabro/**,
-# scripts/**, justfile (the .seeds tracker paths left the set with
-# denkhaus/work#990). Keep in sync with the loop graph's envelope and
-# with scripts/qualitygate.nu's loop-asset?.
-def loop-work-path [path: string]: nothing -> bool {
-    # fabro-9973: the fabro-dot snapshot dir is the ONE lib/ exception —
-    # keep in sync with qualitygate.nu loop-asset? and the loop graph's
-    # envelope (the run-scope fixtures pin the triple).
-    if ($path | str starts-with "lib/components/fabro-dot/src/snapshots/") { return true }
-    let prefix_hit = ([".fabro/" "scripts/"] | any {|q| $path | str starts-with $q})
-    ($prefix_hit) or ($path == "justfile")
 }
 
 # Paths literally named by the seed spec (fabro-d76c): a seed body that
@@ -357,12 +347,12 @@ def worktree-section [wt_lines: list<string>]: nothing -> string {
 def classify-rows [rows: list, lane: string, spec_paths: list<string>]: nothing -> record<seed: list, churn: list> {
     let spec_named = {|r| spec-names-path $spec_paths $r.path }
     let seed = (if $lane == "loop" {
-        $rows | where {|r| (loop-work-path $r.path) or (do $spec_named $r)} | sort-by path
+        $rows | where {|r| (loop-asset? $r.path) or (do $spec_named $r)} | sort-by path
     } else {
         $rows | where {|r| (not (is-loop-path $r.path)) or (do $spec_named $r)} | sort-by path
     })
     let churn = (if $lane == "loop" {
-        $rows | where {|r| (not (loop-work-path $r.path)) and (not (do $spec_named $r))} | sort-by path
+        $rows | where {|r| (not (loop-asset? $r.path)) and (not (do $spec_named $r))} | sort-by path
     } else {
         $rows | where {|r| (is-loop-path $r.path) and (not (do $spec_named $r))} | sort-by path
     })

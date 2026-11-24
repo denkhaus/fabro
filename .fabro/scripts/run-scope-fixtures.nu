@@ -83,38 +83,39 @@ expect-drops [" scripts/run.sh | 2 +-" " rename scripts/a.sh => scripts/b.sh (98
 expect-drops [] []
 expect-drops [" mode change 100755 => 100644 a.sh" " mode change 100644 => 100755 b.sh"] ["a.sh"]
 
-# ── drift pin: the loop-asset set is encoded in evidence.nu
-# (loop-work-path — the reviewer scope) and the shared lib
-# .fabro/scripts/lib/spec_paths.nu (loop-asset? — the gate scope;
+# ── drift pin: the loop-asset set lives in ONE place -
+# .fabro/scripts/lib/spec_paths.nu (loop-asset? - the gate scope;
 # qualitygate.nu and the claim gate source the lib, and lib.spec_paths
-# itself is a def-only module with no auto-invoked main). A silent drift
-# between the two mirrors would split reviewer scope from gate scope;
-# this textual pin REDs on either side changing without the other (the
-# loop graph-contract smoke pins the graph side).
-const PIN_PREFIXES = '[".fabro/" "scripts/"] | any {|q| $path | str starts-with $q}'
+# itself is a def-only module with no auto-invoked main). The reviewer
+# scope sources the same seam since work#264 (evidence.nu's
+# loop-work-path mirror retired). A dropped seam line would resurrect
+# the two-def drift this pin exists to prevent; the loop graph-contract
+# smoke pins the graph side.
 const PIN_PREFIXES_LIB = '[".fabro/" "scripts/"] | any {|q| $p | str starts-with $q}'
-const PIN_EXACT_EVIDENCE = '($path == "justfile")'
 const PIN_EXACT_LIB = '($p == "justfile")'
 let evidence_src = (open --raw ($SCRIPT_DIR | path join '../workflows/develop/scripts/evidence.nu'))
 let lib_src = (open --raw ($SCRIPT_DIR | path join 'lib/spec_paths.nu'))
-if not ($evidence_src | str contains $PIN_PREFIXES) or not ($evidence_src | str contains $PIN_EXACT_EVIDENCE) {
-    fail $"drift pin: evidence.nu loop-work-path set changed — realign with lib/spec_paths.nu loop-asset? \(the loop graph mirror retired with the loop workflow, ADR-0039 stage G\)"
-}
 if not ($lib_src | str contains $PIN_PREFIXES_LIB) or not ($lib_src | str contains $PIN_EXACT_LIB) {
-    fail "drift pin: lib/spec_paths.nu loop-asset? set changed — realign with evidence.nu loop-work-path \(and the loop graph x.fs_write\)"
+    fail "drift pin: lib/spec_paths.nu loop-asset? set changed - realign with the loop graph x.fs_write"
 }
-# qualitygate must source the shared lib, not carry a private copy — a
-# dropped seam line would resurrect the two-def drift this pin exists
-# to prevent.
+# qualitygate AND evidence must source the shared lib, not carry
+# private copies.
 if not ($QUALITYGATE_SRC | str contains 'source ../.fabro/scripts/lib/spec_paths.nu') {
-    fail "drift pin: scripts/qualitygate.nu no longer sources lib/spec_paths.nu — restore the shared loop-asset seam"
+    fail "drift pin: scripts/qualitygate.nu no longer sources lib/spec_paths.nu - restore the shared loop-asset seam"
 }
-# fabro-9973: the snapshot-dir exception must live in BOTH mirrors (and
-# the loop graph pins its own copy) — a one-sided exception would split
-# gate scope from reviewer scope.
+if not ($evidence_src | str contains 'source ../../../scripts/lib/spec_paths.nu') {
+    fail "drift pin: evidence.nu no longer sources lib/spec_paths.nu - restore the shared loop-asset seam (work#264)"
+}
+# The retired mirror must not regrow in evidence.nu.
+if ($evidence_src | str contains 'def loop-work-path') {
+    fail "drift pin: evidence.nu loop-work-path mirror regrew - use lib/spec_paths.nu loop-asset? (work#264)"
+}
+# fabro-9973: the snapshot-dir exception lives in the lib (the loop
+# graph pins its own copy) - a dropped exception would split gate scope
+# from the graph envelope.
 const PIN_SNAPSHOT_DIR = 'lib/components/fabro-dot/src/snapshots/'
-if not ($evidence_src | str contains $PIN_SNAPSHOT_DIR) or not ($lib_src | str contains $PIN_SNAPSHOT_DIR) {
-    fail "drift pin: the fabro-dot snapshot-dir exception (fabro-9973) must appear in BOTH evidence.nu loop-work-path and lib/spec_paths.nu loop-asset?"
+if not ($lib_src | str contains $PIN_SNAPSHOT_DIR) {
+    fail "drift pin: the fabro-dot snapshot-dir exception (fabro-9973) must appear in lib/spec_paths.nu loop-asset?"
 }
 
 # ── end-to-end git fixture ────────────────────────────────────────────
