@@ -1,3 +1,6 @@
+//! The admission manifest checks: what a prepared manifest must satisfy
+//! before Petri admits it, plus the preflight report the endpoints serve.
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -46,6 +49,8 @@ use crate::petri_check::Readiness;
 use crate::{petri_check, run_compiler};
 
 #[derive(Clone)]
+/// One validated manifest, ready for the admission checks: the workflow
+/// bundle, its parsed settings, and the checkout facts the checks read.
 pub struct PreparedManifest {
     pub git:              Option<types::GitContext>,
     /// The entrypoint's DOT as written: what the render endpoint draws.
@@ -57,7 +62,7 @@ pub struct PreparedManifest {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ManifestSettingsOverrides {
+pub(crate) struct ManifestSettingsOverrides {
     pub(crate) run:             Option<RunLayer>,
     pub(crate) cli:             Option<CliLayer>,
     pub(crate) input_overrides: HashMap<String, toml::Value>,
@@ -359,7 +364,7 @@ fn workflow_files_from_manifest(
     Ok(bundled)
 }
 
-pub fn settings_layer_with_resolved_dockerfiles(
+fn settings_layer_with_resolved_dockerfiles(
     source: &str,
     config_path: &ManifestPath,
     files: &HashMap<ManifestPath, String>,
@@ -626,7 +631,7 @@ fn run_environment_capability_check(checks: &mut Vec<CheckResult>, resolved_run:
     });
 }
 
-pub fn environment_capability_warnings(resolved_run: &RunNamespace) -> Vec<String> {
+fn environment_capability_warnings(resolved_run: &RunNamespace) -> Vec<String> {
     let environment = &resolved_run.environment;
     let mut warnings = Vec::new();
     match environment.provider.bundled() {
@@ -701,7 +706,7 @@ async fn run_repository_access_check(
     .await
 }
 
-pub async fn run_repository_access_check_with<F, Fut>(
+async fn run_repository_access_check_with<F, Fut>(
     checks: &mut Vec<CheckResult>,
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
@@ -808,7 +813,7 @@ async fn check_git_remote_ref(
 /// Run a prepared `git ls-remote` invocation with a 10s timeout, reducing a
 /// failure to its most useful message: stderr, then stdout, then the exit
 /// status.
-pub async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> {
+async fn run_ls_remote(mut command: Command) -> std::result::Result<(), String> {
     let output = fabro_proc::capture(
         &mut command,
         Some(Duration::from_secs(10)),
@@ -843,7 +848,7 @@ pub async fn run_ls_remote(mut command: Command) -> std::result::Result<(), Stri
 /// sandbox is created: Petri creates the run's, in the run's own shape,
 /// when the run starts. A `local` environment must also resolve the
 /// directory the run would work in.
-pub async fn run_sandbox_check(
+async fn run_sandbox_check(
     checks: &mut Vec<CheckResult>,
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
@@ -879,7 +884,7 @@ pub async fn run_sandbox_check(
 /// The preflight check for a provider's health report: a connection
 /// failure and an unreachable or rejected backend fail with the reason; a
 /// healthy backend, or one whose provider has no health check, passes.
-pub fn sandbox_health_check(
+fn sandbox_health_check(
     sandbox_provider: &SandboxProviderKind,
     health: std::result::Result<ProviderHealth, String>,
 ) -> CheckResult {
@@ -942,7 +947,7 @@ async fn run_github_token_check(
     .await
 }
 
-pub async fn run_github_token_check_with<M, MFut, P, PFut>(
+async fn run_github_token_check_with<M, MFut, P, PFut>(
     checks: &mut Vec<CheckResult>,
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
@@ -1221,7 +1226,7 @@ async fn probe_github_repository(
 /// token only makes progress, while re-minting would restart the replication
 /// clock. The driver's git retry owns the decision and the pacing; fabro's
 /// probe policy owns the attempt count.
-pub async fn probe_with_replication_retry<F, Fut>(
+async fn probe_with_replication_retry<F, Fut>(
     snapshot: TokenSnapshot,
     run: F,
 ) -> std::result::Result<(), String>
@@ -1266,7 +1271,7 @@ fn replication_backoff() -> GitBackoff {
 
 /// Host-side repository probes get 3 attempts at replication pacing, with
 /// no deadline of their own.
-pub fn repository_probe_policy() -> GitRetryPolicy {
+fn repository_probe_policy() -> GitRetryPolicy {
     GitRetryPolicy::new(3, replication_backoff())
 }
 
@@ -1297,7 +1302,7 @@ fn classified_git_failure(operation: &str, message: &str) -> sandbox_driver::Err
 /// messages under `policy`, retrying while the driver's decision says the
 /// message is transient for the token behind `snapshot`. The final failure
 /// comes back as the operation's own message.
-pub async fn retry_git_messages<F, Fut>(
+async fn retry_git_messages<F, Fut>(
     policy: &GitRetryPolicy,
     snapshot: Option<&TokenSnapshot>,
     operation: &str,
@@ -1513,5 +1518,1432 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
             })
             .collect(),
         title:    report.title.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use fabro_github::token_source::TokenProvenance;
+    use fabro_types::settings::run::RunMode;
+    use tokio::time;
+
+    use super::*;
+
+    /// The manifest run defaults helper the prepare fixtures share (the
+    /// pre-move cfg(test) helper, restored in-crate by the review split,
+    /// work#1672).
+    fn manifest_run_defaults(run: Option<&RunLayer>) -> RunLayer {
+        run.cloned().unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn ls_remote_capture_keeps_diagnostic_precedence_and_unlimited_output() {
+        for (script, expected) in [
+            ("printf stdout; printf stderr >&2; exit 7", "stderr"),
+            ("printf stdout; exit 7", "stdout"),
+        ] {
+            let mut command = Command::new("sh");
+            command.args(["-c", script]);
+            assert_eq!(super::run_ls_remote(command).await.unwrap_err(), expected);
+        }
+        let mut command = Command::new("sh");
+        command.args(["-c", "head -c 200000 /dev/zero | tr '\\0' x >&2; exit 7"]);
+        assert_eq!(
+            super::run_ls_remote(command).await.unwrap_err().len(),
+            200_000
+        );
+        let mut command = Command::new("sh");
+        command.args(["-c", "exit 7"]);
+        assert!(
+            super::run_ls_remote(command)
+                .await
+                .unwrap_err()
+                .starts_with("git ls-remote exited with status")
+        );
+    }
+
+    fn minimal_manifest() -> types::RunManifest {
+        types::RunManifest {
+            args:      None,
+            configs:   Vec::new(),
+            cwd:       "/tmp/project".to_string(),
+            git:       None,
+            goal:      None,
+            parent_id: None,
+            title:     None,
+            target:    types::ManifestTarget {
+                path: "workflow.fabro".to_string(),
+            },
+            version:   1,
+            workflows: HashMap::from([("workflow.fabro".to_string(), types::ManifestWorkflow {
+                config: None,
+                files:  HashMap::new(),
+                source:
+                    "digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                        .to_string(),
+            })]),
+        }
+    }
+
+    fn server_settings_fixture(source: &str) -> RunLayer {
+        let mut document: toml::Table = source.parse().expect("v2 fixture should parse");
+        document
+            .remove("run")
+            .map(toml::Value::try_into::<RunLayer>)
+            .transpose()
+            .expect("run settings should parse")
+            .unwrap_or_default()
+    }
+
+    fn default_settings_fixture() -> RunLayer {
+        RunLayer::default()
+    }
+
+    fn environment_defaults_fixture() -> MergeMap<EnvironmentLayer> {
+        MergeMap::from(HashMap::from([
+            ("default".to_string(), EnvironmentLayer {
+                provider: Some("local".to_string()),
+                ..EnvironmentLayer::default()
+            }),
+            ("local".to_string(), EnvironmentLayer {
+                provider: Some("local".to_string()),
+                ..EnvironmentLayer::default()
+            }),
+            ("daytona".to_string(), EnvironmentLayer {
+                provider: Some("daytona".to_string()),
+                ..EnvironmentLayer::default()
+            }),
+            ("selected".to_string(), EnvironmentLayer {
+                provider: Some("docker".to_string()),
+                ..EnvironmentLayer::default()
+            }),
+            ("cloud".to_string(), EnvironmentLayer {
+                provider: Some("daytona".to_string()),
+                ..EnvironmentLayer::default()
+            }),
+        ]))
+    }
+
+    fn prepare_manifest(
+        manifest_run_defaults: &RunLayer,
+        manifest: &types::RunManifest,
+    ) -> Result<PreparedManifest> {
+        super::prepare_manifest_with_environment_defaults(
+            manifest_run_defaults,
+            &environment_defaults_fixture(),
+            &HashMap::new(),
+            manifest,
+        )
+    }
+
+    fn manifest_workflow() -> types::ManifestWorkflow {
+        types::ManifestWorkflow {
+            config: None,
+            files:  HashMap::new(),
+            source: "digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
+                .to_string(),
+        }
+    }
+
+    fn manifest_file(content: &str) -> types::ManifestFileEntry {
+        types::ManifestFileEntry {
+            content: content.to_string(),
+            ref_:    types::ManifestFileRef {
+                from:     Some("workflow.fabro".to_string()),
+                original: "prompt.md".to_string(),
+                type_:    types::ManifestFileRefType::FileInline,
+            },
+        }
+    }
+
+    fn git_context(origin_url: &str, branch: &str) -> types::GitContext {
+        types::GitContext {
+            origin_url: origin_url.to_string(),
+            branch:     branch.to_string(),
+            sha:        None,
+            dirty:      fabro_types::DirtyStatus::Clean,
+        }
+    }
+
+    fn prepared_and_resolved_for_sandbox(
+        provider: &SandboxProviderKind,
+        clone_enabled: bool,
+        git: Option<types::GitContext>,
+    ) -> (PreparedManifest, RunNamespace) {
+        let mut manifest = minimal_manifest();
+        manifest.git = git;
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some("/tmp/project/.fabro/project.toml".to_string()),
+            source: Some(format!(
+                r#"
+_version = 1
+
+[run.environment]
+id = "selected"
+
+[run.clone]
+enabled = {clone_enabled}
+"#
+            )),
+            type_:  types::ManifestConfigType::Project,
+        });
+        let mut environment_defaults = environment_defaults_fixture();
+        environment_defaults.insert("selected".to_string(), EnvironmentLayer {
+            provider: Some(provider.to_string()),
+            ..EnvironmentLayer::default()
+        });
+
+        let prepared = super::prepare_manifest_with_environment_defaults(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &environment_defaults,
+            &HashMap::new(),
+            &manifest,
+        )
+        .unwrap();
+        let resolved = prepared.settings.run.clone();
+
+        (prepared, resolved)
+    }
+
+    #[test]
+    fn docker_environment_cwd_is_reported_as_ignored() {
+        let mut resolved = RunNamespace::default();
+        resolved.environment.provider = SandboxProviderKind::DOCKER;
+        resolved.environment.cwd = Some("/workspace/custom".to_string());
+
+        assert_eq!(environment_capability_warnings(&resolved), vec![
+            "docker provider ignores cwd".to_string()
+        ]);
+    }
+
+    #[test]
+    fn daytona_environment_cwd_is_reported_as_ignored() {
+        let mut resolved = RunNamespace::default();
+        resolved.environment.provider = SandboxProviderKind::DAYTONA;
+        resolved.environment.cwd = Some("/home/daytona/workspace/custom".to_string());
+
+        assert_eq!(environment_capability_warnings(&resolved), vec![
+            "daytona provider ignores cwd".to_string()
+        ]);
+    }
+
+    #[test]
+    fn prepare_manifest_accepts_project_environment_catalog_definitions() {
+        let mut manifest = minimal_manifest();
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some(".fabro/project.toml".to_string()),
+            source: Some(
+                r#"_version = 1
+
+[run.environment]
+id = "cloud"
+
+[environments.cloud]
+provider = "local"
+"#
+                .to_string(),
+            ),
+            type_:  types::ManifestConfigType::Project,
+        });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .expect("project environment catalog should resolve");
+
+        assert_eq!(
+            prepared.settings.run.environment.provider,
+            SandboxProviderKind::LOCAL
+        );
+    }
+
+    #[tokio::test]
+    async fn repository_access_check_skips_when_clone_is_disabled() {
+        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+            &SandboxProviderKind::DOCKER,
+            false,
+            Some(git_context("https://github.com/acme/widgets", "main")),
+        );
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls_for_check = Arc::clone(&calls);
+        let mut checks = Vec::new();
+
+        let ok = run_repository_access_check_with(
+            &mut checks,
+            &SandboxProviderKind::DOCKER,
+            &prepared,
+            &resolved,
+            None,
+            move |request, _github_app| {
+                calls_for_check.lock().unwrap().push(request);
+                async { Ok(()) }
+            },
+        )
+        .await;
+
+        assert!(ok);
+        assert!(checks.is_empty());
+        assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn repository_access_check_rejects_non_github_origins_before_remote_probe() {
+        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+            &SandboxProviderKind::DOCKER,
+            true,
+            Some(git_context("https://gitlab.com/acme/widgets", "main")),
+        );
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls_for_check = Arc::clone(&calls);
+        let mut checks = Vec::new();
+
+        let ok = run_repository_access_check_with(
+            &mut checks,
+            &SandboxProviderKind::DOCKER,
+            &prepared,
+            &resolved,
+            None,
+            move |request, _github_app| {
+                calls_for_check.lock().unwrap().push(request);
+                async { Ok(()) }
+            },
+        )
+        .await;
+
+        assert!(!ok);
+        assert!(calls.lock().unwrap().is_empty());
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "Repository Access");
+        assert_eq!(checks[0].status, CheckStatus::Error);
+        assert!(
+            checks[0]
+                .remediation
+                .as_deref()
+                .unwrap_or_default()
+                .contains("GitHub repository origins only")
+        );
+    }
+
+    #[tokio::test]
+    async fn repository_access_check_probes_normalized_github_branch() {
+        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+            &SandboxProviderKind::DOCKER,
+            true,
+            Some(git_context(
+                "git@github.com:acme/widgets.git",
+                "feature/demo",
+            )),
+        );
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls_for_check = Arc::clone(&calls);
+        let mut checks = Vec::new();
+
+        let ok = run_repository_access_check_with(
+            &mut checks,
+            &SandboxProviderKind::DOCKER,
+            &prepared,
+            &resolved,
+            None,
+            move |request, _github_app| {
+                calls_for_check.lock().unwrap().push(request);
+                async { Ok(()) }
+            },
+        )
+        .await;
+
+        assert!(ok);
+        assert_eq!(calls.lock().unwrap().as_slice(), [GitRemoteRefCheck {
+            origin_url: "https://github.com/acme/widgets".to_string(),
+            branch:     Some("feature/demo".to_string()),
+        }]);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "Repository Access");
+        assert_eq!(checks[0].status, CheckStatus::Pass);
+    }
+
+    #[tokio::test]
+    async fn repository_access_check_surfaces_remote_probe_failure() {
+        let (prepared, resolved) = prepared_and_resolved_for_sandbox(
+            &SandboxProviderKind::DOCKER,
+            true,
+            Some(git_context("https://github.com/acme/widgets", "missing")),
+        );
+        let mut checks = Vec::new();
+
+        let ok = run_repository_access_check_with(
+            &mut checks,
+            &SandboxProviderKind::DOCKER,
+            &prepared,
+            &resolved,
+            None,
+            |_request, _github_app| async { Err("remote branch not found".to_string()) },
+        )
+        .await;
+
+        assert!(!ok);
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].name, "Repository Access");
+        assert_eq!(checks[0].status, CheckStatus::Error);
+        assert!(
+            checks[0]
+                .remediation
+                .as_deref()
+                .unwrap_or_default()
+                .contains("remote branch not found")
+        );
+    }
+
+    fn health(status: HealthStatus, message: Option<&str>) -> ProviderHealth {
+        let mut health = ProviderHealth::new(status);
+        health.message = message.map(str::to_string);
+        health
+    }
+
+    #[test]
+    fn a_healthy_or_uncheckable_provider_passes_the_sandbox_check() {
+        for status in [HealthStatus::Ok, HealthStatus::Unknown] {
+            let check =
+                sandbox_health_check(&SandboxProviderKind::DOCKER, Ok(health(status, None)));
+            assert_eq!(check.status, CheckStatus::Pass, "{status:?}");
+            assert_eq!(check.summary, "docker");
+            assert_eq!(check.details[0].text, "Provider: docker");
+            assert!(check.remediation.is_none());
+        }
+    }
+
+    #[test]
+    fn an_unreachable_backend_fails_the_sandbox_check_with_its_reason() {
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DOCKER,
+            Ok(health(
+                HealthStatus::Unreachable,
+                Some("connection refused on /var/run/docker.sock"),
+            )),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(check.summary, "failed");
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("docker backend is unreachable: connection refused on /var/run/docker.sock")
+        );
+    }
+
+    #[test]
+    fn a_rejected_credential_fails_the_sandbox_check_naming_the_missing_scopes() {
+        let mut unauthorized = health(HealthStatus::Unauthorized, Some("forbidden"));
+        unauthorized.missing_permissions = vec!["write:sandboxes".to_string()];
+        let check = sandbox_health_check(&SandboxProviderKind::DAYTONA, Ok(unauthorized));
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona credential is missing required permissions: write:sandboxes")
+        );
+
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Ok(health(HealthStatus::Unauthorized, Some("bad key"))),
+        );
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("daytona rejected the credential: bad key")
+        );
+    }
+
+    #[test]
+    fn a_provider_that_cannot_connect_fails_the_sandbox_check_with_the_connect_error() {
+        let check = sandbox_health_check(
+            &SandboxProviderKind::DAYTONA,
+            Err("Daytona sandboxes require DAYTONA_API_KEY in the vault".to_string()),
+        );
+        assert_eq!(check.status, CheckStatus::Error);
+        assert_eq!(
+            check.remediation.as_deref(),
+            Some("Daytona sandboxes require DAYTONA_API_KEY in the vault")
+        );
+    }
+
+    /// The sandbox check passes a healthy provider report through as a
+    /// passing check row naming the provider.
+    #[tokio::test]
+    async fn a_passing_provider_health_passes_the_sandbox_check_row() {
+        let (mut prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::LOCAL, false, None);
+        // The local check resolves the run's working directory from the
+        // manifest's source directory, which must exist.
+        let source = tempfile::tempdir().expect("a source directory");
+        prepared.source_directory = source.path().to_path_buf();
+        let mut checks = Vec::new();
+        let provider_health: ProviderHealthSource =
+            Arc::new(|_kind| Box::pin(async move { Ok(health(HealthStatus::Ok, None)) }));
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::LOCAL,
+            &prepared,
+            &resolved,
+            &provider_health,
+        )
+        .await;
+        assert!(passed, "{checks:?}");
+        assert_eq!(checks[0].name, "Sandbox");
+        assert_eq!(checks[0].status, CheckStatus::Pass);
+    }
+
+    /// A failing provider-health source fails the sandbox check row with
+    /// its reason (the vault-missing daytona shape).
+    #[tokio::test]
+    async fn a_failing_provider_health_fails_the_sandbox_check_row_with_its_reason() {
+        let (prepared, resolved) =
+            prepared_and_resolved_for_sandbox(&SandboxProviderKind::DAYTONA, false, None);
+        let mut checks = Vec::new();
+        let passed = run_sandbox_check(
+            &mut checks,
+            &SandboxProviderKind::DAYTONA,
+            &prepared,
+            &resolved,
+            &{
+                let provider_health: ProviderHealthSource = Arc::new(|_kind| {
+                    Box::pin(async move {
+                        Err(anyhow!(
+                            "Daytona sandboxes require DAYTONA_API_KEY in the vault"
+                        ))
+                    })
+                });
+                provider_health
+            },
+        )
+        .await;
+        assert!(!passed);
+        assert_eq!(checks[0].status, CheckStatus::Error);
+        assert!(
+            checks[0]
+                .remediation
+                .as_deref()
+                .unwrap_or_default()
+                .contains("DAYTONA_API_KEY"),
+            "{checks:?}"
+        );
+    }
+
+    fn snapshot(age: Duration) -> TokenSnapshot {
+        let now = chrono::Utc::now();
+        TokenSnapshot {
+            generation: 1,
+            provenance: TokenProvenance::Minted {
+                minted_at:  now - chrono::Duration::from_std(age).unwrap(),
+                expires_at: now + chrono::Duration::hours(1),
+            },
+        }
+    }
+
+    fn static_snapshot() -> TokenSnapshot {
+        TokenSnapshot {
+            generation: 0,
+            provenance: TokenProvenance::Static,
+        }
+    }
+
+    #[test]
+    fn probe_backoff_paces_at_replication_intervals() {
+        let backoff = repository_probe_policy().backoff;
+        assert_eq!(backoff.delay_after(1), Duration::from_secs(3));
+        assert_eq!(backoff.delay_after(2), Duration::from_secs(9));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn host_side_retries_keep_the_operations_own_message() {
+        let calls = Mutex::new(0_u32);
+        let result = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&snapshot(Duration::from_secs(1))),
+            "repository probe",
+            || {
+                let attempt = {
+                    let mut calls = calls.lock().unwrap();
+                    *calls += 1;
+                    *calls
+                };
+                async move {
+                    if attempt < 3 {
+                        Err(format!("remote: Repository not found. (attempt {attempt})"))
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+        )
+        .await;
+        assert_eq!(result, Ok(()));
+        assert_eq!(*calls.lock().unwrap(), 3);
+
+        let permanent = retry_git_messages(
+            &repository_probe_policy(),
+            Some(&static_snapshot()),
+            "repository probe",
+            || async { Err("remote: Repository not found.".to_owned()) },
+        )
+        .await;
+        assert_eq!(permanent, Err("remote: Repository not found.".to_owned()));
+    }
+
+    #[test]
+    fn workflow_bundle_rejects_duplicate_canonical_workflow_keys() {
+        let workflows = HashMap::from([
+            ("bar.fabro".to_string(), manifest_workflow()),
+            ("./foo/../bar.fabro".to_string(), manifest_workflow()),
+        ]);
+
+        let error = workflow_bundle_from_manifest(&workflows).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate canonical workflow key: bar.fabro")
+        );
+    }
+
+    #[test]
+    fn workflow_bundle_rejects_duplicate_canonical_file_keys() {
+        let mut workflow = manifest_workflow();
+        workflow.files = HashMap::from([
+            ("prompts/hello.md".to_string(), manifest_file("first")),
+            ("./prompts/./hello.md".to_string(), manifest_file("second")),
+        ]);
+        let workflows = HashMap::from([("workflow.fabro".to_string(), workflow)]);
+
+        let error = workflow_bundle_from_manifest(&workflows).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("duplicate canonical file key: prompts/hello.md")
+        );
+    }
+
+    #[test]
+    fn workflow_bundle_rejects_invalid_workflow_key() {
+        let workflows = HashMap::from([("/abs/path.fabro".to_string(), manifest_workflow())]);
+
+        let error = workflow_bundle_from_manifest(&workflows).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("invalid manifest workflow key: /abs/path.fabro")
+        );
+    }
+
+    #[test]
+    fn workflow_bundle_rejects_invalid_file_key() {
+        let mut workflow = manifest_workflow();
+        workflow.files = HashMap::from([("~/foo.md".to_string(), manifest_file("content"))]);
+        let workflows = HashMap::from([("workflow.fabro".to_string(), workflow)]);
+
+        let error = workflow_bundle_from_manifest(&workflows).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("invalid manifest file key: ~/foo.md")
+        );
+    }
+
+    #[test]
+    fn prepare_manifest_preserves_explicit_manifest_dry_run() {
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
+            r#"
+_version = 1
+
+[run.execution]
+mode = "dry_run"
+
+[server.storage]
+root = "/srv/fabro"
+"#,
+        )));
+        let mut manifest = minimal_manifest();
+        manifest.args = Some(types::ManifestArgs {
+            auto_approve:     None,
+            dry_run:          Some(true),
+            label:            Vec::new(),
+            model:            None,
+            preserve_sandbox: None,
+            provider:         None,
+            environment:      None,
+            input:            Vec::new(),
+            verbose:          None,
+        });
+
+        let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
+
+        assert_eq!(prepared.settings.run.execution.mode, RunMode::DryRun);
+    }
+
+    #[test]
+    fn prepare_manifest_applies_input_args_as_sparse_overrides() {
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
+            r#"
+_version = 1
+
+[run.inputs]
+keep = "server"
+override = "server"
+"#,
+        )));
+        let mut manifest = minimal_manifest();
+        manifest.args = Some(types::ManifestArgs {
+            auto_approve:     None,
+            dry_run:          None,
+            label:            Vec::new(),
+            model:            None,
+            preserve_sandbox: None,
+            provider:         None,
+            environment:      None,
+            input:            vec!["override=cli".to_string()],
+            verbose:          None,
+        });
+
+        let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
+
+        assert_eq!(
+            prepared.settings.run.inputs.get("keep"),
+            Some(&toml::Value::String("server".to_string()))
+        );
+        assert_eq!(
+            prepared.settings.run.inputs.get("override"),
+            Some(&toml::Value::String("cli".to_string()))
+        );
+    }
+
+    #[test]
+    fn prepare_manifest_prefers_bundled_settings_without_duplication() {
+        let server_settings = manifest_run_defaults(Some(&server_settings_fixture(
+            r#"
+_version = 1
+
+[server.storage]
+root = "/srv/fabro"
+
+[[run.prepare.steps]]
+script = "cli-setup"
+
+[server.integrations.github]
+app_id = "fixture-app-id"
+"#,
+        )));
+
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
+            Some(types::ManifestWorkflowConfig {
+                path:   "workflow.toml".to_string(),
+                source: r#"
+_version = 1
+
+[[run.prepare.steps]]
+script = "workflow-setup"
+"#
+                .to_string(),
+            });
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some("/tmp/home/.fabro/settings.toml".to_string()),
+            source: Some(
+                r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[[run.prepare.steps]]
+script = "cli-setup"
+
+[server.integrations.github]
+app_id = "fixture-app-id"
+"#
+                .to_string(),
+            ),
+            type_:  types::ManifestConfigType::User,
+        });
+
+        let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
+        let settings_json = serde_json::to_value(&prepared.settings).unwrap();
+
+        // run.prepare.steps replaces the whole list across layers, so the
+        // higher-precedence workflow layer wins over cli.
+        assert_eq!(prepared.settings.run.prepare.steps.len(), 1);
+        assert_eq!(
+            prepared.settings.run.prepare.steps[0].to_shell_command(),
+            "workflow-setup"
+        );
+        assert!(settings_json.pointer("/server").is_none());
+    }
+
+    #[test]
+    fn prepare_manifest_preserves_bundled_workflow_metadata() {
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
+            Some(types::ManifestWorkflowConfig {
+                path:   "workflow.toml".to_string(),
+                source: r#"
+_version = 1
+
+[workflow]
+name = "Ship feature"
+description = "Move the feature through review"
+
+[workflow.metadata]
+team = "platform"
+priority = "high"
+
+[run.environment]
+id = "local"
+"#
+                .to_string(),
+            });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+
+        assert_eq!(
+            prepared.settings.workflow.name.as_deref(),
+            Some("Ship feature")
+        );
+        assert_eq!(
+            prepared.settings.workflow.description.as_deref(),
+            Some("Move the feature through review")
+        );
+        assert_eq!(
+            prepared
+                .settings
+                .workflow
+                .metadata
+                .get("team")
+                .map(String::as_str),
+            Some("platform")
+        );
+        assert_eq!(
+            prepared
+                .settings
+                .workflow
+                .metadata
+                .get("priority")
+                .map(String::as_str),
+            Some("high")
+        );
+    }
+
+    #[test]
+    fn prepare_manifest_keeps_missing_metadata_names_absent() {
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r"
+digraph GraphName {
+    start [shape=Mdiamond]
+    exit [shape=Msquare]
+    start -> exit
+}
+"
+        .to_string();
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some(".fabro/project.toml".to_string()),
+            source: Some(
+                r#"_version = 1
+
+[project.metadata]
+team = "platform"
+"#
+                .to_string(),
+            ),
+            type_:  types::ManifestConfigType::Project,
+        });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+
+        assert_eq!(prepared.settings.workflow.name, None);
+        assert_eq!(prepared.settings.project.name, None);
+    }
+
+    #[test]
+    fn prepare_manifest_preserves_explicit_project_name() {
+        let mut manifest = minimal_manifest();
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some(".fabro/project.toml".to_string()),
+            source: Some(
+                r#"_version = 1
+
+[project]
+name = "Control Plane"
+"#
+                .to_string(),
+            ),
+            type_:  types::ManifestConfigType::Project,
+        });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+
+        assert_eq!(
+            prepared.settings.project.name.as_deref(),
+            Some("Control Plane")
+        );
+    }
+
+    #[test]
+    fn prepare_manifest_does_not_backfill_missing_project_and_workflow_names() {
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
+            Some(types::ManifestWorkflowConfig {
+                path:   "workflow.toml".to_string(),
+                source: "_version = 1\n".to_string(),
+            });
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some("/tmp/project/.fabro/project.toml".to_string()),
+            source: Some("_version = 1\n".to_string()),
+            type_:  types::ManifestConfigType::Project,
+        });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+
+        assert_eq!(prepared.settings.project.name, None);
+        assert_eq!(prepared.settings.workflow.name, None);
+    }
+
+    #[test]
+    fn prepare_manifest_preserves_explicit_project_and_workflow_names() {
+        let mut manifest = minimal_manifest();
+        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
+            Some(types::ManifestWorkflowConfig {
+                path:   "workflow.toml".to_string(),
+                source: r#"
+_version = 1
+
+[workflow]
+name = "Workflow Config Name"
+"#
+                .to_string(),
+            });
+        manifest.configs.push(types::ManifestConfig {
+            path:   Some("/tmp/project/.fabro/project.toml".to_string()),
+            source: Some(
+                r#"
+_version = 1
+
+[project]
+name = "Project Config Name"
+"#
+                .to_string(),
+            ),
+            type_:  types::ManifestConfigType::Project,
+        });
+
+        let prepared = prepare_manifest(
+            &manifest_run_defaults(Some(&default_settings_fixture())),
+            &manifest,
+        )
+        .unwrap();
+
+        assert_eq!(
+            prepared.settings.project.name.as_deref(),
+            Some("Project Config Name")
+        );
+        assert_eq!(
+            prepared.settings.workflow.name.as_deref(),
+            Some("Workflow Config Name")
+        );
+    }
+
+    mod settings_layer_with_resolved_dockerfiles_tests {
+        //! `settings_layer_with_resolved_dockerfiles` parses bundled
+        //! workflow.toml through the strict `SettingsLayer` schema, so
+        //! unknown fields anywhere in the document trip
+        //! `deny_unknown_fields`.
+
+        use fabro_config::parse::SettingsSource;
+        use fabro_types::ManifestPath;
+        use fabro_workflow::workflow_bundle::{BundledWorkflow, ParsedWorkflowConfig};
+
+        use super::super::settings_layer_with_resolved_dockerfiles;
+
+        fn workflow_with_config(source: &str) -> BundledWorkflow {
+            BundledWorkflow {
+                path:   ManifestPath::from_wire("workflow.fabro").expect("path should be valid"),
+                source: "digraph G {}".to_string(),
+                config: Some(ParsedWorkflowConfig {
+                    path:   ManifestPath::from_wire("workflow.toml")
+                        .expect("config path should be valid"),
+                    source: source.to_string(),
+                }),
+                files:  std::collections::HashMap::new(),
+            }
+        }
+
+        #[test]
+        fn parses_run_integrations_github_permissions() {
+            let workflow = workflow_with_config(
+                r#"_version = 1
+
+[run.integrations.github.permissions]
+issues = "read"
+"#,
+            );
+
+            let layer = settings_layer_with_resolved_dockerfiles(
+                &workflow.config.as_ref().unwrap().source,
+                &workflow.config.as_ref().unwrap().path,
+                &workflow.files,
+                SettingsSource::Workflow,
+            )
+            .expect("workflow.toml should parse");
+            let run = layer.run.expect("run layer should be present");
+            let github = run
+                .integrations
+                .as_ref()
+                .and_then(|integrations| integrations.github.as_ref())
+                .expect("integrations.github should be present");
+            let permissions = github
+                .permissions
+                .as_ref()
+                .expect("permissions should be present");
+            assert_eq!(permissions.len(), 1);
+            assert!(permissions.contains_key("issues"));
+        }
+
+        #[test]
+        fn rejects_stale_server_integrations_github_permissions() {
+            let workflow = workflow_with_config(
+                r#"_version = 1
+
+[server.integrations.github.permissions]
+issues = "read"
+"#,
+            );
+
+            let err = settings_layer_with_resolved_dockerfiles(
+                &workflow.config.as_ref().unwrap().source,
+                &workflow.config.as_ref().unwrap().path,
+                &workflow.files,
+                SettingsSource::Workflow,
+            )
+            .expect_err("stale [server.integrations.github.permissions] should be rejected");
+            let message = format!("{err:#}");
+            assert!(
+                message.contains("permissions") || message.contains("unknown field"),
+                "expected unknown-field error, got: {message}"
+            );
+        }
+
+        #[test]
+        fn accepts_workflow_block_and_version() {
+            let workflow = workflow_with_config(
+                r#"_version = 1
+
+[workflow]
+name = "demo"
+
+[run.integrations.github.permissions]
+contents = "read"
+"#,
+            );
+
+            let layer = settings_layer_with_resolved_dockerfiles(
+                &workflow.config.as_ref().unwrap().source,
+                &workflow.config.as_ref().unwrap().path,
+                &workflow.files,
+                SettingsSource::Workflow,
+            )
+            .expect("workflow + run blocks should parse");
+            let run = layer.run.expect("run layer should be present");
+            assert!(run.integrations.is_some());
+        }
+
+        #[test]
+        fn inlines_dockerfile_path_in_environments_catalog() {
+            use fabro_config::EnvironmentDockerfileLayer;
+
+            let source = r#"_version = 1
+
+[environments.fabro-dev]
+provider = "daytona"
+
+[environments.fabro-dev.image]
+dockerfile = { path = "Dockerfile" }
+"#;
+            let config_path =
+                ManifestPath::from_wire("project.toml").expect("config path should be valid");
+            let mut files = std::collections::HashMap::new();
+            files.insert(
+                ManifestPath::from_wire("Dockerfile").expect("dockerfile path should be valid"),
+                "FROM ubuntu:24.04\n".to_string(),
+            );
+
+            let layer = settings_layer_with_resolved_dockerfiles(
+                source,
+                &config_path,
+                &files,
+                SettingsSource::Project,
+            )
+            .expect("project config should parse");
+
+            let dockerfile = layer
+                .environments
+                .get("fabro-dev")
+                .expect("fabro-dev environment should be present")
+                .image
+                .as_ref()
+                .and_then(|image| image.dockerfile.as_ref())
+                .expect("dockerfile should be present");
+            assert_eq!(
+                *dockerfile,
+                EnvironmentDockerfileLayer::Inline("FROM ubuntu:24.04\n".to_string()),
+                "catalog dockerfile path should be inlined, got: {dockerfile:?}"
+            );
+        }
+    }
+
+    mod github_additional_repository_checks {
+        //! Seam-injected tests for the declared-additional-repositories
+        //! preflight path: one scoped mint, per-repository probes with
+        //! deterministic primary-first reporting, GH_TOKEN warning, and the
+        //! replication-lag retry policy.
+
+        use std::sync::Mutex as StdMutex;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        use fabro_github::token_source::{
+            ResolvedToken, SecretString, TokenProvenance, TokenSnapshot,
+        };
+        use fabro_types::settings::run::RunIntegrationsGithubSettings;
+
+        use super::*;
+
+        fn static_token(secret: &str) -> ResolvedToken {
+            ResolvedToken {
+                token:          SecretString::new(secret.to_string()),
+                snapshot:       TokenSnapshot {
+                    generation: 0,
+                    provenance: TokenProvenance::Static,
+                },
+                refresh_failed: false,
+            }
+        }
+
+        fn fresh_minted_snapshot() -> TokenSnapshot {
+            let now = chrono::Utc::now();
+            TokenSnapshot {
+                generation: 1,
+                provenance: TokenProvenance::Minted {
+                    minted_at:  now,
+                    expires_at: now + chrono::Duration::minutes(60),
+                },
+            }
+        }
+
+        fn declared(origin: &str, additional: &[&str]) -> (PreparedManifest, RunNamespace) {
+            let (prepared, mut resolved) = prepared_and_resolved_for_sandbox(
+                &SandboxProviderKind::LOCAL,
+                true,
+                Some(git_context(origin, "main")),
+            );
+            resolved.integrations.github = RunIntegrationsGithubSettings {
+                permissions:             HashMap::from([(
+                    "contents".to_string(),
+                    InterpString::parse("read"),
+                )]),
+                additional_repositories: additional
+                    .iter()
+                    .map(|value| value.parse().expect("test slug should parse"))
+                    .collect(),
+            };
+            (prepared, resolved)
+        }
+
+        fn pat_creds() -> fabro_github::GitHubCredentials {
+            fabro_github::GitHubCredentials::Pat("ghp_test".to_string())
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn reports_each_repository_primary_first_despite_probe_completion_order() {
+            let (prepared, resolved) = declared("https://github.com/acme/widgets", &[
+                "acme/zeta",
+                "acme/alpha",
+            ]);
+            let minted = Arc::new(StdMutex::new(Vec::new()));
+            let minted_for_seam = Arc::clone(&minted);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                move |access, _creds| {
+                    minted_for_seam.lock().unwrap().push(access);
+                    async { Ok(static_token("scoped-token")) }
+                },
+                |slug, _token| async move {
+                    // Invert completion order: the primary finishes last.
+                    let delay = match slug.repo() {
+                        "widgets" => 30,
+                        "alpha" => 20,
+                        _ => 10,
+                    };
+                    time::sleep(Duration::from_millis(delay)).await;
+                    Ok(())
+                },
+            )
+            .await;
+
+            assert!(ok);
+            // One mint listing every repository with the shared permissions.
+            let minted = minted.lock().unwrap();
+            assert_eq!(minted.len(), 1);
+            assert_eq!(minted[0].repository_names(), vec![
+                "widgets", "alpha", "zeta"
+            ]);
+            assert_eq!(
+                minted[0].permissions().get("contents").map(String::as_str),
+                Some("read")
+            );
+
+            let names: Vec<&str> = checks.iter().map(|check| check.name.as_str()).collect();
+            assert_eq!(names, vec![
+                "GitHub Token",
+                "GitHub Repository (acme/widgets)",
+                "GitHub Repository (acme/alpha)",
+                "GitHub Repository (acme/zeta)",
+            ]);
+            assert!(checks.iter().all(|check| check.status == CheckStatus::Pass));
+            // The token never reaches check output.
+            for check in &checks {
+                let rendered = format!("{check:?}");
+                assert!(!rendered.contains("scoped-token"), "{rendered}");
+            }
+        }
+
+        #[tokio::test]
+        async fn installation_resolution_failure_names_only_the_inaccessible_repository() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let probes = Arc::new(AtomicU64::new(0));
+            let probes_for_seam = Arc::clone(&probes);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async {
+                    Err(
+                        "the GitHub App installation cannot see repository acme/keystone; add \
+                         it to the installation's repository access"
+                            .to_string(),
+                    )
+                },
+                move |_slug, _token| {
+                    probes_for_seam.fetch_add(1, Ordering::SeqCst);
+                    async { Ok(()) }
+                },
+            )
+            .await;
+
+            assert!(!ok);
+            assert_eq!(
+                probes.load(Ordering::SeqCst),
+                0,
+                "no probes after a failed mint"
+            );
+            assert_eq!(checks.last().unwrap().name, "GitHub Token");
+            assert_eq!(checks.last().unwrap().status, CheckStatus::Error);
+            let remediation = checks.last().unwrap().remediation.as_deref().unwrap();
+            assert!(remediation.contains("acme/keystone"), "{remediation}");
+            assert!(!remediation.contains("acme/widgets"), "{remediation}");
+        }
+
+        #[tokio::test]
+        async fn successful_mint_with_failed_probe_still_fails() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |slug, _token| async move {
+                    if slug.repo() == "keystone" {
+                        Err("remote: Repository not found.".to_string())
+                    } else {
+                        Ok(())
+                    }
+                },
+            )
+            .await;
+
+            assert!(!ok);
+            let keystone = checks
+                .iter()
+                .find(|check| check.name == "GitHub Repository (acme/keystone)")
+                .expect("keystone probe result should be reported");
+            assert_eq!(keystone.status, CheckStatus::Error);
+            assert!(
+                !keystone
+                    .remediation
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains("scoped-token")
+            );
+            let widgets = checks
+                .iter()
+                .find(|check| check.name == "GitHub Repository (acme/widgets)")
+                .expect("primary probe result should be reported");
+            assert_eq!(widgets.status, CheckStatus::Pass);
+        }
+
+        #[tokio::test]
+        async fn resolved_gh_token_warns_without_failing() {
+            let (prepared, mut resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            resolved
+                .environment
+                .env
+                .insert("GH_TOKEN".to_string(), InterpString::parse("user-token"));
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(ok, "a GH_TOKEN override warns but does not fail preflight");
+            let warning = checks
+                .iter()
+                .find(|check| check.name == "GH_TOKEN Override")
+                .expect("GH_TOKEN warning should be reported");
+            assert_eq!(warning.status, CheckStatus::Warning);
+        }
+
+        #[tokio::test]
+        async fn missing_origin_fails_for_declared_repositories() {
+            let (prepared, resolved) = {
+                let (mut prepared, resolved) =
+                    declared("https://github.com/acme/widgets", &["acme/keystone"]);
+                prepared.git = None;
+                (prepared, resolved)
+            };
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                Some(pat_creds()),
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(!ok);
+            let check = checks.last().unwrap();
+            assert_eq!(check.summary, "missing origin");
+            assert!(
+                check
+                    .remediation
+                    .as_deref()
+                    .unwrap_or_default()
+                    .contains("requires a GitHub run origin"),
+                "{:?}",
+                check.remediation
+            );
+        }
+
+        #[tokio::test]
+        async fn missing_credentials_fail_for_declared_repositories() {
+            let (prepared, resolved) =
+                declared("https://github.com/acme/widgets", &["acme/keystone"]);
+            let mut checks = Vec::new();
+
+            let ok = run_github_token_check_with(
+                &mut checks,
+                &prepared,
+                &resolved,
+                None,
+                |_access, _creds| async { Ok(static_token("scoped-token")) },
+                |_slug, _token| async { Ok(()) },
+            )
+            .await;
+
+            assert!(!ok);
+            assert_eq!(checks.last().unwrap().summary, "missing credentials");
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn replication_lag_failure_retries_with_the_same_token_and_succeeds() {
+            let attempts = Arc::new(AtomicU64::new(0));
+            let attempts_for_run = Arc::clone(&attempts);
+
+            let result = probe_with_replication_retry(fresh_minted_snapshot(), move || {
+                let attempts = Arc::clone(&attempts_for_run);
+                async move {
+                    if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                        Err("remote: Repository not found.".to_string())
+                    } else {
+                        Ok(())
+                    }
+                }
+            })
+            .await;
+
+            assert!(result.is_ok());
+            assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn static_credential_auth_failures_do_not_retry() {
+            let attempts = Arc::new(AtomicU64::new(0));
+            let attempts_for_run = Arc::clone(&attempts);
+            let static_snapshot = TokenSnapshot {
+                generation: 0,
+                provenance: TokenProvenance::Static,
+            };
+
+            let result = probe_with_replication_retry(static_snapshot, move || {
+                let attempts = Arc::clone(&attempts_for_run);
+                async move {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    Err("remote: Repository not found.".to_string())
+                }
+            })
+            .await;
+
+            assert!(result.is_err());
+            assert_eq!(
+                attempts.load(Ordering::SeqCst),
+                1,
+                "a 404 with a static credential cannot become valid by waiting"
+            );
+        }
     }
 }

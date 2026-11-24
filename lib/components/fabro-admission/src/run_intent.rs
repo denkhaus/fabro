@@ -1,3 +1,6 @@
+//! Run intent resolution: what the caller asked for, resolved against the
+//! workflow-version closures, environments and targets a run may use.
+
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 

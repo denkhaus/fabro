@@ -14,7 +14,6 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-chrono.workspace = true
 futures-util.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -34,7 +33,6 @@ fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-http.workspace = true
 fabro-store = { path = "../../components/fabro-store" }
 fabro-variable = { path = "../../components/fabro-variable" }
-fabro-vault = { path = "../../foundation/fabro-vault" }
 fabro-llm = { path = "../../components/fabro-llm" }
 fabro-manifest = { path = "../../components/fabro-manifest" }
 fabro-petri = { path = "../../components/fabro-petri" }
@@ -42,10 +40,12 @@ fabro-proc = { path = "../../foundation/fabro-proc" }
 fabro-static.workspace = true
 fabro-types = { path = "../../foundation/fabro-types" }
 fabro-util = { path = "../../foundation/fabro-util" }
+fabro-vault = { path = "../../foundation/fabro-vault" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
 fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
 
 [dev-dependencies]
+chrono.workspace = true
 fabro-store = { path = "../../components/fabro-store", features = ["test-support"] }
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
 tempfile = "3"
