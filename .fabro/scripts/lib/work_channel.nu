@@ -14,6 +14,12 @@
 #                a host invocation never silently routes to a wrong
 #                default)
 #
+#   Route parity (ADR-0035): the channel serves what the run agent's
+#   tools reach — engine-mediated reads a stage script needs (e.g. its
+#   own run spec's goal via `fabro inspect --server $srv`) ride THE
+#   SAME socket. Pass the resolved FABRO_SERVER explicitly; the public
+#   default is wrong inside a sandbox (work#263 goal source).
+#
 # The argv BUILDERS are pure and exported (server injected as a
 # parameter): fixtures pin the shapes here, and the fabro-test probe
 # drives them against a captured-argv shim (probe-28 holds the

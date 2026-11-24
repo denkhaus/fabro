@@ -120,7 +120,10 @@ each rule.
 - VET BEFORE WORKING: every item considered for work — lap, lane, or
   local sprint — gets a RELEVANCE TEST against the CURRENT codebase
   first: does the cited path/mechanism still exist, is the demand
-  overtaken by landed work? Migration-era items are presumed stale
+  overtaken by landed work? The test READS THE CITED CODE BODIES, not
+  just symbol names (sprint-99 retro: a vet that grepped names approved
+  work whose real shape — a mirror def visible only in the body —
+  collapsed the approved scope at implementation time). Migration-era items are presumed stale
   until vetted (median open age ~50d; the laps caught two such
   artifacts live: a lane bug in PROJECT_FACTS and a zombie doc item).
   A vetting pass over the lane pools is standing backlog work, not
