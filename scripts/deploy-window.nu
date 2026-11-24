@@ -288,7 +288,13 @@ def phase-apply [tofu_dir: string, server: string]: nothing -> nothing {
     if ($deployed | str substring 0..11) != $head12 {
         error make {msg: $"deploy-window: server reports sha ($deployed) — expected the deployed tip ($head12)"}
     }
-    print $"deploy apply: server is live at ($head12) — now the LIVE PROOF of the shipped behavior"
+    # The container is seconds old: the projections are still warming and
+    # verification reads (claims list, radius) under-report until they are
+    # (2026-11-23, the b656126ab36f window: the claims list read 0 rows with
+    # 166 in the table). Name the window at the exact place the operator
+    # starts verifying — verification reads need a re-read minutes later.
+    print $"deploy apply: server is live at ($head12) — projections are still warming after the container recreate: verification reads such as the claims list and the radius can under-report — re-read them after a few minutes"
+    print "deploy apply: now the LIVE PROOF of the shipped behavior"
 }
 
 def phase-arm [tofu_dir: string, server: string]: nothing -> nothing {
