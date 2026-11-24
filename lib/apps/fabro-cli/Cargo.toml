@@ -38,6 +38,7 @@ sandbox-driver-host.workspace = true
 seeds.workspace = true
 fabro-graphviz = { path = "../../components/fabro-graphviz" }
 fabro-workflow = { path = "../../components/fabro-workflow" }
+fabro-admission = { path = "../../components/fabro-admission" }
 fabro-server = { path = "../fabro-server" }
 fabro-client = { path = "../../foundation/fabro-client" }
 fabro-api = { path = "../../foundation/fabro-api" }

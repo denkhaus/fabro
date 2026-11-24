@@ -8,6 +8,8 @@
     )
 )]
 
+#[cfg(test)]
+pub(crate) mod admission_tests;
 pub mod auth;
 #[allow(
     dead_code,
@@ -31,17 +33,11 @@ pub mod github_webhooks;
 pub mod install;
 mod interp;
 pub mod jwt_auth;
-pub mod manifest_validation;
-mod petri_check;
 mod petri_runs;
 mod principal_middleware;
 mod request_id;
-mod run_compiler;
 mod run_files;
 mod run_files_security;
-mod run_intent;
-mod run_manifest;
-mod run_rebase;
 mod run_selector;
 mod run_title_generation;
 #[cfg(test)]
@@ -62,6 +58,5 @@ mod worker_runtime;
 mod worker_token;
 
 pub use error::{ApiError, Error, Result};
-pub use run_manifest::workflow_bundle_from_manifest;
 pub use server_secrets::process_env_snapshot;
 pub use startup::{validate_startup, validate_startup_configuration};

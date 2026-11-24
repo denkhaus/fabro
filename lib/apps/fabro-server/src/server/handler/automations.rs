@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::http::HeaderMap;
 use axum_extra::extract::Query as ExtraQuery;
+use fabro_admission::run_manifest;
 use fabro_automation::{
     Automation, AutomationDraft, AutomationId, AutomationOverlapPolicy, AutomationReplace,
     AutomationStoreError,
@@ -19,7 +20,6 @@ use super::super::{
 use super::{json_with_etag_response, lifecycle, parse_required_if_match, runs};
 use crate::automation_materializer::AutomationRunMaterializeInput;
 use crate::principal_middleware::{RequiredRunManagementActor, RequiredRunToolActor};
-use crate::run_manifest;
 
 #[derive(Serialize)]
 struct AutomationListResponse {

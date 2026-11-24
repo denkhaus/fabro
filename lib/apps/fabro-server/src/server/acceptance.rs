@@ -272,7 +272,9 @@ pub(crate) async fn merge_refusal_parts(
     let verified_texts: Vec<&str> = records
         .iter()
         .filter_map(|stored| match &stored.record {
-            PlatformRecord::ObservationRecorded(observed) => fabro_work::verified_part(&observed.text),
+            PlatformRecord::ObservationRecorded(observed) => {
+                fabro_work::verified_part(&observed.text)
+            }
             _ => None,
         })
         .collect();

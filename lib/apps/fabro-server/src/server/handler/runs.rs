@@ -13,6 +13,12 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
+use fabro_admission::run_compiler::{self, RawRunCompilerInput};
+use fabro_admission::run_intent::{
+    EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
+    lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
+};
+use fabro_admission::run_manifest;
 use fabro_api::types::{
     BoardColumn, RunIntent, RunManifest, SubmitAnswerRequest, UpdateRunParentRequest,
     UpdateRunRequest,
@@ -54,15 +60,9 @@ use crate::principal_middleware::{
     RequireCommandLog, RequireRunManagementTarget, RequireRunScoped, RequireRunStageScoped,
     RequireWorkerRunScoped, RequiredRunManagementActor, RequiredRunTitleActor, RequiredUser,
 };
-use crate::run_compiler::{self, RawRunCompilerInput};
 use crate::run_files::{
     RunSandboxFilesQuery, list_run_commits, list_run_files, read_run_sandbox_files,
 };
-use crate::run_intent::{
-    EnvironmentSelectionError, PreparedIntentTarget, RunIntentAdmissionError,
-    lower_workflow_closure, pin_workflow_environment_authority, prepare_intent_target,
-};
-use crate::run_manifest;
 use crate::run_selector::{ResolveRunError, resolve_run_by_selector};
 use crate::run_title_generation::{self, GenerateTitleInput, TitlePromptInput, WorkflowSummary};
 #[cfg(any(test, feature = "test-support"))]
@@ -1414,7 +1414,8 @@ async fn run_preflight(
     }
     let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
     let check = match run_manifest::check_prepared_manifest(
-        &state,
+        &state.admission_context(),
+        petri_runs::prepared_manifest_runtime_spec(state.as_ref(), &prepared, &ready_providers),
         &prepared,
         vars,
         &ready_providers,
@@ -1427,13 +1428,14 @@ async fn run_preflight(
         }
         Err(err) => return ApiError::bad_request(err.to_string()).into_response(),
     };
-    let response = match run_manifest::run_preflight(&state, &prepared, &check).await {
-        Ok((response, _ok)) => response,
-        Err(err) => {
-            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                .into_response();
-        }
-    };
+    let response =
+        match run_manifest::run_preflight(&state.admission_context(), &prepared, &check).await {
+            Ok((response, _ok)) => response,
+            Err(err) => {
+                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response();
+            }
+        };
     (StatusCode::OK, Json(response)).into_response()
 }
 
@@ -1467,7 +1469,8 @@ async fn validate_run_manifest(
     }
     let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
     let check = match run_manifest::check_prepared_manifest(
-        &state,
+        &state.admission_context(),
+        petri_runs::prepared_manifest_runtime_spec(state.as_ref(), &prepared, &ready_providers),
         &prepared,
         vars,
         &ready_providers,
@@ -1782,13 +1785,13 @@ fn build_command_log_response(
 mod admission_refusal_tests {
     use axum::body::to_bytes;
     use axum::http::StatusCode;
+    use fabro_admission::run_compiler::RunCompilerError;
+    use fabro_admission::run_intent::RunIntentAdmissionError;
     use fabro_types::diagnostic::{Diagnostic, Severity};
     use fabro_workflow::Error as WorkflowError;
     use serde_json::Value;
 
     use super::run_intent_admission_error;
-    use crate::run_compiler::RunCompilerError;
-    use crate::run_intent::RunIntentAdmissionError;
 
     async fn refusal_body(error: RunIntentAdmissionError) -> (StatusCode, Value) {
         let response = run_intent_admission_error(error);

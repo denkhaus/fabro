@@ -1,7 +1,10 @@
+//! The admission manifest checks: what a prepared manifest must satisfy
+//! before Petri admits it, plus the preflight report the endpoints serve.
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -23,7 +26,7 @@ use fabro_static::EnvVars;
 use fabro_types::diagnostic::{Diagnostic, Severity};
 use fabro_types::settings::cli::OutputVerbosity;
 use fabro_types::settings::interp::InterpString;
-use fabro_types::settings::run::{McpServerSettings, RunGoal, RunMode, RunNamespace};
+use fabro_types::settings::run::{McpServerSettings, RunGoal, RunNamespace};
 use fabro_types::{
     BundledProvider, ManifestPath, RunGraph, RunId, SandboxProviderKind, ServerSettings,
     WorkflowSettings,
@@ -39,17 +42,16 @@ use sandbox_driver::{
 };
 use tokio::process::Command;
 use tokio::task;
-#[cfg(test)]
-use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use crate::context::{AdmissionContext, ProviderHealthSource};
 use crate::petri_check::Readiness;
-use crate::sandbox_access::{self, ProviderAccess};
-use crate::server::{AppState, petri_runs};
 use crate::{petri_check, run_compiler};
 
 #[derive(Clone)]
-pub(crate) struct PreparedManifest {
+/// One validated manifest, ready for the admission checks: the workflow
+/// bundle, its parsed settings, and the checkout facts the checks read.
+pub struct PreparedManifest {
     pub git:              Option<types::GitContext>,
     /// The entrypoint's DOT as written: what the render endpoint draws.
     pub root_source:      String,
@@ -66,12 +68,7 @@ pub(crate) struct ManifestSettingsOverrides {
     pub(crate) input_overrides: HashMap<String, toml::Value>,
 }
 
-#[cfg(test)]
-pub(crate) fn manifest_run_defaults(run: Option<&RunLayer>) -> RunLayer {
-    run.cloned().unwrap_or_default()
-}
-
-pub(crate) fn prepare_manifest_with_environment_defaults(
+pub fn prepare_manifest_with_environment_defaults(
     manifest_run_defaults: &RunLayer,
     manifest_environment_defaults: &MergeMap<EnvironmentLayer>,
     manifest_mcp_server_catalog: &HashMap<String, McpServerSettings>,
@@ -175,13 +172,13 @@ pub(crate) fn prepare_manifest_with_environment_defaults(
 
 /// What Petri said about a prepared manifest: the display graph when it
 /// admitted the workflow, and every diagnostic, Petri's and Fabro's.
-pub(crate) struct ManifestCheck {
-    pub(crate) graph:       Option<RunGraph>,
-    pub(crate) diagnostics: Vec<Diagnostic>,
+pub struct ManifestCheck {
+    pub graph:       Option<RunGraph>,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl ManifestCheck {
-    pub(crate) fn has_errors(&self) -> bool {
+    pub fn has_errors(&self) -> bool {
         self.diagnostics
             .iter()
             .any(|diagnostic| diagnostic.severity == Severity::Error)
@@ -194,7 +191,7 @@ impl ManifestCheck {
 /// no stored credential (fabro-b46e); `unbound_is_warning` keeps an input
 /// nothing binds a warning, for a validation before the run's inputs exist.
 /// Blocking: Petri lowers the graph synchronously.
-pub(crate) fn validate_prepared_manifest(
+pub fn validate_prepared_manifest(
     prepared: &PreparedManifest,
     vars: &HashMap<String, String>,
     launch: Launch,
@@ -232,33 +229,25 @@ pub(crate) fn validate_prepared_manifest(
 }
 
 /// Check a prepared manifest as a run would be admitted: Petri's check with
-/// the server's runtime and the model client over the ready providers, on
-/// the blocking pool.
-pub(crate) async fn check_prepared_manifest(
-    state: &Arc<AppState>,
+/// the caller's runtime spec (the app derives it from its state — see
+/// `RuntimeSpec`) and the model client over the ready providers, on the
+/// blocking pool.
+pub async fn check_prepared_manifest(
+    ctx: &AdmissionContext,
+    runtime: RuntimeSpec,
     prepared: &PreparedManifest,
     vars: HashMap<String, String>,
     ready_providers: &[ProviderId],
 ) -> Result<ManifestCheck, WorkflowError> {
     let launch = petri_check::launch(
-        &state.catalog(),
+        &ctx.catalog,
         &prepared.settings,
         ready_providers,
         None,
         None,
     );
-    let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
-    let runtime = petri_runs::runtime_spec(
-        state,
-        ready_providers,
-        dry_run,
-        state.sandbox_provider_config(None),
-        // Admission installs no hook-secrets provider (fabro-225f): a
-        // declaration resolves only once a run holds a vault snapshot.
-        None,
-    );
     let readiness = Readiness::Server {
-        catalog: state.catalog(),
+        catalog: ctx.catalog.clone(),
         ready:   ready_providers.to_vec(),
         force:   false,
     };
@@ -270,13 +259,13 @@ pub(crate) async fn check_prepared_manifest(
     .map_err(|source| WorkflowError::engine_with_source("manifest check task failed", source))?
 }
 
-pub(crate) async fn run_preflight(
-    state: &AppState,
+pub async fn run_preflight(
+    ctx: &AdmissionContext,
     prepared: &PreparedManifest,
     check: &ManifestCheck,
 ) -> Result<(types::PreflightResponse, bool)> {
     let shape = workflow_shape(check, prepared);
-    let (report, checks_ok) = build_preflight_report(state, prepared, check, &shape).await?;
+    let (report, checks_ok) = build_preflight_report(ctx, prepared, check, &shape).await?;
     let preflight_ok = !check.has_errors() && checks_ok;
     Ok((
         types::PreflightResponse {
@@ -288,7 +277,7 @@ pub(crate) async fn run_preflight(
     ))
 }
 
-pub(crate) fn validate_response(
+pub fn validate_response(
     prepared: &PreparedManifest,
     check: &ManifestCheck,
 ) -> types::ValidateResponse {
@@ -299,7 +288,7 @@ pub(crate) fn validate_response(
     }
 }
 
-pub(crate) fn graph_source(prepared: &PreparedManifest, direction: Option<&str>) -> String {
+pub fn graph_source(prepared: &PreparedManifest, direction: Option<&str>) -> String {
     direction.map_or_else(
         || prepared.root_source.clone(),
         |direction| apply_direction(&prepared.root_source, direction).into_owned(),
@@ -444,7 +433,7 @@ fn manifest_project_config_path(
 }
 
 async fn build_preflight_report(
-    state: &AppState,
+    ctx: &AdmissionContext,
     prepared: &PreparedManifest,
     check: &ManifestCheck,
     shape: &WorkflowShape,
@@ -464,7 +453,7 @@ async fn build_preflight_report(
     }
 
     let resolved_run = prepared.settings.run.clone();
-    let server_settings = state.server_settings();
+    let server_settings = ctx.server_settings.clone();
     let github_integration = &server_settings.server.integrations.github;
     let sandbox_provider = effective_sandbox_provider(&resolved_run);
     if let Some(error) = sandbox_provider_policy_error(&server_settings, &sandbox_provider) {
@@ -490,28 +479,23 @@ async fn build_preflight_report(
     let needs_github_credentials = sandbox_provider.clones_workspace()
         || resolved_run.integrations.github.is_token_requested();
     let github_app = if needs_github_credentials {
-        match state.github_credentials(github_integration).await {
+        match (ctx.github_credentials)(github_integration).await {
             Ok(credentials) => credentials,
-            Err(err)
-                if err
-                    .downcast_ref::<fabro_vault::SecretStoreError>()
-                    .is_some() =>
-            {
-                return Err(err);
-            }
-            Err(_) => None,
+            // The callback contract: only an unavailable credential store is
+            // Err — it fails the whole preflight instead of reading as "no
+            // credentials". Every other app-side miss is Ok(None).
+            Err(err) => return Err(err),
         }
     } else {
         None
     };
 
-    let access = state.provider_access().await?;
     let sandbox_ok = run_sandbox_check(
         &mut checks,
         &sandbox_provider,
         prepared,
         &resolved_run,
-        &access,
+        &ctx.provider_health,
     )
     .await;
     let repository_access_ok = run_repository_access_check(
@@ -593,7 +577,7 @@ fn base_preflight_checks(prepared: &PreparedManifest, shape: &WorkflowShape) -> 
     ]
 }
 
-pub(crate) fn sandbox_provider_policy_error(
+pub fn sandbox_provider_policy_error(
     server_settings: &ServerSettings,
     provider: &SandboxProviderKind,
 ) -> Option<String> {
@@ -609,18 +593,18 @@ pub(crate) fn sandbox_provider_policy_error(
     }
 }
 
-pub(crate) fn configured_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
+pub fn configured_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
     settings.environment.provider.clone()
 }
 
-pub(crate) fn effective_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
+pub fn effective_sandbox_provider(settings: &RunNamespace) -> SandboxProviderKind {
     configured_sandbox_provider(settings).effective_for(settings.execution.mode)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct GitRemoteRefCheck {
-    origin_url: String,
-    branch:     Option<String>,
+pub struct GitRemoteRefCheck {
+    pub origin_url: String,
+    pub branch:     Option<String>,
 }
 
 fn clone_disabled_for_provider(
@@ -869,7 +853,7 @@ async fn run_sandbox_check(
     sandbox_provider: &SandboxProviderKind,
     prepared: &PreparedManifest,
     resolved_run: &RunNamespace,
-    access: &ProviderAccess,
+    provider_health: &ProviderHealthSource,
 ) -> bool {
     if sandbox_provider.bundled() == Some(BundledProvider::Local) {
         if let Err(err) = resolved_run
@@ -888,7 +872,7 @@ async fn run_sandbox_check(
             return false;
         }
     }
-    let health = sandbox_access::provider_health(sandbox_provider, access)
+    let health = (provider_health)(sandbox_provider)
         .await
         .map_err(|err| format!("{err:#}"));
     let check = sandbox_health_check(sandbox_provider, health);
@@ -1539,58 +1523,20 @@ fn report_to_api(report: &CheckReport) -> types::PreflightCheckReport {
 
 #[cfg(test)]
 mod tests {
-    use lithos_llm::catalog::ProviderId;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use fabro_github::token_source::TokenProvenance;
+    use fabro_types::settings::run::RunMode;
+    use tokio::time;
 
     use super::*;
 
-    /// Validate as the endpoints do: Petri's check with the state's model
-    /// client over `ready_providers`.
-    fn validate_for_test(
-        state: &AppState,
-        prepared: &PreparedManifest,
-        ready_providers: &[ProviderId],
-    ) -> Result<ManifestCheck, WorkflowError> {
-        let launch = petri_check::launch(
-            &state.catalog(),
-            &prepared.settings,
-            ready_providers,
-            None,
-            None,
-        );
-        let runtime = crate::server::petri_runs::runtime_spec(
-            state,
-            ready_providers,
-            false,
-            state.sandbox_provider_config(None),
-            // Admission installs no hook-secrets provider (fabro-225f).
-            None,
-        );
-        validate_prepared_manifest(
-            prepared,
-            &HashMap::new(),
-            launch,
-            runtime,
-            &Readiness::Server {
-                catalog: state.catalog(),
-                ready:   ready_providers.to_vec(),
-                force:   false,
-            },
-            false,
-        )
-    }
-
-    /// Validate with every provider of the state's catalog eligible, as the
-    /// legacy catalog validation judged a manifest.
-    fn validate_with_catalog(
-        state: &AppState,
-        prepared: &PreparedManifest,
-    ) -> Result<ManifestCheck, WorkflowError> {
-        let providers = state
-            .catalog()
-            .enabled_provider_ids()
-            .into_iter()
-            .collect::<Vec<_>>();
-        validate_for_test(state, prepared, &providers)
+    /// The manifest run defaults helper the prepare fixtures share (the
+    /// pre-move cfg(test) helper, restored in-crate by the review split,
+    /// work#1672).
+    fn manifest_run_defaults(run: Option<&RunLayer>) -> RunLayer {
+        run.cloned().unwrap_or_default()
     }
 
     #[tokio::test]
@@ -1639,18 +1585,6 @@ mod tests {
                     "digraph Demo { start [shape=Mdiamond] exit [shape=Msquare] start -> exit }"
                         .to_string(),
             })]),
-        }
-    }
-
-    fn invalid_manifest() -> types::RunManifest {
-        types::RunManifest {
-            workflows: HashMap::from([("workflow.fabro".to_string(), types::ManifestWorkflow {
-                config: None,
-                files:  HashMap::new(),
-                source: "digraph Invalid { exit [shape=Msquare] orphan exit -> orphan }"
-                    .to_string(),
-            })]),
-            ..minimal_manifest()
         }
     }
 
@@ -1703,68 +1637,6 @@ mod tests {
             &HashMap::new(),
             manifest,
         )
-    }
-
-    fn ready_moonshot_and_openrouter_state(
-        server: &httpmock::MockServer,
-    ) -> Arc<crate::server::AppState> {
-        let moonshot_url = server.url("/moonshot/v1");
-        let openrouter_url = server.url("/openrouter/v1");
-        crate::test_support::TestAppStateBuilder::new()
-            .llm_overlay_toml(&format!(
-                r#"
-[providers.moonshot]
-base_url = "{moonshot_url}"
-
-[providers.openrouter]
-base_url = "{openrouter_url}"
-enabled = true
-
-"#
-            ))
-            .vault_entries([
-                (EnvVars::KIMI_API_KEY, "test-moonshot-key"),
-                (EnvVars::OPENROUTER_API_KEY, "test-openrouter-key"),
-            ])
-            .build()
-    }
-
-    /// Preflight for a workflow naming `model`, which Petri refuses.
-    async fn preflight_for_refused_model(
-        state: &Arc<crate::server::AppState>,
-        model: &str,
-    ) -> (types::PreflightResponse, bool) {
-        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = format!(
-            r#"
-digraph Demo {{
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="{model}"]
-    start -> work -> exit
-}}
-"#
-        );
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_for_test(state, &prepared, &ready_providers).unwrap();
-        assert!(validated.has_errors(), "{:?}", validated.diagnostics);
-
-        run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap()
-    }
-
-    async fn resolve_and_run_preflight(
-        state: &AppState,
-        prepared: &PreparedManifest,
-        check: &ManifestCheck,
-    ) -> Result<(types::PreflightResponse, bool)> {
-        run_preflight(state, prepared, check).await
     }
 
     fn manifest_workflow() -> types::ManifestWorkflow {
@@ -2094,21 +1966,25 @@ provider = "local"
         );
     }
 
+    /// The sandbox check passes a healthy provider report through as a
+    /// passing check row naming the provider.
     #[tokio::test]
-    async fn the_local_sandbox_check_passes_through_the_host_providers_health() {
+    async fn a_passing_provider_health_passes_the_sandbox_check_row() {
         let (mut prepared, resolved) =
             prepared_and_resolved_for_sandbox(&SandboxProviderKind::LOCAL, false, None);
         // The local check resolves the run's working directory from the
-        // manifest's source directory, which must exist on this server.
+        // manifest's source directory, which must exist.
         let source = tempfile::tempdir().expect("a source directory");
         prepared.source_directory = source.path().to_path_buf();
         let mut checks = Vec::new();
+        let provider_health: ProviderHealthSource =
+            Arc::new(|_kind| Box::pin(async move { Ok(health(HealthStatus::Ok, None)) }));
         let passed = run_sandbox_check(
             &mut checks,
             &SandboxProviderKind::LOCAL,
             &prepared,
             &resolved,
-            &ProviderAccess::default(),
+            &provider_health,
         )
         .await;
         assert!(passed, "{checks:?}");
@@ -2116,8 +1992,10 @@ provider = "local"
         assert_eq!(checks[0].status, CheckStatus::Pass);
     }
 
+    /// A failing provider-health source fails the sandbox check row with
+    /// its reason (the vault-missing daytona shape).
     #[tokio::test]
-    async fn the_daytona_sandbox_check_fails_without_a_vault_key() {
+    async fn a_failing_provider_health_fails_the_sandbox_check_row_with_its_reason() {
         let (prepared, resolved) =
             prepared_and_resolved_for_sandbox(&SandboxProviderKind::DAYTONA, false, None);
         let mut checks = Vec::new();
@@ -2126,7 +2004,16 @@ provider = "local"
             &SandboxProviderKind::DAYTONA,
             &prepared,
             &resolved,
-            &ProviderAccess::default(),
+            &{
+                let provider_health: ProviderHealthSource = Arc::new(|_kind| {
+                    Box::pin(async move {
+                        Err(anyhow!(
+                            "Daytona sandboxes require DAYTONA_API_KEY in the vault"
+                        ))
+                    })
+                });
+                provider_health
+            },
         )
         .await;
         assert!(!passed);
@@ -2145,7 +2032,7 @@ provider = "local"
         let now = chrono::Utc::now();
         TokenSnapshot {
             generation: 1,
-            provenance: fabro_github::token_source::TokenProvenance::Minted {
+            provenance: TokenProvenance::Minted {
                 minted_at:  now - chrono::Duration::from_std(age).unwrap(),
                 expires_at: now + chrono::Duration::hours(1),
             },
@@ -2155,7 +2042,7 @@ provider = "local"
     fn static_snapshot() -> TokenSnapshot {
         TokenSnapshot {
             generation: 0,
-            provenance: fabro_github::token_source::TokenProvenance::Static,
+            provenance: TokenProvenance::Static,
         }
     }
 
@@ -2292,10 +2179,7 @@ root = "/srv/fabro"
 
         let prepared = prepare_manifest(&server_settings, &manifest).unwrap();
 
-        assert_eq!(
-            prepared.settings.run.execution.mode,
-            fabro_types::settings::run::RunMode::DryRun
-        );
+        assert_eq!(prepared.settings.run.execution.mode, RunMode::DryRun);
     }
 
     #[test]
@@ -2515,176 +2399,6 @@ name = "Control Plane"
         );
     }
 
-    #[tokio::test]
-    async fn invalid_preflight_returns_diagnostics_without_runtime_checks() {
-        let state = crate::test_support::test_app_state();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &invalid_manifest(),
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-
-        assert!(validated.has_errors());
-
-        let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-
-        assert!(!ok);
-        assert_eq!(response.workflow.name, "Invalid");
-        assert!(!response.workflow.diagnostics.is_empty());
-        assert_eq!(response.checks.title, "Run Preflight");
-        assert_eq!(response.checks.sections.len(), 1);
-        assert_eq!(response.checks.sections[0].checks.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn preflight_runs_github_token_check_when_run_level_permissions_declared() {
-        // When a workflow declares `[run.integrations.github.permissions]`,
-        // `run_github_token_check` is invoked and surfaces a "GitHub Token"
-        // entry in the preflight report. With no configured GitHub App
-        // credentials in the test fixture, the check status is
-        // Warning/skipped — the important assertion is that the entry
-        // *exists*, proving the gate now reads from run-level config.
-        let state = crate::test_support::test_app_state();
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
-            Some(types::ManifestWorkflowConfig {
-                path:   "workflow.toml".to_string(),
-                source: r#"_version = 1
-
-[run.environment]
-id = "local"
-
-[run.integrations.github.permissions]
-issues = "read"
-"#
-                .to_string(),
-            });
-
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
-
-        let (response, _ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-
-        assert!(
-            response.checks.sections[0]
-                .checks
-                .iter()
-                .any(|check| check.name == "GitHub Token"),
-            "expected GitHub Token check to run when run-level permissions are set; \
-             checks were {:?}",
-            response.checks.sections[0]
-                .checks
-                .iter()
-                .map(|c| c.name.as_str())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[tokio::test]
-    async fn preflight_rejects_unresolved_github_permissions() {
-        let state = crate::test_support::test_app_state();
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().config =
-            Some(types::ManifestWorkflowConfig {
-                path:   "workflow.toml".to_string(),
-                source: r#"_version = 1
-
-[run.environment]
-id = "local"
-
-[run.integrations.github.permissions]
-issues = "{{ env.GITHUB_ISSUES_PERMISSION }}"
-"#
-                .to_string(),
-            });
-
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
-
-        let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-        let github_token_check = response.checks.sections[0]
-            .checks
-            .iter()
-            .find(|check| check.name == "GitHub Token")
-            .expect("GitHub Token check should report invalid permissions");
-
-        assert!(!ok);
-        assert_eq!(
-            github_token_check.status,
-            types::PreflightCheckResultStatus::Error
-        );
-        assert_eq!(github_token_check.summary, "invalid permissions");
-        assert!(
-            github_token_check
-                .remediation
-                .as_deref()
-                .is_some_and(|message| message.contains("GITHUB_ISSUES_PERMISSION"))
-        );
-    }
-
-    #[tokio::test]
-    async fn preflight_allows_pull_request_enabled_without_github_credentials() {
-        let state = crate::test_support::test_app_state();
-        let source_dir = tempfile::tempdir().unwrap();
-        let mut manifest = minimal_manifest();
-        manifest.cwd = source_dir.path().to_string_lossy().into_owned();
-        manifest.configs.push(types::ManifestConfig {
-            path:   Some("/tmp/project/.fabro/project.toml".to_string()),
-            source: Some(
-                r#"
-_version = 1
-
-[run.pull_request]
-enabled = true
-
-[run.environment]
-id = "local"
-"#
-                .to_string(),
-            ),
-            type_:  types::ManifestConfigType::Project,
-        });
-
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-
-        assert!(!validated.has_errors(), "{:?}", validated.diagnostics);
-
-        let (response, ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-
-        assert!(ok);
-        assert!(response.workflow.diagnostics.is_empty());
-        assert!(
-            response.checks.sections[0]
-                .checks
-                .iter()
-                .all(|check| check.name != "GitHub Token")
-        );
-    }
-
     #[test]
     fn prepare_manifest_does_not_backfill_missing_project_and_workflow_names() {
         let mut manifest = minimal_manifest();
@@ -2750,233 +2464,6 @@ name = "Project Config Name"
         assert_eq!(
             prepared.settings.workflow.name.as_deref(),
             Some("Workflow Config Name")
-        );
-    }
-
-    #[tokio::test]
-    async fn preflight_daytona_without_github_credentials_returns_report() {
-        let state = crate::test_support::test_app_state();
-        let mut manifest = minimal_manifest();
-        manifest.configs.push(types::ManifestConfig {
-            path:   Some("/tmp/project/.fabro/project.toml".to_string()),
-            source: Some(
-                r#"
-_version = 1
-
-[run.environment]
-id = "daytona"
-"#
-                .to_string(),
-            ),
-            type_:  types::ManifestConfigType::Project,
-        });
-
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-
-        let (response, _ok) = resolve_and_run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-
-        assert!(response.workflow.diagnostics.is_empty());
-        assert!(
-            response.checks.sections[0]
-                .checks
-                .iter()
-                .any(|check| check.name == "Sandbox")
-        );
-    }
-
-    #[tokio::test]
-    async fn preflight_refuses_an_unknown_unqualified_model_before_any_check() {
-        let server = httpmock::MockServer::start_async().await;
-        let any_provider_call = server
-            .mock_async(|when, then| {
-                when.any_request();
-                then.status(500);
-            })
-            .await;
-        let state = ready_moonshot_and_openrouter_state(&server);
-
-        // Petri admits no model its catalog lacks, so the workflow is refused
-        // at its check: no passthrough of an unknown model to a provider.
-        let (response, ok) = preflight_for_refused_model(&state, "provider-private-preview").await;
-
-        assert!(!ok);
-        assert!(response.workflow.diagnostics.iter().any(|diagnostic| {
-            diagnostic.rule == "attractor.model.unknown"
-                && diagnostic.message.contains("provider-private-preview")
-        }));
-        assert!(
-            response.checks.sections[0]
-                .checks
-                .iter()
-                .all(|check| check.name != "LLM"),
-            "no LLM check runs on a refused workflow"
-        );
-        assert_eq!(any_provider_call.calls_async().await, 0);
-    }
-
-    #[tokio::test]
-    async fn preflight_refuses_a_stage_whose_provider_has_no_stored_credential() {
-        let server = httpmock::MockServer::start_async().await;
-        let any_provider_call = server
-            .mock_async(|when, then| {
-                when.any_request();
-                then.status(500);
-            })
-            .await;
-        // moonshot is enabled but carries no credential in this state; the
-        // workflow needs it, so the validation refuses the stage at its
-        // check instead of letting a fire die inside it (fabro-b46e).
-        let moonshot_url = server.url("/moonshot/v1");
-        let openrouter_url = server.url("/openrouter/v1");
-        let state = crate::test_support::TestAppStateBuilder::new()
-            .llm_overlay_toml(&format!(
-                r#"
-[providers.moonshot]
-base_url = "{moonshot_url}"
-
-[providers.openrouter]
-base_url = "{openrouter_url}"
-enabled = true
-
-"#
-            ))
-            .vault_entries([(EnvVars::OPENROUTER_API_KEY, "test-openrouter-key")])
-            .build();
-        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
-digraph Demo {
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="kimi-k3", provider="moonshot"]
-    start -> work -> exit
-}
-"#
-        .to_string();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_for_test(&state, &prepared, &ready_providers).unwrap();
-
-        let refusal = validated
-            .diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.rule == crate::petri_check::PROVIDER_NOT_READY_RULE)
-            .expect("the not-ready provider should refuse the workflow");
-        assert!(refusal.severity == Severity::Error);
-        assert!(
-            refusal.message.contains("moonshot") && refusal.message.contains("kimi-k3"),
-            "{refusal:?}"
-        );
-        assert_eq!(any_provider_call.calls_async().await, 0);
-    }
-
-    #[test]
-    fn static_validation_rejects_unknown_llm_provider() {
-        let state = crate::test_support::test_app_state();
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
-digraph Demo {
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="missing-model", provider="missing-provider"]
-    start -> work -> exit
-}
-"#
-        .to_string();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let validated = validate_with_catalog(&state, &prepared).unwrap();
-
-        // Petri refuses the model node: the provider is not in the catalog.
-        let refusal = validated
-            .diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.severity == Severity::Error)
-            .expect("unknown provider should fail static validation");
-        assert_eq!(refusal.rule, "attractor.model.unknown", "{refusal:?}");
-        assert!(refusal.message.contains("missing-provider"), "{refusal:?}");
-    }
-
-    #[tokio::test]
-    async fn preflight_resolves_model_aliases_from_app_state_catalog() {
-        let state = crate::test_support::TestAppStateBuilder::new()
-            .llm_overlay_toml(
-                r#"
-[providers.acme]
-display_name = "Acme"
-base_url = "https://api.acme.test/v1"
-auth = { type = "bearer" }
-default_model = "acme-large"
-
-[providers.acme.metadata.agent]
-profile = "openai"
-
-[providers.acme.models."acme-large"]
-display_name = "Acme Large"
-aliases = ["vl"]
-api_model = "acme-large"
-limits = { context_tokens = 128000, max_output_tokens = 8192 }
-capabilities = { text = true, tools = true }
-"#,
-            )
-            .build();
-        let mut manifest = minimal_manifest();
-        manifest.workflows.get_mut("workflow.fabro").unwrap().source = r#"
-digraph Demo {
-    start [shape=Mdiamond]
-    exit  [shape=Msquare]
-    work  [prompt="Do work", model="vl"]
-    start -> work -> exit
-}
-"#
-        .to_string();
-        let prepared = prepare_manifest(
-            &manifest_run_defaults(Some(&default_settings_fixture())),
-            &manifest,
-        )
-        .unwrap();
-        let (_, ready_providers) = state.resolve_llm_client_with_ready_ids().await;
-        assert!(ready_providers.is_empty());
-
-        // With no provider ready there is no model client to resolve the
-        // alias against, so Fabro refuses the model node before any check
-        // runs: the run could not pick a model at create either.
-        let validated = validate_for_test(&state, &prepared, &ready_providers).unwrap();
-        assert!(validated.has_errors());
-        assert!(
-            validated
-                .diagnostics
-                .iter()
-                .any(|diagnostic| diagnostic.rule == petri_check::NO_READY_PROVIDER_RULE),
-            "{:?}",
-            validated.diagnostics
-        );
-
-        let (response, ok) = run_preflight(state.as_ref(), &prepared, &validated)
-            .await
-            .unwrap();
-        assert!(!ok);
-        assert!(
-            response
-                .checks
-                .sections
-                .iter()
-                .flat_map(|section| section.checks.iter())
-                .all(|check| check.name != "LLM"),
-            "no LLM check runs on a refused workflow"
         );
     }
 

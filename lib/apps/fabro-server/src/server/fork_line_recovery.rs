@@ -43,11 +43,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use fabro_admission::petri_check::RequiredProvider;
 use fabro_types::{Run, RunFailure, RunStatus};
 use lithos_llm::catalog::CatalogProvider;
 
 use super::AppState;
-use crate::petri_check::RequiredProvider;
 
 /// Recheck probe cadence (user decision 2026-09-14: "fixe rechecks alle
 /// 10 Minuten").

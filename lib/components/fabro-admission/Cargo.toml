@@ -1,0 +1,53 @@
+[package]
+name = "fabro-admission"
+edition.workspace = true
+version.workspace = true
+publish = false
+license.workspace = true
+description = "Run admission: manifest checks, run settings compilation, intent resolution and Petri admission preflight"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+futures-util.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+toml.workspace = true
+tracing.workspace = true
+serde_json.workspace = true
+lithos-llm = { workspace = true, features = ["runtime"] }
+sandbox-driver.workspace = true
+fabro-api = { path = "../../foundation/fabro-api" }
+fabro-auth = { path = "../../foundation/fabro-auth" }
+fabro-config = { path = "../../foundation/fabro-config" }
+fabro-dot = { path = "../../components/fabro-dot" }
+fabro-environment.workspace = true
+fabro-github = { path = "../../components/fabro-github" }
+fabro-graphviz = { path = "../../components/fabro-graphviz" }
+fabro-http.workspace = true
+fabro-store = { path = "../../components/fabro-store" }
+fabro-variable = { path = "../../components/fabro-variable" }
+fabro-llm = { path = "../../components/fabro-llm" }
+fabro-manifest = { path = "../../components/fabro-manifest" }
+fabro-petri = { path = "../../components/fabro-petri" }
+fabro-proc = { path = "../../foundation/fabro-proc" }
+fabro-static.workspace = true
+fabro-types = { path = "../../foundation/fabro-types" }
+fabro-util = { path = "../../foundation/fabro-util" }
+fabro-vault = { path = "../../foundation/fabro-vault" }
+fabro-workflow = { path = "../../components/fabro-workflow" }
+fabro-workflow-version = { path = "../../components/fabro-workflow-version" }
+
+[dev-dependencies]
+chrono.workspace = true
+fabro-store = { path = "../../components/fabro-store", features = ["test-support"] }
+fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
+tempfile = "3"
+object_store.workspace = true
+tokio = { workspace = true, features = ["test-util", "macros"] }

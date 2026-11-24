@@ -15,7 +15,7 @@ use tokio::process::Command;
 
 /// Why the rebase could not carry the work.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum RunRebaseError {
+pub enum RunRebaseError {
     /// The carry's source holds nothing to fetch: the run branch does
     /// not exist on the origin, or the snapshot repository does not
     /// hold the named tip. Not a failure the caller surfaces — the
@@ -44,7 +44,7 @@ pub(crate) enum RunRebaseError {
 
 /// What the rebase carried.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Rebased {
+pub struct Rebased {
     /// The commits cherry-picked onto the prepared worktree.
     pub commits:     usize,
     /// The base the source run had started from (excluded from the
@@ -62,7 +62,7 @@ pub(crate) struct Rebased {
 /// carry re-creates those commits on the successor's worktree — a
 /// freshly prepared worktree carries no git identity of its own.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CarryCommitter {
+pub struct CarryCommitter {
     pub name:  String,
     pub email: String,
 }
@@ -71,7 +71,7 @@ impl CarryCommitter {
     /// The run's git author settings over the platform default — the
     /// resolution fabro-checkpoint's GitAuthor performs for the
     /// engine's own commits.
-    pub(crate) fn for_run(author: Option<&GitAuthorSettings>) -> Self {
+    pub fn for_run(author: Option<&GitAuthorSettings>) -> Self {
         Self {
             name:  author
                 .and_then(|author| author.name.clone())
@@ -87,7 +87,7 @@ impl CarryCommitter {
 /// the prepared worktree at `worktree_dir`. Fetches the branch from the
 /// origin first; a branch that does not exist is `NoSourceBranch` (the
 /// caller treats it as "nothing to carry").
-pub(crate) async fn carry_checkpoint_work(
+pub async fn carry_checkpoint_work(
     worktree_dir: &Path,
     origin_url: &str,
     source_branch: &str,
@@ -124,7 +124,7 @@ pub(crate) async fn carry_checkpoint_work(
 /// records by the caller); a tip the snapshot does not hold answers
 /// `NoSourceBranch`, keeping the origin form's "nothing to carry"
 /// semantics.
-pub(crate) async fn carry_checkpoint_work_from_snapshot(
+pub async fn carry_checkpoint_work_from_snapshot(
     worktree_dir: &Path,
     snapshot_repository: &Path,
     source_tip: &str,
@@ -365,6 +365,9 @@ mod tests {
     )]
     use std::path::PathBuf;
 
+    use fabro_types::settings::run::GitAuthorSettings;
+    use tokio::process::Command;
+
     use super::*;
 
     /// `run` pinned to the fixture identity: a Fabro run shell exports
@@ -376,7 +379,7 @@ mod tests {
     /// the pin.
     async fn run(dir: &Path, args: &[&str]) -> Result<std::process::Output, RunRebaseError> {
         let command = format!("git {}", args.join(" "));
-        tokio::process::Command::new("git")
+        Command::new("git")
             .args(args)
             .current_dir(dir)
             .env("GIT_AUTHOR_NAME", "T")
@@ -623,11 +626,10 @@ mod tests {
         fixture
             .push_run_branch("fabro/run/source", "identity work\n")
             .await;
-        let committer =
-            CarryCommitter::for_run(Some(&fabro_types::settings::run::GitAuthorSettings {
-                name:  Some("lab-bot".to_string()),
-                email: Some("lab@example.com".to_string()),
-            }));
+        let committer = CarryCommitter::for_run(Some(&GitAuthorSettings {
+            name:  Some("lab-bot".to_string()),
+            email: Some("lab@example.com".to_string()),
+        }));
         let carried = carry_checkpoint_work(
             &fixture.worktree,
             fixture.origin.to_str().unwrap(),
@@ -681,7 +683,7 @@ mod tests {
             email: fabro_types::GitIdentity::DEFAULT_EMAIL.to_string(),
         });
         assert_eq!(
-            CarryCommitter::for_run(Some(&fabro_types::settings::run::GitAuthorSettings {
+            CarryCommitter::for_run(Some(&GitAuthorSettings {
                 name:  Some("named".to_string()),
                 email: None,
             })),

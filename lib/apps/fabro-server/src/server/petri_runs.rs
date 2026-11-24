@@ -37,6 +37,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use fabro_admission::petri_check;
+use fabro_admission::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
+use fabro_admission::run_manifest::PreparedManifest;
 use fabro_config::{
     EnvironmentDockerfileLayer, EnvironmentImageLayer, EnvironmentLayer, Home, MergeMap,
     SettingsLayer, Storage,
@@ -77,14 +80,15 @@ use super::{
 use crate::git_checkout::{
     self, GitCheckoutError, GitCheckoutSelector, WorktreeDepth, WorktreePrepareInput,
 };
-use crate::petri_check;
 use crate::petri_runs::PetriRuns;
-use crate::run_compiler::{AdmittedRun, PreparedRun, RunCompilerError};
 
 /// The runtime Petri gets, at create and at execution: the server's run
 /// defaults and environment catalog as the settings layer, the MCP
 /// catalog, the model client over the server's catalog and credentials for
 /// the eligible providers, the sandbox providers, and the run mode.
+/// The `RuntimeSpec` an admitted run launches with: the server-derived
+/// settings layer, MCP catalog and model client over the eligible providers,
+/// on the blocking pool.
 pub(crate) fn runtime_spec(
     state: &AppState,
     eligible: &[ProviderId],
@@ -1048,6 +1052,26 @@ impl RunLogs for SettlingLogs {
     async fn get_blob(&self, digest: Digest) -> Result<Option<Vec<u8>>, StoreError> {
         self.inner.get_blob(digest).await
     }
+}
+
+/// The admission runtime spec for a prepared manifest: what the check and
+/// validate endpoints hand fabro-admission (work#1672). The app derives the
+/// spec from its state; admission never sees the state itself.
+pub(crate) fn prepared_manifest_runtime_spec(
+    state: &AppState,
+    prepared: &PreparedManifest,
+    eligible: &[ProviderId],
+) -> RuntimeSpec {
+    let dry_run = prepared.settings.run.execution.mode == RunMode::DryRun;
+    runtime_spec(
+        state,
+        eligible,
+        dry_run,
+        state.sandbox_provider_config(None),
+        // Admission installs no hook-secrets provider (fabro-225f): a
+        // declaration resolves only once a run holds a vault snapshot.
+        None,
+    )
 }
 
 #[cfg(test)]

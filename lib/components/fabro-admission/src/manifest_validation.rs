@@ -1,3 +1,6 @@
+//! Manifest validation: the standalone entry point clients (CLI, MCP, run
+//! workers) call to validate a built manifest without the server.
+
 use std::collections::HashMap;
 use std::path::Path;
 

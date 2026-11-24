@@ -56,33 +56,33 @@ use crate::petri_check::RequiredProvider;
 /// settings resolution, workflow compilation, model pinning, and
 /// persistence-input assembly.
 #[derive(Debug)]
-pub(crate) struct RawRunCompilerInput {
-    pub(crate) workflow_bundle: WorkflowBundle,
-    pub(crate) entrypoint: ManifestPath,
-    pub(crate) cwd: PathBuf,
-    pub(crate) server_run_defaults: RunLayer,
-    pub(crate) server_environment_defaults: MergeMap<EnvironmentLayer>,
-    pub(crate) server_mcp_catalog: HashMap<String, McpServerSettings>,
-    pub(crate) workflow_layer: Option<SettingsLayer>,
-    pub(crate) run_overrides: Option<RunLayer>,
-    pub(crate) input_overrides: HashMap<String, toml::Value>,
-    pub(crate) inline_goal_override: Option<String>,
-    pub(crate) run_id: Option<RunId>,
-    pub(crate) title: Option<String>,
-    pub(crate) parent_id: Option<RunId>,
-    pub(crate) git: Option<GitContext>,
-    pub(crate) storage_root: PathBuf,
-    pub(crate) workflow_slug: Option<String>,
-    pub(crate) workflow_version_id: Option<WorkflowVersionId>,
-    pub(crate) target: Option<RunTarget>,
-    pub(crate) provenance: RunProvenance,
-    pub(crate) web_url: Option<String>,
-    pub(crate) automation: Option<AutomationRef>,
+pub struct RawRunCompilerInput {
+    pub workflow_bundle: WorkflowBundle,
+    pub entrypoint: ManifestPath,
+    pub cwd: PathBuf,
+    pub server_run_defaults: RunLayer,
+    pub server_environment_defaults: MergeMap<EnvironmentLayer>,
+    pub server_mcp_catalog: HashMap<String, McpServerSettings>,
+    pub workflow_layer: Option<SettingsLayer>,
+    pub run_overrides: Option<RunLayer>,
+    pub input_overrides: HashMap<String, toml::Value>,
+    pub inline_goal_override: Option<String>,
+    pub run_id: Option<RunId>,
+    pub title: Option<String>,
+    pub parent_id: Option<RunId>,
+    pub git: Option<GitContext>,
+    pub storage_root: PathBuf,
+    pub workflow_slug: Option<String>,
+    pub workflow_version_id: Option<WorkflowVersionId>,
+    pub target: Option<RunTarget>,
+    pub provenance: RunProvenance,
+    pub web_url: Option<String>,
+    pub automation: Option<AutomationRef>,
 }
 
 /// Stage-one output: the selected bundled workflow and admitted settings,
 /// before layering server defaults and run overrides.
-pub(crate) struct NormalizedRun {
+pub struct NormalizedRun {
     workflow_bundle: WorkflowBundle,
     entrypoint: ManifestPath,
     workflow: BundledWorkflow,
@@ -117,7 +117,7 @@ struct RunMetadata {
 /// Settings-layered output. Variable substitution is a separate stage so
 /// callers can snapshot run variables after settings resolution and apply
 /// the snapshot through [`apply_run_variables`].
-pub(crate) struct LayeredRun {
+pub struct LayeredRun {
     workflow_bundle: WorkflowBundle,
     entrypoint:      ManifestPath,
     workflow:        BundledWorkflow,
@@ -129,74 +129,72 @@ pub(crate) struct LayeredRun {
 /// Variable-substituted stage output. Callers may inspect the resolved
 /// settings before policy checks, then hand it to Petri's admission and move
 /// it into [`materialize_admitted`].
-pub(crate) struct PreparedRun {
+pub struct PreparedRun {
     layered: LayeredRun,
     vars:    HashMap<String, String>,
 }
 
 impl PreparedRun {
-    pub(crate) fn settings(&self) -> &WorkflowSettings {
+    pub fn settings(&self) -> &WorkflowSettings {
         &self.layered.settings
     }
 
     /// The run-variable snapshot, for the engine's `{{ vars.* }}`.
-    pub(crate) fn vars(&self) -> &HashMap<String, String> {
+    pub fn vars(&self) -> &HashMap<String, String> {
         &self.vars
     }
 
     /// The acquired bundle, for an engine that compiles it itself.
-    pub(crate) fn workflow_bundle(&self) -> &WorkflowBundle {
+    pub fn workflow_bundle(&self) -> &WorkflowBundle {
         &self.layered.workflow_bundle
     }
 
-    pub(crate) fn entrypoint(&self) -> &ManifestPath {
+    pub fn entrypoint(&self) -> &ManifestPath {
         &self.layered.entrypoint
     }
 
-    pub(crate) fn target(&self) -> Option<&RunTarget> {
+    pub fn target(&self) -> Option<&RunTarget> {
         self.layered.metadata.target.as_ref()
     }
 
-    pub(crate) fn with_target_and_git(
-        mut self,
-        target: RunTarget,
-        git: Option<GitContext>,
-    ) -> Self {
+    #[must_use]
+    pub fn with_target_and_git(mut self, target: RunTarget, git: Option<GitContext>) -> Self {
         self.layered.metadata.target = Some(target);
         self.layered.metadata.git = git;
         self
     }
 
-    pub(crate) fn parent_id(&self) -> Option<RunId> {
+    pub fn parent_id(&self) -> Option<RunId> {
         self.layered.metadata.parent_id
     }
 
     /// The resolved run id, when the caller resolved one: the id the
     /// run's scratch (and the git checkout bound into its admission)
     /// lives under.
-    pub(crate) fn run_id(&self) -> Option<RunId> {
+    pub fn run_id(&self) -> Option<RunId> {
         self.layered.metadata.run_id
     }
 
     /// The environment the run overrides selected, when they did.
-    pub(crate) fn environment_id(&self) -> Option<&str> {
+    pub fn environment_id(&self) -> Option<&str> {
         self.layered.metadata.environment_id.as_deref()
     }
 
     /// The automation this run fires for, when it is one: the admission's
     /// model providers are recorded on it so the provider-window gate also
     /// covers workflows that never ran (fabro-0611).
-    pub(crate) fn automation(&self) -> Option<&AutomationRef> {
+    pub fn automation(&self) -> Option<&AutomationRef> {
         self.layered.metadata.automation.as_ref()
     }
 
-    pub(crate) fn resolve_run_id(mut self) -> (Self, RunId) {
+    pub fn resolve_run_id(mut self) -> (Self, RunId) {
         let run_id = self.layered.metadata.run_id.unwrap_or_default();
         self.layered.metadata.run_id = Some(run_id);
         (self, run_id)
     }
 
-    pub(crate) fn with_web_url(mut self, web_url: Option<String>) -> Self {
+    #[must_use]
+    pub fn with_web_url(mut self, web_url: Option<String>) -> Self {
         self.layered.metadata.web_url = web_url;
         self
     }
@@ -204,17 +202,17 @@ impl PreparedRun {
 
 /// What Petri admitted for a run: the stored graphs the run executes from,
 /// and the display graph read off them.
-pub(crate) struct AdmittedRun {
-    pub(crate) admission:          PetriAdmission,
-    pub(crate) graph:              RunGraph,
+pub struct AdmittedRun {
+    pub admission:          PetriAdmission,
+    pub graph:              RunGraph,
     /// The providers the run's model stages will use (fabro-b869 step 4):
     /// the create path's provider-window check consults this before any
     /// run record exists.
-    pub(crate) required_providers: Vec<RequiredProvider>,
+    pub required_providers: Vec<RequiredProvider>,
 }
 
 /// Admitted stage output ready for pure persistence-input assembly.
-pub(crate) struct PinnedRun {
+pub struct PinnedRun {
     materialized: MaterializedRun,
     metadata:     RunMetadata,
     /// What Petri admitted for the run.
@@ -222,7 +220,7 @@ pub(crate) struct PinnedRun {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum RunCompilerError {
+pub enum RunCompilerError {
     /// The acquired source bundle is invalid: missing entrypoint or broken
     /// bundled-file references.
     #[error(transparent)]
@@ -263,7 +261,7 @@ pub(crate) enum RunCompilerError {
 
 // Shared source errors also serve manifest preview operations.
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum InvalidSourceError {
+pub enum InvalidSourceError {
     #[error("manifest target path is missing from workflows map")]
     MissingEntrypoint { entrypoint: ManifestPath },
 
@@ -281,7 +279,7 @@ pub(crate) enum InvalidSourceError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum InvalidSettingsError {
+pub enum InvalidSettingsError {
     #[error("Failed to parse run config TOML")]
     Parse {
         path:   ManifestPath,
@@ -297,7 +295,7 @@ pub(crate) enum InvalidSettingsError {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum VariableInterpolationError {
+pub enum VariableInterpolationError {
     #[error(transparent)]
     Interpolation(#[from] ResolveError),
 
@@ -317,7 +315,7 @@ fn invalid_settings(source: InvalidSettingsError) -> RunCompilerError {
 
 /// Normalize the bundle entrypoint while retaining the admitted workflow
 /// settings.
-pub(crate) fn normalize_source(input: RawRunCompilerInput) -> Result<NormalizedRun> {
+pub fn normalize_source(input: RawRunCompilerInput) -> Result<NormalizedRun> {
     let RawRunCompilerInput {
         workflow_bundle,
         entrypoint,
@@ -384,7 +382,7 @@ pub(crate) fn normalize_source(input: RawRunCompilerInput) -> Result<NormalizedR
 
 /// Layer settings from every configured source and apply the submitted input
 /// and goal overrides.
-pub(crate) fn layer_settings(normalized: NormalizedRun) -> Result<LayeredRun> {
+pub fn layer_settings(normalized: NormalizedRun) -> Result<LayeredRun> {
     let NormalizedRun {
         workflow_bundle,
         entrypoint,
@@ -429,7 +427,7 @@ pub(crate) fn layer_settings(normalized: NormalizedRun) -> Result<LayeredRun> {
 /// Apply a run-variable snapshot to the layered settings and validate the
 /// resulting artifact globs. The snapshot is also retained for graph template
 /// rendering during compilation.
-pub(crate) fn apply_run_variables(
+pub fn apply_run_variables(
     mut layered: LayeredRun,
     vars: HashMap<String, String>,
 ) -> Result<PreparedRun> {
@@ -440,7 +438,7 @@ pub(crate) fn apply_run_variables(
 /// Stage three for a run Petri admitted: record the admission and its
 /// display graph on the run, and materialize Fabro's run-level settings
 /// around them. Blocking: a `[run.goal]` file is read from disk.
-pub(crate) async fn materialize_admitted(
+pub async fn materialize_admitted(
     prepared: PreparedRun,
     admitted: AdmittedRun,
 ) -> Result<PinnedRun> {
@@ -489,7 +487,7 @@ pub(crate) async fn materialize_admitted(
 /// Stage four: purely assemble the complete persistence input. Every durable
 /// field — run id, captured definition, automation reference — is set here
 /// once; nothing mutates the result afterwards.
-pub(crate) fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
+pub fn assemble_run(pinned: PinnedRun) -> CreateRunPersistenceInput {
     let PinnedRun {
         materialized,
         metadata,
@@ -591,7 +589,7 @@ fn resolve_dockerfile(
 /// Substitute run-scoped variables into the resolved run settings, then
 /// re-validate the artifact-include globs: a substituted variable can make a
 /// previously-safe glob unsafe.
-pub(crate) fn substitute_run_variables(
+pub fn substitute_run_variables(
     variables: &HashMap<String, String>,
     settings: &mut WorkflowSettings,
 ) -> std::result::Result<(), VariableInterpolationError> {
@@ -613,7 +611,10 @@ mod tests {
     use fabro_config::EnvironmentDockerfileLayer;
     use fabro_types::settings::interp::ResolveCtx;
     use fabro_types::settings::run::RunGoal;
-    use fabro_types::{AutomationRef, Principal, RunProvenance, SystemActorKind};
+    use fabro_types::{
+        AutomationRef, Principal, RunProvenance, SystemActorKind,
+        test_support as fabro_types_test_support,
+    };
     use fabro_workflow::workflow_bundle::ParsedWorkflowConfig;
 
     use super::*;
@@ -906,7 +907,7 @@ include = ["reports/{{ vars.path }}/*.json"]
             trigger_id:      Some("schedule".to_string()),
             workflow_source: None,
         };
-        let workflow_version_id = fabro_types::test_support::test_workflow_version_id();
+        let workflow_version_id = fabro_types_test_support::test_workflow_version_id();
         let mut input = raw_input(None, HashMap::new());
         input.run_id = Some(run_id);
         input.parent_id = Some(parent_id);

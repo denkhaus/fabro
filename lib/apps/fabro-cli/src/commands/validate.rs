@@ -1,8 +1,8 @@
 use anyhow::bail;
+use fabro_admission::manifest_validation;
 use fabro_config::RunLayer;
 use fabro_config::user::active_settings_path;
 use fabro_manifest::{ManifestBuildInput, build_run_manifest};
-use fabro_server::manifest_validation;
 use fabro_types::diagnostic::Severity;
 use fabro_util::terminal::Styles;
 

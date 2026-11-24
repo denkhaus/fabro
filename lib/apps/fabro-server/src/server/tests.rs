@@ -1336,7 +1336,9 @@ _version = 1
 id = "default"
 "#;
     let manifest_run_settings = resolve_manifest_run_settings_with_catalog(
-        &run_manifest::manifest_run_defaults(Some(&manifest_run_defaults_from_toml(source))),
+        &crate::admission_tests::manifest_run_defaults(Some(&manifest_run_defaults_from_toml(
+            source,
+        ))),
         &environment_store,
         &mcp_server_store,
     );
@@ -1355,7 +1357,9 @@ _version = 1
 id = "missing"
 "#;
     let manifest_run_settings = resolve_manifest_run_settings_with_catalog(
-        &run_manifest::manifest_run_defaults(Some(&manifest_run_defaults_from_toml(source))),
+        &crate::admission_tests::manifest_run_defaults(Some(&manifest_run_defaults_from_toml(
+            source,
+        ))),
         &environment_store,
         &mcp_server_store,
     );
@@ -1381,7 +1385,7 @@ enabled = false
     );
 
     assert_eq!(
-        crate::run_manifest::sandbox_provider_policy_error(
+        fabro_admission::run_manifest::sandbox_provider_policy_error(
             &settings,
             &SandboxProviderKind::DAYTONA
         )
@@ -3337,7 +3341,7 @@ async fn create_run_without_ready_llm_provider_rejects_implicit_model_selection(
         }),
         "unexpected response: {body}"
     );
-    let diagnostic = crate::petri_check::no_ready_provider_diagnostic();
+    let diagnostic = fabro_admission::petri_check::no_ready_provider_diagnostic();
     assert_eq!(
         diagnostic.message,
         "no default model is available: no LLM provider is ready, and the workflow has a \
