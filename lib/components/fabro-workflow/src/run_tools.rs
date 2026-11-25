@@ -1915,6 +1915,157 @@ mod tests {
         assert!(error.to_string().contains("llm unavailable"), "{error}");
     }
 
+    /// The gather sweep (ADR-0016) executes through the ask dispatcher:
+    /// the runless supervisor (no run anchor, no scope) resolves each
+    /// child selector over the backend and fans in to terminal
+    /// (work#1688). One call for N children — not N blocking waits.
+    #[tokio::test]
+    async fn gather_tool_fans_in_child_runs_through_the_dispatcher() {
+        struct MockGatherBackend {
+            child_id: RunId,
+        }
+
+        #[async_trait::async_trait]
+        impl fabro_tool::FabroToolBackend for MockGatherBackend {
+            async fn create_run_from_intent(
+                &self,
+                _intent: fabro_types::RunIntent,
+            ) -> anyhow::Result<RunId> {
+                unreachable!("the gather test never creates runs")
+            }
+            async fn resolve_run(&self, selector: &str) -> anyhow::Result<fabro_types::Run> {
+                assert_eq!(selector, self.child_id.to_string());
+                Ok(self.terminal_child())
+            }
+            async fn retrieve_run(&self, run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                assert_eq!(*run_id, self.child_id);
+                Ok(self.terminal_child())
+            }
+            async fn start_run(
+                &self,
+                _run_id: &RunId,
+                _resume: bool,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never starts runs")
+            }
+            async fn approve_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never approves runs")
+            }
+            async fn deny_run(
+                &self,
+                _run_id: &RunId,
+                _reason: Option<String>,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never denies runs")
+            }
+            async fn cancel_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never cancels runs")
+            }
+            async fn interrupt_run(&self, _run_id: &RunId) -> anyhow::Result<()> {
+                unreachable!("the gather test never interrupts runs")
+            }
+            async fn steer_run(
+                &self,
+                _run_id: &RunId,
+                _text: String,
+                _interrupt: bool,
+            ) -> anyhow::Result<()> {
+                unreachable!("the gather test never steers runs")
+            }
+            async fn archive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never archives runs")
+            }
+            async fn unarchive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never unarchives runs")
+            }
+            async fn list_store_runs(&self) -> anyhow::Result<Vec<fabro_types::Run>> {
+                unreachable!("the gather test never lists runs")
+            }
+            async fn list_store_runs_by_parent(
+                &self,
+                _parent_id: RunId,
+            ) -> anyhow::Result<Vec<fabro_types::Run>> {
+                unreachable!("the gather test never lists child runs")
+            }
+            async fn link_run_parent(
+                &self,
+                _child_id: &RunId,
+                _parent_id: &RunId,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never links parents")
+            }
+            async fn unlink_run_parent(
+                &self,
+                _child_id: &RunId,
+            ) -> anyhow::Result<fabro_types::Run> {
+                unreachable!("the gather test never unlinks parents")
+            }
+            async fn get_run_state(
+                &self,
+                _run_id: &RunId,
+            ) -> anyhow::Result<fabro_types::RunProjection> {
+                unreachable!("the gather test never reads run state")
+            }
+            async fn list_run_stream(
+                &self,
+                _run_id: &RunId,
+                _after: u64,
+                _limit: Option<usize>,
+            ) -> anyhow::Result<Vec<fabro_types::RunStreamItem>> {
+                unreachable!("the gather test never reads the run stream")
+            }
+            async fn list_run_questions(
+                &self,
+                _run_id: &RunId,
+            ) -> anyhow::Result<Vec<fabro_api::types::ApiQuestion>> {
+                unreachable!("the gather test never reads questions")
+            }
+            async fn submit_run_answer(
+                &self,
+                _run_id: &RunId,
+                _question_id: &str,
+                _body: fabro_api::types::SubmitAnswerRequest,
+            ) -> anyhow::Result<()> {
+                unreachable!("the gather test never answers questions")
+            }
+        }
+
+        impl MockGatherBackend {
+            fn terminal_child(&self) -> fabro_types::Run {
+                let mut run = ask_target_run(self.child_id);
+                run.lifecycle.status = fabro_types::RunStatus::Succeeded {
+                    reason: fabro_types::SuccessReason::Completed,
+                };
+                run
+            }
+        }
+
+        let child_id: RunId = "01KRBZW4DW0000000000000005".parse().unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(MockGatherBackend { child_id }),
+            // The runless supervisor shape: no run anchor at all.
+            current_run_id: None,
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_RUN_GATHER_TOOL_NAME,
+            json!({
+                "run_ids": [child_id.to_string()],
+                "timeout_seconds": 1,
+                "poll_interval_seconds": 5
+            }),
+            &services,
+        )
+        .await
+        .unwrap();
+        let (summary, body) = output.split_once('\n').unwrap();
+        assert_eq!(summary, "gathered 1 Fabro run(s), timed_out=false");
+        let result: serde_json::Value = serde_json::from_str(body).unwrap();
+        assert_eq!(result["timed_out"], json!(false));
+        assert_eq!(result["runs"][0]["run_id"], json!(child_id.to_string()));
+        assert_eq!(result["runs"][0]["status"], json!("succeeded"));
+    }
+
     #[test]
     fn partition_flags_requested_names_missing_from_the_catalog() {
         let definitions = fabro_tool::tool_definitions();
