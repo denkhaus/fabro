@@ -41,3 +41,54 @@ export async function listAllAskSessions({
 export async function deleteAskSession(sessionId: string): Promise<void> {
   await apiData(() => sessionsApi.deleteSession(sessionId));
 }
+
+/**
+ * The /ask page's last-active session memory (work#1686): the browser
+ * remembers which conversation the operator had open, so returning to
+ * the chat page restores it instead of the empty state. Writes happen
+ * in event handlers (picker selection, a fresh conversation creating
+ * its session); the restore itself derives during render against the
+ * session index — the server-side index stays the truth, the memory
+ * only names the candidate.
+ */
+const LAST_SESSION_KEY = "ask.lastSessionId";
+
+/** The storage seam (test injects a fake; production rides the global). */
+type SessionMemoryStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function rememberAskSessionId(
+  sessionId: string,
+  storage: SessionMemoryStorage | undefined = globalThis.localStorage,
+): void {
+  try {
+    storage.setItem(LAST_SESSION_KEY, sessionId);
+  } catch {
+    // Storage unavailable (private mode, quota): the restore degrades
+    // to the most recently updated session — never worth surfacing.
+  }
+}
+
+export function recallAskSessionId(
+  storage: SessionMemoryStorage | undefined = globalThis.localStorage,
+): string | null {
+  try {
+    return storage.getItem(LAST_SESSION_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** The selection the /ask page should show: the remembered conversation
+ * when the index still carries it, otherwise the most recently updated
+ * session (the index serves `order=updated_desc` by default, so the
+ * first row is the newest activity) — or nothing on an empty index. */
+export function restoreAskSelection(
+  rememberedId: string | null,
+  sessions: AskSessionSummary[],
+): AskSessionSummary | null {
+  const remembered =
+    rememberedId != null
+      ? sessions.find((session) => session.id === rememberedId)
+      : undefined;
+  return remembered ?? sessions[0] ?? null;
+}
