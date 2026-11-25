@@ -42,14 +42,12 @@ export function transcriptFromEvents(
       if (text) messages.push({ role: "user", content: [{ type: "text", text }] });
       continue;
     }
-    if (
-      name === "run.session.turn.succeeded" ||
-      name === "run.session.turn.failed" ||
-      name === "run.session.turn.interrupted"
-    ) {
+    if (name === "run.session.turn.succeeded") {
       flushAssistant();
       continue;
     }
+    // turn.failed / turn.interrupted fall through to applyTurnEvent so the
+    // failure (or interruption) note becomes a visible part (work#1681).
     applyTurnEvent(acc, event);
   }
   flushAssistant();

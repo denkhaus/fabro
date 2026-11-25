@@ -62,6 +62,41 @@ describe("transcriptFromEvents", () => {
     expect(messages[2]).toMatchObject({ role: "user" });
   });
 
+  test("a failed turn folds to a visible failure note (work#1681)", () => {
+    const messages = transcriptFromEvents([
+      event(1, "run.session.user_message", { text: "Say hello." }),
+      event(2, "run.session.turn.failed", {
+        turn_id: "t_1",
+        error: "run sandbox was not created",
+        code: "sandbox_unavailable",
+        retryable: false,
+      }),
+    ]);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "Say hello." }],
+    });
+    expect(messages[1]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "Turn failed: run sandbox was not created" }],
+    });
+  });
+
+  test("an interrupted turn folds to a visible note (work#1681)", () => {
+    const messages = transcriptFromEvents([
+      event(1, "run.session.user_message", { text: "Stop." }),
+      event(2, "run.session.turn.interrupted", { turn_id: "t_1" }),
+    ]);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "Turn interrupted." }],
+    });
+  });
+
   test("an empty event log folds to an empty transcript", () => {
     expect(transcriptFromEvents([])).toEqual([]);
   });
