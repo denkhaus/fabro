@@ -91,7 +91,12 @@ model {
         prompt, which mandates the in-turn soft confirm before every
         fabro_run_merge. Landed 2026-11-19 (salvage PR #604 of run
         01M7R8FS); the global chat page and session resume ride run
-        01M7SQC6's review (work#1452).
+        01M7SQC6's review (work#1452). Since work#1678 the global chat
+        is RUNLESS: the conversation carries no run anchor (POST
+        /sessions, nullable run_id), the agent runs tools-only in a
+        deny-exec environment (exec and file access denied, platform
+        tools over the supervisor token), and every runless session
+        starts at full_access.
       '''
       metadata {
         code "lib/apps/fabro-server/src/server/handler/sessions.rs"
