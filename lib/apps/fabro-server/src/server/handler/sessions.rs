@@ -825,7 +825,8 @@ async fn run_streaming_turn(
                     slot.guard = built.guard;
                 }
                 Err(err) => {
-                    error!(error = ?err, session_id = %session_id, turn_id = %turn_id, "Failed to build run-backed session runtime");
+                    let shape = if run_id.is_some() { "run-backed" } else { "runless" };
+                    error!(error = ?err, session_id = %session_id, turn_id = %turn_id, session_shape = shape, "Failed to build session runtime");
                     let _ = append_and_send_event(
                         &state,
                         &sender,

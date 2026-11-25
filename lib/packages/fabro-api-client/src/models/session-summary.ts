@@ -24,14 +24,14 @@ import type { SessionStatus } from './session-status';
 import type { SessionTurn } from './session-turn';
 
 /**
- * List projection of an Ask Fabro session.
+ * List projection of an Ask Fabro session. `run_id` is null for a runless session (work#1677) — the global supervisor\'s conversation carries no run anchor.
  */
 export interface SessionSummary {
     /**
      * Durable session identifier.
      */
     'id': string;
-    'run_id': string;
+    'run_id': string | null;
     'title'?: string | null;
     'status': SessionStatus;
     /**

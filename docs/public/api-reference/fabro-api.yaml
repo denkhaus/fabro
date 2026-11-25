@@ -11150,7 +11150,7 @@ components:
           $ref: "#/components/schemas/AskFabroCapability"
 
     SessionSummary:
-      description: List projection of an Ask Fabro session.
+      description: List projection of an Ask Fabro session. `run_id` is null for a runless session (work#1677) — the global supervisor's conversation carries no run anchor.
       type: object
       required:
         - id
@@ -11163,7 +11163,7 @@ components:
         id:
           $ref: "#/components/schemas/SessionId"
         run_id:
-          type: string
+          type: ["string", "null"]
         title:
           type: ["string", "null"]
         status:
@@ -11193,7 +11193,8 @@ components:
       description: >-
         Session metadata plus the sequence number of the session's latest
         event. The conversation itself is held by the server's durable
-        session record and is not returned over the API.
+        session record and is not returned over the API. `run_id` is null
+        for a runless session (work#1677).
       type: object
       required:
         - id
@@ -11207,7 +11208,7 @@ components:
         id:
           $ref: "#/components/schemas/SessionId"
         run_id:
-          type: string
+          type: ["string", "null"]
         title:
           type: ["string", "null"]
         status:
