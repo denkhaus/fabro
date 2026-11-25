@@ -128,6 +128,8 @@ describe("applyTurnEvent", () => {
     expect(acc.parts[0]).toMatchObject({
       text: "Turn failed: run sandbox is unavailable for Ask Fabro: run sandbox was not created",
     });
+    // retryable: false renders no hint.
+    expect(String(acc.parts[0]?.text)).not.toContain("retryable");
   });
 
   test("a failed turn after partial output closes the text and appends the error", () => {
@@ -145,7 +147,11 @@ describe("applyTurnEvent", () => {
 
     expect(acc.parts).toHaveLength(2);
     expect(acc.parts[0]).toMatchObject({ type: "text", text: "Partial" });
-    expect(acc.parts[1]).toMatchObject({ type: "text", text: "Turn failed: boom" });
+    // A retryable failure carries the flag visibly (work#1681).
+    expect(acc.parts[1]).toMatchObject({
+      type: "text",
+      text: "Turn failed: boom (retryable)",
+    });
   });
 
   test("an interrupted turn renders a visible note (work#1681)", () => {

@@ -110,9 +110,15 @@ export function applyTurnEvent(
   if (eventName === "run.session.turn.failed") {
     // A failed turn must be VISIBLE (work#1681): the error text lands as
     // its own part so a mute thread never masquerades as a silent agent.
+    // The event's retryable flag rides the visible text: the user sees
+    // whether re-sending the message can succeed.
     acc.activeTextIndex = null;
     const error = typeof props.error === "string" ? props.error : "unknown error";
-    acc.parts.push({ type: "text", text: `Turn failed: ${error}` });
+    const retryable = props.retryable === true;
+    acc.parts.push({
+      type: "text",
+      text: retryable ? `Turn failed: ${error} (retryable)` : `Turn failed: ${error}`,
+    });
     return true;
   }
 
