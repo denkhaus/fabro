@@ -186,6 +186,18 @@
   --aui-thread-max-width: 44rem;
 }
 
+/* On the WIDE supervisor page (routes/ask.tsx, work#1687) the composer
+ * spans the conversation width instead of assistant-ui's 44rem message
+ * cap — the operator's input needs the room, the message column keeps
+ * its readable width. `:not(.ask-fabro-sidebar)` keeps the docked run
+ * chat narrow; declared after .fabro-chat so it wins the cascade on
+ * elements carrying both classes. The composer pill itself stretches
+ * (sidebar-composer w-full) — inside this column-flex footer a
+ * shrink-wrapped pill would sit at textarea intrinsic width (~20ch). */
+.fabro-chat:not(.ask-fabro-sidebar) .aui-thread-viewport-footer {
+  max-width: min(120rem, 100%);
+}
+
 /* In the narrow Ask-Fabro sidebar column, drop the message-column max-width so
  * messages and the composer span the full column width. Declared AFTER
  * .fabro-chat so it wins on cascade order (the element has both classes).

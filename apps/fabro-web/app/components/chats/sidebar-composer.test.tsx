@@ -15,12 +15,15 @@ import { setupReactTestEnv } from "../../lib/test-utils";
 // ComposerPrimitive integration itself stays untouched.
 const realAssistantUi = await import("@assistant-ui/react");
 let composerInputProps: Record<string, unknown> | null = null;
+let composerRootClassName: string | null = null;
 mock.module("@assistant-ui/react", () => ({
   ...realAssistantUi,
   ComposerPrimitive: {
     ...realAssistantUi.ComposerPrimitive,
-    Root: (props: { children?: React.ReactNode }) =>
-      createElement("div", null, props.children),
+    Root: (props: { className?: string; children?: React.ReactNode }) => {
+      composerRootClassName = props.className ?? null;
+      return createElement("div", null, props.children);
+    },
     Input: (props: Record<string, unknown>) => {
       composerInputProps = props;
       return createElement("textarea", { "data-probe": "composer-input" });
@@ -49,6 +52,7 @@ describe("SidebarComposer height (work#1535)", () => {
   beforeEach(() => {
     teardown = setupReactTestEnv();
     composerInputProps = null;
+    composerRootClassName = null;
   });
 
   afterEach(() => {
@@ -71,5 +75,17 @@ describe("SidebarComposer height (work#1535)", () => {
     // No fixed `rows` pin: the autosizer owns the height so the input
     // keeps growing as more lines are typed.
     expect(composerInputProps!.rows).toBeUndefined();
+  });
+
+  test("the pill stretches to its container instead of shrink-wrapping (work#1687)", () => {
+    act(() => {
+      renderer = TestRenderer.create(createElement(SidebarComposer));
+    });
+
+    // The composer sits in assistant-ui's column-flex footer — a
+    // `w-auto` pill shrink-wraps to the textarea's intrinsic width
+    // (~20ch), which starved the operator's input surface.
+    expect(composerRootClassName).toContain("w-full");
+    expect(composerRootClassName).not.toContain("w-auto");
   });
 });
