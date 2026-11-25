@@ -97,7 +97,12 @@ pub(super) const ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES: &[&str] = &[
     // Cross-run inspection and steering.
     fabro_tool::FABRO_RUN_QUEUE_TOOL_NAME,
     fabro_tool::FABRO_RUN_SEARCH_TOOL_NAME,
+    // Both wait tools (ADR-0016): the single-run long-poll
+    // (`fabro_run_wait`) and the multi-run fan-in sweep
+    // (`fabro_run_gather`, <=600 s) — the supervisor fan-in over many
+    // child runs is one gather call instead of N waits.
     fabro_tool::FABRO_RUN_WAIT_TOOL_NAME,
+    fabro_tool::FABRO_RUN_GATHER_TOOL_NAME,
     fabro_tool::FABRO_BLOB_TOOL_NAME,
     fabro_tool::FABRO_RUN_INTERACT_TOOL_NAME,
 ];

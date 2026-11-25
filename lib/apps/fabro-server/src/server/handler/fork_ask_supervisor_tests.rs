@@ -67,6 +67,27 @@ fn supervisor_registry_grants_the_full_run_tool_catalog_at_full_access() {
     }
 }
 
+/// ADR-0016 keeps BOTH wait tools; the supervisor registry must carry the
+/// fan-in sweep (`fabro_run_gather`, work#1688) beside the single-run
+/// long-poll (`fabro_run_wait`), while the read-only posture stays
+/// without either wait tool (its run tools are the two read doors).
+#[test]
+fn supervisor_registry_carries_run_gather_beside_run_wait_and_read_only_stays_without_it() {
+    let gather = fabro_tool::FABRO_RUN_GATHER_TOOL_NAME;
+    assert!(
+        ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES.contains(&gather),
+        "ADR-0016 keeps both wait tools: the supervisor registry must carry fabro_run_gather"
+    );
+    assert!(
+        ask_fabro_allows_tool(gather, AskFabroCapability::FullAccess),
+        "full access should allow {gather}"
+    );
+    assert!(
+        !ask_fabro_allows_tool(gather, AskFabroCapability::ReadOnly),
+        "the read-only posture must stay without the gather wait tool"
+    );
+}
+
 /// The red-first pin (work#1451 acceptance): a read-only turn calling
 /// `fabro_run_mark` is denied AND the denial names the audited posture;
 /// a full-access turn is allowed the same call.
