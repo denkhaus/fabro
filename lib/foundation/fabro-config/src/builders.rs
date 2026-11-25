@@ -11,7 +11,8 @@ use crate::defaults::DEFAULTS_LAYER;
 use crate::load::load_settings_path;
 use crate::parse::{SettingsSource, validate_settings_source};
 use crate::resolve::{
-    ResolveError, resolve_cli, resolve_project, resolve_run, resolve_server, resolve_workflow,
+    ResolveError, resolve_ask, resolve_cli, resolve_project, resolve_run, resolve_server,
+    resolve_workflow,
 };
 use crate::user::load_settings_config;
 use crate::{
@@ -95,8 +96,9 @@ impl ServerSettingsBuilder {
         let layer = layer.clone().combine(DEFAULTS_LAYER.clone());
         let mut errors = Vec::new();
         let server = resolve_server(&layer.server.clone().unwrap_or_default(), &mut errors);
+        let ask = resolve_ask(&layer.ask.clone().unwrap_or_default());
         finish_result(
-            ServerSettings { server },
+            ServerSettings { server, ask },
             "failed to resolve server settings",
             errors,
         )

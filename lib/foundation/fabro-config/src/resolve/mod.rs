@@ -1,3 +1,4 @@
+mod ask;
 mod cli;
 mod environment;
 mod error;
@@ -6,6 +7,7 @@ mod run;
 mod server;
 mod workflow;
 
+pub use ask::resolve_ask;
 pub use cli::resolve_cli;
 pub use environment::resolve_environment_layer;
 pub(crate) use environment::resolve_run_environment;

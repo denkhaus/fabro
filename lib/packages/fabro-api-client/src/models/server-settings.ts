@@ -15,6 +15,9 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
+import type { AskNamespace } from './ask-namespace';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ServerNamespace } from './server-namespace';
 
 /**
@@ -22,4 +25,5 @@ import type { ServerNamespace } from './server-namespace';
  */
 export interface ServerSettings {
     'server': ServerNamespace;
+    'ask': AskNamespace;
 }

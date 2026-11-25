@@ -29,7 +29,7 @@ Files that omit `_version` are treated as version `1`. The legacy top-level `ver
 
 ## Who reads what
 
-`settings.toml` uses the same schema as `.fabro/project.toml` and `workflow.toml`, but each process only reads the fields it understands. The top-level schema is strictly namespaced — the only allowed domains are `[project]`, `[workflow]`, `[run]`, `[llm]`, `[cli]`, `[server]`, and `[work]`.
+`settings.toml` uses the same schema as `.fabro/project.toml` and `workflow.toml`, but each process only reads the fields it understands. The top-level schema is strictly namespaced — the only allowed domains are `[project]`, `[workflow]`, `[run]`, `[llm]`, `[cli]`, `[server]`, `[ask]`, and `[work]`.
 
 | Scope | Examples |
 |---|---|
@@ -38,6 +38,7 @@ Files that omit `_version` are treated as version `1`. The legacy top-level `ver
 | Shared LLM catalog | `[llm]`, a lithos-llm catalog overlay: `[llm.providers.<id>]`, `[llm.providers.<id>.models.<id>]`, and the agent harness under `metadata.agent` |
 | Server-only | `[server.listen]`, `[server.api]`, `[server.web]`, `[server.auth]`, `[server.storage]`, `[server.artifacts]`, `[server.scheduler]`, `[server.logging]`, `[server.integrations]` |
 | Server-side work registry | `[work.projects.<id>]` |
+| Server-only chat surfaces | `[ask.supervisor_model]` — the model the runless supervisor chat (Ask Fabro without a run) pins at session creation; unset, it falls back to the catalog default (work#1690) |
 
 `[cli.*]` and `[server.*]` stanzas are owner-specific: they are only consumed from `~/.fabro/settings.toml` (plus process-local flags and env overrides). The same stanzas in `.fabro/project.toml` or `workflow.toml` remain schema-valid but runtime-inert.
 

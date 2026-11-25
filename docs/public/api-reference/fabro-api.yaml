@@ -18870,10 +18870,30 @@ components:
     ServerSettings:
       description: Current in-memory server settings view.
       type: object
-      required: [server]
+      required: [server, ask]
       properties:
         server:
           $ref: "#/components/schemas/ServerNamespace"
+        ask:
+          $ref: "#/components/schemas/AskNamespace"
+
+    AskNamespace:
+      description: |
+        The `[ask]` settings namespace (work#1690): defaults of the chat
+        surfaces a run does not scope. The runless supervisor chat reads
+        `ask.supervisor_model` at session creation when the request names
+        no model; the run-scoped dock keeps the AskFabro readiness door.
+      type: object
+      required: [supervisor_model]
+      properties:
+        supervisor_model:
+          description: |
+            The model the runless supervisor chat pins at session creation,
+            as a catalog selector or `provider:model` reference. Null when
+            unset: creation then falls back to the catalog default. A value
+            naming no catalog model fails session creation with a 400
+            naming this key.
+          type: ["string", "null"]
 
     ServerNamespace:
       type: object

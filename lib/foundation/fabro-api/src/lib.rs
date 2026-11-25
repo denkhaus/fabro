@@ -44,7 +44,7 @@ pub mod types {
         ServerSandboxProvidersSettings, ServerSandboxSettings, ServerSchedulerSettings,
         ServerStorageSettings, ServerWebSettings, SlackIntegrationSettings, WebhookStrategy,
     };
-    pub use fabro_types::settings::{McpTransport, ServerNamespace};
+    pub use fabro_types::settings::{AskNamespace, McpTransport, ServerNamespace};
     pub use fabro_types::status::{
         BlockedReason, FailureReason, PendingReason, RunControlAction, RunStatus, SuccessReason,
     };

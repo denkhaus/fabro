@@ -1,24 +1,25 @@
 use std::any::{TypeId, type_name};
 
 use fabro_api::types::{
-    LogDestination as ApiLogDestination, ObjectStoreSettings as ApiObjectStoreSettings,
-    ServerNamespace as ApiServerNamespace,
+    AskNamespace as ApiAskNamespace, LogDestination as ApiLogDestination,
+    ObjectStoreSettings as ApiObjectStoreSettings, ServerNamespace as ApiServerNamespace,
     ServerSandboxProviderSettings as ApiServerSandboxProviderSettings,
     ServerSandboxProvidersSettings as ApiServerSandboxProvidersSettings,
     ServerSandboxSettings as ApiServerSandboxSettings, ServerSettings as ApiServerSettings,
 };
 use fabro_config::ServerSettingsBuilder;
 use fabro_types::ServerSettings;
-use fabro_types::settings::ServerNamespace;
 use fabro_types::settings::server::{
     LogDestination, ObjectStoreSettings, ServerSandboxProviderSettings,
     ServerSandboxProvidersSettings, ServerSandboxSettings,
 };
+use fabro_types::settings::{AskNamespace, ServerNamespace};
 
 #[test]
 fn server_settings_family_reuses_domain_types() {
     assert_same_type::<ApiServerSettings, ServerSettings>();
     assert_same_type::<ApiServerNamespace, ServerNamespace>();
+    assert_same_type::<ApiAskNamespace, AskNamespace>();
     assert_same_type::<ApiObjectStoreSettings, ObjectStoreSettings>();
     assert_same_type::<ApiLogDestination, LogDestination>();
     assert_same_type::<ApiServerSandboxSettings, ServerSandboxSettings>();
@@ -77,6 +78,10 @@ strategy = "tailscale_funnel"
     assert_eq!(json["server"]["listen"]["address"], "127.0.0.1:32276");
     assert_eq!(json["server"]["storage"]["root"], "/srv/fabro");
     assert_eq!(json["server"]["logging"]["destination"], "stdout");
+    // The `[ask]` namespace (work#1690) rides on the settings payload with
+    // its key unset: absent from the map, but the namespace object itself
+    // is always present (the GET /settings contract).
+    assert_eq!(json["ask"]["supervisor_model"], serde_json::Value::Null);
     assert_eq!(
         json["server"]["sandbox"]["providers"]["local"]["enabled"],
         true
@@ -109,6 +114,31 @@ strategy = "tailscale_funnel"
     let round_trip: ApiServerSettings =
         serde_json::from_value(json).expect("server settings should deserialize");
     assert_eq!(round_trip, settings);
+
+    // The supervisor model key round-trips as a plain optional string
+    // (work#1690).
+    let pinned = ServerSettingsBuilder::from_toml(
+        r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+[ask]
+supervisor_model = "openai:gpt-5.6-sol"
+"#,
+    )
+    .expect("settings with [ask] should resolve");
+    assert_eq!(
+        pinned.ask.supervisor_model.as_deref(),
+        Some("openai:gpt-5.6-sol")
+    );
+    let pinned_json =
+        serde_json::to_value(&pinned).expect("pinned server settings should serialize");
+    assert_eq!(pinned_json["ask"]["supervisor_model"], "openai:gpt-5.6-sol");
+    let pinned_round_trip: ApiServerSettings =
+        serde_json::from_value(pinned_json).expect("pinned server settings should deserialize");
+    assert_eq!(pinned_round_trip, pinned);
 }
 
 fn assert_same_type<T: 'static, U: 'static>() {
