@@ -11,8 +11,7 @@ use fabro_types::session_event::{
     SessionCapabilityChangedProps, SessionCreatedProps, SessionTurnStartedProps,
 };
 use fabro_types::{
-    AskFabroCapability, RunId, SessionEvent, SessionEventBody, SessionId, SessionStatus,
-    SessionSummary, SessionTurn,
+    RunId, SessionEvent, SessionEventBody, SessionId, SessionStatus, SessionSummary, SessionTurn,
 };
 use sqlx::sqlite::{Sqlite, SqliteRow};
 use sqlx::{Row as _, SqlitePool};
@@ -137,7 +136,7 @@ impl RunSessionEventStore {
     /// Record `body` as the session's next event and publish it.
     pub async fn append(
         &self,
-        run_id: RunId,
+        run_id: Option<RunId>,
         session_id: SessionId,
         body: SessionEventBody,
         ts: DateTime<Utc>,
@@ -166,7 +165,7 @@ INSERT INTO run_session_events (
         )
         .bind(session_id.to_string())
         .bind(i64::from(seq))
-        .bind(run_id.to_string())
+        .bind(run_id.map(|run_id| run_id.to_string()))
         .bind(body.turn_id().map(|turn_id| turn_id.to_string()))
         .bind(body.event_name())
         .bind(ts.timestamp_millis())
@@ -291,8 +290,11 @@ ORDER BY session_id ASC, seq ASC
     }
 
     /// The run that owns `session_id`, from the session's creation event.
-    pub async fn owner(&self, session_id: SessionId) -> Result<Option<RunId>> {
-        let run_id: Option<String> = sqlx::query_scalar(
+    ///
+    /// `Ok(None)` names no session; `Ok(Some(None))` names a runless
+    /// session (work#1677) — a seq-1 event with a NULL run id.
+    pub async fn owner(&self, session_id: SessionId) -> Result<Option<Option<RunId>>> {
+        let run_id: Option<Option<String>> = sqlx::query_scalar(
             "SELECT run_id FROM run_session_events WHERE session_id = ? AND seq = 1",
         )
         .bind(session_id.to_string())
@@ -300,9 +302,13 @@ ORDER BY session_id ASC, seq ASC
         .await?;
         run_id
             .map(|run_id| {
-                run_id.parse::<RunId>().map_err(|error| {
-                    Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
-                })
+                run_id
+                    .map(|run_id| {
+                        run_id.parse::<RunId>().map_err(|error| {
+                            Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
+                        })
+                    })
+                    .transpose()
             })
             .transpose()
     }
@@ -350,20 +356,27 @@ fn session_summary_from_row(row: &SqliteRow) -> Result<SessionSummary> {
     })?;
     let created_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "created_at_ms")?;
     let updated_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "updated_at_ms")?;
-    let run_id: String = row.try_get("run_id")?;
+    let run_id: Option<String> = row.try_get("run_id")?;
     let run_id = run_id
-        .parse::<RunId>()
-        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+        .map(|run_id| {
+            run_id.parse::<RunId>().map_err(|error| {
+                Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
+            })
+        })
+        .transpose()?;
     let created_json: String = row.try_get("created_json")?;
     let created: SessionCreatedProps = serde_json::from_str(&created_json)?;
     let capability_json: Option<String> = row.try_get("capability_json")?;
+    // The posture a flip set wins; a session that never flipped carries
+    // the posture its CREATION recorded (work#1678: a runless session is
+    // created full access), not the read-only default.
     let capability = capability_json
         .map(|json| {
             serde_json::from_str::<SessionCapabilityChangedProps>(&json)
                 .map(|props| props.capability)
         })
         .transpose()?
-        .unwrap_or(AskFabroCapability::ReadOnly);
+        .unwrap_or(created.capability);
     let turn_event: Option<String> = row.try_get("turn_event")?;
     let (status, active_turn) = match turn_event.as_deref() {
         Some("run.session.turn.started") => {
@@ -406,10 +419,14 @@ fn event_from_row(row: &SqliteRow) -> Result<SessionEvent> {
     let seq: i64 = row.try_get("seq")?;
     let seq = u32::try_from(seq)
         .map_err(|_| Error::InvalidEvent(format!("stored {RECORD_NAME} sequence {seq}")))?;
-    let run_id: String = row.try_get("run_id")?;
+    let run_id: Option<String> = row.try_get("run_id")?;
     let run_id = run_id
-        .parse::<RunId>()
-        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+        .map(|run_id| {
+            run_id.parse::<RunId>().map_err(|error| {
+                Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
+            })
+        })
+        .transpose()?;
     let ts = sqlite_row::timestamp_from_row(row, RECORD_NAME, "recorded_at_ms")?;
     let event_name: String = row.try_get("event_name")?;
     let properties_json: String = row.try_get("properties_json")?;
@@ -436,7 +453,7 @@ mod tests {
         SessionTurnFailedCode, SessionTurnFailedProps, SessionTurnStartedProps,
         SessionTurnSucceededProps, SessionUserMessageProps,
     };
-    use fabro_types::{TurnId, fixtures};
+    use fabro_types::{AskFabroCapability, TurnId, fixtures};
 
     use super::*;
     use crate::run_sessions::project_run_sessions;
@@ -445,14 +462,16 @@ mod tests {
     fn store() -> RunSessionEventStore {
         RunSessionEventStore::new(test_support::in_memory_pool_with(&[
             fabro_db::RUN_SESSION_EVENTS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_EVENTS_RUNLESS_MIGRATION_SQL,
         ]))
     }
 
     fn created() -> SessionEventBody {
         SessionEventBody::Created(SessionCreatedProps {
-            title:    Some("Ask Fabro".to_string()),
-            model:    Some("test-model".to_string()),
-            provider: None,
+            title:      Some("Ask Fabro".to_string()),
+            model:      Some("test-model".to_string()),
+            provider:   None,
+            capability: AskFabroCapability::ReadOnly,
         })
     }
 
@@ -540,11 +559,11 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2026, 9, 18, 12, 0, 0).unwrap();
 
         let first = store
-            .append(fixtures::RUN_1, session_id, created(), ts)
+            .append(Some(fixtures::RUN_1), session_id, created(), ts)
             .await
             .unwrap();
         let second = store
-            .append(fixtures::RUN_1, session_id, turn_started(turn_id), ts)
+            .append(Some(fixtures::RUN_1), session_id, turn_started(turn_id), ts)
             .await
             .unwrap();
         assert_eq!(first.seq, 1);
@@ -570,21 +589,32 @@ mod tests {
         let second = SessionId::new();
         let ts = Utc::now();
         store
-            .append(fixtures::RUN_1, first, created(), ts)
+            .append(Some(fixtures::RUN_1), first, created(), ts)
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, first, turn_started(TurnId::new()), ts)
+            .append(
+                Some(fixtures::RUN_1),
+                first,
+                turn_started(TurnId::new()),
+                ts,
+            )
             .await
             .unwrap();
         let other = store
-            .append(fixtures::RUN_2, second, created(), ts)
+            .append(Some(fixtures::RUN_2), second, created(), ts)
             .await
             .unwrap();
         assert_eq!(other.seq, 1);
 
-        assert_eq!(store.owner(first).await.unwrap(), Some(fixtures::RUN_1));
-        assert_eq!(store.owner(second).await.unwrap(), Some(fixtures::RUN_2));
+        assert_eq!(
+            store.owner(first).await.unwrap(),
+            Some(Some(fixtures::RUN_1))
+        );
+        assert_eq!(
+            store.owner(second).await.unwrap(),
+            Some(Some(fixtures::RUN_2))
+        );
         assert_eq!(store.owner(SessionId::new()).await.unwrap(), None);
 
         let run_events = store.list_for_run(fixtures::RUN_1).await.unwrap();
@@ -592,7 +622,7 @@ mod tests {
         assert!(
             run_events
                 .iter()
-                .all(|event| event.session_id == first && event.run_id == fixtures::RUN_1)
+                .all(|event| event.session_id == first && event.run_id == Some(fixtures::RUN_1))
         );
 
         assert_eq!(store.delete_for_run(fixtures::RUN_1).await.unwrap(), 2);
@@ -604,7 +634,10 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(store.owner(first).await.unwrap(), None);
-        assert_eq!(store.owner(second).await.unwrap(), Some(fixtures::RUN_2));
+        assert_eq!(
+            store.owner(second).await.unwrap(),
+            Some(Some(fixtures::RUN_2))
+        );
     }
 
     /// The explicit-delete seam (work#1535): `delete_for_session` removes
@@ -617,15 +650,20 @@ mod tests {
         let second = SessionId::new();
         let ts = Utc::now();
         store
-            .append(fixtures::RUN_1, first, created(), ts)
+            .append(Some(fixtures::RUN_1), first, created(), ts)
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, first, turn_started(TurnId::new()), ts)
+            .append(
+                Some(fixtures::RUN_1),
+                first,
+                turn_started(TurnId::new()),
+                ts,
+            )
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, second, created(), ts)
+            .append(Some(fixtures::RUN_1), second, created(), ts)
             .await
             .unwrap();
 
@@ -665,7 +703,7 @@ mod tests {
         let ts = Utc::now();
         for _ in 0..30 {
             store
-                .append(fixtures::RUN_1, SessionId::new(), created(), ts)
+                .append(Some(fixtures::RUN_1), SessionId::new(), created(), ts)
                 .await
                 .unwrap();
         }
@@ -723,7 +761,7 @@ mod tests {
             (8, turn_succeeded(rich_turn)),
         ] {
             store
-                .append(fixtures::RUN_1, rich, body, at(millis))
+                .append(Some(fixtures::RUN_1), rich, body, at(millis))
                 .await
                 .unwrap();
         }
@@ -731,11 +769,16 @@ mod tests {
         let running = SessionId::new();
         let running_turn = TurnId::new();
         store
-            .append(fixtures::RUN_1, running, created(), at(10))
+            .append(Some(fixtures::RUN_1), running, created(), at(10))
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, running, turn_started(running_turn), at(11))
+            .append(
+                Some(fixtures::RUN_1),
+                running,
+                turn_started(running_turn),
+                at(11),
+            )
             .await
             .unwrap();
 
@@ -743,12 +786,12 @@ mod tests {
         // the trailing delta frame must not move the door's `updated_at`.
         let quiet = SessionId::new();
         store
-            .append(fixtures::RUN_1, quiet, created(), at(12))
+            .append(Some(fixtures::RUN_1), quiet, created(), at(12))
             .await
             .unwrap();
         store
             .append(
-                fixtures::RUN_1,
+                Some(fixtures::RUN_1),
                 quiet,
                 assistant_delta(TurnId::new()),
                 at(100),
@@ -759,15 +802,25 @@ mod tests {
         let failed = SessionId::new();
         let failed_turn = TurnId::new();
         store
-            .append(fixtures::RUN_2, failed, created(), at(20))
+            .append(Some(fixtures::RUN_2), failed, created(), at(20))
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_2, failed, turn_started(failed_turn), at(21))
+            .append(
+                Some(fixtures::RUN_2),
+                failed,
+                turn_started(failed_turn),
+                at(21),
+            )
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_2, failed, turn_failed(failed_turn), at(22))
+            .append(
+                Some(fixtures::RUN_2),
+                failed,
+                turn_failed(failed_turn),
+                at(22),
+            )
             .await
             .unwrap();
 
@@ -845,15 +898,20 @@ mod tests {
         let newer = SessionId::new();
         let at = |hour: u32| Utc.with_ymd_and_hms(2026, 11, 20, hour, 0, 0).unwrap();
         store
-            .append(fixtures::RUN_1, older, created(), at(9))
+            .append(Some(fixtures::RUN_1), older, created(), at(9))
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, older, turn_started(TurnId::new()), at(11))
+            .append(
+                Some(fixtures::RUN_1),
+                older,
+                turn_started(TurnId::new()),
+                at(11),
+            )
             .await
             .unwrap();
         store
-            .append(fixtures::RUN_1, newer, created(), at(10))
+            .append(Some(fixtures::RUN_1), newer, created(), at(10))
             .await
             .unwrap();
 
@@ -887,7 +945,7 @@ mod tests {
         let ts = Utc.with_ymd_and_hms(2026, 11, 20, 9, 0, 0).unwrap();
         for _ in 0..4 {
             store
-                .append(fixtures::RUN_1, SessionId::new(), created(), ts)
+                .append(Some(fixtures::RUN_1), SessionId::new(), created(), ts)
                 .await
                 .unwrap();
         }
@@ -909,12 +967,12 @@ mod tests {
         let mut live = store.subscribe();
         let ts = Utc::now();
         let appended = store
-            .append(fixtures::RUN_1, session_id, created(), ts)
+            .append(Some(fixtures::RUN_1), session_id, created(), ts)
             .await
             .unwrap();
         let delta = store
             .append(
-                fixtures::RUN_1,
+                Some(fixtures::RUN_1),
                 session_id,
                 SessionEventBody::AssistantDelta(SessionAssistantDeltaProps {
                     turn_id: TurnId::new(),

@@ -10,6 +10,22 @@ invoked-only 1.0, per-run-widened anchor 0.98)). Amends ADR-0019's
 documented read-only case: the run-local read-only chat posture becomes
 the DEFAULT of a capability-stateful surface, not a permanent ceiling.
 
+**Amended 2026-11-25 (work#1677, work#1678 — ADR-0046 phase 2, grilled
+with the operator; Jev pre-screens: tools-only action path 1.00,
+read-only-default 0.96 on the original framing, operator override to
+full-access default for the runless case):** the "every NEW session
+starts read-only" default is SUPERSEDED for the runless case. A runless
+session — the global supervisor's conversation, created through
+`POST /api/v1/sessions` — starts FULL ACCESS; the capability control
+door stays, and run-scoped sessions keep the read-only default. The
+supervisor keeps its OWN context: no continuation of run-scoped
+sessions; session archaeology (search + compacted transcript load,
+work#1679) replaces scope re-anchoring. Run content access rides
+work#1680 (`fabro_run_files` + `fabro_run_diffs`). The supervisor's
+action path is the audited tool registry over the minted
+`agent:supervisor` token — no CLI shell; its pebble agent runs in the
+deny-exec environment. The phase-1 mechanics below are unchanged.
+
 ## Context
 
 Ask Fabro today is run-scoped and strictly read-only: granted exactly

@@ -31,7 +31,6 @@ import {
   unarchiveRun,
   unarchiveRuns,
   canRetry,
-  liveAnchorRunId,
   retryRun,
 } from "./run-actions";
 import { generatedAxios } from "./api-client";
@@ -637,33 +636,5 @@ describe("canRetry", () => {
     expect(canRetry("running")).toBe(false);
     expect(canRetry("succeeded")).toBe(false);
     expect(canRetry(null)).toBe(false);
-  });
-});
-
-describe("liveAnchorRunId", () => {
-  const run = (id: string, kind: string) => ({
-    id,
-    lifecycle: { status: { kind } },
-  });
-
-  test("skips terminal runs — a reaped sandbox never anchors (work#1506)", () => {
-    const runs = [
-      run("succeeded-newest", "succeeded"),
-      run("failed", "failed"),
-      run("human-needed", "human_needed"),
-      run("live", "running"),
-    ];
-    expect(liveAnchorRunId(runs)).toBe("live");
-  });
-
-  test("takes the first run when it is live", () => {
-    expect(liveAnchorRunId([run("a", "pending"), run("b", "running")])).toBe(
-      "a",
-    );
-  });
-
-  test("no live run means no anchor", () => {
-    expect(liveAnchorRunId([run("a", "succeeded")])).toBeNull();
-    expect(liveAnchorRunId([])).toBeNull();
   });
 });

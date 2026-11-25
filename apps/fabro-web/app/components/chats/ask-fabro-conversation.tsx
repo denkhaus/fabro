@@ -34,7 +34,8 @@ export default function AskFabroConversation({
   defaultModel,
   onSessionCreated,
 }: {
-  runId: string;
+  /** The run anchor, or `undefined` for a runless session (work#1678). */
+  runId?: string;
   initialSessionId: string | null;
   defaultModel?: string | null;
   onSessionCreated?: (sessionId: string) => void;

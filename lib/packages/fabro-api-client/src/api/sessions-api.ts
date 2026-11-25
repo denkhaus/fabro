@@ -24,6 +24,8 @@ import { BASE_PATH, COLLECTION_FORMATS, type RequestArgs, BaseAPI, RequiredError
 // @ts-ignore
 import type { CreateRunSessionRequest } from '../models';
 // @ts-ignore
+import type { CreateSessionRequest } from '../models';
+// @ts-ignore
 import type { ErrorResponse } from '../models';
 // @ts-ignore
 import type { PaginatedSessionEventList } from '../models';
@@ -128,6 +130,47 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
             let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
             localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
             localVarRequestOptions.data = serializeDataIfNeeded(createRunSessionRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Creates a RUNLESS Ask Fabro session (ADR-0046 phase 2, work#1677): the global supervisor\'s conversation. No run anchor — the conversation determines the context. The session starts in full access; only an authenticated user principal may create one.
+         * @summary Create runless session
+         * @param {CreateSessionRequest} createSessionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSession: async (createSessionRequest: CreateSessionRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'createSessionRequest' is not null or undefined
+            assertParamExists('createSession', 'createSessionRequest', createSessionRequest)
+            const localVarPath = `/api/v1/sessions`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(createSessionRequest, localVarRequestOptions, configuration)
 
             return {
                 url: toPathString(localVarUrlObj),
@@ -542,6 +585,19 @@ export const SessionsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Creates a RUNLESS Ask Fabro session (ADR-0046 phase 2, work#1677): the global supervisor\'s conversation. No run anchor — the conversation determines the context. The session starts in full access; only an authenticated user principal may create one.
+         * @summary Create runless session
+         * @param {CreateSessionRequest} createSessionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async createSession(createSessionRequest: CreateSessionRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<RunSessionMetadata>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.createSession(createSessionRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.createSession']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
          * @summary Delete a session
          * @param {string} id
@@ -687,6 +743,16 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.createRunSession(id, createRunSessionRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Creates a RUNLESS Ask Fabro session (ADR-0046 phase 2, work#1677): the global supervisor\'s conversation. No run anchor — the conversation determines the context. The session starts in full access; only an authenticated user principal may create one.
+         * @summary Create runless session
+         * @param {CreateSessionRequest} createSessionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSession(createSessionRequest: CreateSessionRequest, options?: RawAxiosRequestConfig): AxiosPromise<RunSessionMetadata> {
+            return localVarFp.createSession(createSessionRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Explicit deletion (work#1535): removes the session\'s events and its stored conversation record. The session disappears from the session index and its transcript is no longer reachable — unlike the conversation reset door, a deleted session is not kept readable. Requires an authenticated user principal; a worker token is refused. Deleting an unknown id answers 404.
          * @summary Delete a session
          * @param {string} id
@@ -805,6 +871,17 @@ export class SessionsApi extends BaseAPI {
      */
     public createRunSession(id: string, createRunSessionRequest: CreateRunSessionRequest, options?: RawAxiosRequestConfig) {
         return SessionsApiFp(this.configuration).createRunSession(id, createRunSessionRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Creates a RUNLESS Ask Fabro session (ADR-0046 phase 2, work#1677): the global supervisor\'s conversation. No run anchor — the conversation determines the context. The session starts in full access; only an authenticated user principal may create one.
+     * @summary Create runless session
+     * @param {CreateSessionRequest} createSessionRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public createSession(createSessionRequest: CreateSessionRequest, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).createSession(createSessionRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

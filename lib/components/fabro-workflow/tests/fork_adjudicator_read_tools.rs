@@ -37,7 +37,7 @@ fn services() -> FabroRunToolServices {
     let client = fabro_client::Client::new_no_proxy("http://127.0.0.1:1").expect("test client");
     FabroRunToolServices {
         backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     }
 }

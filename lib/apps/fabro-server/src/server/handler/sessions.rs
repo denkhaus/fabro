@@ -35,7 +35,7 @@ use fabro_types::{
 use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use lithos_llm::catalog::ProviderId;
-use pebble_coding_agent::environment::Environment;
+use pebble_coding_agent::environment::{DenyExecEnvironment, Environment};
 use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, ToolSummary};
 use pebble_coding_agent::extensions::{
     EnvContext, SystemPromptContext, SystemPromptDecision, SystemPromptTransform,
@@ -110,7 +110,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             "/runs/{run_id}/sessions",
             get(list_run_sessions).post(create_run_session),
         )
-        .route("/sessions", get(list_all_sessions))
+        .route("/sessions", get(list_all_sessions).post(create_session))
         .route(
             "/sessions/{id}",
             get(get_session)
@@ -281,12 +281,87 @@ async fn create_run_session(
     let now = Utc::now();
     let event = match append_run_session_event(
         &state,
-        run_id,
+        Some(run_id),
         session_id,
         SessionEventBody::Created(SessionCreatedProps {
-            title:    request.title,
-            model:    Some(model),
-            provider: Some(provider),
+            title:      request.title,
+            model:      Some(model),
+            provider:   Some(provider),
+            capability: AskFabroCapability::ReadOnly,
+        }),
+        now,
+    )
+    .await
+    {
+        Ok(event) => event,
+        Err(err) => return store_error(&err).into_response(),
+    };
+
+    match project_run_session(session_id, &[event]) {
+        Some(session) => (StatusCode::CREATED, Json(session.record)).into_response(),
+        None => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Session event projection failed.",
+        )
+        .into_response(),
+    }
+}
+
+/// The request body of the runless session door (work#1677): the global
+/// supervisor's conversation. A runless session starts full access —
+/// the operator grant its grill recorded (2026-11-25).
+#[derive(Debug, serde::Deserialize)]
+struct CreateSessionRequest {
+    #[serde(default)]
+    title:    Option<String>,
+    #[serde(default)]
+    model:    Option<String>,
+    #[serde(default)]
+    provider: Option<ProviderId>,
+}
+
+/// `POST /api/v1/sessions` — create a RUNLESS session (ADR-0046 phase 2,
+/// work#1678): the global supervisor's conversation. No run anchor; the
+/// conversation determines the context; the session starts in full access.
+/// Only an authenticated user principal may create one: a worker token has
+/// no standing to open a supervisor surface.
+async fn create_session(
+    _auth: RequiredUser,
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<CreateSessionRequest>,
+) -> Response {
+    let llm_result = match state.resolve_llm_client().await {
+        Ok(result) => result,
+        Err(err) => {
+            return ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to resolve LLM providers: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let eligible = llm_result.provider_ids().into_iter().collect();
+    let (provider, model) = match canonical_session_model(
+        state.catalog().as_ref(),
+        &eligible,
+        request.model.as_deref(),
+        request.provider.as_ref(),
+    ) {
+        Ok(selection) => selection,
+        Err(err) => return err.into_response(),
+    };
+
+    let session_id = SessionId::new();
+    let now = Utc::now();
+    let event = match append_run_session_event(
+        &state,
+        None,
+        session_id,
+        SessionEventBody::Created(SessionCreatedProps {
+            title:      request.title,
+            model:      Some(model),
+            provider:   Some(provider),
+            capability: AskFabroCapability::FullAccess,
         }),
         now,
     )
@@ -389,25 +464,29 @@ async fn set_session_capability(
         return Json(SessionDetail::new(session.record, session.last_seq)).into_response();
     }
     let actor_login = Some(actor.0.login.clone());
-    // The run-stream audit: appended through the server's one record door
-    // so the projector wakes and `GET /runs/{id}/events` serves it.
-    let record = PlatformRecord::SessionCapability(SessionCapabilityRecord {
-        session_id,
-        capability: request.capability,
-        actor: actor_login.clone(),
-    });
-    if let Err(err) = run_records::append(&state, run_id, record).await {
-        error!(
-            error = %err,
-            run_id = %run_id,
-            session_id = %session_id,
-            "Failed to append the session capability record"
-        );
-        return ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to record the capability change: {err}"),
-        )
-        .into_response();
+    // The run-stream audit (ADR-0046): mirrored onto the run stream ONLY
+    // when the session is run-anchored — a runless session has no run to
+    // mirror onto, and platform records are run-keyed (the events
+    // strategy). The session event below is the audit that always lands.
+    if let Some(run_id) = run_id {
+        let record = PlatformRecord::SessionCapability(SessionCapabilityRecord {
+            session_id,
+            capability: request.capability,
+            actor: actor_login.clone(),
+        });
+        if let Err(err) = run_records::append(&state, run_id, record).await {
+            error!(
+                error = %err,
+                run_id = %run_id,
+                session_id = %session_id,
+                "Failed to append the session capability record"
+            );
+            return ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to record the capability change: {err}"),
+            )
+            .into_response();
+        }
     }
     let now = Utc::now();
     let event = match append_run_session_event(
@@ -708,7 +787,7 @@ async fn interrupt_turn(
 
 async fn run_streaming_turn(
     state: Arc<AppState>,
-    run_id: RunId,
+    run_id: Option<RunId>,
     session: ProjectedRunSession,
     turn_id: TurnId,
     input: String,
@@ -736,13 +815,18 @@ async fn run_streaming_turn(
         let runtime_entry = turn_lease.entry();
         let mut slot = runtime_entry.lock_agent().await;
         if slot.agent.is_none() {
-            match build_agent(&state, run_id, &session).await {
+            let built = match run_id {
+                Some(run_id) => build_agent(&state, run_id, &session).await,
+                None => build_runless_agent(&state, &session).await,
+            };
+            match built {
                 Ok(built) => {
                     slot.agent = Some(built.agent);
-                    slot.guard = Some(built.guard);
+                    slot.guard = built.guard;
                 }
                 Err(err) => {
-                    error!(error = ?err, session_id = %session_id, turn_id = %turn_id, "Failed to build run-backed session runtime");
+                    let shape = if run_id.is_some() { "run-backed" } else { "runless" };
+                    error!(error = ?err, session_id = %session_id, turn_id = %turn_id, session_shape = shape, "Failed to build session runtime");
                     let _ = append_and_send_event(
                         &state,
                         &sender,
@@ -768,23 +852,28 @@ async fn run_streaming_turn(
             .expect("session runtime slot should be loaded");
         let cancel_token = CancellationToken::new();
         turn_lease.attach_cancel_token(&cancel_token);
-        let model_input = match state.load_run_projection(&run_id).await {
-            Ok(projection) => {
-                let snapshot = build_ask_fabro_run_snapshot(&projection, run_id);
-                build_ask_fabro_turn_input(&input, &snapshot)
-            }
-            Err(err) => {
-                warn!(
-                    error = err.detail(),
-                    session_id = %session_id,
-                    turn_id = %turn_id,
-                    "Failed to build Ask Fabro run snapshot"
-                );
-                let snapshot = format!(
-                    "Run ID: {run_id}\nRun snapshot unavailable: failed to load current run projection."
-                );
-                build_ask_fabro_turn_input(&input, &snapshot)
-            }
+        let model_input = match run_id {
+            Some(run_id) => match state.load_run_projection(&run_id).await {
+                Ok(projection) => {
+                    let snapshot = build_ask_fabro_run_snapshot(&projection, run_id);
+                    build_ask_fabro_turn_input(&input, &snapshot)
+                }
+                Err(err) => {
+                    warn!(
+                        error = err.detail(),
+                        session_id = %session_id,
+                        turn_id = %turn_id,
+                        "Failed to build Ask Fabro run snapshot"
+                    );
+                    let snapshot = format!(
+                        "Run ID: {run_id}\nRun snapshot unavailable: failed to load current run projection."
+                    );
+                    build_ask_fabro_turn_input(&input, &snapshot)
+                }
+            },
+            // A runless supervisor turn carries no run snapshot: the
+            // conversation determines the context (work#1677).
+            None => input,
         };
         let mut output = None;
         let result = Box::pin(drive_agent(
@@ -932,7 +1021,122 @@ impl AskFabroBuildError {
 /// sandbox again when it ends.
 struct BuiltSessionAgent {
     agent: CodingAgent,
-    guard: sandbox_access::InspectionSandbox,
+    /// The sandbox liveness guard. `None` for a runless session (work#1677):
+    /// the supervisor attaches no sandbox at all.
+    guard: Option<sandbox_access::InspectionSandbox>,
+}
+
+/// The Ask Fabro agent for a RUNLESS session (work#1677): the global
+/// supervisor. No run projection, no sandbox — the agent runs in the
+/// deny-exec environment and acts purely through its platform tools over
+/// the minted supervisor token. A runless session starts full access
+/// (the operator grant its grill recorded, 2026-11-25).
+async fn build_runless_agent(
+    state: &AppState,
+    session: &ProjectedRunSession,
+) -> Result<BuiltSessionAgent, AskFabroBuildError> {
+    let catalog = state.catalog();
+    let llm_result = state.resolve_llm_client().await.map_err(|err| {
+        AskFabroBuildError::LlmUnconfigured(format!("LLM credentials are not configured: {err}"))
+    })?;
+    for (provider, issue) in &llm_result.auth_issues {
+        warn!(provider = %provider, error = %issue, "LLM provider unavailable due to auth issue");
+    }
+    for issue in &llm_result.build_issues {
+        warn!(provider = %issue.provider, error = %issue.cause, "LLM provider unavailable due to build issue");
+    }
+    let (provider_id, model) = selected_session_model(&catalog, &llm_result, session)?;
+    if !llm_result.has_provider(&provider_id) {
+        let message = format!("LLM credentials not configured for provider '{provider_id}'");
+        return if session.record.model.is_some() {
+            Err(AskFabroBuildError::ModelUnavailable(message))
+        } else {
+            Err(AskFabroBuildError::LlmUnconfigured(message))
+        };
+    }
+
+    // The supervisor token: the supervisor scope is what the run-scoped
+    // guards read, and it accepts ANY run — the token's run_id claim is a
+    // fresh throwaway id that names no real run. Strict-equality worker
+    // doors can never match it, so the sentinel grants nothing beyond the
+    // scope the grill's capability decision already carries.
+    let worker_token = issue_worker_token_with_scopes(
+        state.worker_token_keys(),
+        &RunId::new(),
+        WorkerScopeSet::run_worker_supervisor(),
+    )
+    .map_err(|_| AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token")))?;
+    let target = state
+        .self_server_target()
+        .map_err(AskFabroBuildError::Agent)?;
+    let api_client = fabro_client::Client::builder()
+        .target(target)
+        .credential(fabro_client::Credential::Worker(worker_token))
+        .connect()
+        .await
+        .map_err(AskFabroBuildError::Agent)?;
+    // The backend is never run-scoped: the supervisor reaches every run.
+    let backend = ClientBackend::new(Arc::new(api_client));
+    let services = FabroRunToolServices {
+        backend:        Arc::new(backend),
+        // No ambient anchor: a runless session's tools take explicit run
+        // selectors.
+        current_run_id: None,
+        stage:          None,
+    };
+    let mut tool_names = ASK_FABRO_RUN_TOOL_NAMES.to_vec();
+    tool_names.extend_from_slice(ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES);
+    let mut ask_tools = register_named_fabro_run_tools(&services, &tool_names);
+    ask_tools.push(super::fork_ask_docs::docs_tool());
+    let selector = format!("{provider_id}/{model}");
+
+    let stored = state
+        .stores
+        .session_records
+        .get(session.record.id)
+        .await
+        .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
+    let builder = match stored {
+        Some(stored) => {
+            let mut record = stored.record;
+            if let Ok(Some(last_seq)) = state
+                .stores
+                .session_events
+                .last_seq(session.record.id)
+                .await
+            {
+                record.resume_after(u64::from(last_seq));
+            }
+            CodingAgent::resume(
+                llm_result.client,
+                Arc::new(DenyExecEnvironment::new("/ask-fabro-supervisor")),
+                record,
+                ResumeMode::RecordedModel,
+            )
+        }
+        None => CodingAgent::builder(
+            llm_result.client,
+            Arc::new(DenyExecEnvironment::new("/ask-fabro-supervisor")),
+        )
+        .model(selector)
+        .options(CodingAgentOptions::default().with_context_compaction(true)),
+    };
+    let agent = builder
+        .tools(ask_tools)
+        .tool_middleware(Arc::new(PermissionMiddleware::new(Arc::new(
+            AskFabroToolPolicy {
+                capability: session.record.capability,
+            },
+        ))))
+        .system_prompt_transform(Arc::new(AskFabroPrompt {
+            capability: session.record.capability,
+            runless:    true,
+        }))
+        .redactor(Arc::new(SecretRedactor))
+        .build()
+        .await
+        .map_err(|err| AskFabroBuildError::Agent(anyhow::Error::new(err)))?;
+    Ok(BuiltSessionAgent { agent, guard: None })
 }
 
 /// The Ask Fabro agent for `session`: resumed from its stored record when a
@@ -989,12 +1193,12 @@ async fn build_agent(
     let guard = if projection.is_terminal() {
         // The eviction stop serializes through the run's gate against
         // access-time windows (fabro-2c17).
-        sandbox_access::InspectionSandbox::terminal(
+        Some(sandbox_access::InspectionSandbox::terminal(
             Arc::clone(&handle),
             Some(sandbox_access::run_sandbox_gate(&run_id)),
-        )
+        ))
     } else {
-        sandbox_access::InspectionSandbox::live(Arc::clone(&handle))
+        Some(sandbox_access::InspectionSandbox::live(Arc::clone(&handle)))
     };
     let environment: Arc<dyn Environment> = Arc::new(
         SandboxEnvironment::attach(handle, &sandbox_instance.runtime.working_directory)
@@ -1040,7 +1244,7 @@ async fn build_agent(
     }
     let services = FabroRunToolServices {
         backend:        Arc::new(backend),
-        current_run_id: run_id,
+        current_run_id: Some(run_id),
         // An Ask Fabro session serves no workflow stage: the observation
         // recorder refuses there (ADR-0038), so it is not in the ask set
         // either.
@@ -1102,7 +1306,10 @@ async fn build_agent(
         .tool_middleware(Arc::new(PermissionMiddleware::new(Arc::new(
             AskFabroToolPolicy { capability },
         ))))
-        .system_prompt_transform(Arc::new(AskFabroPrompt { capability }))
+        .system_prompt_transform(Arc::new(AskFabroPrompt {
+            capability,
+            runless: false,
+        }))
         .redactor(Arc::new(SecretRedactor))
         .build()
         .await
@@ -1304,18 +1511,27 @@ pub(super) fn ask_fabro_allows_tool(tool_name: &str, capability: AskFabroCapabil
 
 /// The Ask Fabro system prompt, capability-stateful (ADR-0046): read-only
 /// keeps the analyst contract; full access replaces it with the supervisor
-/// prompt, which mandates the in-turn soft confirm before `run_merge`.
+/// prompt, which mandates the in-turn soft confirm before `run_merge`. A
+/// runless supervisor (work#1677) gets the global variant: no "this run is
+/// your default anchor" clause — the conversation determines the context.
 struct AskFabroPrompt {
     capability: AskFabroCapability,
+    runless:    bool,
 }
 
 impl SystemPromptTransform for AskFabroPrompt {
     fn transform(&self, context: SystemPromptContext<'_>) -> SystemPromptDecision {
-        let prompt = match self.capability {
-            AskFabroCapability::ReadOnly => {
+        let prompt = match (self.capability, self.runless) {
+            (AskFabroCapability::ReadOnly, _) => {
                 build_ask_fabro_system_prompt(context.environment(), context.tools())
             }
-            AskFabroCapability::FullAccess => {
+            (AskFabroCapability::FullAccess, true) => {
+                build_ask_fabro_supervisor_global_system_prompt(
+                    context.environment(),
+                    context.tools(),
+                )
+            }
+            (AskFabroCapability::FullAccess, false) => {
                 build_ask_fabro_supervisor_system_prompt(context.environment(), context.tools())
             }
         };
@@ -1403,6 +1619,22 @@ pub(super) fn build_ask_fabro_supervisor_system_prompt(
     render_ask_fabro_prompt(
         "ask_fabro_supervisor.md.j2",
         ASK_FABRO_SUPERVISOR_PROMPT,
+        environment,
+        tools,
+        AskFabroCapability::FullAccess,
+    )
+}
+
+const ASK_FABRO_SUPERVISOR_GLOBAL_PROMPT: &str =
+    include_str!("prompts/ask_fabro_supervisor_global.md.j2");
+
+pub(super) fn build_ask_fabro_supervisor_global_system_prompt(
+    environment: &EnvContext,
+    tools: &[ToolSummary],
+) -> String {
+    render_ask_fabro_prompt(
+        "ask_fabro_supervisor_global.md.j2",
+        ASK_FABRO_SUPERVISOR_GLOBAL_PROMPT,
         environment,
         tools,
         AskFabroCapability::FullAccess,
@@ -1509,7 +1741,7 @@ User question:
 async fn drive_agent(
     state: &AppState,
     agent: &mut CodingAgent,
-    run_id: RunId,
+    run_id: Option<RunId>,
     session_id: SessionId,
     turn_id: TurnId,
     input: &str,
@@ -1589,7 +1821,7 @@ fn agent_failure_code(err: &AgentError) -> SessionTurnFailedCode {
 
 async fn persist_agent_event(
     state: &AppState,
-    run_id: RunId,
+    run_id: Option<RunId>,
     session_id: SessionId,
     turn_id: TurnId,
     event: CodingAgentEvent,
@@ -1666,7 +1898,7 @@ fn agent_event_payload(event_turn_id: TurnId, event: CodingEvent) -> Option<Sess
 async fn append_and_send_event(
     state: &AppState,
     sender: &SessionSseSender,
-    run_id: RunId,
+    run_id: Option<RunId>,
     session_id: SessionId,
     body: SessionEventBody,
     ts: DateTime<Utc>,
@@ -1678,7 +1910,7 @@ async fn append_and_send_event(
 
 async fn append_run_session_event(
     state: &AppState,
-    run_id: RunId,
+    run_id: Option<RunId>,
     session_id: SessionId,
     body: SessionEventBody,
     ts: DateTime<Utc>,
@@ -1715,11 +1947,12 @@ async fn send_attach_sse_event(
     }
 }
 
-/// The session as its events describe it, with the run that owns it.
+/// The session as its events describe it, with the run that anchors it —
+/// `None` for a runless session (work#1677).
 async fn load_session(
     state: &AppState,
     session_id: SessionId,
-) -> Result<(RunId, ProjectedRunSession), Response> {
+) -> Result<(Option<RunId>, ProjectedRunSession), Response> {
     let run_id = load_session_owner(state, session_id).await?;
     let events = state
         .stores
@@ -1733,10 +1966,15 @@ async fn load_session(
     }
 }
 
-/// The run that owns `session_id`, from the session's creation event.
-async fn load_session_owner(state: &AppState, session_id: SessionId) -> Result<RunId, Response> {
+/// The run that anchors `session_id`, from the session's creation event.
+/// `Ok(None)` names a runless session; a session with no creation event
+/// 404s.
+async fn load_session_owner(
+    state: &AppState,
+    session_id: SessionId,
+) -> Result<Option<RunId>, Response> {
     match state.stores.session_events.owner(session_id).await {
-        Ok(Some(run_id)) => Ok(run_id),
+        Ok(Some(owner)) => Ok(owner),
         Ok(None) => Err(ApiError::not_found("Session not found.").into_response()),
         Err(err) => Err(store_error(&err).into_response()),
     }
@@ -2322,6 +2560,13 @@ mod resume_tests {
             .unwrap()
     }
 
+    fn get_json(path: &str) -> Request<Body> {
+        Request::builder()
+            .uri(api(path))
+            .body(Body::empty())
+            .unwrap()
+    }
+
     /// A server whose `openai` provider is the twin under `namespace`, whose
     /// runs execute in place, and whose own address Ask Fabro can resolve.
     fn twin_backed_state(base_url: String, namespace: &str) -> Arc<AppState> {
@@ -2470,7 +2715,7 @@ mod resume_tests {
         state
             .stores
             .session_records
-            .put(session_id, run_id, &older, chrono::Utc::now())
+            .put(session_id, Some(run_id), &older, chrono::Utc::now())
             .await
             .unwrap();
         state
@@ -2635,7 +2880,7 @@ mod resume_tests {
         state
             .stores
             .session_records
-            .put(session_id, run_id, &stale, chrono::Utc::now())
+            .put(session_id, Some(run_id), &stale, chrono::Utc::now())
             .await
             .unwrap();
         state
@@ -2700,5 +2945,81 @@ mod resume_tests {
             .find("User question: Second question")
             .expect("the resumed turn ends with the second question");
         assert!(first_at < second_at, "got {}", turns[1]);
+    }
+
+    /// The runless door (work#1678): `POST /api/v1/sessions` creates a
+    /// session with NO run anchor that starts full access, a turn succeeds
+    /// end to end with the supervisor registry, every wire frame carries a
+    /// null run_id, and the global index lists the conversation with its
+    /// null anchor.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_runless_session_starts_full_access_and_turns_without_a_run() {
+        let twin = twin_openai().await;
+        let namespace = format!("{}::{}", module_path!(), line!());
+        TwinScenarios::new(namespace.clone())
+            .scenario(
+                TwinScenario::responses(MODEL)
+                    .input_contains("Status check")
+                    .text("Supervisor answer"),
+            )
+            .load(twin)
+            .await;
+        let state = twin_backed_state(twin.base_url.clone(), &namespace);
+        spawn_scheduler(Arc::clone(&state));
+        let app = build_test_router(Arc::clone(&state));
+
+        let created = json_response(
+            &app,
+            post_json("/sessions", &serde_json::json!({"title": "Global"})),
+            StatusCode::CREATED,
+        )
+        .await;
+        assert_eq!(
+            created["run_id"],
+            serde_json::Value::Null,
+            "a runless session carries no run anchor: {created}"
+        );
+        assert_eq!(
+            created["capability"], "full_access",
+            "a runless session starts full access: {created}"
+        );
+        let session_id: SessionId = created["id"].as_str().unwrap().parse().unwrap();
+
+        let events = turn(&app, session_id, "Status check").await;
+        assert!(
+            events.iter().all(|event| event["run_id"].is_null()),
+            "every frame of a runless turn carries a null run_id: {events:#?}"
+        );
+
+        // The durable record persists with no run anchor.
+        let stored = state
+            .stores
+            .session_records
+            .get(session_id)
+            .await
+            .unwrap()
+            .expect("the turn persists the record");
+        assert_eq!(stored.run_id, None);
+
+        // The global index lists the conversation with its null anchor.
+        let list = json_response(&app, get_json("/sessions"), StatusCode::OK).await;
+        let mine = list["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|session| session["id"] == created["id"])
+            .expect("the index lists the runless session");
+        assert_eq!(mine["run_id"], serde_json::Value::Null);
+        assert_eq!(mine["capability"], "full_access");
+
+        // The anchor read door names the session runless, not missing.
+        let owner = state
+            .stores
+            .session_events
+            .owner(session_id)
+            .await
+            .unwrap()
+            .expect("the session exists");
+        assert_eq!(owner, None, "a runless session owns no run");
     }
 }

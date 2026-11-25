@@ -53,18 +53,18 @@ imported = "2026-11-21"
 vendor = "vendor/pebble"
 fork = "denkhaus/pebble"
 branch = "fabro"
-fork_sha = "47a036fd600452d3a75d9b1ad77953947419d07e"
+fork_sha = "381d9d0a7398349d09493b3454d310d86e0539ef"
 upstream = "lithoscomputer/pebble"
 upstream_sha = "65a3bab8b35f4ce46ef0742599511a331de5885b"
-tree_sha = "6b35a3102b84a8fa424b1119338cd58e673f6b00"
-content_sha256 = "c8e8277ad9fae8995c85d27f5c16634d7af3ba866a5bc0193d34ee61e82bf351"
-files = 526
+tree_sha = "91c8c565ebad1cb4c533c1c91f1b295ae90d4e86"
+content_sha256 = "8fed5f5e6fe3715da8e2ef00422cd367b83a1b8f63151f310fee1c67abb42946"
+files = 527
 crates = [
     "pebble-agent",
     "pebble-cli-core",
     "pebble-coding-agent",
 ]
-imported = "2026-10-24"
+imported = "2026-11-25"
 [sandbox-driver]
 vendor = "vendor/sandbox-driver"
 fork = "denkhaus/sandbox-driver"

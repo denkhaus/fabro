@@ -24,14 +24,14 @@ import type { SessionStatus } from './session-status';
 import type { SessionTurn } from './session-turn';
 
 /**
- * Ask Fabro session metadata derived from the owning run event stream.
+ * Ask Fabro session metadata derived from the owning run event stream. `run_id` is null for a runless session (work#1677) — the global supervisor\'s conversation carries no run anchor.
  */
 export interface RunSessionMetadata {
     /**
      * Durable session identifier.
      */
     'id': string;
-    'run_id': string;
+    'run_id': string | null;
     'title'?: string | null;
     'status': SessionStatus;
     /**

@@ -120,7 +120,7 @@ impl FabroToolBackend for PinBackend {
 fn named_registry_resolves_run_wait_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_RUN_WAIT_TOOL_NAME]);
@@ -182,7 +182,7 @@ fn run_wait_validation_rejects_blank_run_id_and_zero_timeout() {
 fn named_registry_resolves_fabro_blob_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_BLOB_TOOL_NAME]);

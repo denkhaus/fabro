@@ -24,14 +24,14 @@ import type { SessionStatus } from './session-status';
 import type { SessionTurn } from './session-turn';
 
 /**
- * Session metadata plus the sequence number of the session\'s latest event. The conversation itself is held by the server\'s durable session record and is not returned over the API.
+ * Session metadata plus the sequence number of the session\'s latest event. The conversation itself is held by the server\'s durable session record and is not returned over the API. `run_id` is null for a runless session (work#1677).
  */
 export interface SessionDetail {
     /**
      * Durable session identifier.
      */
     'id': string;
-    'run_id': string;
+    'run_id': string | null;
     'title'?: string | null;
     'status': SessionStatus;
     /**

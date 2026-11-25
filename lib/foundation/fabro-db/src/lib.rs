@@ -103,6 +103,18 @@ pub const RUN_SESSION_RECORDS_MIGRATION_SQL: &str =
 pub const RUN_SESSION_EVENTS_MIGRATION_SQL: &str =
     include_str!("../migrations/2026091802_run_session_events.sql");
 
+/// The runless-session rebuild of `run_session_records` (work#1677): the
+/// table rebuilt with `run_id` nullable. Install AFTER
+/// [`RUN_SESSION_RECORDS_MIGRATION_SQL`].
+pub const RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026112501_run_session_records_runless.sql");
+
+/// The runless-session rebuild of `run_session_events` (work#1677): the
+/// table rebuilt with `run_id` nullable. Install AFTER
+/// [`RUN_SESSION_EVENTS_MIGRATION_SQL`].
+pub const RUN_SESSION_EVENTS_RUNLESS_MIGRATION_SQL: &str =
+    include_str!("../migrations/2026112502_run_session_events_runless.sql");
+
 /// The Petri run record migration (`petri_runs`, `petri_records`), exposed
 /// so fixtures in other crates can install the production schema without a
 /// filesystem path into this crate.

@@ -5,7 +5,7 @@ import { useSWRConfig } from "swr";
 import AskFabroConversation from "../components/chats/ask-fabro-conversation";
 import { useToast } from "../components/toast";
 import { EmptyState } from "../components/state";
-import { useAskSessionIndex, useLatestRunId } from "../lib/queries";
+import { useAskSessionIndex } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
 import { deleteAskSession } from "../lib/ask-index";
 import { formatRelativeTime } from "../lib/format";
@@ -17,9 +17,10 @@ import { formatRelativeTime } from "../lib/format";
  * The left column is the resume picker over the server-side session index
  * (every conversation across runs, per-run docked ones included); picking
  * one resumes it with its full transcript. "New conversation" is the reset
- * door: a fresh session starts read-only and the old one stays readable.
- * Each row also carries a per-session delete affordance (work#1535): one
- * click deletes the conversation server-side and drops it from the list.
+ * door: a fresh RUNLESS session starts (work#1678, full access — the
+ * supervisor grant) and the old one stays readable. Each row also carries
+ * a per-session delete affordance (work#1535): one click deletes the
+ * conversation server-side and drops it from the list.
  */
 export const handle = { hideHeader: true, fullHeight: true, wide: true };
 
@@ -112,7 +113,7 @@ export default function Ask() {
                       {title}
                     </span>
                     <span className="mt-0.5 block truncate font-mono text-xs text-fg-muted">
-                      {session.run_id}
+                      {session.run_id ?? "global"}
                       {session.capability === "full_access" ? " · supervisor" : ""}
                     </span>
                     <span className="block text-xs text-fg-muted">
@@ -143,7 +144,7 @@ export default function Ask() {
         ) : selected ? (
           <AskFabroConversation
             key={selected.id}
-            runId={selected.run_id}
+            runId={selected.run_id ?? undefined}
             initialSessionId={selected.id}
           />
         ) : (
@@ -159,31 +160,14 @@ export default function Ask() {
   );
 }
 
-/** A brand-new global conversation anchors to the newest live run — the
- * page itself carries no run; the conversation determines the context. */
+/** A brand-new global conversation is RUNLESS (work#1678, ADR-0046 phase
+ * 2): the page itself carries no run and the session door needs no anchor —
+ * the conversation determines the context, the supervisor registry the
+ * reach. */
 function FreshConversation() {
-  const latestRun = useLatestRunId();
-  if (latestRun.isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center px-4 text-sm text-fg-3">
-        Starting conversation…
-      </div>
-    );
-  }
-  if (!latestRun.data) {
-    return (
-      <div className="flex h-full items-center justify-center p-8">
-        <EmptyState
-          title="No live run to anchor to — a conversation needs a run with a live sandbox."
-          action={null}
-        />
-      </div>
-    );
-  }
   return (
     <AskFabroConversation
-      key={`new-${latestRun.data}`}
-      runId={latestRun.data}
+      key="new-runless"
       initialSessionId={null}
     />
   );
