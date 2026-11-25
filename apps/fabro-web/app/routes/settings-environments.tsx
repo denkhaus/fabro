@@ -67,7 +67,8 @@ const NEW_BUTTON_CLASS =
 // environment's lifetime. `local` is never offered (it's reserved/in-memory).
 function NewEnvironmentMenu() {
   const { data } = useServerSettings();
-  const providers = data ? creatableProviders(data.server.sandbox.providers) : [];
+  // The wire wraps the provider map in `entries` (work#1685 net).
+  const providers = data ? creatableProviders(data.server.sandbox.providers.entries) : [];
 
   if (providers.length === 0) {
     return (
