@@ -7,7 +7,12 @@ import { useToast } from "../components/toast";
 import { EmptyState } from "../components/state";
 import { useAskSessionIndex } from "../lib/queries";
 import { queryKeys } from "../lib/query-keys";
-import { deleteAskSession } from "../lib/ask-index";
+import {
+  deleteAskSession,
+  recallAskSessionId,
+  rememberAskSessionId,
+  restoreAskSelection,
+} from "../lib/ask-index";
 import { formatRelativeTime } from "../lib/format";
 
 /**
@@ -35,9 +40,13 @@ export default function Ask() {
   const { push } = useToast();
 
   const sessions = index.data ?? [];
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected =
-    sessions.find((session) => session.id === selectedId) ?? null;
+  // The last-active conversation (work#1686): the browser names the
+  // candidate, the index decides whether it still exists — a deleted
+  // memory falls back to the most recently updated session.
+  const [selectedId, setSelectedId] = useState<string | null>(() =>
+    recallAskSessionId(),
+  );
+  const selected = restoreAskSelection(selectedId, sessions);
 
   // Explicit deletion (work#1535): confirm-less by demand — the door
   // removes the session server-side, the refetched index drops the row.
@@ -99,6 +108,7 @@ export default function Ask() {
                     onClick={() => {
                       setFresh(false);
                       setSelectedId(session.id);
+                      rememberAskSessionId(session.id);
                     }}
                     className="min-w-0 flex-1 rounded-md px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-teal-500"
                   >
@@ -140,7 +150,9 @@ export default function Ask() {
       </aside>
       <div className="min-h-0 flex-1">
         {fresh ? (
-          <FreshConversation />
+          <FreshConversation
+            onSessionCreated={(sessionId) => rememberAskSessionId(sessionId)}
+          />
         ) : selected ? (
           <AskFabroConversation
             key={selected.id}
@@ -163,12 +175,16 @@ export default function Ask() {
 /** A brand-new global conversation is RUNLESS (work#1678, ADR-0046 phase
  * 2): the page itself carries no run and the session door needs no anchor —
  * the conversation determines the context, the supervisor registry the
- * reach. */
-function FreshConversation() {
+ * reach. The session it creates on its first turn becomes the remembered
+ * one (work#1686), so leaving and returning restores it. */
+function FreshConversation({ onSessionCreated }: {
+  onSessionCreated?: (sessionId: string) => void;
+}) {
   return (
     <AskFabroConversation
       key="new-runless"
       initialSessionId={null}
+      onSessionCreated={onSessionCreated}
     />
   );
 }
