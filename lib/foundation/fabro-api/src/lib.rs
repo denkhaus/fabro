@@ -76,14 +76,15 @@ pub mod types {
         SandboxInfo, SandboxListMeta, SandboxListResponse, SandboxProviderKind,
         SandboxProviderLookupError, SandboxService, SandboxServiceListResponse, SecretMetadata,
         SecretType, ServerSettings, SessionDetail, SessionEvent, SessionEventBody, SessionId,
-        SessionStatus, SessionSummary, SessionTurn, SetSessionCapabilityRequest,
-        SkillActivationSource, SkillSummary, StageCompletion, StageContextWindow,
-        StageContextWindowUnavailableReason, StageHandler, StageId, StageInferenceProjection,
-        StageModelUsage, StageOutcome, StageProjection, StageState, StageToolBatchProjection,
-        SystemActorKind, SystemIntegrationStatus, SystemIntegrationsResponse, TodoListProjection,
-        ToolCategory, ToolSource, ToolSummary, TurnId, UpdateVariableRequest, UserPrincipal,
-        Variable, VariableListResponse, WorkItemComment, WorkflowPath, WorkflowSettings,
-        WorkflowVersion, WorkflowVersionId,
+        SessionStatus, SessionSummary, SessionTranscript, SessionTranscriptBudget,
+        SessionTranscriptMessage, SessionTranscriptRole, SessionTranscriptToolCalls, SessionTurn,
+        SetSessionCapabilityRequest, SkillActivationSource, SkillSummary, StageCompletion,
+        StageContextWindow, StageContextWindowUnavailableReason, StageHandler, StageId,
+        StageInferenceProjection, StageModelUsage, StageOutcome, StageProjection, StageState,
+        StageToolBatchProjection, SystemActorKind, SystemIntegrationStatus,
+        SystemIntegrationsResponse, TodoListProjection, ToolCategory, ToolSource, ToolSummary,
+        TurnId, UpdateVariableRequest, UserPrincipal, Variable, VariableListResponse,
+        WorkItemComment, WorkflowPath, WorkflowSettings, WorkflowVersion, WorkflowVersionId,
     };
     pub use lithos_llm::catalog::{ModelHandle, ProviderId};
     pub use lithos_llm::types::{

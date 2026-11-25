@@ -939,6 +939,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/sessions/search:
+    get:
+      operationId: searchSessions
+      tags: [Sessions]
+      summary: Search Ask Fabro sessions
+      description: >-
+        The session archaeology search door (ADR-0046 phase 2, work#1679):
+        finds sessions whose run anchor, title, or event text matches a
+        plain keyword, so a supervisor can locate "the conversation someone
+        had about run X". Matching is a case-insensitive substring over the
+        run id, the session title, and the recorded user and assistant
+        message text. An authenticated user principal or a worker token
+        with the supervisor capability may call it.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The search keyword; matched as a case-insensitive substring.
+          schema:
+            type: string
+            minLength: 1
+        - name: page[limit]
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: page[offset]
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Matching sessions in last-activity order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedSessionList"
+        "400":
+          description: Invalid input
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/sessions/{id}:
     parameters:
       - name: id
@@ -1079,6 +1130,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedSessionEventList"
+        "404":
+          description: Session not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/sessions/{id}/transcript:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/SessionId"
+    get:
+      operationId: readSessionTranscript
+      tags: [Sessions]
+      summary: Read a compacted session transcript
+      description: >-
+        The session archaeology read door (ADR-0046 phase 2, work#1679):
+        one session's transcript folded server-side into user and
+        assistant messages — the same fold the frontend replay uses, with
+        tool-call noise summarized as counts. `max_tokens` caps the
+        transcript: messages are included whole, in order, until the
+        budget (estimated at four characters per token) is exhausted;
+        the remainder is dropped and counted. An authenticated user
+        principal or a worker token with the supervisor capability may
+        call it.
+      parameters:
+        - name: max_tokens
+          in: query
+          schema:
+            type: integer
+            default: 4000
+            minimum: 200
+            maximum: 50000
+      responses:
+        "200":
+          description: The compacted transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTranscript"
+        "400":
+          description: Invalid input
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Session not found
           headers:
@@ -11235,6 +11341,117 @@ components:
           format: date-time
         last_seq:
           type: integer
+          minimum: 0
+
+    SessionTranscript:
+      description: >-
+        One session's compacted transcript (ADR-0046 phase 2, work#1679):
+        the recorded events folded server-side into user and assistant
+        messages, with the session's tool calls summarized as counts and
+        the token budget applied. A runless session's `run_id` is null.
+      type: object
+      required:
+        - session_id
+        - run_id
+        - title
+        - messages
+        - tool_calls
+        - budget
+      properties:
+        session_id:
+          $ref: "#/components/schemas/SessionId"
+        run_id:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionTranscriptMessage"
+        tool_calls:
+          $ref: "#/components/schemas/SessionTranscriptToolCalls"
+        budget:
+          $ref: "#/components/schemas/SessionTranscriptBudget"
+
+    SessionTranscriptMessage:
+      description: One folded transcript message, in transcript order.
+      type: object
+      required:
+        - role
+        - text
+        - seq
+        - ts
+      properties:
+        role:
+          $ref: "#/components/schemas/SessionTranscriptRole"
+        text:
+          type: string
+        seq:
+          type: integer
+          description: The sequence number of the event the message folded from.
+          minimum: 1
+        ts:
+          type: string
+          format: date-time
+
+    SessionTranscriptRole:
+      description: Which side of the conversation a transcript message holds.
+      type: string
+      enum:
+        - user
+        - assistant
+
+    SessionTranscriptToolCalls:
+      description: >-
+        The session's tool-call noise, summarized: every recorded call
+        counted per tool name, with the error count beside it.
+      type: object
+      required:
+        - total
+        - errors
+        - by_tool
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        errors:
+          type: integer
+          minimum: 0
+        by_tool:
+          type: object
+          description: Call count per tool name.
+          additionalProperties:
+            type: integer
+            minimum: 0
+
+    SessionTranscriptBudget:
+      description: >-
+        How the token budget was applied to the transcript: the cap, the
+        estimated spend of the messages kept, and what was dropped when
+        the cap cut the transcript short.
+      type: object
+      required:
+        - max_tokens
+        - used_tokens
+        - truncated
+        - omitted_messages
+        - omitted_tool_calls
+      properties:
+        max_tokens:
+          type: integer
+          minimum: 1
+        used_tokens:
+          type: integer
+          description: Estimated tokens (four characters per token) of the messages kept.
+          minimum: 0
+        truncated:
+          type: boolean
+        omitted_messages:
+          type: integer
+          minimum: 0
+        omitted_tool_calls:
+          type: integer
+          description: Tool calls in the dropped transcript tail.
           minimum: 0
 
     CreateRunSessionRequest:

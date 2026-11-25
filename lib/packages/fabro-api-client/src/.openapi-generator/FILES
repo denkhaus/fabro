@@ -551,6 +551,11 @@ models/session-event-name.ts
 models/session-event.ts
 models/session-status.ts
 models/session-summary.ts
+models/session-transcript-budget.ts
+models/session-transcript-message.ts
+models/session-transcript-role.ts
+models/session-transcript-tool-calls.ts
+models/session-transcript.ts
 models/session-turn.ts
 models/set-session-capability-request.ts
 models/skill-activation-source.ts

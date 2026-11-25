@@ -38,6 +38,8 @@ import type { SessionDetail } from '../models';
 // @ts-ignore
 import type { SessionEvent } from '../models';
 // @ts-ignore
+import type { SessionTranscript } from '../models';
+// @ts-ignore
 import type { SetSessionCapabilityRequest } from '../models';
 // @ts-ignore
 import type { SubmitTurnRequest } from '../models';
@@ -458,6 +460,104 @@ export const SessionsApiAxiosParamCreator = function (configuration?: Configurat
             };
         },
         /**
+         * The session archaeology read door (ADR-0046 phase 2, work#1679): one session\'s transcript folded server-side into user and assistant messages — the same fold the frontend replay uses, with tool-call noise summarized as counts. `max_tokens` caps the transcript: messages are included whole, in order, until the budget (estimated at four characters per token) is exhausted; the remainder is dropped and counted. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Read a compacted session transcript
+         * @param {string} id
+         * @param {number} [maxTokens]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionTranscript: async (id: string, maxTokens?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('readSessionTranscript', 'id', id)
+            const localVarPath = `/api/v1/sessions/{id}/transcript`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (maxTokens !== undefined) {
+                localVarQueryParameter['max_tokens'] = maxTokens;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * The session archaeology search door (ADR-0046 phase 2, work#1679): finds sessions whose run anchor, title, or event text matches a plain keyword, so a supervisor can locate \"the conversation someone had about run X\". Matching is a case-insensitive substring over the run id, the session title, and the recorded user and assistant message text. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Search Ask Fabro sessions
+         * @param {string} q The search keyword; matched as a case-insensitive substring.
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSessions: async (q: string, pageLimit?: number, pageOffset?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'q' is not null or undefined
+            assertParamExists('searchSessions', 'q', q)
+            const localVarPath = `/api/v1/sessions/search`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (q !== undefined) {
+                localVarQueryParameter['q'] = q;
+            }
+
+            if (pageLimit !== undefined) {
+                localVarQueryParameter['page[limit]'] = pageLimit;
+            }
+
+            if (pageOffset !== undefined) {
+                localVarQueryParameter['page[offset]'] = pageOffset;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -684,6 +784,35 @@ export const SessionsApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * The session archaeology read door (ADR-0046 phase 2, work#1679): one session\'s transcript folded server-side into user and assistant messages — the same fold the frontend replay uses, with tool-call noise summarized as counts. `max_tokens` caps the transcript: messages are included whole, in order, until the budget (estimated at four characters per token) is exhausted; the remainder is dropped and counted. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Read a compacted session transcript
+         * @param {string} id
+         * @param {number} [maxTokens]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async readSessionTranscript(id: string, maxTokens?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SessionTranscript>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.readSessionTranscript(id, maxTokens, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.readSessionTranscript']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * The session archaeology search door (ADR-0046 phase 2, work#1679): finds sessions whose run anchor, title, or event text matches a plain keyword, so a supervisor can locate \"the conversation someone had about run X\". Matching is a case-insensitive substring over the run id, the session title, and the recorded user and assistant message text. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Search Ask Fabro sessions
+         * @param {string} q The search keyword; matched as a case-insensitive substring.
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async searchSessions(q: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<PaginatedSessionList>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.searchSessions(q, pageLimit, pageOffset, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['SessionsApi.searchSessions']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -821,6 +950,29 @@ export const SessionsApiFactory = function (configuration?: Configuration, baseP
             return localVarFp.listSessions(pageLimit, pageOffset, order, options).then((request) => request(axios, basePath));
         },
         /**
+         * The session archaeology read door (ADR-0046 phase 2, work#1679): one session\'s transcript folded server-side into user and assistant messages — the same fold the frontend replay uses, with tool-call noise summarized as counts. `max_tokens` caps the transcript: messages are included whole, in order, until the budget (estimated at four characters per token) is exhausted; the remainder is dropped and counted. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Read a compacted session transcript
+         * @param {string} id
+         * @param {number} [maxTokens]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        readSessionTranscript(id: string, maxTokens?: number, options?: RawAxiosRequestConfig): AxiosPromise<SessionTranscript> {
+            return localVarFp.readSessionTranscript(id, maxTokens, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * The session archaeology search door (ADR-0046 phase 2, work#1679): finds sessions whose run anchor, title, or event text matches a plain keyword, so a supervisor can locate \"the conversation someone had about run X\". Matching is a case-insensitive substring over the run id, the session title, and the recorded user and assistant message text. An authenticated user principal or a worker token with the supervisor capability may call it.
+         * @summary Search Ask Fabro sessions
+         * @param {string} q The search keyword; matched as a case-insensitive substring.
+         * @param {number} [pageLimit]
+         * @param {number} [pageOffset]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        searchSessions(q: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig): AxiosPromise<PaginatedSessionList> {
+            return localVarFp.searchSessions(q, pageLimit, pageOffset, options).then((request) => request(axios, basePath));
+        },
+        /**
          * The server-enforced Ask Fabro capability flip (ADR-0046): moves a session between `read_only` (the default posture) and `full_access` (the supervisor). Requires an authenticated user principal — a worker token is refused. The flip persists per session, audits into the run stream as a `session.capability` platform record, and applies from the session\'s next turn.
          * @summary Set the session\'s tool capability
          * @param {string} id
@@ -956,6 +1108,31 @@ export class SessionsApi extends BaseAPI {
      */
     public listSessions(pageLimit?: number, pageOffset?: number, order?: ListSessionsOrderEnum, options?: RawAxiosRequestConfig) {
         return SessionsApiFp(this.configuration).listSessions(pageLimit, pageOffset, order, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The session archaeology read door (ADR-0046 phase 2, work#1679): one session\'s transcript folded server-side into user and assistant messages — the same fold the frontend replay uses, with tool-call noise summarized as counts. `max_tokens` caps the transcript: messages are included whole, in order, until the budget (estimated at four characters per token) is exhausted; the remainder is dropped and counted. An authenticated user principal or a worker token with the supervisor capability may call it.
+     * @summary Read a compacted session transcript
+     * @param {string} id
+     * @param {number} [maxTokens]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public readSessionTranscript(id: string, maxTokens?: number, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).readSessionTranscript(id, maxTokens, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * The session archaeology search door (ADR-0046 phase 2, work#1679): finds sessions whose run anchor, title, or event text matches a plain keyword, so a supervisor can locate \"the conversation someone had about run X\". Matching is a case-insensitive substring over the run id, the session title, and the recorded user and assistant message text. An authenticated user principal or a worker token with the supervisor capability may call it.
+     * @summary Search Ask Fabro sessions
+     * @param {string} q The search keyword; matched as a case-insensitive substring.
+     * @param {number} [pageLimit]
+     * @param {number} [pageOffset]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public searchSessions(q: string, pageLimit?: number, pageOffset?: number, options?: RawAxiosRequestConfig) {
+        return SessionsApiFp(this.configuration).searchSessions(q, pageLimit, pageOffset, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

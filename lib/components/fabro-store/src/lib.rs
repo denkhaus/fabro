@@ -12,6 +12,7 @@ mod run_sessions;
 mod run_summary;
 mod run_summary_store;
 mod serializable_projection;
+pub mod session_transcript;
 mod sqlite_row;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
@@ -48,3 +49,7 @@ pub use run_summary_store::{
     RunSummarySortDirection, RunSummaryStore, RunSummaryVisibility,
 };
 pub use serializable_projection::SerializableProjection;
+pub use session_transcript::{
+    DEFAULT_MAX_TOKENS, MAX_MAX_TOKENS, TRANSCRIPT_MAX_EVENTS, estimate_tokens,
+    fold_session_transcript,
+};

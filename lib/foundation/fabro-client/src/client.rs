@@ -890,6 +890,58 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// The session archaeology search door (ADR-0046 phase 2,
+    /// denkhaus/work#1679): Ask Fabro sessions whose run anchor, title, or
+    /// recorded message text matches a keyword. Served to users and
+    /// supervisor-scope worker tokens; the supervisor session's backend
+    /// carries exactly that scope.
+    pub async fn search_sessions(
+        &self,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<types::PaginatedSessionList> {
+        let response = self
+            .send_api(|client| {
+                let query = query.to_string();
+                async move {
+                    client
+                        .search_sessions()
+                        .q(query)
+                        .page_limit(u64::from(limit))
+                        .page_offset(u64::from(offset))
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The session archaeology transcript door (ADR-0046 phase 2,
+    /// denkhaus/work#1679): one session's transcript, folded and
+    /// compacted server-side under a token budget.
+    pub async fn read_session_transcript(
+        &self,
+        session_id: SessionId,
+        max_tokens: u64,
+    ) -> Result<types::SessionTranscript> {
+        let response = self
+            .send_api(|client| {
+                let max_tokens = i64::try_from(max_tokens).unwrap_or(i64::MAX);
+                async move {
+                    client
+                        .read_session_transcript()
+                        .id(session_id)
+                        .max_tokens(max_tokens)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     /// Retrieves one canonical server-managed environment by ID.
     /// Reads one workspace directory of a run's sandbox: the run-tool
     /// `files_from` collection (fabro-4b29). Worker-token scoped on the
