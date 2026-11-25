@@ -63,6 +63,7 @@ models/artifact-list-response.ts
 models/artifacts-settings.ts
 models/ask-fabro-capability.ts
 models/ask-fabro.ts
+models/ask-namespace.ts
 models/auth-config-response.ts
 models/auth-me-response.ts
 models/auth-method.ts

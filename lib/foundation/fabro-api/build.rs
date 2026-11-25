@@ -222,6 +222,7 @@ fn main() {
             &[],
         ),
         ("ServerSettings", "fabro_types::ServerSettings", &[]),
+        ("AskNamespace", "fabro_types::settings::AskNamespace", &[]),
         (
             "ServerNamespace",
             "fabro_types::settings::ServerNamespace",

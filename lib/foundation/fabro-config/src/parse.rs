@@ -12,6 +12,7 @@ const ALLOWED_TOP_LEVEL_KEYS: &[&str] = &[
     "run",
     "cli",
     "server",
+    "ask",
     "llm",
 ];
 
@@ -52,7 +53,7 @@ impl fmt::Display for ParseError {
                 } else {
                     write!(
                         f,
-                        "unknown top-level settings key `{key}`: expected one of `_version`, `project`, `workflow`, `environments`, `run`, `cli`, `server`, `llm`"
+                        "unknown top-level settings key `{key}`: expected one of `_version`, `project`, `workflow`, `environments`, `run`, `cli`, `server`, `ask`, `llm`"
                     )
                 }
             }

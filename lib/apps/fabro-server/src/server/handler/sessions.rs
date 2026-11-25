@@ -34,7 +34,7 @@ use fabro_types::{
 };
 use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
-use lithos_llm::catalog::ProviderId;
+use lithos_llm::catalog::{CatalogProvider, ProviderId};
 use pebble_coding_agent::environment::{DenyExecEnvironment, Environment};
 use pebble_coding_agent::events::{CodingAgentEvent, CodingEvent, ToolSummary};
 use pebble_coding_agent::extensions::{
@@ -314,7 +314,9 @@ async fn create_run_session(
 
 /// The request body of the runless session door (work#1677): the global
 /// supervisor's conversation. A runless session starts full access —
-/// the operator grant its grill recorded (2026-11-25).
+/// the operator grant its grill recorded (2026-11-25). The model pin
+/// precedence is `model` > the `ask.supervisor_model` setting (work#1690)
+/// > the catalog default.
 #[derive(Debug, serde::Deserialize)]
 struct CreateSessionRequest {
     #[serde(default)]
@@ -346,11 +348,16 @@ async fn create_session(
         }
     };
     let eligible = llm_result.provider_ids().into_iter().collect();
-    let (provider, model) = match canonical_session_model(
+    // The runless surface's model default (work#1690): an explicit request
+    // pin wins, then the `ask.supervisor_model` setting, then the catalog
+    // default. Run-scoped creation (create_run_session) keeps its own
+    // readiness-seeded default and never reads this key.
+    let supervisor_model = state.server_settings().ask.supervisor_model.clone();
+    let (provider, model) = match create_session_model(
         state.catalog().as_ref(),
         &eligible,
-        request.model.as_deref(),
-        request.provider.as_ref(),
+        &request,
+        supervisor_model.as_deref(),
     ) {
         Ok(selection) => selection,
         Err(err) => return err.into_response(),
@@ -1356,6 +1363,85 @@ fn selected_session_model(
     Ok((selected.provider, selected.model))
 }
 
+/// The runless door's model resolution (work#1690): the explicit request
+/// pin wins, then the `ask.supervisor_model` setting, then the catalog
+/// default. The setting is deploy-rendered config, so unlike a request pin
+/// (whose unknown selectors pass through verbatim) it is validated against
+/// the catalog HERE: creation fails with a teaching 400 naming the key,
+/// not on the operator's first message.
+fn create_session_model(
+    catalog: &Catalog,
+    eligible: &std::collections::HashSet<ProviderId>,
+    request: &CreateSessionRequest,
+    supervisor_model: Option<&str>,
+) -> Result<(ProviderId, String), ApiError> {
+    let setting_pinned = request.model.is_none() && supervisor_model.is_some();
+    if setting_pinned && supervisor_model.is_some_and(|value| value.trim().is_empty()) {
+        return Err(ApiError::bad_request(
+            "ask.supervisor_model must not be empty.",
+        ));
+    }
+    let requested = request.model.as_deref().or(supervisor_model);
+    let selection =
+        match canonical_session_model(catalog, eligible, requested, request.provider.as_ref()) {
+            Ok(selection) => selection,
+            Err(error) => {
+                return Err(if setting_pinned {
+                    supervisor_model_error(&error)
+                } else {
+                    error
+                });
+            }
+        };
+    if setting_pinned {
+        // The strict creation-time check (work#1690): the resolved pair
+        // must name a real offering on an enabled provider. This is where
+        // a bare unknown selector lands, because the request path would
+        // have passed it through verbatim.
+        let known = catalog
+            .enabled_provider(selection.0.as_str())
+            .is_some_and(|provider| provider.offering(selection.1.as_str()).is_some());
+        if !known {
+            return Err(unknown_supervisor_model_error(
+                catalog,
+                eligible,
+                supervisor_model.expect("setting_pinned implies the setting is set"),
+            ));
+        }
+    }
+    Ok(selection)
+}
+
+/// Prefixes a resolution failure with the setting that supplied the value,
+/// so a 400 about the session model names `ask.supervisor_model` as its
+/// origin (work#1690).
+fn supervisor_model_error(error: &ApiError) -> ApiError {
+    ApiError::bad_request(format!("ask.supervisor_model: {}", error.detail()))
+}
+
+/// The teaching 400 for a setting that names no catalog offering
+/// (work#1690): the message names the key, quotes the offending value,
+/// and lists the `provider:model` pairs the eligible providers offer.
+fn unknown_supervisor_model_error(
+    catalog: &Catalog,
+    eligible: &std::collections::HashSet<ProviderId>,
+    value: &str,
+) -> ApiError {
+    let mut models: Vec<String> = catalog
+        .enabled_providers()
+        .into_iter()
+        .filter(|provider| eligible.contains(provider.id()))
+        .flat_map(CatalogProvider::offerings)
+        .map(|offering| format!("{}:{}", offering.provider.id(), offering.model.id()))
+        .collect();
+    models.sort();
+    models.dedup();
+    ApiError::bad_request(format!(
+        "ask.supervisor_model names unknown model '{}'; available models: {models:?}",
+        value.trim()
+    ))
+}
+
 fn canonical_session_model(
     catalog: &Catalog,
     eligible: &std::collections::HashSet<ProviderId>,
@@ -2244,6 +2330,176 @@ enabled = true
         );
     }
 
+    fn supervisor_request(model: Option<&str>) -> CreateSessionRequest {
+        CreateSessionRequest {
+            title:    None,
+            model:    model.map(str::to_owned),
+            provider: None,
+        }
+    }
+
+    fn eligible_openai_only() -> std::collections::HashSet<ProviderId> {
+        std::collections::HashSet::from([lithos_llm::catalog::builtin::openai()])
+    }
+
+    /// The creation resolution (work#1690): no request pin and no setting
+    /// keeps the catalog default — today's behavior, unchanged.
+    #[test]
+    fn create_session_model_keeps_the_catalog_default_when_nothing_is_pinned() {
+        let catalog = portable_session_catalog();
+        let expected =
+            canonical_session_model(&catalog, &eligible_openai_only(), None, None).unwrap();
+
+        assert_eq!(
+            create_session_model(
+                &catalog,
+                &eligible_openai_only(),
+                &supervisor_request(None),
+                None
+            )
+            .unwrap(),
+            expected
+        );
+    }
+
+    /// The setting pins the session model when the request names none;
+    /// selectors resolve through the same canonical path as a request pin.
+    #[test]
+    fn create_session_model_pins_the_setting_when_the_request_names_no_model() {
+        let catalog = portable_session_catalog();
+        let openai = lithos_llm::catalog::builtin::openai();
+        let openrouter = ProviderId::new("openrouter");
+
+        assert_eq!(
+            create_session_model(
+                &catalog,
+                &eligible_openai_only(),
+                &supervisor_request(None),
+                Some("gpt-56-sol"),
+            )
+            .unwrap(),
+            (openai, "gpt-5.6-sol".to_string())
+        );
+        // A provider-qualified setting pins its provider too.
+        assert_eq!(
+            create_session_model(
+                &catalog,
+                &catalog.enabled_provider_ids().into_iter().collect(),
+                &supervisor_request(None),
+                Some("openrouter:gpt-56-sol"),
+            )
+            .unwrap(),
+            (openrouter, "gpt-5.6-sol".to_string())
+        );
+    }
+
+    /// An explicit request model wins over the setting; the request path
+    /// keeps its passthrough policy untouched.
+    #[test]
+    fn create_session_model_prefers_the_request_pin_over_the_setting() {
+        let catalog = portable_session_catalog();
+        let openai = lithos_llm::catalog::builtin::openai();
+
+        assert_eq!(
+            create_session_model(
+                &catalog,
+                &eligible_openai_only(),
+                &supervisor_request(Some("future-model")),
+                Some("gpt-56-sol"),
+            )
+            .unwrap(),
+            (openai, "future-model".to_string())
+        );
+    }
+
+    /// The decided validation posture (work#1690): a setting naming an
+    /// unknown model id fails creation with a teaching 400 that names the
+    /// key, the offending value, and the models an eligible provider offers
+    /// — the request path would have passed the same string through.
+    #[test]
+    fn create_session_model_rejects_an_unknown_setting_model_with_a_teaching_400() {
+        let catalog = portable_session_catalog();
+        let error = create_session_model(
+            &catalog,
+            &eligible_openai_only(),
+            &supervisor_request(None),
+            Some("future-model"),
+        )
+        .unwrap_err();
+        let status = error.status();
+        let detail = error.into_response_entry().detail;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(detail.contains("ask.supervisor_model"), "got: {detail}");
+        assert!(detail.contains("future-model"), "got: {detail}");
+        assert!(
+            detail.contains("openai:gpt-5.6-sol"),
+            "the teaching must list real alternatives: {detail}"
+        );
+    }
+
+    /// A setting value that fails resolution otherwise (a provider name
+    /// without a model id, or a known model with no eligible offering)
+    /// still names the key it came from.
+    #[test]
+    fn create_session_model_names_the_key_when_the_setting_fails_resolution() {
+        let catalog = portable_session_catalog();
+
+        // A bare provider name is not a model id.
+        let error = create_session_model(
+            &catalog,
+            &eligible_openai_only(),
+            &supervisor_request(None),
+            Some("openrouter"),
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+        assert!(
+            error
+                .into_response_entry()
+                .detail
+                .contains("ask.supervisor_model")
+        );
+
+        // A known selector with no eligible offering.
+        let error = create_session_model(
+            &catalog,
+            &std::collections::HashSet::new(),
+            &supervisor_request(None),
+            Some("gpt-56-sol"),
+        )
+        .unwrap_err();
+        let status = error.status();
+        let detail = error.into_response_entry().detail;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            detail.contains("ask.supervisor_model") && detail.contains("gpt-56-sol"),
+            "got: {detail}"
+        );
+    }
+
+    /// An empty setting value is a loud 400 naming the key, not a silent
+    /// fallback to the catalog default.
+    #[test]
+    fn create_session_model_rejects_an_empty_setting_value() {
+        let catalog = portable_session_catalog();
+        let error = create_session_model(
+            &catalog,
+            &eligible_openai_only(),
+            &supervisor_request(None),
+            Some("   "),
+        )
+        .unwrap_err();
+        let status = error.status();
+        let detail = error.into_response_entry().detail;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            detail.contains("ask.supervisor_model") && detail.contains("empty"),
+            "got: {detail}"
+        );
+    }
+
     #[test]
     fn agent_event_payload_maps_text_delta_to_session_assistant_delta() {
         let turn_id = TurnId::new();
@@ -3030,5 +3286,164 @@ mod resume_tests {
             .unwrap()
             .expect("the session exists");
         assert_eq!(owner, None, "a runless session owns no run");
+    }
+}
+
+/// The runless door's `ask.supervisor_model` resolution (work#1690): the
+/// setting pins the session model at creation, the request pin wins over
+/// it, and an unset key keeps the catalog default. These tests build app
+/// states with fixture settings and hit the doors directly; no model turns
+/// run, so no twin is needed — client resolution is offline.
+#[cfg(test)]
+mod creation_default_tests {
+    use std::sync::Arc;
+
+    use axum::body::{Body, to_bytes};
+    use axum::http::{Request, StatusCode};
+    use fabro_config::{RunLayer, ServerSettingsBuilder};
+    use fabro_static::EnvVars;
+    use tower::ServiceExt;
+
+    use crate::server::AppState;
+    use crate::test_support::{TestAppStateBuilder, build_test_router};
+
+    /// A server whose `openai` provider holds a credential (so it is
+    /// eligible) and whose settings carry the given `[ask]` TOML.
+    fn state_with_ask(ask_toml: &str) -> Arc<AppState> {
+        let settings = ServerSettingsBuilder::from_toml(&format!(
+            r#"
+_version = 1
+
+[server.auth]
+methods = ["dev-token"]
+
+{ask_toml}
+"#
+        ))
+        .expect("fixture settings should resolve");
+        TestAppStateBuilder::new()
+            .runtime_settings(settings, RunLayer::default())
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key".to_string())])
+            .env_lookup(|name| {
+                (name == EnvVars::OPENAI_API_KEY).then(|| "test-openai-api-key".to_string())
+            })
+            .build()
+    }
+
+    async fn post_session(
+        app: &axum::Router,
+        body: &serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sessions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let json = serde_json::from_slice(&bytes).expect("the door answers with JSON");
+        (status, json)
+    }
+
+    /// The setting pins the runless session's model at creation.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_runless_door_pins_ask_supervisor_model_at_creation() {
+        let state = state_with_ask("[ask]\nsupervisor_model = \"gpt-5.6-terra\"");
+        let app = build_test_router(Arc::clone(&state));
+
+        let (status, created) = post_session(&app, &serde_json::json!({})).await;
+        assert_eq!(status, StatusCode::CREATED, "got: {created}");
+        assert_eq!(
+            created["model"], "gpt-5.6-terra",
+            "the setting pins the runless session's model: {created}"
+        );
+        assert_eq!(created["provider"], "openai", "got: {created}");
+    }
+
+    /// An unset key is today's behavior: the session resolves the same
+    /// catalog default the AskFabro readiness door serves.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_runless_door_keeps_the_catalog_default_when_the_key_is_unset() {
+        let state = state_with_ask("");
+        let app = build_test_router(Arc::clone(&state));
+
+        let expected = state
+            .ask_fabro_readiness()
+            .await
+            .default_model
+            .expect("the fixture server has an eligible default");
+        let (status, created) = post_session(&app, &serde_json::json!({})).await;
+        assert_eq!(status, StatusCode::CREATED, "got: {created}");
+        assert_eq!(
+            created["model"], expected,
+            "an unset key keeps the catalog default: {created}"
+        );
+    }
+
+    /// The explicit request pin wins over the setting.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_explicit_request_model_wins_over_the_setting() {
+        let state = state_with_ask("[ask]\nsupervisor_model = \"gpt-5.6-terra\"");
+        let app = build_test_router(Arc::clone(&state));
+
+        let (status, created) =
+            post_session(&app, &serde_json::json!({"model": "gpt-5.6-sol"})).await;
+        assert_eq!(status, StatusCode::CREATED, "got: {created}");
+        assert_eq!(
+            created["model"], "gpt-5.6-sol",
+            "the request pin wins over the setting: {created}"
+        );
+    }
+
+    /// The decided validation posture: a setting naming an unknown model
+    /// id fails creation with a teaching 400 naming the key — not on the
+    /// operator's first message.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_unknown_setting_model_yields_a_teaching_400_at_creation() {
+        let state = state_with_ask("[ask]\nsupervisor_model = \"gpt-9-typo\"");
+        let app = build_test_router(Arc::clone(&state));
+
+        let (status, body) = post_session(&app, &serde_json::json!({})).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "got: {body}");
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert!(detail.contains("ask.supervisor_model"), "got: {detail}");
+        assert!(detail.contains("gpt-9-typo"), "got: {detail}");
+        assert!(
+            detail.contains("openai:gpt-5.6-sol"),
+            "the teaching lists real alternatives: {detail}"
+        );
+    }
+
+    /// The `GET /settings` door serves the new namespace from the fixture
+    /// settings.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_settings_door_serves_the_ask_namespace() {
+        let state = state_with_ask("[ask]\nsupervisor_model = \"gpt-5.6-terra\"");
+        let app = build_test_router(Arc::clone(&state));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/v1/settings")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let settings: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            settings["ask"]["supervisor_model"], "gpt-5.6-terra",
+            "the settings door serves the ask namespace: {settings}"
+        );
     }
 }

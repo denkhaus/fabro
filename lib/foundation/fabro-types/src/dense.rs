@@ -4,13 +4,17 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::settings::{
-    CliNamespace, ObjectStoreSettings, ProjectNamespace, RunNamespace, ServerNamespace,
-    WorkflowNamespace,
+    AskNamespace, CliNamespace, ObjectStoreSettings, ProjectNamespace, RunNamespace,
+    ServerNamespace, WorkflowNamespace,
 };
 
+/// The server's resolved settings: the `[server]` namespace and the
+/// runless-chat `[ask]` namespace (work#1690). This is the payload the
+/// `GET /settings` door serves.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServerSettings {
     pub server: ServerNamespace,
+    pub ask:    AskNamespace,
 }
 
 impl ServerSettings {

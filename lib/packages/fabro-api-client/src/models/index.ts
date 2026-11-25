@@ -31,6 +31,7 @@ export * from './artifact-list-response';
 export * from './artifacts-settings';
 export * from './ask-fabro';
 export * from './ask-fabro-capability';
+export * from './ask-namespace';
 export * from './auth-config-response';
 export * from './auth-me-response';
 export * from './auth-method';

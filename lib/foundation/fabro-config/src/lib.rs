@@ -40,8 +40,8 @@ pub use home::Home;
 pub use input_overrides::{InputOverrideParseError, parse_input_overrides, parse_labels};
 pub(crate) use layers::Combine;
 pub use layers::{
-    CliAuthLayer, CliExecAgentLayer, CliExecLayer, CliExecModelLayer, CliLayer, CliLoggingLayer,
-    CliOutputLayer, CliTargetLayer, CliUpdatesLayer, EnvironmentDockerfileLayer,
+    AskLayer, CliAuthLayer, CliExecAgentLayer, CliExecLayer, CliExecModelLayer, CliLayer,
+    CliLoggingLayer, CliOutputLayer, CliTargetLayer, CliUpdatesLayer, EnvironmentDockerfileLayer,
     EnvironmentImageLayer, EnvironmentLayer, EnvironmentLifecycleLayer, EnvironmentNetworkLayer,
     EnvironmentResourcesLayer, GitAuthorLayer, GithubIntegrationLayer, HookAgentMarker, HookEntry,
     HookTlsMode, IntegrationWebhooksLayer, InterviewProviderLayer, InterviewsLayer, LlmLayer,
@@ -60,8 +60,8 @@ pub use layers::{
 pub use logging::{resolve_log_destination, resolve_log_destination_with_env};
 pub use parse::ParseError;
 pub use resolve::{
-    ResolveError, resolve_cli, resolve_environment_layer, resolve_project, resolve_run,
-    resolve_server, resolve_workflow,
+    ResolveError, resolve_ask, resolve_cli, resolve_environment_layer, resolve_project,
+    resolve_run, resolve_server, resolve_workflow,
 };
 use serde::de::DeserializeOwned;
 pub use storage::{RunScratch, RuntimeDirectory, Storage};

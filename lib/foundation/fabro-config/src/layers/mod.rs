@@ -1,3 +1,4 @@
+mod ask;
 mod cli;
 mod combine;
 mod environment;
@@ -12,6 +13,7 @@ mod splice_array;
 mod work;
 mod workflow;
 
+pub use ask::AskLayer;
 pub use cli::{
     CliAuthLayer, CliExecAgentLayer, CliExecLayer, CliExecModelLayer, CliLayer, CliLoggingLayer,
     CliOutputLayer, CliTargetLayer, CliUpdatesLayer,

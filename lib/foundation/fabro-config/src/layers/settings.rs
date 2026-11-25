@@ -9,6 +9,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use super::ask::AskLayer;
 use super::cli::CliLayer;
 use super::environment::{EnvironmentImageLayer, EnvironmentLayer};
 use super::llm::LlmLayer;
@@ -37,6 +38,8 @@ pub struct SettingsLayer {
     pub cli:          Option<CliLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server:       Option<ServerLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask:          Option<AskLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub llm:          Option<LlmLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -91,6 +94,15 @@ impl From<ServerLayer> for SettingsLayer {
     fn from(server: ServerLayer) -> Self {
         Self {
             server: Some(server),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<AskLayer> for SettingsLayer {
+    fn from(ask: AskLayer) -> Self {
+        Self {
+            ask: Some(ask),
             ..Self::default()
         }
     }
