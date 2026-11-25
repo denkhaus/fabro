@@ -273,6 +273,56 @@ ORDER BY session_id ASC, seq ASC
         Ok(SessionSummaryPage { data, has_more })
     }
 
+    /// One page of the global session index narrowed to a search keyword
+    /// (ADR-0046 phase 2, denkhaus/work#1679): the session archaeology
+    /// read. A session matches when the keyword is a case-insensitive
+    /// substring of its run anchor, its title, or the text of a recorded
+    /// user or assistant message; SQL `LIKE` is case-insensitive for
+    /// ASCII here, and the keyword's `%`/`_`/`\` are escaped so a caller
+    /// cannot widen the match. The bound is the SQL: the same
+    /// latest-event-per-session projection as `list_session_summaries`,
+    /// filtered by an `IN` subquery over the events table — at most
+    /// `limit + 1` rows cross into Rust.
+    pub async fn search_session_summaries(
+        &self,
+        keyword: &str,
+        order: SessionSummaryOrder,
+        limit: u32,
+        offset: u32,
+    ) -> Result<SessionSummaryPage> {
+        let pattern = format!("%{}%", like_escape(keyword));
+        let mut query = sqlx::QueryBuilder::<Sqlite>::new(SESSIONS_PAGE_SQL);
+        query.push(" WHERE candidates.session_id IN (SELECT session_id FROM run_session_events WHERE run_id LIKE ");
+        query.push_bind(&pattern);
+        query.push(" ESCAPE '\\' OR (event_name = 'run.session.created' AND json_extract(properties_json, '$.title') LIKE ");
+        query.push_bind(&pattern);
+        query.push(" ESCAPE '\\') OR (event_name IN ('run.session.user_message', 'run.session.assistant_message') AND properties_json LIKE ");
+        query.push_bind(&pattern);
+        query.push(" ESCAPE '\\'))");
+        match order {
+            SessionSummaryOrder::UpdatedDesc => {
+                query.push(
+                    " ORDER BY candidates.updated_at_ms DESC, created.created_at_ms DESC, \
+                     candidates.session_id DESC",
+                );
+            }
+            SessionSummaryOrder::CreatedDesc => {
+                query.push(" ORDER BY created.created_at_ms DESC, candidates.session_id DESC");
+            }
+        }
+        query.push(" LIMIT ").push_bind(i64::from(limit) + 1);
+        query.push(" OFFSET ").push_bind(i64::from(offset));
+        let rows = query.build().fetch_all(&self.pool).await?;
+        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+        let has_more = rows.len() > limit;
+        let data = rows
+            .iter()
+            .take(limit)
+            .map(session_summary_from_row)
+            .collect::<Result<Vec<_>>>()?;
+        Ok(SessionSummaryPage { data, has_more })
+    }
+
     /// The sequence number of the session's latest event, if it has any.
     pub async fn last_seq(&self, session_id: SessionId) -> Result<Option<u32>> {
         let last_seq: Option<i64> =
@@ -340,6 +390,20 @@ ORDER BY session_id ASC, seq ASC
     pub fn subscribe(&self) -> broadcast::Receiver<SessionEvent> {
         self.live.subscribe()
     }
+}
+
+/// SQLite `LIKE`'s wildcards escaped for a literal substring match: `\`
+/// doubles, `%` and `_` lose their wildcard meaning under the query's
+/// `ESCAPE '\'` clause.
+fn like_escape(keyword: &str) -> String {
+    let mut escaped = String::with_capacity(keyword.len());
+    for ch in keyword.chars() {
+        if ch == '\\' || ch == '%' || ch == '_' {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
 }
 
 /// The summary of one session, read off the page query's projected rows.
@@ -958,6 +1022,139 @@ mod tests {
         let mut sorted = ids.clone();
         sorted.sort_unstable_by(|left, right| right.cmp(left));
         assert_eq!(ids, sorted, "ties order by the session id descending");
+    }
+
+    /// The archaeology search (work#1679): a session matches by run
+    /// anchor, title, or recorded message text, and non-matching sessions
+    /// stay off the page. The page bounds in SQL like the index door.
+    #[tokio::test]
+    async fn search_session_summaries_matches_anchor_title_and_text() {
+        let store = store();
+        let ts = Utc.with_ymd_and_hms(2026, 11, 25, 9, 0, 0).unwrap();
+        let anchored = SessionId::new();
+        let titled = SessionId::new();
+        let talked = SessionId::new();
+        let quiet = SessionId::new();
+        let anchor_run = fixtures::RUN_3;
+
+        store
+            .append(Some(anchor_run), anchored, created(), ts)
+            .await
+            .unwrap();
+        store
+            .append(
+                Some(fixtures::RUN_2),
+                titled,
+                SessionEventBody::Created(SessionCreatedProps {
+                    title:      Some("The deploy question".to_string()),
+                    model:      Some("test-model".to_string()),
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
+                }),
+                ts,
+            )
+            .await
+            .unwrap();
+        let talk_turn = TurnId::new();
+        store
+            .append(Some(fixtures::RUN_1), talked, created(), ts)
+            .await
+            .unwrap();
+        store
+            .append(
+                Some(fixtures::RUN_1),
+                talked,
+                SessionEventBody::UserMessage(SessionUserMessageProps {
+                    turn_id: talk_turn,
+                    text:    "Why did the nightly run stall?".to_string(),
+                }),
+                ts,
+            )
+            .await
+            .unwrap();
+        store
+            .append(Some(fixtures::RUN_1), quiet, created(), ts)
+            .await
+            .unwrap();
+
+        // By run anchor: only the session anchored to that run matches.
+        let by_anchor = store
+            .search_session_summaries(
+                &anchor_run.to_string(),
+                SessionSummaryOrder::UpdatedDesc,
+                10,
+                0,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            by_anchor.data.iter().map(|s| s.id).collect::<Vec<_>>(),
+            vec![anchored]
+        );
+
+        // By title, case-insensitively.
+        let by_title = store
+            .search_session_summaries("DEPLOY", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            by_title.data.iter().map(|s| s.id).collect::<Vec<_>>(),
+            vec![titled]
+        );
+
+        // By recorded message text.
+        let by_text = store
+            .search_session_summaries("nightly run stall", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(by_text.data.iter().map(|s| s.id).collect::<Vec<_>>(), vec![
+            talked
+        ]);
+
+        // A keyword matching nothing leaves the page empty.
+        let none = store
+            .search_session_summaries("no-such-keyword", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert!(none.data.is_empty());
+        assert!(!none.has_more);
+
+        // The model string in the creation event is not a title match.
+        let by_model = store
+            .search_session_summaries("test-model", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert!(
+            !by_model.data.iter().any(|s| s.id == anchored),
+            "the model field alone must not match the title arm"
+        );
+    }
+
+    /// A keyword's `%` and `_` are literal text, not wildcards: the
+    /// escaped match cannot widen.
+    #[tokio::test]
+    async fn search_escapes_like_wildcards_in_the_keyword() {
+        let store = store();
+        let ts = Utc::now();
+        let session = SessionId::new();
+        store
+            .append(Some(fixtures::RUN_1), session, created(), ts)
+            .await
+            .unwrap();
+
+        // `%` would match every session as a wildcard; escaped, it only
+        // matches a session that literally contains a percent sign.
+        let wildcard = store
+            .search_session_summaries("%", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert!(wildcard.data.is_empty());
+
+        let underscore = store
+            .search_session_summaries("_", SessionSummaryOrder::UpdatedDesc, 10, 0)
+            .await
+            .unwrap();
+        assert!(underscore.data.is_empty());
     }
 
     #[tokio::test]

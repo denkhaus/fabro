@@ -17,7 +17,8 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_llm::{FabroClient, ModelSelectionError, selection};
 use fabro_redact::SecretRedactor;
 use fabro_store::{
-    PlatformRecord, ProjectedRunSession, SessionCapabilityRecord, SessionSummaryOrder,
+    DEFAULT_MAX_TOKENS, MAX_MAX_TOKENS, PlatformRecord, ProjectedRunSession,
+    SessionCapabilityRecord, SessionSummaryOrder, TRANSCRIPT_MAX_EVENTS, fold_session_transcript,
     project_run_session, project_run_sessions,
 };
 use fabro_tool::fabro_client::ClientBackend;
@@ -58,7 +59,7 @@ use super::super::{
     paginate_items, parse_run_id_path, run_records,
 };
 use crate::error::ApiError;
-use crate::principal_middleware::{RequiredRunToolActor, RequiredUser};
+use crate::principal_middleware::{RequiredRunToolActor, RequiredSupervisorActor, RequiredUser};
 use crate::sandbox_access;
 use crate::worker_token::{WorkerScopeSet, issue_worker_token_with_scopes};
 
@@ -67,7 +68,11 @@ const SESSION_SSE_BUFFER_CAPACITY: usize = 1024;
 const ASK_FABRO_SYSTEM_PROMPT: &str = include_str!("prompts/ask_fabro.md.j2");
 const ASK_FABRO_SUPERVISOR_PROMPT: &str = include_str!("prompts/ask_fabro_supervisor.md.j2");
 
-const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
+/// The read-only analyst's run-tool registry: the two run-inspection
+/// doors every Ask Fabro session gets, whatever its posture. Session
+/// archaeology (work#1679) is deliberately absent — it is supervisor
+/// registry only.
+pub(super) const ASK_FABRO_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_EVENTS_TOOL_NAME,
     fabro_tool::FABRO_RUN_GET_TOOL_NAME,
 ];
@@ -105,6 +110,11 @@ pub(super) const ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES: &[&str] = &[
     fabro_tool::FABRO_RUN_GATHER_TOOL_NAME,
     fabro_tool::FABRO_BLOB_TOOL_NAME,
     fabro_tool::FABRO_RUN_INTERACT_TOOL_NAME,
+    // Session archaeology (ADR-0046 phase 2, work#1679): read doors into
+    // the Ask Fabro sessions themselves. Supervisor registry ONLY — a
+    // read-only analyst never sees them.
+    fabro_tool::FABRO_SESSION_SEARCH_TOOL_NAME,
+    fabro_tool::FABRO_SESSION_READ_TOOL_NAME,
 ];
 
 type SessionSseSender = mpsc::Sender<Result<Event, Infallible>>;
@@ -116,6 +126,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
             get(list_run_sessions).post(create_run_session),
         )
         .route("/sessions", get(list_all_sessions).post(create_session))
+        .route("/sessions/search", get(search_sessions))
         .route(
             "/sessions/{id}",
             get(get_session)
@@ -123,6 +134,7 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
                 .fallback(session_method_not_found),
         )
         .route("/sessions/{id}/events", get(list_session_events))
+        .route("/sessions/{id}/transcript", get(read_session_transcript))
         .route("/sessions/{id}/attach", get(attach_session_events))
         .route(
             "/sessions/{id}/capability",
@@ -243,6 +255,121 @@ async fn list_all_sessions(
         }))
         .into_response(),
         Err(err) => store_error(&err).into_response(),
+    }
+}
+
+/// The session archaeology search door (ADR-0046 phase 2, work#1679):
+/// `GET /api/v1/sessions/search?q=...` — sessions whose run anchor,
+/// title, or recorded message text matches a keyword, last-activity
+/// first. An authenticated user or a supervisor worker token may call
+/// it; a plain run worker (a read-only session's token) is refused.
+async fn search_sessions(
+    _auth: RequiredSupervisorActor,
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchSessionsParams>,
+) -> Response {
+    let keyword = params.q.trim();
+    if keyword.is_empty() {
+        return ApiError::bad_request("Session search query must not be empty.").into_response();
+    }
+    let limit = clamp_page_limit(params.limit);
+    let offset = clamp_page_offset(params.offset);
+    match state
+        .stores
+        .session_events
+        .search_session_summaries(keyword, SessionSummaryOrder::UpdatedDesc, limit, offset)
+        .await
+    {
+        Ok(page) => Json(serde_json::json!({
+            "data": page.data,
+            "meta": { "has_more": page.has_more }
+        }))
+        .into_response(),
+        Err(err) => store_error(&err).into_response(),
+    }
+}
+
+/// The query parameters of the archaeology search door. The page fields
+/// are declared here instead of a flattened `PaginationParams` for the
+/// same raw-string reason `ListRunSessionsParams` documents.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct SearchSessionsParams {
+    #[serde(rename = "q")]
+    q:      String,
+    #[serde(rename = "page[limit]", default = "default_page_limit")]
+    limit:  u32,
+    #[serde(rename = "page[offset]", default)]
+    offset: u32,
+}
+
+/// The session archaeology read door (ADR-0046 phase 2, work#1679):
+/// `GET /api/v1/sessions/{id}/transcript` — one session's transcript
+/// folded server-side into user and assistant messages, tool calls
+/// counted, under a token budget. The fold is the frontend replay's
+/// semantics; the budget keeps the supervisor's context bounded.
+async fn read_session_transcript(
+    _auth: RequiredSupervisorActor,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<TranscriptParams>,
+) -> Response {
+    let session_id = match parse_session_id(&id) {
+        Ok(id) => id,
+        Err(err) => return err.into_response(),
+    };
+    let run_id = match load_session_owner(&state, session_id).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    // Page the events under the replay's ceiling instead of loading the
+    // whole log: at most TRANSCRIPT_MAX_EVENTS events cross into the fold.
+    let mut events = Vec::new();
+    let mut next_seq = 1u32;
+    while events.len() < TRANSCRIPT_MAX_EVENTS {
+        let batch = match state
+            .stores
+            .session_events
+            .list_from(session_id, next_seq, TRANSCRIPT_EVENT_PAGE)
+            .await
+        {
+            Ok(batch) => batch,
+            Err(err) => return store_error(&err).into_response(),
+        };
+        let last_seq = batch.last().map(|event| event.seq);
+        let loaded = batch.len();
+        events.extend(batch);
+        match last_seq {
+            Some(seq) if loaded == TRANSCRIPT_EVENT_PAGE => next_seq = seq.saturating_add(1),
+            _ => break,
+        }
+    }
+    let Some(session) = project_run_session(session_id, &events) else {
+        return ApiError::not_found("Session not found.").into_response();
+    };
+    let transcript = fold_session_transcript(
+        session_id,
+        run_id,
+        session.record.title,
+        &events,
+        params.max_tokens(),
+    );
+    Json(transcript).into_response()
+}
+
+/// One event page of the transcript door's bounded load.
+const TRANSCRIPT_EVENT_PAGE: usize = 1000;
+
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+struct TranscriptParams {
+    #[serde(default)]
+    max_tokens: Option<u64>,
+}
+
+impl TranscriptParams {
+    fn max_tokens(&self) -> u64 {
+        self.max_tokens
+            .unwrap_or(DEFAULT_MAX_TOKENS)
+            .clamp(200, MAX_MAX_TOKENS)
     }
 }
 

@@ -485,6 +485,40 @@ impl FabroToolBackend for ClientBackend {
             .await
     }
 
+    /// The session archaeology doors (ADR-0046 phase 2, work#1679): no
+    /// run-scope guard by design — the index spans sessions of all runs,
+    /// and these arms only serve under the UNPINNED supervisor backend
+    /// whose token carries `agent:supervisor`. A run-scoped analyst's
+    /// token lacks the scope, so the server doors answer 403 even if a
+    /// scoped surface ever wired the tools.
+    async fn search_sessions(
+        &self,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> anyhow::Result<fabro_store::SessionSummaryPage> {
+        let response = self.client.search_sessions(query, limit, offset).await?;
+        Ok(fabro_store::SessionSummaryPage {
+            data:     response.data,
+            has_more: response.meta.has_more,
+        })
+    }
+
+    async fn read_session_transcript(
+        &self,
+        session_id: &str,
+        max_tokens: u64,
+    ) -> anyhow::Result<fabro_types::SessionTranscript> {
+        let session_id: fabro_types::SessionId = session_id.parse().map_err(|err| {
+            anyhow::anyhow!("session_id must be a session id from fabro_session_search: {err}")
+        })?;
+        let response = self
+            .client
+            .read_session_transcript(session_id, max_tokens)
+            .await?;
+        Ok(response)
+    }
+
     async fn work_close(
         &self,
         project: &str,

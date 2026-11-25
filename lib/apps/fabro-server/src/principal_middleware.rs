@@ -233,6 +233,27 @@ impl<S: Send + Sync> FromRequestParts<S> for RequiredRunToolActor {
     }
 }
 
+/// The session-archaeology actor (ADR-0046 phase 2, denkhaus/work#1679):
+/// an authenticated user, or a worker token carrying the supervisor
+/// capability — the minted token of a full-access Ask Fabro session's
+/// backend. A plain run worker (a read-only session's
+/// `agent:run_tools` token) is refused: the archaeology doors are the
+/// supervisor registry's data plane.
+pub(crate) struct RequiredSupervisorActor;
+
+impl<S: Send + Sync> FromRequestParts<S> for RequiredSupervisorActor {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let slot = parts
+            .extensions
+            .get::<AuthContextSlot>()
+            .cloned()
+            .unwrap_or_else(AuthContextSlot::initial);
+        require_supervisor_actor(&slot).map(|_| Self)
+    }
+}
+
 impl FromRequestParts<Arc<AppState>> for RequireRunScoped {
     type Rejection = Response;
 
@@ -444,6 +465,20 @@ pub(crate) fn require_run_management_actor(slot: &AuthContextSlot) -> Result<Pri
     match &context.principal {
         Some(Principal::User(user)) => Ok(Principal::User(user.clone())),
         Some(Principal::Worker { run_id }) if context.worker_scopes.has_agent_run_tools() => {
+            Ok(Principal::Worker { run_id: *run_id })
+        }
+        Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
+        None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
+    }
+}
+
+/// The archaeology doors' actor check: users pass, workers need the
+/// supervisor capability (see [`RequiredSupervisorActor`]).
+pub(crate) fn require_supervisor_actor(slot: &AuthContextSlot) -> Result<Principal, ApiError> {
+    let context = slot.0.lock().expect("auth context lock poisoned");
+    match &context.principal {
+        Some(Principal::User(user)) => Ok(Principal::User(user.clone())),
+        Some(Principal::Worker { run_id }) if context.worker_scopes.has_supervisor() => {
             Ok(Principal::Worker { run_id: *run_id })
         }
         Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),

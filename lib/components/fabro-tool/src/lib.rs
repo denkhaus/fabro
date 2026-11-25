@@ -26,6 +26,8 @@ pub mod run_push_resolution;
 mod run_queue;
 mod run_title;
 mod search;
+mod session_read;
+mod session_search;
 mod wait;
 mod work;
 mod workflow_version;
@@ -45,9 +47,10 @@ pub use common::{
     FABRO_RUN_INTERACT_TOOL_NAME, FABRO_RUN_MARK_TOOL_NAME, FABRO_RUN_MERGE_TOOL_NAME,
     FABRO_RUN_PAIR_TOOL_NAME, FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME, FABRO_RUN_QUEUE_TOOL_NAME,
     FABRO_RUN_SEARCH_TOOL_NAME, FABRO_RUN_SET_TITLE_TOOL_NAME, FABRO_RUN_WAIT_TOOL_NAME,
-    FABRO_WORK_CLOSE_TOOL_NAME, FABRO_WORK_COMMENTS_TOOL_NAME, FABRO_WORK_CREATE_TOOL_NAME,
-    FABRO_WORK_LIST_TOOL_NAME, FABRO_WORK_NEXT_TOOL_NAME, FABRO_WORK_RADIUS_TOOL_NAME,
-    FABRO_WORK_RELEASE_TOOL_NAME, FABRO_WORK_SHOW_TOOL_NAME, FABRO_WORK_UPDATE_TOOL_NAME,
+    FABRO_SESSION_READ_TOOL_NAME, FABRO_SESSION_SEARCH_TOOL_NAME, FABRO_WORK_CLOSE_TOOL_NAME,
+    FABRO_WORK_COMMENTS_TOOL_NAME, FABRO_WORK_CREATE_TOOL_NAME, FABRO_WORK_LIST_TOOL_NAME,
+    FABRO_WORK_NEXT_TOOL_NAME, FABRO_WORK_RADIUS_TOOL_NAME, FABRO_WORK_RELEASE_TOOL_NAME,
+    FABRO_WORK_SHOW_TOOL_NAME, FABRO_WORK_UPDATE_TOOL_NAME,
     FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME, FabroToolBackend, RunSummaryResult, ToolDefinition,
     ToolError, ToolResult, tool_definitions,
 };
@@ -105,6 +108,14 @@ pub use run_title::{
 pub use search::{
     FabroRunSearchParams, SearchRunSummaryResult, SearchRunsResult, ValidatedSearchRuns,
     search_runs, search_runs_text,
+};
+pub use session_read::{
+    FabroSessionReadParams, ValidatedSessionRead, read_session_transcript,
+    read_session_transcript_text,
+};
+pub use session_search::{
+    FabroSessionSearchParams, SessionSearchResult, ValidatedSessionSearch, search_sessions,
+    search_sessions_text,
 };
 pub use wait::{
     FabroRunWaitParams, RunWaitOutcome, RunWaitReached, RunWaitUntil, ValidatedRunWait, run_wait,

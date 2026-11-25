@@ -46,6 +46,7 @@ pub mod sandbox_services;
 pub mod secret;
 pub mod session;
 pub mod session_event;
+pub mod session_transcript;
 pub mod settings;
 pub mod stage_completion;
 pub mod stage_handler;
@@ -178,6 +179,10 @@ pub use session::{
     SessionSummary, SessionTurn, SetSessionCapabilityRequest, TurnId,
 };
 pub use session_event::{SessionEvent, SessionEventBody};
+pub use session_transcript::{
+    SessionTranscript, SessionTranscriptBudget, SessionTranscriptMessage, SessionTranscriptRole,
+    SessionTranscriptToolCalls,
+};
 pub use stage_completion::StageCompletion;
 pub use stage_handler::StageHandler;
 pub use stage_id::{InvalidStageVisit, ParallelBranchId, StageId};

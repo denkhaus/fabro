@@ -9,8 +9,8 @@ use pebble_coding_agent::extensions::EnvContext;
 use pebble_coding_agent::tools::{ToolPermission, ToolPermissionPolicy};
 
 use super::sessions::{
-    ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES, AskFabroToolPolicy, ask_fabro_allows_tool,
-    build_ask_fabro_supervisor_system_prompt, build_ask_fabro_system_prompt,
+    ASK_FABRO_RUN_TOOL_NAMES, ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES, AskFabroToolPolicy,
+    ask_fabro_allows_tool, build_ask_fabro_supervisor_system_prompt, build_ask_fabro_system_prompt,
 };
 
 fn descriptor(name: &str) -> pebble_agent::ToolDescriptor {
@@ -171,4 +171,60 @@ fn supervisor_prompt_mandates_the_run_merge_soft_confirm() {
         !analyst.contains(&format!("`{}`", fabro_tool::FABRO_RUN_MERGE_TOOL_NAME)),
         "the read-only tool guidance must not list supervisor tools"
     );
+}
+
+/// The session archaeology tools (ADR-0046 phase 2, denkhaus/work#1679)
+/// ride the supervisor registry ONLY: the supervisor set resolves both
+/// names and grants them at full access, while the read-only set — and
+/// the read-only posture itself — never does.
+#[test]
+fn session_archaeology_tools_are_supervisor_registry_only() {
+    let definitions = fabro_tool::tool_definitions();
+    for name in [
+        fabro_tool::FABRO_SESSION_SEARCH_TOOL_NAME,
+        fabro_tool::FABRO_SESSION_READ_TOOL_NAME,
+    ] {
+        assert!(
+            ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES.contains(&name),
+            "{name} belongs in the supervisor registry"
+        );
+        assert!(
+            !ASK_FABRO_RUN_TOOL_NAMES.contains(&name),
+            "{name} must never ride the read-only registry"
+        );
+        assert!(
+            definitions.iter().any(|definition| definition.name == name),
+            "{name} must resolve to a catalog definition"
+        );
+        assert!(
+            !ask_fabro_allows_tool(name, AskFabroCapability::ReadOnly),
+            "the read-only posture hides {name}"
+        );
+        assert!(
+            ask_fabro_allows_tool(name, AskFabroCapability::FullAccess),
+            "full access grants {name}"
+        );
+    }
+}
+
+/// The policy shape a read-only session meets when it somehow calls a
+/// session archaeology tool: denied, with the audited posture named.
+#[test]
+fn session_read_is_denied_at_read_only_with_the_audited_posture() {
+    let scope =
+        pebble_coding_agent::SessionScope::root(pebble_coding_agent::SessionId::new("ses_test"));
+    let session_read = descriptor(fabro_tool::FABRO_SESSION_READ_TOOL_NAME);
+
+    let read_only_policy = AskFabroToolPolicy {
+        capability: AskFabroCapability::ReadOnly,
+    };
+    match read_only_policy.permission(&scope, &session_read) {
+        ToolPermission::Deny { reason } => {
+            assert!(
+                reason.contains("Ask Fabro is read-only"),
+                "the denial must name the audited posture: {reason}"
+            );
+        }
+        other => panic!("read-only fabro_session_read should be denied, got {other:?}"),
+    }
 }

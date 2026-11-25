@@ -866,6 +866,27 @@ fn main() {
         ("RunSessionMetadata", "fabro_types::RunSessionMetadata", &[]),
         ("SessionSummary", "fabro_types::SessionSummary", &[]),
         ("SessionDetail", "fabro_types::SessionDetail", &[]),
+        ("SessionTranscript", "fabro_types::SessionTranscript", &[]),
+        (
+            "SessionTranscriptMessage",
+            "fabro_types::SessionTranscriptMessage",
+            &[],
+        ),
+        (
+            "SessionTranscriptRole",
+            "fabro_types::SessionTranscriptRole",
+            &[],
+        ),
+        (
+            "SessionTranscriptToolCalls",
+            "fabro_types::SessionTranscriptToolCalls",
+            &[],
+        ),
+        (
+            "SessionTranscriptBudget",
+            "fabro_types::SessionTranscriptBudget",
+            &[],
+        ),
         ("ReasoningOutput", "lithos_llm::types::ReasoningOutput", &[]),
         ("CompletionMessage", "lithos_llm::types::Message", &[]),
         (

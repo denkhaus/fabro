@@ -904,3 +904,259 @@ async fn supervisor_worker_scope_widens_run_scoped_reads_across_runs() {
         "the supervisor scope passes the run-scoped guard cross-run"
     );
 }
+
+/// A run-scoped session, created while the test credentials still exist
+/// (creation resolves the default model through an eligible provider).
+async fn create_titled_session(app: &axum::Router, run_id: &str, title: &str) -> String {
+    let created = create_session(app, run_id, title).await;
+    created["id"]
+        .as_str()
+        .expect("session response should include an id")
+        .to_string()
+}
+
+/// Submit one turn that fails fast (no LLM credential — the caller
+/// deletes it first): the turn-start and user-message events are recorded
+/// synchronously before the turn even spawns. The stream is drained so
+/// the failed turn's events have landed before the doors are exercised.
+async fn submit_failing_turn(app: &axum::Router, session_id: &str, text: &str) {
+    let submit = Request::builder()
+        .method("POST")
+        .uri(api(&format!("/sessions/{session_id}/turns")))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_string(&serde_json::json!({ "input": text }))
+                .expect("submit-turn body should serialize"),
+        ))
+        .expect("submit-turn request should build");
+    let response = app.clone().oneshot(submit).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let _ = session_sse_events(response).await;
+}
+
+async fn get_json(app: &axum::Router, path: &str, token: Option<&str>) -> axum::response::Response {
+    let mut builder = Request::builder().method("GET").uri(api(path));
+    if let Some(token) = token {
+        builder = builder.header("authorization", format!("Bearer {token}"));
+    }
+    let request = builder
+        .body(Body::empty())
+        .expect("GET request should build");
+    app.clone().oneshot(request).await.unwrap()
+}
+
+/// The session archaeology search door (work#1679): a keyword finds
+/// sessions by run anchor, title, and recorded message text; sessions
+/// matching nothing stay off the page.
+#[tokio::test]
+async fn session_search_door_finds_by_title_anchor_and_text() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+    let (first_run, _first_workspace) = create_run(&app).await;
+    let (second_run, _second_workspace) = create_run(&app).await;
+
+    let archaeology = create_titled_session(&app, &first_run, "Deploy archaeology").await;
+    let _unrelated = create_titled_session(&app, &second_run, "Something else").await;
+    delete_openai_credential(&app).await;
+    submit_failing_turn(&app, &archaeology, "why did the nightly stall").await;
+    submit_failing_turn(&app, &_unrelated, "entirely different topic").await;
+
+    // By title.
+    let response = get_json(&app, "/sessions/search?q=ARCHAEOLOGY", None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_json(response, StatusCode::OK, "GET /api/v1/sessions/search").await;
+    let found: Vec<_> = body["data"]
+        .as_array()
+        .expect("search response should include data")
+        .iter()
+        .filter(|s| s["id"] == archaeology.as_str())
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "the title match finds the archaeology session"
+    );
+    assert_eq!(found[0]["run_id"], first_run.as_str());
+
+    // By run anchor.
+    let response = get_json(&app, &format!("/sessions/search?q={first_run}"), None).await;
+    let body = response_json(
+        response,
+        StatusCode::OK,
+        "GET /api/v1/sessions/search?q=run",
+    )
+    .await;
+    let ids: Vec<_> = body["data"]
+        .as_array()
+        .expect("search response should include data")
+        .iter()
+        .map(|s| s["id"].as_str().expect("session id should be a string"))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![archaeology.as_str()],
+        "only the anchored run's session matches"
+    );
+
+    // By recorded message text.
+    let response = get_json(&app, "/sessions/search?q=nightly%20stall", None).await;
+    let body = response_json(
+        response,
+        StatusCode::OK,
+        "GET /api/v1/sessions/search?q=text",
+    )
+    .await;
+    let ids: Vec<_> = body["data"]
+        .as_array()
+        .expect("search response should include data")
+        .iter()
+        .map(|s| s["id"].as_str().expect("session id should be a string"))
+        .collect();
+    assert_eq!(
+        ids,
+        vec![archaeology.as_str()],
+        "the recorded message text matches"
+    );
+
+    // A keyword matching nothing leaves the page empty.
+    let response = get_json(&app, "/sessions/search?q=zzz-no-such-thing", None).await;
+    let body = response_json(
+        response,
+        StatusCode::OK,
+        "GET /api/v1/sessions/search?q=none",
+    )
+    .await;
+    assert!(
+        body["data"].as_array().expect("data array").is_empty(),
+        "no keyword match, empty page"
+    );
+    assert_eq!(body["meta"]["has_more"], false);
+}
+
+/// The session archaeology transcript door (work#1679): the fold turns a
+/// session's events into user and assistant messages (the failed turn
+/// lands as a visible note), and the token budget drops whole messages
+/// past the cap and says so.
+#[tokio::test]
+async fn transcript_door_folds_events_and_caps_the_budget() {
+    let app = fabro_server::test_support::build_test_router(test_app_state());
+    let (run_id, _run_id_workspace) = create_run(&app).await;
+
+    let long_text = "x".repeat(1000);
+    let session_id = create_titled_session(&app, &run_id, "Ask Fabro").await;
+    delete_openai_credential(&app).await;
+    submit_failing_turn(&app, &session_id, &long_text).await;
+
+    // Uncapped: the fold yields the user message and the failed turn's
+    // visible note.
+    let response = get_json(&app, &format!("/sessions/{session_id}/transcript"), None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let transcript = response_json(
+        response,
+        StatusCode::OK,
+        "GET /api/v1/sessions/{id}/transcript",
+    )
+    .await;
+    assert_eq!(transcript["session_id"], session_id.as_str());
+    assert_eq!(transcript["run_id"], run_id.as_str());
+    let messages = transcript["messages"]
+        .as_array()
+        .expect("transcript should include messages");
+    assert_eq!(messages.len(), 2, "user message + the failure note");
+    assert_eq!(messages[0]["role"], "user");
+    assert_eq!(messages[0]["text"], long_text);
+    assert_eq!(messages[1]["role"], "assistant");
+    let failure_note = messages[1]["text"]
+        .as_str()
+        .expect("the failure note should be text");
+    assert!(
+        failure_note.starts_with("Turn failed:"),
+        "the failed turn is visible: {failure_note}"
+    );
+    assert_eq!(transcript["tool_calls"]["total"], 0);
+    assert_eq!(transcript["budget"]["truncated"], false);
+
+    // Capped at the floor: only the (long) opening message survives.
+    let response = get_json(
+        &app,
+        &format!("/sessions/{session_id}/transcript?max_tokens=200"),
+        None,
+    )
+    .await;
+    let capped = response_json(
+        response,
+        StatusCode::OK,
+        "GET /api/v1/sessions/{id}/transcript?max_tokens",
+    )
+    .await;
+    let capped_messages = capped["messages"]
+        .as_array()
+        .expect("capped transcript should include messages");
+    assert_eq!(capped_messages.len(), 1, "the budget drops the tail");
+    assert_eq!(capped_messages[0]["role"], "user");
+    assert_eq!(capped["budget"]["truncated"], true);
+    assert_eq!(capped["budget"]["omitted_messages"], 1);
+    assert_eq!(capped["budget"]["max_tokens"], 200);
+}
+
+/// The archaeology doors' auth (work#1679): a user passes; a supervisor
+/// worker token passes; a plain run worker — and a read-only analyst's
+/// agent:run_tools token — are refused on both doors.
+#[tokio::test]
+async fn archaeology_doors_refuse_workers_without_the_supervisor_scope() {
+    let state = test_app_state();
+    let app = fabro_server::test_support::build_test_router(state.clone());
+    let (run_id, _run_id_workspace) = create_run(&app).await;
+    let session_id = create_titled_session(&app, &run_id, "Ask Fabro").await;
+    delete_openai_credential(&app).await;
+    submit_failing_turn(&app, &session_id, "hello there").await;
+    let run: fabro_types::RunId = run_id.parse().unwrap();
+
+    let plain = state.test_issue_worker_token(&run);
+    let analyst = state.test_issue_worker_token_with_run_tools(&run);
+    let supervisor = state.test_issue_worker_token_supervisor(&run);
+    for (label, token) in [
+        ("plain run worker", plain.as_str()),
+        ("read-only analyst token", analyst.as_str()),
+    ] {
+        let response = get_json(&app, "/sessions/search?q=hello", Some(token)).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{label} must not reach the search door"
+        );
+        let response = get_json(
+            &app,
+            &format!("/sessions/{session_id}/transcript"),
+            Some(token),
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{label} must not reach the transcript door"
+        );
+    }
+
+    // The supervisor worker passes both doors.
+    let response = get_json(&app, "/sessions/search?q=hello", Some(&supervisor)).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the supervisor scope reaches the search door"
+    );
+    let response = get_json(
+        &app,
+        &format!("/sessions/{session_id}/transcript"),
+        Some(&supervisor),
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the supervisor scope reaches the transcript door"
+    );
+
+    // So does the user (no bearer in the test principal).
+    let response = get_json(&app, "/sessions/search?q=hello", None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+}

@@ -450,6 +450,24 @@ pub(crate) async fn execute_fabro_run_tool(
             let summary = fabro_tool::ask_run_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_SESSION_SEARCH_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroSessionSearchParams>(name, args)?;
+            let result =
+                fabro_tool::search_sessions(Arc::clone(&services.backend), params.validated()?)
+                    .await?;
+            let summary = fabro_tool::search_sessions_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_SESSION_READ_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroSessionReadParams>(name, args)?;
+            let result = fabro_tool::read_session_transcript(
+                Arc::clone(&services.backend),
+                params.validated()?,
+            )
+            .await?;
+            let summary = fabro_tool::read_session_transcript_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         _ => Err(fabro_tool::ToolError::message(format!(
             "unknown Fabro run tool `{name}`"
         ))),

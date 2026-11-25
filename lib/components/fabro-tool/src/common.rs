@@ -412,6 +412,33 @@ pub trait FabroToolBackend: Send + Sync {
         Err(ToolError::message(format!("{FABRO_BLOB_TOOL_NAME} is not available")).into())
     }
 
+    /// `fabro_session_search` (ADR-0046 phase 2, work#1679): search
+    /// across every Ask Fabro session by run anchor, title, or recorded
+    /// message text — the supervisor finds "the conversation someone had
+    /// about run X". No run scope by design: the index spans sessions of
+    /// all runs, and the door's supervisor-scope auth is the gate.
+    async fn search_sessions(
+        &self,
+        _query: &str,
+        _limit: u32,
+        _offset: u32,
+    ) -> anyhow::Result<fabro_store::SessionSummaryPage> {
+        Err(session_tool_unavailable_error(
+            FABRO_SESSION_SEARCH_TOOL_NAME,
+        ))
+    }
+
+    /// `fabro_session_read` (ADR-0046 phase 2, work#1679): one session's
+    /// transcript, folded and compacted server-side under a token budget
+    /// — user and assistant messages whole, tool-call noise as counts.
+    async fn read_session_transcript(
+        &self,
+        _session_id: &str,
+        _max_tokens: u64,
+    ) -> anyhow::Result<fabro_types::SessionTranscript> {
+        Err(session_tool_unavailable_error(FABRO_SESSION_READ_TOOL_NAME))
+    }
+
     /// Submit one question to an Ask-Fabro session and return the turn's
     /// outcome once the analyst's answer is final.
     async fn submit_ask_turn(
@@ -471,6 +498,12 @@ fn run_mark_tool_unavailable_error() -> anyhow::Error {
 /// The read twins' shared refusal: a surface that serves no queue,
 /// observation, radius or comment door (ADR-0039 stage D part 2).
 fn read_tool_unavailable_error(tool: &str) -> anyhow::Error {
+    ToolError::message(format!("{tool} is not available on this surface")).into()
+}
+
+/// The session archaeology tools' shared refusal (ADR-0046 phase 2): a
+/// surface that serves no session search or transcript door.
+fn session_tool_unavailable_error(tool: &str) -> anyhow::Error {
     ToolError::message(format!("{tool} is not available on this surface")).into()
 }
 
@@ -559,6 +592,8 @@ pub const FABRO_WORK_RADIUS_TOOL_NAME: &str = "fabro_work_radius";
 pub const FABRO_WORK_COMMENTS_TOOL_NAME: &str = "fabro_work_comments";
 pub const FABRO_OBSERVATION_MANAGE_TOOL_NAME: &str = "fabro_observation_manage";
 pub const FABRO_OBSERVATION_FEED_TOOL_NAME: &str = "fabro_observation_feed";
+pub const FABRO_SESSION_SEARCH_TOOL_NAME: &str = "fabro_session_search";
+pub const FABRO_SESSION_READ_TOOL_NAME: &str = "fabro_session_read";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -681,6 +716,14 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroAskParams>(
             FABRO_ASK_TOOL_NAME,
             "Ask one question to the Ask-Fabro analyst of another run and wait for its final answer. The analyst reads the target run's events, state, and workspace; the answer comes back as this tool's result.",
+        ),
+        tool_definition::<crate::FabroSessionSearchParams>(
+            FABRO_SESSION_SEARCH_TOOL_NAME,
+            "Search across every Ask Fabro conversation (ADR-0046 phase 2): sessions whose run anchor, title, or recorded message text matches a keyword, last activity first. Find \"the conversation someone had about run X\" — pass the run id (or a fragment) as the query — then read the match with fabro_session_read.",
+        ),
+        tool_definition::<crate::FabroSessionReadParams>(
+            FABRO_SESSION_READ_TOOL_NAME,
+            "Read ONE Ask Fabro session's transcript, compacted: the conversation folded server-side into user and assistant messages, tool calls summarized as counts, capped by a token budget (default 4000). Use it after fabro_session_search to see what an earlier conversation settled; the summary tells you when the budget truncated the transcript.",
         ),
     ]
 });
@@ -847,6 +890,8 @@ mod tests {
             FABRO_WORK_UPDATE_TOOL_NAME,
             FABRO_WORK_RELEASE_TOOL_NAME,
             FABRO_ASK_TOOL_NAME,
+            FABRO_SESSION_SEARCH_TOOL_NAME,
+            FABRO_SESSION_READ_TOOL_NAME,
         ]);
     }
 
