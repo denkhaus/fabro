@@ -27,6 +27,14 @@ leak-timeout = "500ms"
     filter = "package(fabro-server) & test(=openapi_conformance::all_spec_routes_are_routable)"
     slow-timeout = { period = "30s", terminate-after = 3 }
 
+    # The with_replacement shape net (work#1685) runs `cargo metadata`
+    # and syn-parses every replacement crate (including the lithos-llm
+    # git checkout) before any comparison runs — one long setup, then a
+    # fast walk.
+    [[profile.default.overrides]]
+    filter = "package(fabro-api) & test(=every_replacement_mapping_matches_its_rust_serde_shape)"
+    slow-timeout = { period = "10s", terminate-after = 4 }
+
     [[profile.default.overrides]]
     filter = "package(fabro-server)"
     slow-timeout = { period = "5s", terminate-after = 4 }

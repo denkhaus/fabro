@@ -9839,7 +9839,7 @@ components:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
         environment_id:
-          type: string
+          type: ["string", "null"]
           description: Server-managed Docker or Daytona environment selected when the automation fires.
           example: daytona-smoke
         target:
@@ -9890,7 +9890,7 @@ components:
           type: ["string", "null"]
           example: Keeps dependencies fresh.
         environment_id:
-          type: string
+          type: ["string", "null"]
           description: Server-managed Docker or Daytona environment selected when the automation fires.
           example: daytona-smoke
         target:
@@ -12363,6 +12363,8 @@ components:
       enum:
         - completed
         - partial_success
+        - boundary
+        - publish_blocked
 
     FailureReason:
       description: Reason attached to a failed terminal run status.
@@ -12372,12 +12374,15 @@ components:
         - publish_failed
         - cancelled
         - approval_denied
+        - approval_timeout
         - terminated
         - transient_infra
         - budget_exhausted
         - launch_failed
         - bootstrap_failed
         - sandbox_init_failed
+        - deadlock
+        - soft_stop
 
     PendingReason:
       description: Reason a pre-execution run is pending instead of runnable.
@@ -14523,6 +14528,16 @@ components:
           oneOf:
             - $ref: "#/components/schemas/ParallelBranchId"
             - type: "null"
+        handler:
+          $ref: "#/components/schemas/StageHandler"
+          description: Canonical handler kind of the stage, when the projection named it.
+        graph_visit:
+          type: ["integer", "null"]
+          minimum: 0
+          description: Graph visit counter of the stage's latest attempt, when known.
+        resumed_from_stage_id:
+          type: ["string", "null"]
+          description: Prior execution superseded by this resumed replay.
         output:
           type: ["string", "null"]
         output_bytes:
@@ -15941,6 +15956,31 @@ components:
         diff:
           $ref: "#/components/schemas/RunDiff"
 
+    RunArtifact:
+      description: One file a stage's attempt left in the workspace and the run collected.
+      type: object
+      required:
+        - stage_id
+        - retry
+        - relative_path
+        - size
+        - blob
+      properties:
+        stage_id:
+          type: string
+          description: The stage that produced the file, as the projection labels it.
+        retry:
+          type: integer
+          description: The attempt of the stage, 1-based, as the artifact listing's `retry`.
+        relative_path:
+          type: string
+          description: The file's path relative to the workspace root.
+        size:
+          type: integer
+          description: File size in bytes.
+        blob:
+          $ref: "#/components/schemas/BlobHash"
+
     RunProjection:
       description: Raw internal run projection derived from the event log.
       type: object
@@ -15952,6 +15992,7 @@ components:
         - checkpoints
         - pending_interviews
         - stages
+        - artifacts
       properties:
         title:
           type: string
@@ -16004,6 +16045,28 @@ components:
           oneOf:
             - $ref: "#/components/schemas/PullRequestCreation"
             - type: "null"
+        approval:
+          oneOf:
+            - $ref: "#/components/schemas/RunApproval"
+            - type: "null"
+          description: The run's recorded approval decision, when one exists.
+        claimed_seed_id:
+          type: ["string", "null"]
+          description: |
+            The seed this run works on, as the claiming planner declared it in its
+            `current_seed_id` context update (fabro-9711/3a5e). Absent until a stage
+            declares the key; last declaration wins.
+        current_work_item:
+          type: ["string", "null"]
+          description: |
+            The work item this run owns, as its claim's `work.claimed` record declared
+            it (ADR-0032; provider-stable key, e.g. `owner/repo#123`). Cleared by
+            `work.released`.
+        artifacts:
+          type: array
+          description: Files the run's stages collected as artifacts.
+          items:
+            $ref: "#/components/schemas/RunArtifact"
         superseded_by:
           type: ["string", "null"]
         retried_from:
@@ -16267,7 +16330,7 @@ components:
           description: The comment's author as the forge names it.
         body:
           type: string
-        created_at:
+        createdAt:
           type: ["string", "null"]
           format: date-time
           description: When the forge recorded the comment, when it names one.
@@ -18823,9 +18886,10 @@ components:
         - storage
         - artifacts
         - scheduler
+        - retention
+        - run_channel
         - logging
         - integrations
-        - seeds
       properties:
         listen:
           $ref: "#/components/schemas/ServerListenSettings"
@@ -18843,31 +18907,49 @@ components:
           $ref: "#/components/schemas/ServerArtifactsSettings"
         scheduler:
           $ref: "#/components/schemas/ServerSchedulerSettings"
+        retention:
+          $ref: "#/components/schemas/ServerRetentionSettings"
+          description: Periodic run-history retention (fabro-b1a4, fork).
+        run_channel:
+          $ref: "#/components/schemas/ServerRunChannelSettings"
+          description: The per-run capability channel (ADR-0035, fork).
         logging:
           $ref: "#/components/schemas/ServerLoggingSettings"
         integrations:
           $ref: "#/components/schemas/ServerIntegrationsSettings"
-        seeds:
-          $ref: "#/components/schemas/ServerSeedsSettings"
 
-    ServerSeedsSettings:
+    ServerRetentionSettings:
+      description: |
+        `[server.retention]` — periodic run-history retention (fabro-b1a4,
+        fork). Zero disables a protection; the resolver fills the values
+        from `defaults.toml` (14, 48, 85) and user settings override them.
       type: object
-      required: [mirror]
+      required: [max_run_age_days, terminal_sandbox_age_hours, disk_brake_percent]
       properties:
-        mirror:
-          oneOf:
-            - $ref: "#/components/schemas/SeedsMirrorSettings"
-            - type: "null"
+        max_run_age_days:
+          type: integer
+          minimum: 0
+        terminal_sandbox_age_hours:
+          type: integer
+          minimum: 0
+        disk_brake_percent:
+          type: integer
+          minimum: 0
+          maximum: 100
 
-    SeedsMirrorSettings:
+    ServerRunChannelSettings:
+      description: |
+        `[server.run_channel]` — the per-run capability channel (ADR-0035,
+        fork): whether the server spawns one channel per run at run launch,
+        and the root directory whose per-run subdirs the sandbox daemon
+        binds into run sandboxes. `dir: null` resolves to
+        `<storage>/run-channels`.
       type: object
-      required: [origin, branch]
+      required: [enabled]
       properties:
-        origin:
-          type: string
-        branch:
-          type: string
-        cache_dir:
+        enabled:
+          type: boolean
+        dir:
           type: ["string", "null"]
 
     ServerListenSettings:
@@ -18948,8 +19030,12 @@ components:
         (`local`, `docker`, `daytona`) are always present; any other key names
         a sandbox-driver plugin and carries its launch settings.
       type: object
-      additionalProperties:
-        $ref: "#/components/schemas/ServerSandboxProviderSettings"
+      required: [entries]
+      properties:
+        entries:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ServerSandboxProviderSettings"
 
     ServerSandboxProviderSettings:
       type: object

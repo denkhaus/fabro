@@ -23,12 +23,15 @@ export const FailureReason = {
     PUBLISH_FAILED: 'publish_failed',
     CANCELLED: 'cancelled',
     APPROVAL_DENIED: 'approval_denied',
+    APPROVAL_TIMEOUT: 'approval_timeout',
     TERMINATED: 'terminated',
     TRANSIENT_INFRA: 'transient_infra',
     BUDGET_EXHAUSTED: 'budget_exhausted',
     LAUNCH_FAILED: 'launch_failed',
     BOOTSTRAP_FAILED: 'bootstrap_failed',
-    SANDBOX_INIT_FAILED: 'sandbox_init_failed'
+    SANDBOX_INIT_FAILED: 'sandbox_init_failed',
+    DEADLOCK: 'deadlock',
+    SOFT_STOP: 'soft_stop'
 } as const;
 
 export type FailureReason = typeof FailureReason[keyof typeof FailureReason];

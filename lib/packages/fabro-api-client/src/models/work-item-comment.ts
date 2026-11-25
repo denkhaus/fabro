@@ -26,7 +26,7 @@ export interface WorkItemComment {
     /**
      * When the forge recorded the comment, when it names one.
      */
-    'created_at'?: string | null;
+    'createdAt'?: string | null;
     /**
      * The forge\'s permalink to the comment, when it names one.
      */

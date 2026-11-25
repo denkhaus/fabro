@@ -401,6 +401,7 @@ models/run-approval-state.ts
 models/run-approval.ts
 models/run-artifact-entry.ts
 models/run-artifact-list-response.ts
+models/run-artifact.ts
 models/run-branch-settings.ts
 models/run-checkpoint-settings.ts
 models/run-checkpoint.ts
@@ -524,7 +525,6 @@ models/secret-type.ts
 models/seed-status.ts
 models/seed-summary.ts
 models/seed-type.ts
-models/seeds-mirror-settings.ts
 models/server-api-settings.ts
 models/server-artifacts-settings.ts
 models/server-auth-github-settings.ts
@@ -536,10 +536,12 @@ models/server-listen-tcp-settings.ts
 models/server-listen-unix-settings.ts
 models/server-logging-settings.ts
 models/server-namespace.ts
+models/server-retention-settings.ts
+models/server-run-channel-settings.ts
 models/server-sandbox-provider-settings.ts
+models/server-sandbox-providers-settings.ts
 models/server-sandbox-settings.ts
 models/server-scheduler-settings.ts
-models/server-seeds-settings.ts
 models/server-settings.ts
 models/server-storage-settings.ts
 models/server-web-settings.ts

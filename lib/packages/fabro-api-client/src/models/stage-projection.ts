@@ -33,6 +33,9 @@ import type { PermissionLevel } from './permission-level';
 import type { StageCompletion } from './stage-completion';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { StageHandler } from './stage-handler';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { StageInferenceProjection } from './stage-inference-projection';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -85,6 +88,18 @@ export interface StageProjection {
      * Durable identity of one branch within a parallel execution, in `{parallel_group_id}:{index}` form.
      */
     'parallel_branch_id'?: string | null;
+    /**
+     * Canonical handler kind of the stage, when the projection named it.
+     */
+    'handler'?: StageHandler;
+    /**
+     * Graph visit counter of the stage\'s latest attempt, when known.
+     */
+    'graph_visit'?: number | null;
+    /**
+     * Prior execution superseded by this resumed replay.
+     */
+    'resumed_from_stage_id'?: string | null;
     'output'?: string | null;
     'output_bytes'?: number | null;
     'live_streaming'?: boolean | null;

@@ -39,6 +39,12 @@ import type { PullRequestCreation } from './pull-request-creation';
 import type { PullRequestLink } from './pull-request-link';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunApproval } from './run-approval';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { RunArtifact } from './run-artifact';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunControlAction } from './run-control-action';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -87,6 +93,19 @@ export interface RunProjection {
     'sandbox'?: RunSandbox | null;
     'pull_request'?: PullRequestLink | null;
     'pull_request_creation'?: PullRequestCreation | null;
+    'approval'?: RunApproval | null;
+    /**
+     * The seed this run works on, as the claiming planner declared it in its `current_seed_id` context update (fabro-9711/3a5e). Absent until a stage declares the key; last declaration wins.
+     */
+    'claimed_seed_id'?: string | null;
+    /**
+     * The work item this run owns, as its claim\'s `work.claimed` record declared it (ADR-0032; provider-stable key, e.g. `owner/repo#123`). Cleared by `work.released`.
+     */
+    'current_work_item'?: string | null;
+    /**
+     * Files the run\'s stages collected as artifacts.
+     */
+    'artifacts': Array<RunArtifact>;
     'superseded_by'?: string | null;
     /**
      * Source run ID when this run was created by manual retry.

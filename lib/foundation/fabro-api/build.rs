@@ -228,16 +228,6 @@ fn main() {
             &[],
         ),
         (
-            "ServerSeedsSettings",
-            "fabro_types::settings::server::ServerSeedsSettings",
-            &[],
-        ),
-        (
-            "SeedsMirrorSettings",
-            "fabro_types::settings::server::SeedsMirrorSettings",
-            &[],
-        ),
-        (
             "ServerListenSettings",
             "fabro_types::settings::server::ServerListenSettings",
             &[],
@@ -778,7 +768,6 @@ fn main() {
         // A sandbox's status is the sandbox driver's own type: the API reuses
         // it and the types it carries rather than projecting them.
         ("SandboxStatus", "sandbox_driver::SandboxStatus", &[]),
-        ("SandboxId", "sandbox_driver::SandboxId", &[]),
         ("SandboxState", "sandbox_driver::SandboxState", &[]),
         ("SandboxResources", "sandbox_driver::Resources", &[]),
         ("SandboxNetworkPolicy", "sandbox_driver::NetworkPolicy", &[]),
@@ -794,7 +783,6 @@ fn main() {
             "fabro_types::SandboxServiceListResponse",
             &[],
         ),
-        ("SandboxTimestamps", "fabro_types::SandboxTimestamps", &[]),
         ("AskFabro", "fabro_types::AskFabro", &[]),
         ("Automation", "fabro_automation::Automation", &[]),
         (
@@ -879,7 +867,6 @@ fn main() {
         ("SessionDetail", "fabro_types::SessionDetail", &[]),
         ("ReasoningOutput", "lithos_llm::types::ReasoningOutput", &[]),
         ("CompletionMessage", "lithos_llm::types::Message", &[]),
-        ("CompletionMessageRole", "lithos_llm::types::Role", &[]),
         (
             "CompletionContentPart",
             "lithos_llm::types::ContentPart",

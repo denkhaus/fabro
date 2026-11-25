@@ -20,7 +20,9 @@
 
 export const SuccessReason = {
     COMPLETED: 'completed',
-    PARTIAL_SUCCESS: 'partial_success'
+    PARTIAL_SUCCESS: 'partial_success',
+    BOUNDARY: 'boundary',
+    PUBLISH_BLOCKED: 'publish_blocked'
 } as const;
 
 export type SuccessReason = typeof SuccessReason[keyof typeof SuccessReason];

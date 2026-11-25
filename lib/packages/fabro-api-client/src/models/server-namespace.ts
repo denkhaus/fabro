@@ -33,13 +33,16 @@ import type { ServerListenSettings } from './server-listen-settings';
 import type { ServerLoggingSettings } from './server-logging-settings';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { ServerRetentionSettings } from './server-retention-settings';
+// May contain unused imports in some cases
+// @ts-ignore
+import type { ServerRunChannelSettings } from './server-run-channel-settings';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { ServerSandboxSettings } from './server-sandbox-settings';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ServerSchedulerSettings } from './server-scheduler-settings';
-// May contain unused imports in some cases
-// @ts-ignore
-import type { ServerSeedsSettings } from './server-seeds-settings';
 // May contain unused imports in some cases
 // @ts-ignore
 import type { ServerStorageSettings } from './server-storage-settings';
@@ -56,7 +59,14 @@ export interface ServerNamespace {
     'storage': ServerStorageSettings;
     'artifacts': ServerArtifactsSettings;
     'scheduler': ServerSchedulerSettings;
+    /**
+     * Periodic run-history retention (fabro-b1a4, fork).
+     */
+    'retention': ServerRetentionSettings;
+    /**
+     * The per-run capability channel (ADR-0035, fork).
+     */
+    'run_channel': ServerRunChannelSettings;
     'logging': ServerLoggingSettings;
     'integrations': ServerIntegrationsSettings;
-    'seeds': ServerSeedsSettings;
 }
