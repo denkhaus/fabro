@@ -907,6 +907,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedSessionList"
+    post:
+      operationId: createSession
+      tags: [Sessions]
+      summary: Create runless session
+      description: >-
+        Creates a RUNLESS Ask Fabro session (ADR-0046 phase 2, work#1677):
+        the global supervisor's conversation. No run anchor — the
+        conversation determines the context. The session starts in full
+        access; only an authenticated user principal may create one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSessionMetadata"
+        "400":
+          description: Invalid input
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/sessions/{id}:
     parameters:
@@ -11059,7 +11090,7 @@ components:
           type: string
 
     RunSessionMetadata:
-      description: Ask Fabro session metadata derived from the owning run event stream.
+      description: Ask Fabro session metadata derived from the owning run event stream. `run_id` is null for a runless session (work#1677) — the global supervisor's conversation carries no run anchor.
       type: object
       required:
         - id
@@ -11072,7 +11103,7 @@ components:
         id:
           $ref: "#/components/schemas/SessionId"
         run_id:
-          type: string
+          type: ["string", "null"]
         title:
           type: ["string", "null"]
         status:
@@ -11224,6 +11255,21 @@ components:
           $ref: "#/components/schemas/ProviderId"
           description: Optional provider pin. Provider-qualified model references remain accepted for compatibility.
 
+    CreateSessionRequest:
+      type: object
+      description: The runless session door's body (work#1677). The session starts in full access; no run anchor.
+      properties:
+        title:
+          type: string
+        model:
+          type: string
+          description: |
+            Catalog model ID or alias, optionally qualified as
+            `provider:selector` (see CreateRunSessionRequest.model).
+        provider:
+          $ref: "#/components/schemas/ProviderId"
+          description: Optional provider pin.
+
     SubmitTurnRequest:
       type: object
       required:
@@ -11270,7 +11316,7 @@ components:
         session (`seq`, from 1), the session and run it belongs to, when it
         was recorded, the event's name and its properties. Every event but
         `run.session.created` carries the `turn_id` it belongs to in its
-        properties.
+        properties. `run_id` is null for a runless session (work#1677).
       type: object
       required:
         - seq
@@ -11286,7 +11332,7 @@ components:
         session_id:
           $ref: "#/components/schemas/SessionId"
         run_id:
-          type: string
+          type: ["string", "null"]
         ts:
           type: string
           format: date-time

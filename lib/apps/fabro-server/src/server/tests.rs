@@ -10118,7 +10118,7 @@ async fn delete_run_removes_the_runs_session_records() {
     state
         .stores
         .session_records
-        .put(session_id, run_id, &record, Utc::now())
+        .put(session_id, Some(run_id), &record, Utc::now())
         .await
         .unwrap();
     assert_eq!(
@@ -12039,28 +12039,29 @@ async fn list_sessions_returns_the_global_index_across_runs() {
     let ts = Utc::now();
     let created = || {
         fabro_types::SessionEventBody::Created(fabro_types::session_event::SessionCreatedProps {
-            title:    Some("Ask Fabro".to_string()),
-            model:    None,
-            provider: None,
+            title:      Some("Ask Fabro".to_string()),
+            model:      None,
+            provider:   None,
+            capability: fabro_types::AskFabroCapability::ReadOnly,
         })
     };
     state
         .stores
         .session_events
-        .append(fixtures::RUN_1, first, created(), ts)
+        .append(Some(fixtures::RUN_1), first, created(), ts)
         .await
         .unwrap();
     state
         .stores
         .session_events
-        .append(fixtures::RUN_2, second, created(), ts)
+        .append(Some(fixtures::RUN_2), second, created(), ts)
         .await
         .unwrap();
     state
         .stores
         .session_events
         .append(
-            fixtures::RUN_2,
+            Some(fixtures::RUN_2),
             second,
             fabro_types::SessionEventBody::CapabilityChanged(
                 fabro_types::session_event::SessionCapabilityChangedProps {

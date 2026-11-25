@@ -111,7 +111,7 @@ impl FabroToolBackend for PinBackend {
 fn named_registry_does_not_resolve_the_retired_seeds_search_tool() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &["fabro_seeds_search"]);
@@ -129,7 +129,7 @@ fn named_registry_does_not_resolve_the_retired_seeds_search_tool() {
 fn named_registry_resolves_fabro_ask_for_stage_sessions() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[fabro_tool::FABRO_ASK_TOOL_NAME]);

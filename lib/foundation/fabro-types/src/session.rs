@@ -67,9 +67,11 @@ pub struct SessionTurn {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Ask Fabro session metadata derived from the owning run event stream.
+/// `run_id` is `None` for a runless session (work#1677): the global
+/// supervisor's conversations carry no run anchor.
 pub struct RunSessionMetadata {
     pub id:          SessionId,
-    pub run_id:      RunId,
+    pub run_id:      Option<RunId>,
     pub title:       Option<String>,
     pub status:      SessionStatus,
     pub model:       Option<String>,
@@ -87,7 +89,7 @@ pub struct RunSessionMetadata {
 }
 
 impl RunSessionMetadata {
-    pub fn new(id: SessionId, run_id: RunId, now: DateTime<Utc>) -> Self {
+    pub fn new(id: SessionId, run_id: Option<RunId>, now: DateTime<Utc>) -> Self {
         Self {
             id,
             run_id,
@@ -106,7 +108,7 @@ impl RunSessionMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionSummary {
     pub id:          SessionId,
-    pub run_id:      RunId,
+    pub run_id:      Option<RunId>,
     pub title:       Option<String>,
     pub status:      SessionStatus,
     pub model:       Option<String>,
@@ -179,7 +181,7 @@ mod tests {
     fn session_record_deserializes_legacy_json_without_provider() {
         let mut value = serde_json::to_value(RunSessionMetadata::new(
             SessionId::new(),
-            fixtures::RUN_1,
+            Some(fixtures::RUN_1),
             Utc::now(),
         ))
         .unwrap();

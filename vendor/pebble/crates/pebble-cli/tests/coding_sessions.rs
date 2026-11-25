@@ -750,7 +750,10 @@ wait "$worker"
         // openai-wire request render wraps error-marked results — the next
         // prompt's model call sees the cancellation as the failure it was
         // instead of a successful-looking "Cancelled".
-        assert_eq!(tool_output(&requests[1], "worker"), "[TOOL ERROR] Cancelled");
+        assert_eq!(
+            tool_output(&requests[1], "worker"),
+            "[TOOL ERROR] Cancelled"
+        );
         let end = events.take();
         assert_eq!(
             end.iter()

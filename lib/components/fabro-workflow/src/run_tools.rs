@@ -33,7 +33,7 @@ pub fn register_named_fabro_run_tools(
         tracing::warn!(
             tool = missing,
             known_tools = definitions.len(),
-            current_run_id = %services.current_run_id,
+            current_run_id = ?services.current_run_id,
             "requested run tool is not in the fabro tool catalog"
         );
     }
@@ -103,7 +103,11 @@ pub(crate) async fn execute_fabro_run_tool(
                 // files. Two short strings instead of a transcribed
                 // closure.
                 Some(directory) => {
-                    let run_id = services.current_run_id;
+                    let run_id = services.current_run_id.ok_or_else(|| {
+                        fabro_tool::ToolError::message(
+                            "no run is anchored to this session; files_from needs a run",
+                        )
+                    })?;
                     let sandbox_files = services
                         .backend
                         .read_run_sandbox_files(&run_id, directory)
@@ -124,7 +128,9 @@ pub(crate) async fn execute_fabro_run_tool(
                 Arc::clone(&services.backend),
                 params,
                 fabro_tool::CreateRunOptions {
-                    forced_parent_id: Some(services.current_run_id),
+                    // A runless supervisor creates parentless runs; a
+                    // run-anchored session forces its own run as parent.
+                    forced_parent_id: services.current_run_id,
                 },
             )
             .await?;
@@ -176,9 +182,15 @@ pub(crate) async fn execute_fabro_run_tool(
         fabro_tool::FABRO_BLOB_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroBlobParams>(name, args)?;
             let validated = fabro_tool::ValidatedBlob::try_from(params)?;
-            let result =
-                fabro_tool::blob_page(&services.backend, &services.current_run_id, &validated)
-                    .await?;
+            // The blob tool takes no run argument (the worker-identity
+            // pattern): it is keyed to the calling run, so a runless
+            // session has nothing to key it to (work#1677).
+            let run_id = services.current_run_id.ok_or_else(|| {
+                fabro_tool::ToolError::message(
+                    "fabro_blob is keyed to the calling run; this session has no run anchor",
+                )
+            })?;
+            let result = fabro_tool::blob_page(&services.backend, &run_id, &validated).await?;
             let summary = fabro_tool::blob_page_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
@@ -188,9 +200,12 @@ pub(crate) async fn execute_fabro_run_tool(
             // tool takes no arguments (the same worker-identity pattern
             // as fabro_blob).
             let _ = parse_fabro_tool_args::<fabro_tool::FabroRunDiffsParams>(name, args)?;
-            let result =
-                fabro_tool::run_diffs(Arc::clone(&services.backend), services.current_run_id)
-                    .await?;
+            let run_id = services.current_run_id.ok_or_else(|| {
+                fabro_tool::ToolError::message(
+                    "fabro_run_diffs is keyed to the calling run; this session has no run anchor",
+                )
+            })?;
+            let result = fabro_tool::run_diffs(Arc::clone(&services.backend), run_id).await?;
             let summary = fabro_tool::run_diffs_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
@@ -220,7 +235,7 @@ pub(crate) async fn execute_fabro_run_tool(
             let params = fabro_tool::FabroRunSetTitleParams {
                 run:   params
                     .run
-                    .or_else(|| Some(services.current_run_id.to_string())),
+                    .or_else(|| services.current_run_id.map(|run_id| run_id.to_string())),
                 title: params.title,
             };
             let result = fabro_tool::set_run_title(
@@ -327,9 +342,17 @@ pub(crate) async fn execute_fabro_run_tool(
                      so there is nothing to attribute the entry to",
                 ));
             };
+            // A stage session is always run-anchored (the observation is
+            // attributed to the stage's run); the None arm is a defensive
+            // teaching error, not a reachable path.
+            let run_id = services.current_run_id.ok_or_else(|| {
+                fabro_tool::ToolError::message(
+                    "observations are recorded by workflow stages; this session has no run anchor",
+                )
+            })?;
             let result = fabro_tool::record_observation(
                 Arc::clone(&services.backend),
-                services.current_run_id,
+                run_id,
                 stage,
                 fabro_tool::ValidatedObservation::try_from(params)?,
             )
@@ -355,7 +378,7 @@ pub(crate) async fn execute_fabro_run_tool(
             let params = fabro_tool::FabroWorkNextParams {
                 run: params
                     .run
-                    .or_else(|| Some(services.current_run_id.to_string())),
+                    .or_else(|| services.current_run_id.map(|run_id| run_id.to_string())),
                 ..params
             };
             let result = fabro_tool::work_next(
@@ -507,7 +530,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: parent_id,
+            current_run_id: Some(parent_id),
             stage:          None,
         };
         let name = fabro_tool::FABRO_RUN_CREATE_TOOL_NAME;
@@ -690,7 +713,7 @@ mod tests {
         });
         let services = FabroRunToolServices {
             backend:        backend.clone(),
-            current_run_id: current,
+            current_run_id: Some(current),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -730,7 +753,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let error = execute_fabro_run_tool(
@@ -793,7 +816,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: run_id,
+            current_run_id: Some(run_id),
             stage:          Some(position),
         };
         let output = execute_fabro_run_tool(
@@ -885,7 +908,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: run_id,
+            current_run_id: Some(run_id),
             stage:          None,
         };
         let output =
@@ -955,7 +978,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: current,
+            current_run_id: Some(current),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1001,7 +1024,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            current_run_id: Some("01KRBZW4DW0000000000000002".parse().unwrap()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1058,7 +1081,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            current_run_id: Some("01KRBZW4DW0000000000000002".parse().unwrap()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1115,7 +1138,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            current_run_id: Some("01KRBZW4DW0000000000000002".parse().unwrap()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1180,7 +1203,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: current,
+            current_run_id: Some(current),
             stage:          None,
         };
         // The injected run selector resolves through the API before the
@@ -1235,7 +1258,7 @@ mod tests {
                 ClientBackend::new(Arc::new(client))
                     .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
             ),
-            current_run_id: "01KRBZW4DW0000000000000002".parse().unwrap(),
+            current_run_id: Some("01KRBZW4DW0000000000000002".parse().unwrap()),
             stage:          None,
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
@@ -1324,7 +1347,7 @@ mod tests {
                 ClientBackend::new(Arc::new(client))
                     .with_workflow_version_packager(Arc::new(SingleGraphPackager)),
             ),
-            current_run_id: run_id,
+            current_run_id: Some(run_id),
             stage:          None,
         };
         let name = fabro_tool::FABRO_WORKFLOW_VERSION_CREATE_TOOL_NAME;
@@ -1388,7 +1411,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1438,7 +1461,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1479,7 +1502,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1519,7 +1542,7 @@ mod tests {
         let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1727,7 +1750,7 @@ mod tests {
         let run_id: RunId = "01KRBZW4DW0000000000000003".parse().unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(MockAskBackend { run_id }),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let output = execute_fabro_run_tool(
@@ -1879,7 +1902,7 @@ mod tests {
         let run_id: RunId = "01KRBZW4DW0000000000000004".parse().unwrap();
         let services = FabroRunToolServices {
             backend:        Arc::new(MockFailingAskBackend { run_id }),
-            current_run_id: RunId::new(),
+            current_run_id: Some(RunId::new()),
             stage:          None,
         };
         let error = execute_fabro_run_tool(

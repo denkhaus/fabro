@@ -108,7 +108,7 @@ impl FabroToolBackend for PinBackend {
 fn named_registry_resolves_the_run_mark_tool() {
     let services = FabroRunToolServices {
         backend:        Arc::new(PinBackend),
-        current_run_id: RunId::new(),
+        current_run_id: Some(RunId::new()),
         stage:          None,
     };
     let tools = register_named_fabro_run_tools(&services, &[FABRO_RUN_MARK_TOOL_NAME]);

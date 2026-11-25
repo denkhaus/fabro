@@ -53,6 +53,7 @@ impl RunSessionProjection {
                     record.title.clone_from(&props.title);
                     record.model.clone_from(&props.model);
                     record.provider.clone_from(&props.provider);
+                    record.capability = props.capability;
                     self.sessions.insert(session_id, ProjectedRunSession {
                         record,
                         last_seq: event.seq,
@@ -127,7 +128,7 @@ mod tests {
         SessionTurnFailedProps, SessionTurnStartedProps, SessionTurnSucceededProps,
         SessionUserMessageProps,
     };
-    use fabro_types::{SessionEvent, SessionEventBody, TurnId, fixtures};
+    use fabro_types::{AskFabroCapability, SessionEvent, SessionEventBody, TurnId, fixtures};
     use serde_json::json;
 
     use super::{project_run_session, project_run_sessions};
@@ -141,9 +142,10 @@ mod tests {
                 1,
                 session_id,
                 SessionEventBody::Created(SessionCreatedProps {
-                    title:    Some("Ask".to_string()),
-                    model:    Some("test-model".to_string()),
-                    provider: None,
+                    title:      Some("Ask".to_string()),
+                    model:      Some("test-model".to_string()),
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
                 }),
             ),
             event(
@@ -209,9 +211,10 @@ mod tests {
                 1,
                 session_id,
                 SessionEventBody::Created(SessionCreatedProps {
-                    title:    None,
-                    model:    None,
-                    provider: None,
+                    title:      None,
+                    model:      None,
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
                 }),
             ),
             event(
@@ -255,9 +258,10 @@ mod tests {
                 1,
                 session_id,
                 SessionEventBody::Created(SessionCreatedProps {
-                    title:    Some("Ask".to_string()),
-                    model:    None,
-                    provider: None,
+                    title:      Some("Ask".to_string()),
+                    model:      None,
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
                 }),
             ),
             event(
@@ -295,18 +299,20 @@ mod tests {
                 1,
                 first,
                 SessionEventBody::Created(SessionCreatedProps {
-                    title:    Some("First".to_string()),
-                    model:    None,
-                    provider: None,
+                    title:      Some("First".to_string()),
+                    model:      None,
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
                 }),
             ),
             event(
                 1,
                 second,
                 SessionEventBody::Created(SessionCreatedProps {
-                    title:    Some("Second".to_string()),
-                    model:    None,
-                    provider: None,
+                    title:      Some("Second".to_string()),
+                    model:      None,
+                    provider:   None,
+                    capability: AskFabroCapability::ReadOnly,
                 }),
             ),
             event(
@@ -331,7 +337,7 @@ mod tests {
         SessionEvent {
             seq,
             session_id,
-            run_id: fixtures::RUN_1,
+            run_id: Some(fixtures::RUN_1),
             ts: Utc.with_ymd_and_hms(2026, 5, 20, 12, 0, seq).unwrap(),
             body,
         }

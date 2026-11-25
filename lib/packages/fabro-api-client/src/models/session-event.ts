@@ -18,7 +18,7 @@
 import type { SessionEventName } from './session-event-name';
 
 /**
- * One recorded event of an Ask Fabro session: its position in the session (`seq`, from 1), the session and run it belongs to, when it was recorded, the event\'s name and its properties. Every event but `run.session.created` carries the `turn_id` it belongs to in its properties.
+ * One recorded event of an Ask Fabro session: its position in the session (`seq`, from 1), the session and run it belongs to, when it was recorded, the event\'s name and its properties. Every event but `run.session.created` carries the `turn_id` it belongs to in its properties. `run_id` is null for a runless session (work#1677).
  */
 export interface SessionEvent {
     'seq': number;
@@ -26,7 +26,7 @@ export interface SessionEvent {
      * Durable session identifier.
      */
     'session_id': string;
-    'run_id': string;
+    'run_id': string | null;
     'ts': string;
     'event': SessionEventName;
     'properties': { [key: string]: any; };

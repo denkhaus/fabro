@@ -15,10 +15,12 @@ use crate::{Error, Result, sqlite_row};
 
 const RECORD_NAME: &str = "run session record";
 
-/// A stored conversation and when it was last written.
+/// A stored conversation and when it was last written. `run_id` is `None`
+/// for a runless session (work#1677) — the global supervisor's
+/// conversations carry no run anchor.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredSessionRecord {
-    pub run_id:     RunId,
+    pub run_id:     Option<RunId>,
     pub record:     SessionRecord,
     pub updated_at: DateTime<Utc>,
 }
@@ -29,7 +31,7 @@ pub struct StoredSessionRecord {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredSessionRecordSummary {
     pub session_id: SessionId,
-    pub run_id:     RunId,
+    pub run_id:     Option<RunId>,
     pub updated_at: DateTime<Utc>,
 }
 
@@ -55,7 +57,7 @@ impl RunSessionRecordStore {
     pub async fn put(
         &self,
         session_id: SessionId,
-        run_id: RunId,
+        run_id: Option<RunId>,
         record: &SessionRecord,
         updated_at: DateTime<Utc>,
     ) -> Result<()> {
@@ -71,7 +73,7 @@ ON CONFLICT(session_id) DO UPDATE SET
 ",
         )
         .bind(session_id.to_string())
-        .bind(run_id.to_string())
+        .bind(run_id.map(|run_id| run_id.to_string()))
         .bind(record_json)
         .bind(updated_at.timestamp_millis())
         .execute(&self.pool)
@@ -129,10 +131,14 @@ ORDER BY updated_at_ms DESC, session_id ASC
 }
 
 fn record_from_row(row: &SqliteRow) -> Result<StoredSessionRecord> {
-    let run_id: String = row.try_get("run_id")?;
+    let run_id: Option<String> = row.try_get("run_id")?;
     let run_id = run_id
-        .parse::<RunId>()
-        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+        .map(|run_id| {
+            run_id.parse::<RunId>().map_err(|error| {
+                Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
+            })
+        })
+        .transpose()?;
     let record_json: String = row.try_get("record_json")?;
     let record: SessionRecord = serde_json::from_str(&record_json)?;
     let updated_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "updated_at_ms")?;
@@ -148,10 +154,14 @@ fn summary_from_row(row: &SqliteRow) -> Result<StoredSessionRecordSummary> {
     let session_id = session_id.parse::<SessionId>().map_err(|error| {
         Error::InvalidEvent(format!("stored {RECORD_NAME} session id: {error}"))
     })?;
-    let run_id: String = row.try_get("run_id")?;
+    let run_id: Option<String> = row.try_get("run_id")?;
     let run_id = run_id
-        .parse::<RunId>()
-        .map_err(|error| Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}")))?;
+        .map(|run_id| {
+            run_id.parse::<RunId>().map_err(|error| {
+                Error::InvalidEvent(format!("stored {RECORD_NAME} run id: {error}"))
+            })
+        })
+        .transpose()?;
     let updated_at = sqlite_row::timestamp_from_row(row, RECORD_NAME, "updated_at_ms")?;
     Ok(StoredSessionRecordSummary {
         session_id,
@@ -189,18 +199,19 @@ mod tests {
     async fn put_then_get_round_trips_the_record() {
         let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
             fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL,
         ]));
         let session_id = SessionId::new();
         let record = record(&session_id);
         let updated_at = Utc.with_ymd_and_hms(2026, 9, 11, 12, 0, 0).unwrap();
 
         store
-            .put(session_id, fixtures::RUN_1, &record, updated_at)
+            .put(session_id, Some(fixtures::RUN_1), &record, updated_at)
             .await
             .unwrap();
 
         let stored = store.get(session_id).await.unwrap().expect("stored record");
-        assert_eq!(stored.run_id, fixtures::RUN_1);
+        assert_eq!(stored.run_id, Some(fixtures::RUN_1));
         assert_eq!(stored.record, record);
         assert_eq!(stored.updated_at, updated_at);
     }
@@ -212,8 +223,10 @@ mod tests {
     async fn get_reads_a_record_in_the_previous_format_for_pebble_to_refuse() {
         const PREVIOUS_RECORD: &str = include_str!("fixtures/session_record_v4.json");
 
-        let pool =
-            test_support::in_memory_pool_with(&[fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL]);
+        let pool = test_support::in_memory_pool_with(&[
+            fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL,
+        ]);
         let store = RunSessionRecordStore::new(pool.clone());
         let session_id = SessionId::new();
         sqlx::query(
@@ -229,7 +242,7 @@ mod tests {
         .unwrap();
 
         let stored = store.get(session_id).await.unwrap().expect("stored record");
-        assert_eq!(stored.run_id, fixtures::RUN_1);
+        assert_eq!(stored.run_id, Some(fixtures::RUN_1));
         assert_eq!(
             stored.record.format_version,
             SESSION_RECORD_FORMAT_VERSION - 1,
@@ -247,6 +260,7 @@ mod tests {
     async fn put_replaces_an_earlier_record() {
         let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
             fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL,
         ]));
         let session_id = SessionId::new();
         let first = record(&session_id);
@@ -255,11 +269,11 @@ mod tests {
         let now = Utc::now();
 
         store
-            .put(session_id, fixtures::RUN_1, &first, now)
+            .put(session_id, Some(fixtures::RUN_1), &first, now)
             .await
             .unwrap();
         store
-            .put(session_id, fixtures::RUN_1, &second, now)
+            .put(session_id, Some(fixtures::RUN_1), &second, now)
             .await
             .unwrap();
 
@@ -276,6 +290,7 @@ mod tests {
     async fn list_for_run_returns_metadata_only_for_its_own_run() {
         let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
             fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL,
         ]));
         let first = SessionId::new();
         let second = SessionId::new();
@@ -284,15 +299,15 @@ mod tests {
         let later = earlier + chrono::Duration::minutes(5);
 
         store
-            .put(first, fixtures::RUN_1, &record(&first), earlier)
+            .put(first, Some(fixtures::RUN_1), &record(&first), earlier)
             .await
             .unwrap();
         store
-            .put(second, fixtures::RUN_1, &record(&second), later)
+            .put(second, Some(fixtures::RUN_1), &record(&second), later)
             .await
             .unwrap();
         store
-            .put(other_run, fixtures::RUN_2, &record(&other_run), later)
+            .put(other_run, Some(fixtures::RUN_2), &record(&other_run), later)
             .await
             .unwrap();
 
@@ -300,12 +315,12 @@ mod tests {
         assert_eq!(summaries, vec![
             StoredSessionRecordSummary {
                 session_id: second,
-                run_id:     fixtures::RUN_1,
+                run_id:     Some(fixtures::RUN_1),
                 updated_at: later,
             },
             StoredSessionRecordSummary {
                 session_id: first,
-                run_id:     fixtures::RUN_1,
+                run_id:     Some(fixtures::RUN_1),
                 updated_at: earlier,
             },
         ]);
@@ -322,6 +337,7 @@ mod tests {
     async fn delete_for_run_removes_only_that_runs_records() {
         let store = RunSessionRecordStore::new(test_support::in_memory_pool_with(&[
             fabro_db::RUN_SESSION_RECORDS_MIGRATION_SQL,
+            fabro_db::RUN_SESSION_RECORDS_RUNLESS_MIGRATION_SQL,
         ]));
         let first = SessionId::new();
         let second = SessionId::new();
@@ -329,15 +345,15 @@ mod tests {
         let now = Utc::now();
 
         store
-            .put(first, fixtures::RUN_1, &record(&first), now)
+            .put(first, Some(fixtures::RUN_1), &record(&first), now)
             .await
             .unwrap();
         store
-            .put(second, fixtures::RUN_1, &record(&second), now)
+            .put(second, Some(fixtures::RUN_1), &record(&second), now)
             .await
             .unwrap();
         store
-            .put(kept, fixtures::RUN_2, &record(&kept), now)
+            .put(kept, Some(fixtures::RUN_2), &record(&kept), now)
             .await
             .unwrap();
 

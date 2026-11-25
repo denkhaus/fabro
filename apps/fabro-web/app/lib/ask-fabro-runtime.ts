@@ -11,8 +11,12 @@ import {
 import { ApiError, sessionsApi } from "./api-client";
 
 export interface AskFabroAdapterOptions {
-  /** Run ID this Ask Fabro session is scoped to. */
-  runId: string;
+  /**
+   * The run the session anchors to. `undefined` creates a RUNLESS session
+   * through the global door (work#1678): the supervisor's conversation
+   * carries no run anchor.
+   */
+  runId?: string;
   /**
    * Resume this session instead of creating one lazily (work#1452): the
    * server-side session index is the truth a resume picker seeds this
@@ -27,7 +31,7 @@ export interface AskFabroAdapterOptions {
   streamSessionTurnImpl?: typeof streamSessionTurn;
   /** Override session API for tests. */
   createSession?: (
-    runId: string,
+    runId: string | undefined,
     body: { title?: string; model?: string },
   ) => Promise<{ id: string }>;
 }
@@ -149,9 +153,15 @@ export function applyTurnEvent(
 type CreateSession = NonNullable<AskFabroAdapterOptions["createSession"]>;
 
 function defaultCreateSession(
-  runId: string,
+  runId: string | undefined,
   body: { title?: string; model?: string },
 ): Promise<{ id: string }> {
+  if (runId === undefined) {
+    // The runless door (work#1678): the global supervisor's conversation.
+    return sessionsApi
+      .createSession(body)
+      .then((response) => ({ id: response.data.id }));
+  }
   return sessionsApi
     .createRunSession(runId, body)
     .then((response) => ({ id: response.data.id }));

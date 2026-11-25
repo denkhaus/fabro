@@ -75,7 +75,17 @@ pub fn tools_for_stage(
     envelopes: &Option<Arc<StageEnvelopes>>,
     context: &HostToolContext,
 ) -> Vec<RegisteredTool> {
-    let run_id = services.current_run_id.to_string();
+    // A stage session is always run-anchored; a runless services struct
+    // (work#1677) serves no stages at all.
+    let Some(services_run_id) = services.current_run_id else {
+        error!(
+            run = %context.run,
+            node = %context.node,
+            "the Fabro run tools serve no run; the session gets no run tools"
+        );
+        return Vec::new();
+    };
+    let run_id = services_run_id.to_string();
     if context.run.as_str() != run_id {
         error!(
             run = %context.run,

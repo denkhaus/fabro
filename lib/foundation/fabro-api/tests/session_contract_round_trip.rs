@@ -60,7 +60,7 @@ fn session_detail_round_trips_active_turn_and_last_seq() {
     let detail = SessionDetail::new(
         RunSessionMetadata {
             id: session_id,
-            run_id: fixtures::RUN_1,
+            run_id: Some(fixtures::RUN_1),
             title: Some("Ask Fabro".to_string()),
             status: SessionStatus::Running,
             model: Some("gpt-5.4".to_string()),

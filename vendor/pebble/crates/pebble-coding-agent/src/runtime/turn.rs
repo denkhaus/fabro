@@ -1472,15 +1472,12 @@ mod tool_error_flag_wrap_tests {
     /// (empty or JSON-only error content).
     #[test]
     fn a_flag_without_rendered_marker_survives() {
-        let empty = LlmMessage::new(
-            Role::Tool,
-            [ContentPart::ToolResult(ToolResult {
-                tool_call_id: "call_1".into(),
-                name: Some("count".into()),
-                content: Vec::new(),
-                is_error: true,
-            })],
-        );
+        let empty = LlmMessage::new(Role::Tool, [ContentPart::ToolResult(ToolResult {
+            tool_call_id: "call_1".into(),
+            name:         Some("count".into()),
+            content:      Vec::new(),
+            is_error:     true,
+        })]);
         let wrapped = render_tool_error_flags_in_content(vec![empty]);
         let ContentPart::ToolResult(result) = &wrapped[0].content()[0] else {
             panic!("tool result");

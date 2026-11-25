@@ -285,7 +285,7 @@ mod tests {
         SessionEvent {
             seq: 1,
             session_id: SessionId::new(),
-            run_id: RunId::new(),
+            run_id: Some(RunId::new()),
             ts: "2026-09-22T00:00:00Z".parse().unwrap(),
             body,
         }

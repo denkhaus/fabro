@@ -81,7 +81,7 @@ import {
   type RunFileSelection,
   type RunGraphDirection,
 } from "./query-keys";
-import { isTerminalRunStatus, liveAnchorRunId } from "./run-actions";
+import { isTerminalRunStatus } from "./run-actions";
 
 const immutableOptions: SWRConfiguration = {
   revalidateIfStale: false,
@@ -647,23 +647,3 @@ export function useAskSessionTranscript(
     { revalidateOnFocus: false, revalidateIfStale: false },
   );
 }
-
-/** The newest live run id — the run a brand-new global conversation
- * anchors to (the conversation determines the context; the page itself
- * stays runless). Only non-terminal runs anchor (work#1506): a terminal
- * run's sandbox is reaped, and anchoring to it fails the first turn with
- * `sandbox_unavailable`. */
-export function useLatestRunId() {
-  return useSWR<string | null>(
-    queryKeys.runs.page({ limit: LIVE_ANCHOR_PAGE_SIZE }),
-    async () => {
-      const page = await apiData(() => runsApi.listRuns(LIVE_ANCHOR_PAGE_SIZE));
-      return liveAnchorRunId(page.data);
-    },
-  );
-}
-
-/** How many newest runs to inspect for a live anchor: terminal runs are
- * common (every finished run), so a single-entry page would usually hold
- * a dead one. */
-const LIVE_ANCHOR_PAGE_SIZE = 25;

@@ -17,13 +17,14 @@ use crate::{AskFabroCapability, RunId, SessionId, TurnId};
 ///
 /// On the wire the body is flattened: `event` names the kind and
 /// `properties` holds its fields, beside `seq`, `session_id`, `run_id` and
-/// `ts`.
+/// `ts`. `run_id` is `None` for a runless session — the global supervisor's
+/// conversations (work#1677) carry no run anchor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionEvent {
     /// The event's position in its session, from 1.
     pub seq:        u32,
     pub session_id: SessionId,
-    pub run_id:     RunId,
+    pub run_id:     Option<RunId>,
     pub ts:         DateTime<Utc>,
     #[serde(flatten)]
     pub body:       SessionEventBody,
@@ -113,11 +114,18 @@ impl SessionEventBody {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionCreatedProps {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title:    Option<String>,
+    pub title:      Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model:    Option<String>,
+    pub model:      Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider: Option<ProviderId>,
+    pub provider:   Option<ProviderId>,
+    /// The session's starting tool capability. Absent on events written
+    /// before the capability was recorded at creation (ADR-0046); the
+    /// projection falls back to read-only, the posture every run-anchored
+    /// session starts in. A runless session (work#1677) is created
+    /// full access — the operator grant its grill recorded.
+    #[serde(default)]
+    pub capability: AskFabroCapability,
 }
 
 /// An Ask Fabro session's tool capability changed (ADR-0046): the
@@ -244,7 +252,7 @@ mod tests {
         SessionCreatedProps, SessionEvent, SessionEventBody, SessionToolCallCompletedProps,
         SessionTurnStartedProps,
     };
-    use crate::{SessionId, TurnId, fixtures};
+    use crate::{AskFabroCapability, SessionId, TurnId, fixtures};
 
     #[test]
     fn a_session_event_flattens_its_body_on_the_wire() {
@@ -253,7 +261,7 @@ mod tests {
         let event = SessionEvent {
             seq: 2,
             session_id,
-            run_id: fixtures::RUN_1,
+            run_id: Some(fixtures::RUN_1),
             ts: Utc.with_ymd_and_hms(2026, 5, 20, 12, 0, 0).unwrap(),
             body: SessionEventBody::TurnStarted(SessionTurnStartedProps {
                 turn_id,
@@ -282,9 +290,10 @@ mod tests {
     #[test]
     fn a_created_event_has_no_turn() {
         let body = SessionEventBody::Created(SessionCreatedProps {
-            title:    Some("Ask".to_string()),
-            model:    None,
-            provider: None,
+            title:      Some("Ask".to_string()),
+            model:      None,
+            provider:   None,
+            capability: AskFabroCapability::ReadOnly,
         });
         assert_eq!(body.event_name(), "run.session.created");
         assert_eq!(body.turn_id(), None);

@@ -72,7 +72,7 @@ fn services(server: &MockServer, run_id: RunId) -> FabroRunToolServices {
     let client = fabro_client::Client::new_no_proxy(&server.url("")).expect("the client builds");
     FabroRunToolServices {
         backend:        Arc::new(ClientBackend::new(Arc::new(client))),
-        current_run_id: run_id,
+        current_run_id: Some(run_id),
         stage:          None,
     }
 }

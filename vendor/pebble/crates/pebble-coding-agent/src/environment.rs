@@ -22,6 +22,7 @@
 //! uses too.
 
 mod capture;
+mod deny_exec;
 mod glob;
 mod local;
 #[cfg(any(test, feature = "test-util"))]
@@ -38,6 +39,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 
+pub use self::deny_exec::DenyExecEnvironment;
 pub use self::local::{CallerEnvPolicy, LocalEnvironment};
 use crate::char_boundary::floor_char_boundary;
 use crate::event::OutputCaptureStats;

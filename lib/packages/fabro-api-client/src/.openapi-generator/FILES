@@ -124,6 +124,7 @@ models/create-mcp-server-request.ts
 models/create-run-pull-request-request.ts
 models/create-run-session-request.ts
 models/create-secret-request.ts
+models/create-session-request.ts
 models/create-variable-request.ts
 models/create-workflow-version-response.ts
 models/delete-run-response.ts

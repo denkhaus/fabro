@@ -15,7 +15,10 @@ use fabro_types::RunId;
 #[derive(Clone)]
 pub struct FabroRunToolServices {
     pub backend:        Arc<dyn fabro_tool::FabroToolBackend>,
-    pub current_run_id: RunId,
+    /// The run the tools act on by default. `None` for a runless surface
+    /// (work#1677): the global supervisor's tools take explicit run
+    /// selectors.
+    pub current_run_id: Option<RunId>,
     /// The stage the calling session serves, when there is one: the
     /// `(execution, firing)` pair the engine's `HostToolContext` names
     /// when it asks for the session's tools.
