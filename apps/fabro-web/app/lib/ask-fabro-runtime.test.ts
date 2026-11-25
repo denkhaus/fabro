@@ -103,6 +103,70 @@ describe("applyTurnEvent", () => {
     expect(acc.parts[1]?.type).toBe("tool-call");
     expect(acc.parts[2]).toMatchObject({ type: "text", text: "After" });
   });
+
+  test("a failed turn renders the error as a visible part (work#1681)", () => {
+    const acc = {
+      activeTextIndex: null,
+      parts: [],
+      toolCallIndex: new Map(),
+    } as Parameters<typeof applyTurnEvent>[0];
+
+    expect(
+      applyTurnEvent(
+        acc,
+        event("run.session.turn.failed", {
+          turn_id: "t_1",
+          error: "run sandbox is unavailable for Ask Fabro: run sandbox was not created",
+          code: "sandbox_unavailable",
+          retryable: false,
+        }),
+      ),
+    ).toBe(true);
+
+    expect(acc.parts).toHaveLength(1);
+    expect(acc.parts[0]?.type).toBe("text");
+    expect(acc.parts[0]).toMatchObject({
+      text: "Turn failed: run sandbox is unavailable for Ask Fabro: run sandbox was not created",
+    });
+    // retryable: false renders no hint.
+    expect(String(acc.parts[0]?.text)).not.toContain("retryable");
+  });
+
+  test("a failed turn after partial output closes the text and appends the error", () => {
+    const acc = {
+      activeTextIndex: null,
+      parts: [],
+      toolCallIndex: new Map(),
+    } as Parameters<typeof applyTurnEvent>[0];
+
+    applyTurnEvent(acc, event("run.session.assistant_delta", { delta: "Partial" }));
+    applyTurnEvent(
+      acc,
+      event("run.session.turn.failed", { turn_id: "t_1", error: "boom", retryable: true }),
+    );
+
+    expect(acc.parts).toHaveLength(2);
+    expect(acc.parts[0]).toMatchObject({ type: "text", text: "Partial" });
+    // A retryable failure carries the flag visibly (work#1681).
+    expect(acc.parts[1]).toMatchObject({
+      type: "text",
+      text: "Turn failed: boom (retryable)",
+    });
+  });
+
+  test("an interrupted turn renders a visible note (work#1681)", () => {
+    const acc = {
+      activeTextIndex: null,
+      parts: [],
+      toolCallIndex: new Map(),
+    } as Parameters<typeof applyTurnEvent>[0];
+
+    expect(
+      applyTurnEvent(acc, event("run.session.turn.interrupted", { turn_id: "t_1" })),
+    ).toBe(true);
+    expect(acc.parts).toHaveLength(1);
+    expect(acc.parts[0]).toMatchObject({ type: "text", text: "Turn interrupted." });
+  });
 });
 
 describe("createAskFabroAdapter", () => {
