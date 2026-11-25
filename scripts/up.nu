@@ -71,7 +71,11 @@ def main [--locked] {
             { stdout: "", stderr: $"up: unable to run flock: ($err.msg)", exit_code: 127 }
         }
         if $res.exit_code == 42 {
-            let holder = (do { open tmp/just-up.lock.pid } | complete | get stdout | default "unknown pid")
+            # `complete` only wraps external commands in current nu — the
+            # old `open | complete` shape crashed the alarm path itself and
+            # masked the real lock-busy report (2026-11-25: a stuck holder
+            # sat undiagnosable behind this crash).
+            let holder = (try { open --raw tmp/just-up.lock.pid } catch { "unknown pid" })
             alarm $holder
         }
         if ($res.stdout | str trim) != "" { print ($res.stdout | str trim -r) }
