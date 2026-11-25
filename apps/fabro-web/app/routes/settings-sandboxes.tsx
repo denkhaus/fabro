@@ -69,7 +69,12 @@ export default function SettingsSandboxes() {
   return (
     <div className="space-y-6">
       <SettingsPageIntro description={DESCRIPTION} />
-      {settings ? <ProvidersPanel settings={settings.server.sandbox.providers} /> : <PanelSkeleton />}
+      {settings ? (
+        // The wire wraps the provider map in `entries` (work#1685 net).
+        <ProvidersPanel settings={settings.server.sandbox.providers.entries} />
+      ) : (
+        <PanelSkeleton />
+      )}
     </div>
   );
 }

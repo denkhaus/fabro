@@ -15,11 +15,8 @@
 
 // May contain unused imports in some cases
 // @ts-ignore
-import type { ServerSandboxProviderSettings } from './server-sandbox-provider-settings';
+import type { ServerSandboxProvidersSettings } from './server-sandbox-providers-settings';
 
 export interface ServerSandboxSettings {
-    /**
-     * Sandbox provider policy keyed by provider kind. The bundled kinds (`local`, `docker`, `daytona`) are always present; any other key names a sandbox-driver plugin and carries its launch settings.
-     */
-    'providers': { [key: string]: ServerSandboxProviderSettings; };
+    'providers': ServerSandboxProvidersSettings;
 }

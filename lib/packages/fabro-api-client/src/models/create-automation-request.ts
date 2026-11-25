@@ -36,7 +36,7 @@ export interface CreateAutomationRequest {
     /**
      * Server-managed Docker or Daytona environment selected when the automation fires.
      */
-    'environment_id': string;
+    'environment_id': string | null;
     'target': RunTarget;
     /**
      * Workflow slug or path resolved in the run-target checkout when `workflow_source` is omitted, or in the explicit workflow-source checkout when present.

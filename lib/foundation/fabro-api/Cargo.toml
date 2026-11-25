@@ -41,4 +41,6 @@ syn = "2"
 [dev-dependencies]
 fabro-types = { path = "../fabro-types", features = ["test-support"] }
 jsonschema.workspace = true
+quote = "1"
 serde_yaml = "0.9"
+syn = { version = "2", features = ["full"] }
