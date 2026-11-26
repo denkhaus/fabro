@@ -484,6 +484,7 @@ export * from './sandbox-service';
 export * from './sandbox-service-list-response';
 export * from './sandbox-state';
 export * from './sandbox-status';
+export * from './sandbox-tool-file-response';
 export * from './sandbox-workspace-ownership';
 export * from './save-query-request';
 export * from './saved-query';

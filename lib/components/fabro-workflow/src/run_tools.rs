@@ -8,6 +8,27 @@ use serde::de::DeserializeOwned;
 
 use crate::services::FabroRunToolServices;
 
+/// The run a run-keyed read tool acts for (work#1680): the explicit
+/// selector wins, the ambient anchor is the default, and neither is the
+/// teaching refusal — a runless session has no anchor to default to.
+fn resolve_run_scope(
+    services: &FabroRunToolServices,
+    selector: Option<String>,
+    tool: &str,
+) -> fabro_tool::ToolResult<fabro_types::RunId> {
+    if let Some(selector) = selector {
+        let run_id: fabro_types::RunId = selector.trim().parse().map_err(|err| {
+            fabro_tool::ToolError::message(format!("run_id must be a run id: {err}"))
+        })?;
+        return Ok(run_id);
+    }
+    services.current_run_id.ok_or_else(|| {
+        fabro_tool::ToolError::message(format!(
+            "{tool} is keyed to a run; this session has no run anchor, so pass run_id explicitly"
+        ))
+    })
+}
+
 /// Every Fabro run tool, bound to `services`.
 #[must_use]
 pub fn register_fabro_run_tools(services: &FabroRunToolServices) -> Vec<RegisteredTool> {
@@ -181,30 +202,45 @@ pub(crate) async fn execute_fabro_run_tool(
         }
         fabro_tool::FABRO_BLOB_TOOL_NAME => {
             let params = parse_fabro_tool_args::<fabro_tool::FabroBlobParams>(name, args)?;
+            let selector = params.run_id.clone();
             let validated = fabro_tool::ValidatedBlob::try_from(params)?;
-            // The blob tool takes no run argument (the worker-identity
-            // pattern): it is keyed to the calling run, so a runless
-            // session has nothing to key it to (work#1677).
-            let run_id = services.current_run_id.ok_or_else(|| {
-                fabro_tool::ToolError::message(
-                    "fabro_blob is keyed to the calling run; this session has no run anchor",
-                )
-            })?;
+            // The blob store is keyed to a run (the worker-identity
+            // pattern): the selector wins, the ambient anchor is the
+            // default, and a runless session without a selector has
+            // nothing to key it to (work#1677, widened by work#1680 for
+            // the supervisor).
+            let run_id = resolve_run_scope(services, selector, name)?;
             let result = fabro_tool::blob_page(&services.backend, &run_id, &validated).await?;
             let summary = fabro_tool::blob_page_text(&result);
             render_fabro_tool_result(&summary, &result)
         }
+        fabro_tool::FABRO_RUN_FILES_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunFilesParams>(name, args)?;
+            // The supervisor's server-mediated listing (work#1680): the
+            // run selector is REQUIRED — the runless session has no
+            // ambient anchor to default to, and a foreign read must
+            // name its target.
+            let result =
+                fabro_tool::list_run_files(Arc::clone(&services.backend), params.validated()?)
+                    .await?;
+            let summary = fabro_tool::run_files_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
+        fabro_tool::FABRO_RUN_FILE_TOOL_NAME => {
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunFileParams>(name, args)?;
+            let result =
+                fabro_tool::read_run_file(Arc::clone(&services.backend), params.validated()?)
+                    .await?;
+            let summary = fabro_tool::run_file_text(&result);
+            render_fabro_tool_result(&summary, &result)
+        }
         fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME => {
-            // The diff inventory (ADR-0051): keyed to the calling run —
-            // the dispatcher injects the session's own run id and the
-            // tool takes no arguments (the same worker-identity pattern
-            // as fabro_blob).
-            let _ = parse_fabro_tool_args::<fabro_tool::FabroRunDiffsParams>(name, args)?;
-            let run_id = services.current_run_id.ok_or_else(|| {
-                fabro_tool::ToolError::message(
-                    "fabro_run_diffs is keyed to the calling run; this session has no run anchor",
-                )
-            })?;
+            // The diff inventory (ADR-0051): keyed to a run — the
+            // explicit selector wins, the ambient anchor is the default,
+            // and neither is the teaching refusal (work#1680 widened the
+            // worker-identity pattern for the runless supervisor).
+            let params = parse_fabro_tool_args::<fabro_tool::FabroRunDiffsParams>(name, args)?;
+            let run_id = resolve_run_scope(services, params.run_id.clone(), name)?;
             let result = fabro_tool::run_diffs(Arc::clone(&services.backend), run_id).await?;
             let summary = fabro_tool::run_diffs_text(&result);
             render_fabro_tool_result(&summary, &result)
@@ -963,6 +999,161 @@ mod tests {
         assert_eq!(body["diffs"][0]["kind"], "checkpoint");
         assert_eq!(body["diffs"][1]["kind"], "run");
         assert_eq!(body["diffs"][1]["base_sha"], "base0");
+    }
+
+    /// `fabro_run_diffs` with an EXPLICIT selector over a runless session
+    /// (work#1680): the runless supervisor has no ambient anchor, so the
+    /// dispatcher must route the inventory read to the run the call
+    /// names — the request reaches that run's platform-records door.
+    #[tokio::test]
+    async fn run_diffs_resolves_an_explicit_selector_on_a_runless_session() {
+        let server = httpmock::MockServer::start_async().await;
+        let named_run: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let checkpoint = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{named_run}/petri/platform-records"))
+                    .query_param("kind", "checkpoint");
+                then.status(200).json_body(json!({ "records": [] }));
+            })
+            .await;
+        let run_diff = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{named_run}/petri/platform-records"))
+                    .query_param("kind", "run.diff");
+                then.status(200).json_body(json!({ "records": [] }));
+            })
+            .await;
+        let timeline = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{named_run}/timeline"));
+                then.status(200).json_body(json!({ "entries": [] }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: None,
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME,
+            json!({ "run_id": named_run.to_string() }),
+            &services,
+        )
+        .await
+        .expect("an explicit selector dispatches without an anchor");
+        checkpoint.assert_calls_async(1).await;
+        run_diff.assert_calls_async(1).await;
+        timeline.assert_calls_async(1).await;
+        assert!(
+            output.contains(&format!("run {named_run}")),
+            "the summary names the selector's run: {output}"
+        );
+    }
+
+    /// The teaching refusal when neither the call nor the session names
+    /// a run (work#1680): a runless session without a selector cannot
+    /// guess an inventory target.
+    #[tokio::test]
+    async fn run_diffs_without_an_anchor_or_selector_refuses_with_the_teaching_error() {
+        let server = httpmock::MockServer::start_async().await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: None,
+            stage:          None,
+        };
+        let error =
+            execute_fabro_run_tool(fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME, json!({}), &services)
+                .await
+                .expect_err("an anchor-less call without a selector refuses");
+        assert!(
+            error.to_string().contains("no run anchor") && error.to_string().contains("run_id"),
+            "the refusal teaches the selector: {error}"
+        );
+    }
+
+    /// `fabro_blob` with an EXPLICIT selector on a runless session
+    /// (work#1680): the blob read reaches the NAMED run's blob door, so
+    /// the supervisor can page a diff patch it discovered through
+    /// `fabro_run_diffs`.
+    #[tokio::test]
+    async fn blob_resolves_an_explicit_selector_on_a_runless_session() {
+        let server = httpmock::MockServer::start_async().await;
+        let named_run: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let patch: fabro_types::BlobHash = fabro_types::BlobHash::new(b"supervisor patch");
+        let blob = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{named_run}/blobs/{}", patch));
+                then.status(200).body("patch line one\npatch line two\n");
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: None,
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_BLOB_TOOL_NAME,
+            json!({ "ref": fabro_types::format_blob_ref(&patch), "run_id": named_run.to_string() }),
+            &services,
+        )
+        .await
+        .expect("an explicit selector dispatches without an anchor");
+        blob.assert_calls_async(1).await;
+        assert!(
+            output.contains("patch line one"),
+            "the page carries the blob text: {output}"
+        );
+    }
+
+    /// `fabro_run_files` end to end over the REAL client backend
+    /// (work#1680): the explicit selector drives the tool listing door,
+    /// and the rendering carries kinds and sizes.
+    #[tokio::test]
+    async fn run_files_dispatches_with_the_explicit_selector() {
+        let server = httpmock::MockServer::start_async().await;
+        let named_run: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+        let listing = server
+            .mock_async(|when, then| {
+                when.method(httpmock::Method::GET)
+                    .path(format!("/api/v1/runs/{named_run}/sandbox/tool-files"))
+                    .query_param("path", "src");
+                then.status(200).json_body(json!({
+                    "data": [
+                        { "name": "src/lib.rs", "is_dir": false, "size": 1024 },
+                        { "name": "src/bin", "is_dir": true }
+                    ]
+                }));
+            })
+            .await;
+        let client = fabro_client::Client::new_no_proxy(&server.url("")).unwrap();
+        let services = FabroRunToolServices {
+            backend:        Arc::new(ClientBackend::new(Arc::new(client))),
+            current_run_id: None,
+            stage:          None,
+        };
+        let output = execute_fabro_run_tool(
+            fabro_tool::FABRO_RUN_FILES_TOOL_NAME,
+            json!({ "run_id": named_run.to_string(), "path": "src" }),
+            &services,
+        )
+        .await
+        .expect("the tool dispatches over the real backend");
+        listing.assert_calls_async(1).await;
+        assert!(
+            output.contains("2 entries under src"),
+            "the summary names count and directory: {output}"
+        );
+        assert!(
+            output.contains("lib.rs — 1024 bytes") && output.contains("bin — dir"),
+            "the entries carry kinds and sizes: {output}"
+        );
     }
 
     /// The stage-session path over the REAL client backend (fabro-9711 spec

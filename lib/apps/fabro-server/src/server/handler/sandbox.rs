@@ -19,11 +19,22 @@ use super::super::{
     ApiError, AppState, Bytes, HeaderMap, IntoResponse, Json, NamedTempFile, Path,
     PreviewUrlRequest, PreviewUrlResponse, Query, RequiredUser, Response, Router, RunId,
     SandboxDetails, SandboxFileEntry, SandboxFileListResponse, SandboxService,
-    SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, State, StatusCode,
-    VncPreviewResponse, fs, get, octet_stream_response, parse_run_id_path, post,
+    SandboxServiceListResponse, SandboxToolFileResponse, SshAccessRequest, SshAccessResponse,
+    State, StatusCode, VncPreviewResponse, fs, get, octet_stream_response, parse_run_id_path, post,
     reject_if_archived,
 };
+use crate::principal_middleware::RequiredSupervisorActor;
+use crate::run_files_security::is_sensitive;
 use crate::sandbox_access::{self, ProviderAccess};
+
+/// The deepest directory walk a supervisor tool listing may ask for —
+/// the tool clamps to the same bound client-side
+/// (`fabro_tool::RUN_FILES_MAX_DEPTH`).
+const TOOL_LIST_MAX_DEPTH: usize = 4;
+/// The largest file one supervisor tool read returns; a larger file
+/// REFUSES the read instead of truncating it (the bounded-refuse
+/// contract, work#1680).
+const TOOL_FILE_MAX_BYTES: usize = 256 * 1024;
 
 const MAX_TERMINAL_CONTROL_BYTES: usize = 4096;
 const DEFAULT_VNC_NO_VNC_PORT: u16 = 6080;
@@ -70,6 +81,11 @@ pub(super) fn routes() -> Router<Arc<AppState>> {
         .route("/runs/{id}/sandbox/vnc", post(create_sandbox_vnc_preview))
         .route("/runs/{id}/sandbox/services", get(list_sandbox_services))
         .route("/runs/{id}/sandbox/files", get(list_sandbox_files))
+        .route(
+            "/runs/{id}/sandbox/tool-files",
+            get(list_sandbox_tool_files),
+        )
+        .route("/runs/{id}/sandbox/tool-file", get(get_sandbox_tool_file))
         .route("/runs/{id}/sandbox/archive", get(get_sandbox_archive))
         .route(
             "/runs/{id}/sandbox/file",
@@ -126,6 +142,16 @@ struct SandboxFilesParams {
 #[derive(serde::Deserialize)]
 struct SandboxFileParams {
     path: String,
+}
+
+/// The supervisor tool-listing door's query (work#1680): the path is
+/// OPTIONAL — the empty listing root is the run's working directory.
+#[derive(serde::Deserialize)]
+struct SandboxToolFilesParams {
+    #[serde(default)]
+    path:  Option<String>,
+    #[serde(default)]
+    depth: Option<usize>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -718,6 +744,140 @@ async fn get_sandbox_file(
             ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
         }
     }
+}
+
+/// The supervisor tool-listing door (ADR-0046 phase 2, work#1680):
+/// `GET /api/v1/runs/{id}/sandbox/tool-files` — the named run's
+/// directory entries for `fabro_run_files`. Supervisor actor only (the
+/// minted `agent:supervisor` worker token or a user); the read reaches
+/// the sandbox through the same inspection reconnect the sandbox tab
+/// uses, and sensitive-path entries are dropped from the listing.
+async fn list_sandbox_tool_files(
+    _auth: RequiredSupervisorActor,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<SandboxToolFilesParams>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
+    let path = resolve_path(
+        params.path.as_deref().unwrap_or("."),
+        &record.runtime.working_directory,
+    );
+    // The walk clamps to the tool bound: a deeper request answers the
+    // shallow tree instead of walking the whole sandbox.
+    let depth = params.depth.unwrap_or(1).clamp(1, TOOL_LIST_MAX_DEPTH);
+    match sandbox.fs().list_dir(&path, depth).await {
+        Ok(mut entries) => {
+            entries.sort_by(|left, right| left.path.cmp(&right.path));
+            entries.retain(|entry| !is_sensitive(&entry.path));
+            Json(SandboxFileListResponse {
+                data: entries
+                    .into_iter()
+                    .map(|entry| SandboxFileEntry {
+                        is_dir: entry.kind == FileKind::Directory,
+                        size:   (entry.kind == FileKind::File)
+                            .then_some(entry.size)
+                            .flatten()
+                            .map(u64::cast_signed),
+                        name:   entry.path,
+                    })
+                    .collect(),
+            })
+            .into_response()
+        }
+        Err(err) => ApiError::new(
+            StatusCode::NOT_FOUND,
+            display_for_log(&err, &SecretRedactor),
+        )
+        .into_response(),
+    }
+}
+
+/// The supervisor tool-read door (ADR-0046 phase 2, work#1680):
+/// `GET /api/v1/runs/{id}/sandbox/tool-file` — one bounded text read
+/// from the named run's sandbox for `fabro_run_file`. The read REFUSES
+/// instead of truncating: a sensitive path, a file over the size cap,
+/// and non-UTF-8 content each answer the teaching 400.
+async fn get_sandbox_tool_file(
+    _auth: RequiredSupervisorActor,
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<SandboxFileParams>,
+) -> Response {
+    let id = match parse_run_id_path(&id) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let (record, sandbox, _inspection, _gate) =
+        match reconnect_run_sandbox_for_inspection(&state, &id).await {
+            Ok(result) => result,
+            Err(response) => return response,
+        };
+    let path = resolve_path(&params.path, &record.runtime.working_directory);
+    if is_sensitive(&path) {
+        return ApiError::bad_request(
+            "Refused: the path matches the sensitive-path denylist (.env, keys, .ssh, \
+             .aws, .git/config) — the supervisor never reads it.",
+        )
+        .into_response();
+    }
+    let temp = match NamedTempFile::new() {
+        Ok(temp) => temp,
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    if let Err(err) = sandbox.fs().download(&path, temp.path()).await {
+        return ApiError::new(
+            StatusCode::NOT_FOUND,
+            display_for_log(&err, &SecretRedactor),
+        )
+        .into_response();
+    }
+    let bytes = match fs::metadata(temp.path()).await {
+        Ok(metadata) if metadata.len() > TOOL_FILE_MAX_BYTES as u64 => {
+            return ApiError::bad_request(format!(
+                "Refused: the file is {} bytes, over the {}-byte read cap — read it in \
+                 pieces with fabro_run_files, or page it through a run's own agent.",
+                metadata.len(),
+                TOOL_FILE_MAX_BYTES
+            ))
+            .into_response();
+        }
+        Ok(_) => match fs::read(temp.path()).await {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                    .into_response();
+            }
+        },
+        Err(err) => {
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
+        }
+    };
+    let Ok(content) = String::from_utf8(bytes) else {
+        return ApiError::bad_request(
+            "Refused: the file is not UTF-8 text — the supervisor tool read is a \
+             text-only door.",
+        )
+        .into_response();
+    };
+    Json(SandboxToolFileResponse {
+        path,
+        bytes: i64::try_from(content.len()).unwrap_or(i64::MAX),
+        content,
+    })
+    .into_response()
 }
 
 async fn put_sandbox_file(
@@ -1423,6 +1583,23 @@ mod retrieve_sandbox_tests {
             format!("/api/v1/runs/{run_id}/sandbox/services"),
             format!("/api/v1/runs/{run_id}/sandbox/files?path=/workspace"),
             format!("/api/v1/runs/{run_id}/sandbox/file?path=/workspace/README.md"),
+        ] {
+            let response = app.clone().oneshot(req_get(&uri)).await.unwrap();
+            assert_sandbox_not_created_response(response).await;
+        }
+    }
+
+    /// The supervisor tool doors route through the same inspection
+    /// reconnect as the UI doors (work#1680): a run without a sandbox
+    /// answers the same not-created shape, not a routing miss.
+    #[tokio::test]
+    async fn planned_sandbox_rejects_supervisor_tool_doors() {
+        let app = build_test_router(test_app_state());
+        let run_id = create_run(&app).await;
+
+        for uri in [
+            format!("/api/v1/runs/{run_id}/sandbox/tool-files?path=/workspace"),
+            format!("/api/v1/runs/{run_id}/sandbox/tool-file?path=/workspace/README.md"),
         ] {
             let response = app.clone().oneshot(req_get(&uri)).await.unwrap();
             assert_sandbox_not_created_response(response).await;

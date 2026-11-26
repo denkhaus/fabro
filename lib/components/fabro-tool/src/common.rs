@@ -159,6 +159,28 @@ pub trait FabroToolBackend: Send + Sync {
     async fn list_run_diffs(&self, _run_id: &RunId) -> anyhow::Result<Vec<crate::RunDiffEntry>> {
         Err(read_tool_unavailable_error(FABRO_RUN_DIFFS_TOOL_NAME))
     }
+    /// `fabro_run_files` (work#1680): a NAMED run's sandbox directory
+    /// listing — the supervisor's server-mediated read door. The run is
+    /// always an explicit selector (a runless session has no ambient
+    /// anchor); the server applies the sensitive-path denylist.
+    async fn list_run_files(
+        &self,
+        _run_id: &RunId,
+        _path: &str,
+        _depth: u32,
+    ) -> anyhow::Result<Vec<crate::RunFileEntry>> {
+        Err(read_tool_unavailable_error(FABRO_RUN_FILES_TOOL_NAME))
+    }
+    /// `fabro_run_file` (work#1680): one bounded text read from a NAMED
+    /// run's sandbox — the read refuses instead of truncating when the
+    /// file exceeds the size cap or is not UTF-8.
+    async fn read_run_file(
+        &self,
+        _run_id: &RunId,
+        _path: &str,
+    ) -> anyhow::Result<crate::RunFileContent> {
+        Err(read_tool_unavailable_error(FABRO_RUN_FILE_TOOL_NAME))
+    }
     /// `fabro_work_radius` (ADR-0038 read door): a work item's closure
     /// radius — the open items linked to the item's runs, what a merge
     /// verdict hinges on.
@@ -594,6 +616,8 @@ pub const FABRO_OBSERVATION_MANAGE_TOOL_NAME: &str = "fabro_observation_manage";
 pub const FABRO_OBSERVATION_FEED_TOOL_NAME: &str = "fabro_observation_feed";
 pub const FABRO_SESSION_SEARCH_TOOL_NAME: &str = "fabro_session_search";
 pub const FABRO_SESSION_READ_TOOL_NAME: &str = "fabro_session_read";
+pub const FABRO_RUN_FILES_TOOL_NAME: &str = "fabro_run_files";
+pub const FABRO_RUN_FILE_TOOL_NAME: &str = "fabro_run_file";
 
 static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
     vec![
@@ -679,11 +703,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroBlobParams>(
             FABRO_BLOB_TOOL_NAME,
-            "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative.",
+            "Read a demoted blob back with deterministic paging: pass the blob reference you met in the context to learn its byte size and line count, then page it by lines with offset/limit. The reference stays authoritative. Omit run_id to read from this run's blob store; on a runless session pass the run id that owns the blob.",
         ),
         tool_definition::<crate::FabroRunDiffsParams>(
             FABRO_RUN_DIFFS_TOOL_NAME,
-            "Read THIS run's diff inventory (ADR-0051): one entry per stage checkpoint's diff — node, Petri position, files/additions/deletions, and the patch's blob reference — plus the run-level diff entry with its base and head commits. Takes no arguments; the inventory is always this run's. Page a patch's content with fabro_blob using the entry's blob reference.",
+            "Read a run's diff inventory (ADR-0051): one entry per stage checkpoint's diff — node, Petri position, files/additions/deletions, and the patch's blob reference — plus the run-level diff entry with its base and head commits. Omit run_id to read this run's inventory; on a runless session pass the run id explicitly. Page a patch's content with fabro_blob using the entry's blob reference.",
         ),
         tool_definition::<crate::FabroWorkNextParams>(
             FABRO_WORK_NEXT_TOOL_NAME,
@@ -724,6 +748,14 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         tool_definition::<crate::FabroSessionReadParams>(
             FABRO_SESSION_READ_TOOL_NAME,
             "Read ONE Ask Fabro session's transcript, compacted: the conversation folded server-side into user and assistant messages, tool calls summarized as counts, capped by a token budget (default 4000). Use it after fabro_session_search to see what an earlier conversation settled; the summary tells you when the budget truncated the transcript.",
+        ),
+        tool_definition::<crate::FabroRunFilesParams>(
+            FABRO_RUN_FILES_TOOL_NAME,
+            "List a NAMED run's sandbox files (work#1680): directory entries with kinds and sizes, workspace-relative path and a walk depth of 1-4 (default 1). The run selector is required — pass the run id you got from fabro_run_search or the queue. Sensitive-path entries are hidden by the server. Read one file's text with fabro_run_file.",
+        ),
+        tool_definition::<crate::FabroRunFileParams>(
+            FABRO_RUN_FILE_TOOL_NAME,
+            "Read ONE text file from a NAMED run's sandbox (work#1680), bounded: the read refuses instead of truncating when the file exceeds the size cap or is not UTF-8 text, and sensitive paths (.env, keys, .ssh) are refused outright. Pass the run id and the workspace-relative or absolute path; use fabro_run_files first to find the path.",
         ),
     ]
 });
@@ -892,6 +924,8 @@ mod tests {
             FABRO_ASK_TOOL_NAME,
             FABRO_SESSION_SEARCH_TOOL_NAME,
             FABRO_SESSION_READ_TOOL_NAME,
+            FABRO_RUN_FILES_TOOL_NAME,
+            FABRO_RUN_FILE_TOOL_NAME,
         ]);
     }
 

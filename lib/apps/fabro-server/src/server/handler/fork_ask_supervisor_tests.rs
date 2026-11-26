@@ -228,3 +228,61 @@ fn session_read_is_denied_at_read_only_with_the_audited_posture() {
         other => panic!("read-only fabro_session_read should be denied, got {other:?}"),
     }
 }
+
+/// The run content access tools (ADR-0046 phase 2, denkhaus/work#1680)
+/// ride the supervisor registry ONLY: the two sandbox file doors and the
+/// diff inventory resolve in the supervisor set and are granted at full
+/// access, while the read-only registry — and the read-only posture
+/// itself — never carries them.
+#[test]
+fn run_content_tools_are_supervisor_registry_only() {
+    let definitions = fabro_tool::tool_definitions();
+    for name in [
+        fabro_tool::FABRO_RUN_FILES_TOOL_NAME,
+        fabro_tool::FABRO_RUN_FILE_TOOL_NAME,
+        fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME,
+    ] {
+        assert!(
+            ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES.contains(&name),
+            "{name} belongs in the supervisor registry"
+        );
+        assert!(
+            !ASK_FABRO_RUN_TOOL_NAMES.contains(&name),
+            "{name} must never ride the read-only registry"
+        );
+        assert!(
+            definitions.iter().any(|definition| definition.name == name),
+            "{name} must resolve to a catalog definition"
+        );
+        assert!(
+            !ask_fabro_allows_tool(name, AskFabroCapability::ReadOnly),
+            "the read-only posture hides {name}"
+        );
+        assert!(
+            ask_fabro_allows_tool(name, AskFabroCapability::FullAccess),
+            "full access grants {name}"
+        );
+    }
+}
+
+/// The denial shape a read-only session meets when it somehow calls a
+/// run content tool: denied, with the audited posture named.
+#[test]
+fn run_files_is_denied_at_read_only_with_the_audited_posture() {
+    let scope =
+        pebble_coding_agent::SessionScope::root(pebble_coding_agent::SessionId::new("ses_test"));
+    let run_files = descriptor(fabro_tool::FABRO_RUN_FILES_TOOL_NAME);
+
+    let read_only_policy = AskFabroToolPolicy {
+        capability: AskFabroCapability::ReadOnly,
+    };
+    match read_only_policy.permission(&scope, &run_files) {
+        ToolPermission::Deny { reason } => {
+            assert!(
+                reason.contains("Ask Fabro is read-only"),
+                "the denial must name the audited posture: {reason}"
+            );
+        }
+        other => panic!("read-only fabro_run_files should be denied, got {other:?}"),
+    }
+}
