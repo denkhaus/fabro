@@ -103,7 +103,9 @@ fn parse_run_selector(selector: &str) -> ToolResult<RunId> {
 /// One directory entry of a sandbox listing, as the server reported it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RunFileEntry {
-    /// The entry's path, relative to the listed directory.
+    /// The path exactly as the server listed it — typically
+    /// workspace-relative for listings below the run's working
+    /// directory, absolute above it.
     pub name:   String,
     /// Whether the entry is a directory.
     pub is_dir: bool,

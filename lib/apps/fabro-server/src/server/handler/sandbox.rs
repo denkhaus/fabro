@@ -772,7 +772,8 @@ async fn list_sandbox_tool_files(
         &record.runtime.working_directory,
     );
     // The walk clamps to the tool bound: a deeper request answers the
-    // shallow tree instead of walking the whole sandbox.
+    // shallow tree instead of walking the whole sandbox. The tool side
+    // clamps to the same constant; the test below pins the agreement.
     let depth = params.depth.unwrap_or(1).clamp(1, TOOL_LIST_MAX_DEPTH);
     match sandbox.fs().list_dir(&path, depth).await {
         Ok(mut entries) => {
@@ -786,7 +787,7 @@ async fn list_sandbox_tool_files(
                         size:   (entry.kind == FileKind::File)
                             .then_some(entry.size)
                             .flatten()
-                            .map(u64::cast_signed),
+                            .and_then(|size| i64::try_from(size).ok()),
                         name:   entry.path,
                     })
                     .collect(),
@@ -1604,5 +1605,17 @@ mod retrieve_sandbox_tests {
             let response = app.clone().oneshot(req_get(&uri)).await.unwrap();
             assert_sandbox_not_created_response(response).await;
         }
+    }
+
+    /// The listing bound agrees with the tool's client-side clamp
+    /// (work#1680): one bound per artifact, pinned equal so they cannot
+    /// drift apart silently.
+    #[test]
+    fn tool_list_depth_bound_matches_the_tool_clamp() {
+        use super::TOOL_LIST_MAX_DEPTH;
+        assert_eq!(
+            TOOL_LIST_MAX_DEPTH,
+            usize::try_from(fabro_tool::RUN_FILES_MAX_DEPTH).expect("the tool bound fits usize")
+        );
     }
 }
