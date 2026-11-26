@@ -476,10 +476,9 @@ fn session_refs() -> &'static Mutex<HashMap<PathBuf, usize>> {
 }
 
 // Gate the stale-session reap so it fires at most once per process. The
-// reap scans /tmp/fx/{n-*,p-*} to clean up after a prior nextest run
-// that crashed; it's correctness-for-safety work that does not need to
-// happen on every TestContext::new. One gate per SessionMode preserves
-// the existing call structure without introducing cross-mode coupling.
+// reap scans the invocation's base (`fx-<user>-n<run>` / `fx-<user>-p<pid>`
+// under TMPDIR) and its user-namespaced sibling bases for stale session
+// roots, cleaning up after prior runs that crashed.
 static NEXTEST_REAPED: OnceLock<()> = OnceLock::new();
 static PROCESS_REAPED: OnceLock<()> = OnceLock::new();
 static TMP_DAEMONS_REAPED: OnceLock<()> = OnceLock::new();
@@ -563,10 +562,40 @@ fn session_paths_for_run_id(run_id: Option<&str>) -> (SessionMode, String, Sessi
 }
 
 fn short_session_base_dir() -> PathBuf {
-    // The system temp dir (TMPDIR-honoring), not a hardcoded /tmp: a
-    // root-owned leftover at the fixed path wedged every short-session
-    // test (live 2026-11-09), and sandboxed runners own their TMPDIR.
-    std::env::temp_dir().join("fx")
+    // Per-invocation fixture root (work#1674): TMPDIR-honoring and
+    // namespaced by user and invocation — the nextest run id, or the
+    // pid outside nextest — so a root-owned leftover at any FIXED
+    // shared path can never wedge another run again. The shared
+    // `fx` base wedge hit live twice (2026-11-09, and 2026-11-26:
+    // a root-owned /tmp/fx wedged the CLI IT tier and the two
+    // run-channel ITs through EACCES on their channel sockets). A
+    // crashed run's base leaks under its own name; the sibling-base
+    // sweep reaps its session roots the way the shared base always
+    // did, then drops the emptied base.
+    let scope = match std::env::var(EnvVars::NEXTEST_RUN_ID) {
+        Ok(run_id) if !run_id.trim().is_empty() => {
+            format!("n{}", shorten_session_id(&run_id))
+        }
+        _ => format!("p{}", current_pid()),
+    };
+    std::env::temp_dir().join(format!("fx-{}-{scope}", user_scope()))
+}
+
+/// The fixture root's user namespace: the sanitized username, so a
+/// leftover owned by another account can never share a base with this
+/// run (the 2026-11-26 wedge was root-owned).
+fn user_scope() -> String {
+    let sanitized: String = std::env::var("USER")
+        .unwrap_or_default()
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(16)
+        .collect();
+    if sanitized.is_empty() {
+        "u".to_string()
+    } else {
+        sanitized
+    }
 }
 
 fn shorten_session_id(id: &str) -> String {
@@ -610,10 +639,8 @@ fn ensure_parent_dir(path: &Path) {
         std::fs::create_dir_all(parent).unwrap_or_else(|err| {
             panic!(
                 "failed to create {}: {err} — a non-writable fixture root is usually a \
-                 root-owned leftover; repair with `sudo chown -R $(id -un) {}` or point \
-                 TMPDIR at a user-owned directory",
+                 leftover owned by another account; point TMPDIR at a directory you own",
                 parent.display(),
-                std::env::temp_dir().join("fx").display()
             )
         });
     }
@@ -633,10 +660,9 @@ fn with_session_lock<T>(root: &Path, f: impl FnOnce() -> T) -> T {
             assert!(
                 std::time::Instant::now() < deadline,
                 "failed to create {} after retries: {err} — a non-writable fixture root is \
-                 usually a root-owned leftover; repair with `sudo chown -R $(id -un) {}` or \
-                 point TMPDIR at a user-owned directory",
+                 usually a leftover owned by another account; point TMPDIR at a directory \
+                 you own",
                 root.display(),
-                short_session_base_dir().display()
             );
             std::thread::sleep(Duration::from_millis(10));
             continue;
@@ -1271,8 +1297,58 @@ fn cleanup_session_root(root: &Path) {
 }
 
 fn reap_stale_session_roots(mode: SessionMode) {
-    let base_dir = short_session_base_dir();
-    let Ok(entries) = std::fs::read_dir(&base_dir) else {
+    reap_session_roots_in_base(&short_session_base_dir(), mode);
+    reap_sibling_bases(mode);
+}
+
+/// Sibling bases of the same user (work#1674): crashed prior runs leak
+/// their whole base under the per-invocation naming, so the crash
+/// cleanup sweeps THEM the way the shared base always swept sibling
+/// session roots. Tolerant by design: a base we cannot write into (a
+/// leftover owned by another account) is skipped, never a wedge; a
+/// live sibling run holds its markers, so its session roots survive.
+fn reap_sibling_bases(mode: SessionMode) {
+    let our_base = short_session_base_dir();
+    let prefix = format!("fx-{}-", user_scope());
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    for entry in entries.filter_map(Result::ok) {
+        let base = entry.path();
+        if base == our_base || !base.is_dir() {
+            continue;
+        }
+        let matches = base
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(&prefix));
+        if !matches {
+            continue;
+        }
+        // The writability probe doubles as the capability check the
+        // session locks below need: without a writable `.locks` the
+        // session-lock machinery could never run here.
+        if std::fs::create_dir_all(base.join(".locks")).is_err() {
+            continue;
+        }
+        reap_session_roots_in_base(&base, mode);
+        // No session roots left: drop the base (its locks are advisory
+        // files; the session-lock loop tolerates mid-use removals).
+        let no_session_roots = std::fs::read_dir(&base).is_ok_and(|entries| {
+            entries.filter_map(Result::ok).all(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                !(name.starts_with("n-") || name.starts_with("p-"))
+            })
+        });
+        if no_session_roots {
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+}
+
+fn reap_session_roots_in_base(base_dir: &Path, mode: SessionMode) {
+    let Ok(entries) = std::fs::read_dir(base_dir) else {
         return;
     };
 
@@ -2842,7 +2918,10 @@ mod tests {
     fn session_paths_share_nextest_storage_dir() {
         let (_, run_id, paths) = session_paths_for_run_id(Some("nextest-run-123"));
         assert_eq!(run_id, "nextest-run-123");
-        assert!(paths.root.ends_with(Path::new("fx").join("n-nextestrun12")));
+        // The session root rides the invocation base (work#1674): the
+        // base derives from the AMBIENT nextest run scope, the root
+        // names the session's own run id.
+        assert_eq!(paths.root, short_session_base_dir().join("n-nextestrun12"));
         assert_eq!(paths.server.storage_dir, paths.root.join("storage"));
         assert_eq!(paths.server.socket_path, paths.root.join("fabro.sock"));
     }
@@ -2851,10 +2930,9 @@ mod tests {
     fn session_paths_fall_back_to_process_storage_dir() {
         let (_, run_id, paths) = session_paths_for_run_id(None);
         assert_eq!(run_id, format!("process-{}", current_pid()));
-        assert!(
-            paths
-                .root
-                .ends_with(Path::new("fx").join(format!("p-{}", current_pid())))
+        assert_eq!(
+            paths.root,
+            short_session_base_dir().join(format!("p-{}", current_pid()))
         );
         assert_eq!(paths.server.storage_dir, paths.root.join("storage"));
         assert_eq!(paths.server.socket_path, paths.root.join("fabro.sock"));
@@ -2869,6 +2947,33 @@ mod tests {
             !lock_path.starts_with(root),
             "session lock must survive remove_dir_all({})",
             root.display()
+        );
+    }
+
+    /// The fixture base is namespaced per user and per invocation
+    /// (work#1674): no fixed shared path a root-owned leftover could
+    /// wedge, and two concurrent nextest runs never share a base.
+    #[test]
+    fn session_base_is_user_and_invocation_namespaced() {
+        let base = short_session_base_dir();
+        let name = base
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("base name");
+        assert!(
+            name.starts_with(&format!("fx-{}-", user_scope())),
+            "base names the user namespace: {name}"
+        );
+        let namespaced = match std::env::var(EnvVars::NEXTEST_RUN_ID) {
+            Ok(run_id) if !run_id.trim().is_empty() => {
+                name.contains(&format!("n{}", shorten_session_id(&run_id)))
+            }
+            _ => name.ends_with(&format!("p{}", current_pid())),
+        };
+        assert!(namespaced, "base names the invocation scope: {name}");
+        assert!(
+            !name.ends_with("fx"),
+            "the shared fixed base name is retired: {name}"
         );
     }
 
