@@ -10,7 +10,8 @@ use pebble_coding_agent::tools::{ToolPermission, ToolPermissionPolicy};
 
 use super::sessions::{
     ASK_FABRO_RUN_TOOL_NAMES, ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES, AskFabroToolPolicy,
-    ask_fabro_allows_tool, build_ask_fabro_supervisor_system_prompt, build_ask_fabro_system_prompt,
+    ask_fabro_allows_tool, build_ask_fabro_supervisor_global_system_prompt,
+    build_ask_fabro_supervisor_system_prompt, build_ask_fabro_system_prompt,
 };
 
 fn descriptor(name: &str) -> pebble_agent::ToolDescriptor {
@@ -170,6 +171,39 @@ fn supervisor_prompt_mandates_the_run_merge_soft_confirm() {
     assert!(
         !analyst.contains(&format!("`{}`", fabro_tool::FABRO_RUN_MERGE_TOOL_NAME)),
         "the read-only tool guidance must not list supervisor tools"
+    );
+}
+
+/// The two supervisor templates' AUDIENCE contracts (work#1702, the
+/// sprint-102 retro's K2 net): the audience mapping lives in
+/// `AskFabroPrompt::transform`, far from the template files — these
+/// pins fail loudly when an anchor sentence drifts across templates or
+/// a template loses its audience contract. The runless GLOBAL template
+/// teaches the explicit selector; the run-scoped template keeps the
+/// anchor default.
+#[test]
+fn supervisor_template_audience_contracts_hold() {
+    let environment = test_environment();
+    let tools = supervisor_test_tools();
+
+    let run_scoped = build_ask_fabro_supervisor_system_prompt(&environment, &tools);
+    assert!(
+        run_scoped.contains("default anchor"),
+        "the run-scoped supervisor keeps the anchor default: {run_scoped}"
+    );
+    assert!(
+        !run_scoped.contains("no ambient run anchor"),
+        "the anchor-less teaching must not drift into the run-scoped template"
+    );
+
+    let global = build_ask_fabro_supervisor_global_system_prompt(&environment, &tools);
+    assert!(
+        global.contains("NO run anchor"),
+        "the global supervisor names its anchor-less posture: {global}"
+    );
+    assert!(
+        global.contains("name the run id explicitly"),
+        "the global supervisor teaches the explicit run selector: {global}"
     );
 }
 
