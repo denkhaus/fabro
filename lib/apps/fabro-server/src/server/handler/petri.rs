@@ -34,9 +34,10 @@ use fabro_util::error::collect_chain;
 use serde_json::{Map, Value, json};
 
 use super::super::{
-    ApiError, AppState, Bytes, IntoResponse, Json, Query, RequireWorkerRunScoped,
-    RequireWorkerRunSegment, Response, Router, RunId, State, StatusCode, octet_stream_response,
-    settle_managed_run_at_finish, settle_managed_run_at_terminal_record,
+    ApiError, AppState, Bytes, IntoResponse, Json, Query, RequireRunContentReader,
+    RequireRunContentSegment, RequireWorkerRunScoped, RequireWorkerRunSegment, Response, Router,
+    RunId, State, StatusCode, octet_stream_response, settle_managed_run_at_finish,
+    settle_managed_run_at_terminal_record,
 };
 
 /// The largest batch of records one append may carry. Petri batches an
@@ -208,7 +209,7 @@ async fn write_blob(
 }
 
 async fn read_blob(
-    RequireWorkerRunSegment(id, blob_hash): RequireWorkerRunSegment,
+    RequireRunContentSegment(id, blob_hash): RequireRunContentSegment,
     State(state): State<Arc<AppState>>,
 ) -> Response {
     let digest = match blob_hash
@@ -235,9 +236,11 @@ async fn read_blob(
     }
 }
 
-/// The run's platform records, of one kind when the query names it.
+/// The run's platform records, of one kind when the query names it. A
+/// read door for the run's own worker and the supervisor (ADR-0046);
+/// the append below stays the run's own worker.
 async fn list_platform_records(
-    RequireWorkerRunScoped(id): RequireWorkerRunScoped,
+    RequireRunContentReader(id): RequireRunContentReader,
     State(state): State<Arc<AppState>>,
     Query(query): Query<KindQuery>,
 ) -> Response {

@@ -41,7 +41,8 @@ use fabro_workflow::operations::{self, ForkTarget, ResolvedForkTarget, RunTimeli
 use tracing::{error, warn};
 
 use super::super::{
-    ApiError, AppState, RequireRunManagementTarget, RequiredUser, parse_run_id_path, run_records,
+    ApiError, AppState, RequireRunManagementTarget, RequiredSupervisorActor, parse_run_id_path,
+    run_records,
 };
 use super::lifecycle::{
     ArchiveAction, clear_owner_park, queue_run, run_archive_operation, run_response,
@@ -76,8 +77,10 @@ struct ForkOutcome {
     rerun_last:    bool,
 }
 
+/// The checkpoint timeline. A user reads it, and so does the supervisor
+/// (ADR-0046): `fabro_run_diffs` labels the run's diff inventory here.
 async fn run_timeline(
-    _auth: RequiredUser,
+    _auth: RequiredSupervisorActor,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Response {

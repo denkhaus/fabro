@@ -17,7 +17,8 @@ use fabro_interview::{
 };
 use fabro_llm::lithos_catalog::Catalog;
 use fabro_store::platform_records::{
-    PlatformRecord, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord, StoredPlatformRecord,
+    CheckpointRecord, PlatformRecord, RunCreatedRecord, RunLifecycleKind, RunLifecycleRecord,
+    StoredPlatformRecord,
 };
 use fabro_types::settings::ServerAuthMethod;
 use fabro_types::settings::run::{ApprovalMode, RunMode};
@@ -723,6 +724,19 @@ fn issue_test_run_tools_worker_token(run_id: &RunId) -> String {
         &keys,
         run_id,
         crate::worker_token::WorkerScopeSet::run_worker_with_agent_run_tools(),
+    )
+    .expect("worker token should issue")
+}
+
+/// A supervisor worker token (ADR-0046) minted for a throwaway run id, as
+/// a runless Ask Fabro session's backend carries.
+fn issue_test_supervisor_worker_token() -> String {
+    let keys = WorkerTokenKeys::from_master_secret(TEST_SESSION_SECRET.as_bytes())
+        .expect("worker keys should derive");
+    crate::worker_token::issue_worker_token_with_scopes(
+        &keys,
+        &RunId::new(),
+        crate::worker_token::WorkerScopeSet::run_worker_supervisor(),
     )
     .expect("worker token should issue")
 }
@@ -8263,6 +8277,193 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
         .await
         .unwrap();
     assert_status!(response, StatusCode::OK).await;
+}
+
+/// The read doors behind `fabro_run_diffs` (work#1680, work#1711): the
+/// diff inventory's three reads — the checkpoint records, the patch
+/// blob and the checkpoint timeline — accept a supervisor token whose
+/// run id names no real run. Before the fix they were strict-equality
+/// worker (or user-only) doors and answered a bare "Access denied."
+#[tokio::test]
+async fn supervisor_worker_token_reads_another_runs_diff_inventory() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_worker_token(&run_id);
+    let supervisor_token = issue_test_supervisor_worker_token();
+
+    // The run's own worker stores a checkpoint with a patch blob.
+    let open = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{run_id}/petri/open")))
+                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({ "access": "create", "owner": "worker-1" }).to_string(),
+                ))
+                .expect("the open request builds"),
+        )
+        .await
+        .expect("the open request routes");
+    assert_status!(open, StatusCode::OK).await;
+    let blob = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::POST,
+            &format!("/runs/{run_id}/petri/blobs?owner=worker-1"),
+            &worker_token,
+            Body::from("diff --git a/a b/a\n"),
+        ))
+        .await
+        .unwrap();
+    let blob = response_json!(blob, StatusCode::OK).await;
+    let patch_blob: BlobHash = blob["hash"]
+        .as_str()
+        .expect("the blob hash")
+        .parse()
+        .expect("the stored blob is a blob hash");
+    let checkpoint = PlatformRecord::Checkpoint(CheckpointRecord {
+        execution:      1,
+        firing:         1,
+        attempt:        Some(1),
+        workspace:      None,
+        git_commit_sha: Some("c2b0a".to_string()),
+        diff_summary:   None,
+        patch_blob:     Some(patch_blob),
+        operation:      None,
+    });
+    let append = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(api(&format!("/runs/{run_id}/petri/platform-records")))
+                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "execution": 1,
+                        "firing": 1,
+                        "record": serde_json::to_value(&checkpoint).expect("the record encodes"),
+                    })
+                    .to_string(),
+                ))
+                .expect("the append request builds"),
+        )
+        .await
+        .expect("the append request routes");
+    let appended = response_json!(append, StatusCode::OK).await;
+    let checkpoint_seq = appended["seq"]
+        .as_u64()
+        .expect("the append answers the stored seq");
+
+    // The append stays the run's own worker's door: the supervisor reads.
+    let foreign_append = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::POST,
+            &format!("/runs/{run_id}/petri/platform-records"),
+            &supervisor_token,
+            Body::from(
+                json!({ "record": serde_json::to_value(&checkpoint).expect("the record encodes") })
+                    .to_string(),
+            ),
+        ))
+        .await
+        .expect("the foreign append routes");
+    assert_status!(foreign_append, StatusCode::FORBIDDEN).await;
+
+    let records = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{run_id}/petri/platform-records?kind=checkpoint"),
+            &supervisor_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let records = response_json!(records, StatusCode::OK).await;
+    assert_eq!(records["records"][0]["seq"], checkpoint_seq);
+    assert_eq!(
+        records["records"][0]["record"]["patch_blob"],
+        patch_blob.to_string()
+    );
+
+    let patch = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{run_id}/petri/blobs/{patch_blob}"),
+            &supervisor_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let patch = response_bytes!(patch, StatusCode::OK).await;
+    assert!(
+        patch.starts_with(b"diff --git"),
+        "the supervisor pages the patch: {}",
+        String::from_utf8_lossy(&patch)
+    );
+
+    let timeline = app
+        .clone()
+        .oneshot(bearer_request(
+            Method::GET,
+            &format!("/runs/{run_id}/timeline"),
+            &supervisor_token,
+            Body::empty(),
+        ))
+        .await
+        .unwrap();
+    let timeline = response_json!(timeline, StatusCode::OK).await;
+    assert_eq!(
+        timeline["entries"][0]["checkpoint_seq"], checkpoint_seq,
+        "the timeline labels the supervisor's inventory: {timeline}"
+    );
+}
+
+/// The same doors refuse a worker token WITHOUT the supervisor
+/// capability, and the refusal names the cause: the token's run binding
+/// and the missing capability, not a bare "Access denied.".
+#[tokio::test]
+async fn worker_token_without_supervisor_scope_is_refused_from_the_diff_doors_with_a_reason() {
+    let (_state, app) = jwt_auth_app();
+    let user_jwt = issue_test_user_jwt();
+    let target_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let origin_run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let worker_token = issue_test_run_tools_worker_token(&origin_run_id);
+    let blob_hash = BlobHash::new(b"patch");
+
+    for path in [
+        format!("/runs/{target_run_id}/petri/platform-records?kind=checkpoint"),
+        format!("/runs/{target_run_id}/petri/blobs/{blob_hash}"),
+        format!("/runs/{target_run_id}/timeline"),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(bearer_request(
+                Method::GET,
+                &path,
+                &worker_token,
+                Body::empty(),
+            ))
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = response_json!(response, StatusCode::FORBIDDEN).await;
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+        assert!(
+            detail.contains("supervisor capability") && detail.contains(&origin_run_id.to_string()),
+            "the refusal names the cause for {path}: {detail}"
+        );
+        assert_ne!(detail, "Access denied.", "no bare denial for {path}");
+    }
 }
 
 #[tokio::test]
