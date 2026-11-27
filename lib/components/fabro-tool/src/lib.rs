@@ -19,6 +19,8 @@ mod interact;
 mod manifest;
 mod observation;
 mod pair;
+#[cfg(test)]
+mod run_batch_tests;
 mod run_diffs;
 mod run_files;
 pub mod run_mark;

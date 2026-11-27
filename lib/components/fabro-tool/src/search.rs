@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use fabro_types::{Run, RunId, RunStatusKind};
-use futures::future::try_join_all;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -77,8 +76,13 @@ impl TryFrom<FabroRunSearchParams> for ValidatedSearchRuns {
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct SearchRunsResult {
-    pub runs:        Vec<SearchRunSummaryResult>,
-    pub next_cursor: Option<String>,
+    pub runs:            Vec<SearchRunSummaryResult>,
+    pub next_cursor:     Option<String>,
+    /// Requested selectors the server answered with 404 (purged or never
+    /// existing; the stores cannot tell through any read door). Absent
+    /// when every requested run was found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing_run_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -120,8 +124,11 @@ pub async fn search_runs(
     } else {
         None
     };
+    let mut missing_run_ids = None;
     let runs = if let Some(run_ids) = raw.run_ids.as_ref() {
-        resolve_requested_runs(&backend, run_ids).await?
+        let (runs, missing) = common::resolve_runs_partially(&backend, run_ids).await?;
+        missing_run_ids = (!missing.is_empty()).then_some(missing);
+        runs
     } else if let Some(parent_id) = parent_id {
         backend
             .list_store_runs_by_parent(parent_id)
@@ -136,8 +143,9 @@ pub async fn search_runs(
     let page = filter_sort_and_page_runs(runs, &raw, status.as_deref(), parent_id)?;
 
     Ok(SearchRunsResult {
-        runs:        page.runs.iter().map(search_run_summary_result).collect(),
+        runs: page.runs.iter().map(search_run_summary_result).collect(),
         next_cursor: page.next_cursor,
+        missing_run_ids,
     })
 }
 
@@ -269,29 +277,15 @@ fn filter_sort_and_page_runs(
 }
 
 pub fn search_runs_text(result: &SearchRunsResult) -> String {
-    format!("found {} Fabro run(s)", result.runs.len())
-}
-
-async fn resolve_requested_runs(
-    backend: &Arc<dyn FabroToolBackend>,
-    run_ids: &[String],
-) -> ToolResult<Vec<Run>> {
-    let runs = try_join_all(run_ids.iter().map(|run_id| {
-        let backend = Arc::clone(backend);
-        async move {
-            backend
-                .resolve_run(run_id)
-                .await
-                .map_err(|err| ToolError::from_anyhow(&err))
-        }
-    }))
-    .await?;
-
-    let mut unique = HashMap::new();
-    for run in runs {
-        unique.entry(run.id).or_insert(run);
+    match &result.missing_run_ids {
+        Some(missing) => format!(
+            "found {} Fabro run(s); {} requested run id(s) not found: {}",
+            result.runs.len(),
+            missing.len(),
+            missing.join(", ")
+        ),
+        None => format!("found {} Fabro run(s)", result.runs.len()),
     }
-    Ok(unique.into_values().collect())
 }
 
 #[cfg(test)]

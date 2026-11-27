@@ -32,6 +32,7 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+fabro-http.workspace = true
 fabro-types = { path = "../../foundation/fabro-types", features = ["test-support"] }
 httpmock = "0.8"
 jsonschema.workspace = true
