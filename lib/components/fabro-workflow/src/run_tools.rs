@@ -2125,7 +2125,11 @@ mod tests {
             anyhow::bail!("refusing backend")
         }
 
-        async fn start_run(&self, _run_id: &RunId, _start: bool) -> anyhow::Result<fabro_types::Run> {
+        async fn start_run(
+            &self,
+            _run_id: &RunId,
+            _start: bool,
+        ) -> anyhow::Result<fabro_types::Run> {
             anyhow::bail!("refusing backend")
         }
 
@@ -2170,7 +2174,10 @@ mod tests {
             anyhow::bail!("refusing backend")
         }
 
-        async fn list_store_runs_by_parent(&self, _parent_id: RunId) -> anyhow::Result<Vec<fabro_types::Run>> {
+        async fn list_store_runs_by_parent(
+            &self,
+            _parent_id: RunId,
+        ) -> anyhow::Result<Vec<fabro_types::Run>> {
             anyhow::bail!("refusing backend")
         }
 
