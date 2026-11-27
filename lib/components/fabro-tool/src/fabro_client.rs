@@ -104,6 +104,42 @@ impl FabroToolBackend for ClientBackend {
         Ok(collected.files.into_iter().collect())
     }
 
+    async fn list_run_files(
+        &self,
+        run_id: &RunId,
+        path: &str,
+        depth: u32,
+    ) -> anyhow::Result<Vec<crate::RunFileEntry>> {
+        self.ensure_run_scope(run_id)?;
+        let listing = self
+            .client
+            .list_sandbox_tool_files(run_id, path, depth)
+            .await?;
+        Ok(listing
+            .data
+            .into_iter()
+            .map(|entry| crate::RunFileEntry {
+                name:   entry.name,
+                is_dir: entry.is_dir,
+                size:   entry.size,
+            })
+            .collect())
+    }
+
+    async fn read_run_file(
+        &self,
+        run_id: &RunId,
+        path: &str,
+    ) -> anyhow::Result<crate::RunFileContent> {
+        self.ensure_run_scope(run_id)?;
+        let content = self.client.get_sandbox_tool_file(run_id, path).await?;
+        Ok(crate::RunFileContent {
+            path:    content.path,
+            content: content.content,
+            bytes:   content.bytes,
+        })
+    }
+
     async fn create_run_from_intent(&self, intent: RunIntent) -> anyhow::Result<RunId> {
         anyhow::ensure!(
             self.run_scope.is_none(),

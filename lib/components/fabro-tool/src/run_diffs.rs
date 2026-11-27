@@ -27,15 +27,18 @@ use serde_json::Value;
 
 use super::common::{FabroToolBackend, ToolError, ToolResult};
 
-/// The tool takes no arguments: the inventory is always this run's. The
-/// braced shape is deliberate — the arguments stay an object on the wire,
-/// so a model calling with `{}` parses.
-#[expect(
-    clippy::empty_structs_with_brackets,
-    reason = "an argument-less tool still parses an empty JSON object"
-)]
+/// The tool's optional run selector: the inventory defaults to the
+/// calling run (the dispatcher's ambient anchor, the same
+/// worker-identity pattern as `fabro_blob`); a runless session has no
+/// anchor and MUST pass `run_id`. The braced-shape comment on the old
+/// argument-less struct is retired — the arguments stay an object on
+/// the wire either way.
 #[derive(Debug, serde::Deserialize, JsonSchema)]
-pub struct FabroRunDiffsParams {}
+pub struct FabroRunDiffsParams {
+    /// The run whose diff inventory to read — a run id. Defaults to the
+    /// calling run; required on a runless session (no anchor).
+    pub run_id: Option<String>,
+}
 
 /// What one diff entry is: a stage checkpoint's diff, or the run-level
 /// diff the run's pull request carries.

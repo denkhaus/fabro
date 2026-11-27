@@ -27,6 +27,9 @@ pub struct FabroBlobParams {
     pub offset: Option<u32>,
     /// How many lines to return (default 200, at most 1000).
     pub limit:  Option<u32>,
+    /// The run whose blob store to read — a run id. Defaults to the
+    /// calling run; required on a runless session (no anchor).
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug)]
@@ -152,6 +155,7 @@ mod tests {
             r#ref:  "not-a-ref".to_owned(),
             offset: None,
             limit:  None,
+            run_id: None,
         };
         let error = ValidatedBlob::try_from(error).expect_err("malformed refs refuse");
         assert!(

@@ -517,6 +517,7 @@ models/sandbox-service-list-response.ts
 models/sandbox-service.ts
 models/sandbox-state.ts
 models/sandbox-status.ts
+models/sandbox-tool-file-response.ts
 models/sandbox-workspace-ownership.ts
 models/save-query-request.ts
 models/saved-query.ts

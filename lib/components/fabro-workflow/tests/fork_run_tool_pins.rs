@@ -261,6 +261,7 @@ fn blob_validation_rejects_malformed_references() {
         r#ref:  "blob://sha256/not-a-digest".to_owned(),
         offset: None,
         limit:  None,
+        run_id: None,
     })
     .expect_err("malformed blob references refuse");
     assert!(

@@ -3,7 +3,7 @@ source: lib/components/fabro-dot/src/tests.rs
 assertion_line: 256
 expression: report
 ---
-.fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=6 edges=13
+.fabro/workflows/adjudicator/workflow.fabro: Adjudicator nodes=7 edges=17
   goal-inline
   file:prompt:prompts/adjudicate.md@adjudicate
 .fabro/workflows/develop/workflow.fabro: Develop nodes=11 edges=27

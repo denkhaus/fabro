@@ -52,6 +52,8 @@ import type { SandboxFileListResponse } from '../models';
 // @ts-ignore
 import type { SandboxServiceListResponse } from '../models';
 // @ts-ignore
+import type { SandboxToolFileResponse } from '../models';
+// @ts-ignore
 import type { SshAccessRequest } from '../models';
 // @ts-ignore
 import type { SshAccessResponse } from '../models';
@@ -473,6 +475,53 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             };
         },
         /**
+         * Reads one file from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_file` data plane. Read-only and bounded — the read refuses instead of truncating when the file exceeds the size cap or is not UTF-8 text, and sensitive paths (run_files_security denylist) are refused outright.
+         * @summary Read Sandbox Tool File
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSandboxToolFile: async (id: string, path: string, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('getSandboxToolFile', 'id', id)
+            // verify required parameter 'path' is not null or undefined
+            assertParamExists('getSandboxToolFile', 'path', path)
+            const localVarPath = `/api/v1/runs/{id}/sandbox/tool-file`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (path !== undefined) {
+                localVarQueryParameter['path'] = path;
+            }
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
@@ -645,6 +694,56 @@ export const HumanInTheLoopApiAxiosParamCreator = function (configuration?: Conf
             // authentication BearerAuth required
             // http bearer authentication required
             await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            localVarHeaderParameter['Accept'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * Lists directory entries from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_files` data plane. Read-only; the caller needs the supervisor capability (the minted `agent:supervisor` worker token) or a user principal. Sensitive-path entries (run_files_security denylist) are dropped from the listing.
+         * @summary List Sandbox Tool Files
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [path]
+         * @param {number} [depth]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSandboxToolFiles: async (id: string, path?: string, depth?: number, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'id' is not null or undefined
+            assertParamExists('listSandboxToolFiles', 'id', id)
+            const localVarPath = `/api/v1/runs/{id}/sandbox/tool-files`
+                .replace(`{${"id"}}`, encodeURIComponent(String(id)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'GET', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            // authentication SessionCookie required
+
+            // authentication BearerAuth required
+            // http bearer authentication required
+            await setBearerAuthToObject(localVarHeaderParameter, configuration)
+
+            if (path !== undefined) {
+                localVarQueryParameter['path'] = path;
+            }
+
+            if (depth !== undefined) {
+                localVarQueryParameter['depth'] = depth;
+            }
 
             localVarHeaderParameter['Accept'] = 'application/json';
 
@@ -1073,6 +1172,20 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
+         * Reads one file from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_file` data plane. Read-only and bounded — the read refuses instead of truncating when the file exceeds the size cap or is not UTF-8 text, and sensitive paths (run_files_security denylist) are refused outright.
+         * @summary Read Sandbox Tool File
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async getSandboxToolFile(id: string, path: string, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SandboxToolFileResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.getSandboxToolFile(id, path, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.getSandboxToolFile']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
          * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
@@ -1127,6 +1240,21 @@ export const HumanInTheLoopApiFp = function(configuration?: Configuration) {
             const localVarAxiosArgs = await localVarAxiosParamCreator.listSandboxServices(id, options);
             const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
             const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.listSandboxServices']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * Lists directory entries from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_files` data plane. Read-only; the caller needs the supervisor capability (the minted `agent:supervisor` worker token) or a user principal. Sensitive-path entries (run_files_security denylist) are dropped from the listing.
+         * @summary List Sandbox Tool Files
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [path]
+         * @param {number} [depth]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async listSandboxToolFiles(id: string, path?: string, depth?: number, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<SandboxFileListResponse>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.listSandboxToolFiles(id, path, depth, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['HumanInTheLoopApi.listSandboxToolFiles']?.[localVarOperationServerIndex]?.url;
             return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
         },
         /**
@@ -1324,6 +1452,17 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
             return localVarFp.getSandboxFile(id, path, options).then((request) => request(axios, basePath));
         },
         /**
+         * Reads one file from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_file` data plane. Read-only and bounded — the read refuses instead of truncating when the file exceeds the size cap or is not UTF-8 text, and sensitive paths (run_files_security denylist) are refused outright.
+         * @summary Read Sandbox Tool File
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} path
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSandboxToolFile(id: string, path: string, options?: RawAxiosRequestConfig): AxiosPromise<SandboxToolFileResponse> {
+            return localVarFp.getSandboxToolFile(id, path, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
          * @summary Interrupt Run
          * @param {string} id Unique run identifier (ULID).
@@ -1367,6 +1506,18 @@ export const HumanInTheLoopApiFactory = function (configuration?: Configuration,
          */
         listSandboxServices(id: string, options?: RawAxiosRequestConfig): AxiosPromise<SandboxServiceListResponse> {
             return localVarFp.listSandboxServices(id, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Lists directory entries from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_files` data plane. Read-only; the caller needs the supervisor capability (the minted `agent:supervisor` worker token) or a user principal. Sensitive-path entries (run_files_security denylist) are dropped from the listing.
+         * @summary List Sandbox Tool Files
+         * @param {string} id Unique run identifier (ULID).
+         * @param {string} [path]
+         * @param {number} [depth]
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSandboxToolFiles(id: string, path?: string, depth?: number, options?: RawAxiosRequestConfig): AxiosPromise<SandboxFileListResponse> {
+            return localVarFp.listSandboxToolFiles(id, path, depth, options).then((request) => request(axios, basePath));
         },
         /**
          * Uploads a file into the run\'s sandbox environment.
@@ -1552,6 +1703,18 @@ export class HumanInTheLoopApi extends BaseAPI {
     }
 
     /**
+     * Reads one file from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_file` data plane. Read-only and bounded — the read refuses instead of truncating when the file exceeds the size cap or is not UTF-8 text, and sensitive paths (run_files_security denylist) are refused outright.
+     * @summary Read Sandbox Tool File
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} path
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public getSandboxToolFile(id: string, path: string, options?: RawAxiosRequestConfig) {
+        return HumanInTheLoopApiFp(this.configuration).getSandboxToolFile(id, path, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
      * Stop the current model turn of a live agent stage (the stage `stage` names, or the run\'s one live agent stage) and keep its session. With `text`, the text is the stage\'s next input; without, the stage waits for the next steer message before starting another model turn. The control is forwarded to the run\'s worker, and the worker\'s answer is this response: `202` with `outcome: delivered` (and the stage\'s label) once the worker stopped the turn, `409` with the refusal\'s code when the worker or Petri refused it (a stage with no model turn in flight, such as an agent between turns or a human gate; a stage that is not running; no live agent stage, or several unnamed), and `202` with `outcome: pending` when the worker gave no answer within the wait (5 s). A refused interrupt is also a `run.notice` record on the run\'s event stream under the same code (`no_live_turn`, `no_such_stage`, `interrupt_refused`). A delivered interrupt is the stage\'s `control.requested` record with `$interrupt`, followed by an `attractor.turn.interrupted` progress record.
      * @summary Interrupt Run
      * @param {string} id Unique run identifier (ULID).
@@ -1598,6 +1761,19 @@ export class HumanInTheLoopApi extends BaseAPI {
      */
     public listSandboxServices(id: string, options?: RawAxiosRequestConfig) {
         return HumanInTheLoopApiFp(this.configuration).listSandboxServices(id, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * Lists directory entries from the named run\'s sandbox for the Ask Fabro supervisor (work#1680): the supervisor registry\'s `fabro_run_files` data plane. Read-only; the caller needs the supervisor capability (the minted `agent:supervisor` worker token) or a user principal. Sensitive-path entries (run_files_security denylist) are dropped from the listing.
+     * @summary List Sandbox Tool Files
+     * @param {string} id Unique run identifier (ULID).
+     * @param {string} [path]
+     * @param {number} [depth]
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public listSandboxToolFiles(id: string, path?: string, depth?: number, options?: RawAxiosRequestConfig) {
+        return HumanInTheLoopApiFp(this.configuration).listSandboxToolFiles(id, path, depth, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**

@@ -5505,6 +5505,112 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/runs/{id}/sandbox/tool-files:
+    get:
+      operationId: listSandboxToolFiles
+      tags: [Human-in-the-Loop]
+      summary: List Sandbox Tool Files
+      description: >
+        Lists directory entries from the named run's sandbox for the
+        Ask Fabro supervisor (work#1680): the supervisor registry's
+        `fabro_run_files` data plane. Read-only; the caller needs the
+        supervisor capability (the minted `agent:supervisor` worker
+        token) or a user principal. Sensitive-path entries
+        (run_files_security denylist) are dropped from the listing.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - in: query
+          name: path
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: depth
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 4
+      responses:
+        "200":
+          description: Directory entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxFileListResponse"
+        "404":
+          description: Run not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Run has no active sandbox
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/runs/{id}/sandbox/tool-file:
+    get:
+      operationId: getSandboxToolFile
+      tags: [Human-in-the-Loop]
+      summary: Read Sandbox Tool File
+      description: >
+        Reads one file from the named run's sandbox for the Ask Fabro
+        supervisor (work#1680): the supervisor registry's
+        `fabro_run_file` data plane. Read-only and bounded — the read
+        refuses instead of truncating when the file exceeds the size
+        cap or is not UTF-8 text, and sensitive paths
+        (run_files_security denylist) are refused outright.
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+        - in: query
+          name: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SandboxToolFileResponse"
+        "400":
+          description: Refused read (sensitive path, size cap, non-UTF-8)
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run or file not found
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Run has no active sandbox
+          headers:
+            x-request-id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/runs/{id}/sandbox/archive:
     get:
       operationId: getSandboxArchive
@@ -18880,6 +18986,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SandboxFileEntry"
+
+    SandboxToolFileResponse:
+      description: >
+        One text file read from a run sandbox for the Ask Fabro
+        supervisor (work#1680). Bounded — the read refuses instead of
+        truncating, so `content` is always the whole file.
+      type: object
+      required:
+        - path
+        - content
+        - bytes
+      properties:
+        path:
+          type: string
+          description: The sandbox-absolute path the content was read from.
+        content:
+          type: string
+          description: The file's UTF-8 text.
+        bytes:
+          type: integer
+          description: The file's size in bytes.
+          format: int64
 
     SandboxService:
       description: A TCP port a process inside a run sandbox listens on, as the sandbox driver reports it.

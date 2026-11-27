@@ -968,6 +968,59 @@ impl Client {
         Ok(response.into_inner())
     }
 
+    /// The supervisor's sandbox listing door (work#1680): the named
+    /// run's directory entries for `fabro_run_files`. Supervisor-scope
+    /// worker tokens and users; the server drops sensitive-path entries.
+    pub async fn list_sandbox_tool_files(
+        &self,
+        run_id: &RunId,
+        path: &str,
+        depth: u32,
+    ) -> Result<types::SandboxFileListResponse> {
+        let response = self
+            .send_api(|client| {
+                let run_id = run_id.to_string();
+                let path = path.to_string();
+                let depth = u64::from(depth);
+                async move {
+                    client
+                        .list_sandbox_tool_files()
+                        .id(run_id)
+                        .path(path)
+                        .depth(depth)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
+    /// The supervisor's bounded text read (work#1680): one file from the
+    /// named run's sandbox for `fabro_run_file`. The read refuses
+    /// instead of truncating (size cap, non-UTF-8, sensitive path).
+    pub async fn get_sandbox_tool_file(
+        &self,
+        run_id: &RunId,
+        path: &str,
+    ) -> Result<types::SandboxToolFileResponse> {
+        let response = self
+            .send_api(|client| {
+                let run_id = run_id.to_string();
+                let path = path.to_string();
+                async move {
+                    client
+                        .get_sandbox_tool_file()
+                        .id(run_id)
+                        .path(path)
+                        .send()
+                        .await
+                }
+            })
+            .await?;
+        Ok(response.into_inner())
+    }
+
     pub async fn retrieve_environment(&self, id: &str) -> Result<types::Environment> {
         let response = self
             .send_api(|client| {

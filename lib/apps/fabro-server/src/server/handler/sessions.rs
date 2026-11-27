@@ -115,6 +115,13 @@ pub(super) const ASK_FABRO_SUPERVISOR_RUN_TOOL_NAMES: &[&str] = &[
     // read-only analyst never sees them.
     fabro_tool::FABRO_SESSION_SEARCH_TOOL_NAME,
     fabro_tool::FABRO_SESSION_READ_TOOL_NAME,
+    // Run content access (ADR-0046 phase 2, work#1680): the named run's
+    // sandbox files (list + bounded read) and the diff inventory, with
+    // explicit run selectors — the runless session has no ambient
+    // anchor. Supervisor registry ONLY.
+    fabro_tool::FABRO_RUN_FILES_TOOL_NAME,
+    fabro_tool::FABRO_RUN_FILE_TOOL_NAME,
+    fabro_tool::FABRO_RUN_DIFFS_TOOL_NAME,
 ];
 
 type SessionSseSender = mpsc::Sender<Result<Event, Infallible>>;

@@ -42,13 +42,14 @@ pub use fabro_api::types::{
     PruneRunsRequest, PruneRunsResponse, RenderWorkflowGraphDirection, RenderWorkflowGraphRequest,
     Run, RunArtifactEntry, RunArtifactListResponse, RunError, RunManifest, RunStage, RunUsage,
     RunUsageStage, RunUsageTotals, SandboxDetails, SandboxFileEntry, SandboxFileListResponse,
-    SandboxService, SandboxServiceListResponse, SshAccessRequest, SshAccessResponse, StageHandler,
-    StageState, StartRunRequest, SubmitAnswerRequest, SystemCpuResourceScope, SystemCpuResources,
-    SystemDiskResourceScope, SystemDiskResources, SystemInfoResponse, SystemIntegrationStatus,
-    SystemIntegrationsResponse, SystemMemoryResourceScope, SystemMemoryResources,
-    SystemRepairRunIssue, SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts,
-    SystemStatsResponse, UpdateVariableRequest, UsageByModel, UsageStageRef, VariableListResponse,
-    VncPreviewResponse, WriteBlobResponse,
+    SandboxService, SandboxServiceListResponse, SandboxToolFileResponse, SshAccessRequest,
+    SshAccessResponse, StageHandler, StageState, StartRunRequest, SubmitAnswerRequest,
+    SystemCpuResourceScope, SystemCpuResources, SystemDiskResourceScope, SystemDiskResources,
+    SystemInfoResponse, SystemIntegrationStatus, SystemIntegrationsResponse,
+    SystemMemoryResourceScope, SystemMemoryResources, SystemRepairRunIssue,
+    SystemRepairRunsResponse, SystemResourcesResponse, SystemRunCounts, SystemStatsResponse,
+    UpdateVariableRequest, UsageByModel, UsageStageRef, VariableListResponse, VncPreviewResponse,
+    WriteBlobResponse,
 };
 use fabro_auth::SqlVaultCredentialSource;
 use fabro_automation::{self, AutomationStore};
