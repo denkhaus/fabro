@@ -2101,4 +2101,155 @@ mod tests {
         );
         assert_eq!(missing, vec!["fabro_runs_list"]);
     }
+
+    /// A backend that refuses everything: the completeness net only
+    /// needs the dispatch arms to EXIST, so any refusal they produce
+    /// (parse error, validation error, unavailable error) is evidence
+    /// the arm ran.
+    struct RefusingBackend;
+
+    #[async_trait::async_trait]
+    impl fabro_tool::FabroToolBackend for RefusingBackend {
+        async fn create_run_from_intent(
+            &self,
+            _intent: fabro_types::RunIntent,
+        ) -> anyhow::Result<RunId> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn resolve_run(&self, _selector: &str) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn retrieve_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn start_run(&self, _run_id: &RunId, _start: bool) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn approve_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn deny_run(
+            &self,
+            _run_id: &RunId,
+            _reason: Option<String>,
+        ) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn cancel_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn interrupt_run(&self, _run_id: &RunId) -> anyhow::Result<()> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn steer_run(
+            &self,
+            _run_id: &RunId,
+            _message: String,
+            _interrupt: bool,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn archive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn unarchive_run(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn list_store_runs(&self) -> anyhow::Result<Vec<fabro_types::Run>> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn list_store_runs_by_parent(&self, _parent_id: RunId) -> anyhow::Result<Vec<fabro_types::Run>> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn link_run_parent(
+            &self,
+            _run_id: &RunId,
+            _parent: &RunId,
+        ) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn unlink_run_parent(&self, _run_id: &RunId) -> anyhow::Result<fabro_types::Run> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn get_run_state(
+            &self,
+            _run_id: &RunId,
+        ) -> anyhow::Result<fabro_types::RunProjection> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn list_run_stream(
+            &self,
+            _run_id: &RunId,
+            _cursor: u64,
+            _limit: Option<usize>,
+        ) -> anyhow::Result<Vec<fabro_types::RunStreamItem>> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn list_run_questions(
+            &self,
+            _run_id: &RunId,
+        ) -> anyhow::Result<Vec<fabro_api::types::ApiQuestion>> {
+            anyhow::bail!("refusing backend")
+        }
+
+        async fn submit_run_answer(
+            &self,
+            _run_id: &RunId,
+            _question_id: &str,
+            _answer: fabro_api::types::SubmitAnswerRequest,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("refusing backend")
+        }
+    }
+
+    /// The catalog-to-dispatcher completeness net (work#1695, the
+    /// sprint-102 architect's STRONG candidate): registration iterates
+    /// the catalog, so a catalog entry WITHOUT a dispatch arm registers
+    /// successfully and fails at CALL time with "unknown Fabro run
+    /// tool" — the silent agent-capability-loss class the loop side
+    /// nets through `lint-tool-grants.nu` and this net now nets on the
+    /// engine side. Against a fully-refusing backend, ANY error other
+    /// than the unknown-tool refusal proves the arm exists (empty
+    /// arguments answer parse/validation refusals on every tool).
+    #[tokio::test]
+    async fn every_catalog_tool_resolves_a_dispatch_arm() {
+        let services = FabroRunToolServices {
+            backend:        Arc::new(RefusingBackend),
+            current_run_id: None,
+            stage:          None,
+        };
+        let mut unnetted = Vec::new();
+        for definition in fabro_tool::tool_definitions() {
+            match execute_fabro_run_tool(definition.name, json!({}), &services).await {
+                Ok(_) => {}
+                Err(error) => {
+                    if error.to_string().contains("unknown Fabro run tool") {
+                        unnetted.push(definition.name);
+                    }
+                }
+            }
+        }
+        assert!(
+            unnetted.is_empty(),
+            "catalog entries without a dispatch arm (they would fail at call time, \
+             not registration time): {unnetted:?}"
+        );
+    }
 }
