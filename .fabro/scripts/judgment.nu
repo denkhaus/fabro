@@ -20,8 +20,17 @@
 # never hardcode vendor versions):
 #   {"state": ..., "questions": {"<id>": {"type":"noul|choice|score", ...}}}
 # criteria is an option-id -> description RECORD (never a bare array;
-# the endpoint rejects arrays, and the model answers the option ids):
-#   {"type":"choice","instructions":"...","criteria":{"opt_a":"<what choosing a means>","opt_b":"..."}}
+# the endpoint rejects arrays, and the model answers the option ids).
+# EVERY question needs a "type" (choice|noul|score|box — the endpoint
+# discriminates on it), and a noul question needs criteria OR
+# instructions (the endpoint 400s otherwise). Minimal complete example:
+#   {"state": "<full wait-what context>",
+#    "questions": {
+#      "the_fork": {"type": "choice", "question": "...",
+#        "criteria": {"opt_a": "<what choosing a means>",
+#                     "opt_b": "<...>"}},
+#      "appetite": {"type": "noul", "question": "...",
+#        "instructions": "<what the risk dimension means>"}}}
 #
 # Output (stdout, one JSON record): answers + meta
 #   {answers, model, latency_ms, cost_usd, status, degraded, error?}

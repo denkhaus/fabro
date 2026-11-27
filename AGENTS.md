@@ -111,6 +111,11 @@ understand a door — drive it through the verb.
   `docs/agents/issue-tracker.md`): `fabro work list|show|create|close|lane|
   radius|comments|claims`. Bodies travel via `--body-file -`, never the
   command line; `close` wants `--reason`, `lane` is the ownership switch.
+  Seating: `--server` belongs to the `work` facade (`fabro work --server
+  X show ...`), `--project fabro` belongs to each verb AFTER the verb
+  (`fabro work --server X show --project fabro 1693`, `fabro work
+  --server X close --project fabro 1704 --reason "...") — a verb-level
+  `--server` or a facade-level `--project` refuses.
 - **Gears** (the schedule automations): `fabro automations
   list|show|unpause|pause|set-schedule|fire|status|breaker`. The schedule
   enabled flag is the authoritative pause state; `status` shows fire drift.
