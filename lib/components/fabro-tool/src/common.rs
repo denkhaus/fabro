@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -11,6 +11,7 @@ use fabro_types::{
     WorkItemComment,
 };
 use fabro_util::exit::{self, ExitClass};
+use futures::future::join_all;
 use schemars::JsonSchema;
 use serde::Serialize;
 use serde_json::Value;
@@ -799,6 +800,41 @@ pub(super) async fn retrieve_run(
         .retrieve_run(run_id)
         .await
         .map_err(|err| ToolError::from_anyhow(&err))
+}
+
+/// Resolve a batch of run selectors without letting one miss drop the
+/// found runs (denkhaus/work#1712). A selector the server answers with
+/// 404 is reported by its requested spelling in the second element; any
+/// other failure still fails the whole call. The stores keep removal
+/// tombstones (`run_tombstones`) but no read door exposes them, so a
+/// purged run and a never-existing id are the same "missing" here.
+pub(super) async fn resolve_runs_partially(
+    backend: &Arc<dyn FabroToolBackend>,
+    selectors: &[String],
+) -> ToolResult<(Vec<Run>, Vec<String>)> {
+    let resolutions = join_all(
+        selectors
+            .iter()
+            .map(|selector| async move { backend.resolve_run(selector).await }),
+    )
+    .await;
+
+    let mut unique = HashMap::new();
+    let mut missing = Vec::new();
+    for (selector, resolution) in selectors.iter().zip(resolutions) {
+        match resolution {
+            Ok(run) => {
+                unique.entry(run.id).or_insert(run);
+            }
+            Err(err) if fabro_client::is_not_found_error(&err) => {
+                if !missing.contains(selector) {
+                    missing.push(selector.clone());
+                }
+            }
+            Err(err) => return Err(ToolError::from_anyhow(&err)),
+        }
+    }
+    Ok((unique.into_values().collect(), missing))
 }
 
 pub(crate) fn run_summary_result(run: &Run) -> RunSummaryResult {
