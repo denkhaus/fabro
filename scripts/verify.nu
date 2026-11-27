@@ -261,6 +261,30 @@ def stage-web [] {
     print $"verify: PASS test fabro-web"
 }
 
+# One crate's full-suite nextest tier — the shared shape of the
+# full-suite lane and the loop-asset arm (work#1705): --no-fail-fast
+# --retries 2 (a load-bound host — a sibling build, a bench — must not
+# kill a sound tier; the qualitygate's discipline), a timed PASS line, a
+# captured-output tail on FAIL. The added-tests names tier keeps
+# nextest-names-tier (different verdict accounting).
+def nextest-crate-tier [
+    crate: string
+    label: string
+    --fail-hint: string = ''
+] {
+    print $"== nextest -p ($crate) — ($label) =="
+    let t0 = (date now)
+    let res = (do { ^cargo nextest run -p $crate --no-fail-fast --retries 2 } | complete)
+    let secs = (((date now) - $t0) / 1sec | math round)
+    if $res.exit_code != 0 {
+        print (output-tail ($res.stdout + $res.stderr) 3000)
+        print $"verify: FAIL nextest ($crate) ($fail_hint)"
+        $env.LAST_VERIFY_FAIL = "nextest"
+        exit 1
+    }
+    print $"verify: PASS nextest ($crate) \(($secs)s\)"
+}
+
 def stage-implementer [] {
     let t = (touched)
     # Vendor whitespace fail-fast (work#1610): a whitespace-only vendor
@@ -361,19 +385,7 @@ def stage-implementer [] {
                 nextest-names-tier $c $help_names 'help-snapshot tests, clap-surface diff (work#1429)'
             }
         } else {
-            print $"== nextest -p ($c) — full crate suite: ($tm.reason) =="
-            # --retries 2: a load-bound host (a sibling build, a bench)
-            # must not kill a sound tier — the qualitygate's discipline,
-            # applied to the same command here.
-            let t0 = (date now)
-            let res = (do { ^cargo nextest run -p $c --no-fail-fast --retries 2 } | complete)
-            let secs = (((date now) - $t0) / 1sec | math round)
-            if $res.exit_code != 0 {
-                print (output-tail ($res.stdout + $res.stderr) 3000)
-                print $"verify: FAIL nextest ($c)"
-                exit 1
-            }
-            print $"verify: PASS nextest ($c) \(($secs)s\)"
+            nextest-crate-tier $c $"full crate suite: ($tm.reason)"
         }
     }
     # The loop-asset lane (work#1701): a diff touching checked-in
@@ -384,17 +396,7 @@ def stage-implementer [] {
     # qualitygate's loop tier drives). A .fabro/scripts/** diff keeps
     # its own battery discipline and gains nothing here.
     if $t.loop_asset {
-        print "== nextest -p fabro-dot — loop-asset diff (work#1701): the shape pins =="
-        let t0 = (date now)
-        let res = (do { ^cargo nextest run -p fabro-dot --no-fail-fast --retries 2 } | complete)
-        let secs = (((date now) - $t0) / 1sec | math round)
-        if $res.exit_code != 0 {
-            print (output-tail ($res.stdout + $res.stderr) 3000)
-            print "verify: FAIL nextest fabro-dot (loop-asset diff) — a workflow asset changed shape or references; run `cargo insta accept` only after verifying the real graph, and ship the .snap update in the SAME diff"
-            $env.LAST_VERIFY_FAIL = "nextest-fabro-dot"
-            exit 1
-        }
-        print $"verify: PASS nextest fabro-dot \(($secs)s\)"
+        nextest-crate-tier fabro-dot "loop-asset diff (work#1701): the shape pins" --fail-hint "— a workflow asset changed shape or references; run `cargo insta accept` only after verifying the real graph, and ship the .snap update in the SAME diff"
         print "== loop-asset battery tier (battery-runner all) =="
         let t0 = (date now)
         let res = (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)
