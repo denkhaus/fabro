@@ -294,7 +294,6 @@ async fn search_sessions(
 /// same raw-string reason `ListRunSessionsParams` documents.
 #[derive(Debug, Clone, serde::Deserialize)]
 struct SearchSessionsParams {
-    #[serde(rename = "q")]
     q:      String,
     #[serde(rename = "page[limit]", default = "default_page_limit")]
     limit:  u32,
@@ -1183,10 +1182,10 @@ async fn build_runless_agent(
         AskFabroBuildError::LlmUnconfigured(format!("LLM credentials are not configured: {err}"))
     })?;
     for (provider, issue) in &llm_result.auth_issues {
-        warn!(provider = %provider, error = %issue, "LLM provider unavailable due to auth issue");
+        warn!(provider = %provider, error = ?issue, "LLM provider unavailable due to auth issue");
     }
     for issue in &llm_result.build_issues {
-        warn!(provider = %issue.provider, error = %issue.cause, "LLM provider unavailable due to build issue");
+        warn!(provider = %issue.provider, error = ?issue.cause, "LLM provider unavailable due to build issue");
     }
     let (provider_id, model) = selected_session_model(&catalog, &llm_result, session)?;
     if !llm_result.has_provider(&provider_id) {
@@ -1208,7 +1207,9 @@ async fn build_runless_agent(
         &RunId::new(),
         WorkerScopeSet::run_worker_supervisor(),
     )
-    .map_err(|_| AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token")))?;
+    .map_err(|err| {
+        AskFabroBuildError::Agent(anyhow::Error::new(err).context("failed to sign worker token"))
+    })?;
     let target = state
         .self_server_target()
         .map_err(AskFabroBuildError::Agent)?;
@@ -1294,10 +1295,10 @@ async fn build_agent(
         AskFabroBuildError::LlmUnconfigured(format!("LLM credentials are not configured: {err}"))
     })?;
     for (provider, issue) in &llm_result.auth_issues {
-        warn!(provider = %provider, error = %issue, "LLM provider unavailable due to auth issue");
+        warn!(provider = %provider, error = ?issue, "LLM provider unavailable due to auth issue");
     }
     for issue in &llm_result.build_issues {
-        warn!(provider = %issue.provider, error = %issue.cause, "LLM provider unavailable due to build issue");
+        warn!(provider = %issue.provider, error = ?issue.cause, "LLM provider unavailable due to build issue");
     }
     let (provider_id, model) = selected_session_model(&catalog, &llm_result, session)?;
     if !llm_result.has_provider(&provider_id) {
@@ -1369,8 +1370,8 @@ async fn build_agent(
         WorkerScopeSet::run_worker_with_agent_run_tools()
     };
     let worker_token = issue_worker_token_with_scopes(state.worker_token_keys(), &run_id, scopes)
-        .map_err(|_| {
-        AskFabroBuildError::Agent(anyhow::anyhow!("failed to sign worker token"))
+        .map_err(|err| {
+        AskFabroBuildError::Agent(anyhow::Error::new(err).context("failed to sign worker token"))
     })?;
     let target = state
         .self_server_target()
@@ -1564,8 +1565,9 @@ fn unknown_supervisor_model_error(
     models.sort();
     models.dedup();
     ApiError::bad_request(format!(
-        "ask.supervisor_model names unknown model '{}'; available models: {models:?}",
-        value.trim()
+        "ask.supervisor_model names unknown model '{}'; available models: {}",
+        value.trim(),
+        models.join(", ")
     ))
 }
 
