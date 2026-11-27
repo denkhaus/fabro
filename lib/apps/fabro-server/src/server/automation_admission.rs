@@ -173,11 +173,8 @@ async fn merge_enabled_pull_requests_pending(
         return Ok(false);
     };
     let http_client = state.http_client().map_err(|error| error.to_string())?;
-    let forge = GitHubPullRequestForge::new(
-        credentials,
-        state.github_api_base_url.clone(),
-        http_client,
-    );
+    let forge =
+        GitHubPullRequestForge::new(credentials, state.github_api_base_url.clone(), http_client);
     let listing = forge
         .list_pull_requests(
             &target.repo,
@@ -327,6 +324,7 @@ mod tests {
     use fabro_work::WorkItemStateFilter;
 
     use super::super::automation_scheduler::{AutomationSchedulePlanner, run_due_schedules_once};
+    use super::super::gear_worklist::MERGE_ENABLED_LABEL;
     use super::*;
     use crate::test_support::{TestAppStateBuilder, TestAutomationRunMaterializer};
 
@@ -539,7 +537,7 @@ mod tests {
             when.method("GET")
                 .path("/repos/fabro-sh/fabro/issues")
                 .query_param("state", "open")
-                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+                .query_param("labels", MERGE_ENABLED_LABEL);
             then.status(200).json_body(serde_json::json!([]));
         })
     }
@@ -551,7 +549,7 @@ mod tests {
             when.method("GET")
                 .path("/repos/fabro-sh/fabro/issues")
                 .query_param("state", "open")
-                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+                .query_param("labels", MERGE_ENABLED_LABEL);
             then.status(200).json_body(serde_json::json!([{
                 "number": 710,
                 "title": "feat: the waiting session work",
@@ -616,7 +614,7 @@ mod tests {
             when.method("GET")
                 .path("/repos/fabro-sh/fabro/issues")
                 .query_param("state", "open")
-                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+                .query_param("labels", MERGE_ENABLED_LABEL);
             then.status(500).body("forge on fire");
         });
         let state = merger_state_with_github(&github.base_url());

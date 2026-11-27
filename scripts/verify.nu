@@ -15,6 +15,11 @@
 #                 Plus the help-snapshot rule (work#1429): when the diff
 #                 touches a crate's clap surface (args.rs/main.rs), that
 #                 crate's cmd::*::help family joins its nextest selection
+#                 Plus the loop-asset lane (work#1701): a diff touching
+#                 .fabro/workflows/** or .fabro/skills/** selects the
+#                 fabro-dot suite (the shape pins) and the loop-asset
+#                 battery tier (battery-runner all). .fabro/scripts/**
+#                 keeps its own battery discipline.
 #                 — a clap edit that moves help output can no longer pass
 #                 verify without executing the snapshots.
 #                 Plus the fabro-web lane (work#1304): when the diff touches
@@ -391,14 +396,16 @@ def stage-implementer [] {
         }
         print $"verify: PASS nextest fabro-dot \(($secs)s\)"
         print "== loop-asset battery tier (battery-runner all) =="
+        let t0 = (date now)
         let res = (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)
+        let secs = (((date now) - $t0) / 1sec | math round)
         if $res.exit_code != 0 {
             print (output-tail ($res.stdout + $res.stderr) 3000)
             print "verify: FAIL loop-asset batteries"
             $env.LAST_VERIFY_FAIL = "loop-asset-batteries"
             exit 1
         }
-        print "verify: PASS loop-asset batteries"
+        print $"verify: PASS loop-asset batteries \(($secs)s\)"
     }
     # The web lane (work#1304) runs AFTER the Rust lanes, same first-red-
     # stops discipline — a mixed diff verifies both surfaces in one call.
