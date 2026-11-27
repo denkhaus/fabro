@@ -32,7 +32,9 @@ use super::super::{
     ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode,
     gear_worklist, get, post, run_records,
 };
-use crate::principal_middleware::{RequiredRunManagementActor, RequiredUser};
+use crate::principal_middleware::{
+    AuthContextSlot, RequestAuth, RequiredRunManagementActor, RequiredUser, request_worker_scopes,
+};
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -160,11 +162,12 @@ async fn upsert_project(
 
 async fn list_claims(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
 ) -> Result<Response, ApiError> {
     // Workers read their own project's ledger only (denkhaus/work#991).
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let claims = state
         .work_store()
         .active_claims(&caller.project().project_id)
@@ -181,6 +184,7 @@ async fn list_claims(
 
 async fn grant_claim(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimGrantRequest>,
@@ -189,7 +193,7 @@ async fn grant_claim(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     // Workers grant into their own project for their OWN run only
     // (denkhaus/work#991): a foreign body runId is refused loudly.
     let run_id = bind_granted_run_id(&caller, run_id)?;
@@ -435,13 +439,14 @@ fn store_error(error: fabro_work::Error) -> ApiError {
 
 async fn list_work_items(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemQuery>,
 ) -> Result<Response, ApiError> {
     // Workers list their own project's items only — foreign reads are
     // refused, not just foreign writes (denkhaus/work#991, ADR-0019).
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     // Which states the listing enumerates (work#1476): the default stays
@@ -632,11 +637,12 @@ struct WorkItemGetQuery {
 
 async fn get_work_item(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(query): ExtraQuery<WorkItemGetQuery>,
 ) -> Result<Response, ApiError> {
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     let item = tracker
@@ -649,6 +655,7 @@ async fn get_work_item(
 
 async fn create_work_item(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCreateRequest>,
@@ -663,7 +670,7 @@ async fn create_work_item(
     // — no parsing, only the u64→seq identity (ADR-0044: filing IS
     // linking; the links land beside the tracker create below).
     let observations = request.observations;
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     let mut labels = vec![project.project_label.clone()];
@@ -726,6 +733,7 @@ async fn create_work_item(
 
 async fn close_work_item(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemCloseRequest>,
@@ -738,7 +746,7 @@ async fn close_work_item(
             "close reason must not be empty — a close carries its evidence",
         ));
     }
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     // Worker closes carry the adjudicator exception (ADR-0039 stage E):
     // the ONLY worker closer is a run of the adjudicator workflow, and
@@ -880,10 +888,11 @@ async fn close_work_item(
 /// operator. One implementation, two readers.
 async fn get_work_item_radius(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path((project_id, item_key)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     let item = tracker
@@ -909,10 +918,11 @@ async fn get_work_item_radius(
 /// the human's surface (tracker/UI).
 async fn list_work_item_comments(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path((project_id, item_key)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     tracker
@@ -1156,6 +1166,7 @@ fn parse_link_run_id(run_id: &str) -> Result<RunId, ApiError> {
 
 async fn update_work_item(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkItemUpdateRequest>,
@@ -1167,7 +1178,7 @@ async fn update_work_item(
             "work item update needs a title or a body",
         ));
     }
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     // Workers edit only items they hold a live claim on — spec
     // corrections happen while the run works the item
@@ -1430,6 +1441,7 @@ async fn served_item(
 
 async fn claim_next(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     Json(request): Json<WorkClaimNextRequest>,
@@ -1438,7 +1450,7 @@ async fn claim_next(
         .run_id
         .parse::<RunId>()
         .map_err(|err| ApiError::bad_request(format!("invalid runId: {err}")))?;
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     // Workers claim next in their own project for their OWN run only
     // (denkhaus/work#991): a foreign body runId is refused loudly.
     let run_id = bind_granted_run_id(&caller, run_id)?;
@@ -1745,6 +1757,7 @@ async fn append_work_record(state: &Arc<AppState>, run_id: RunId, record: Platfo
 
 async fn retrieve_work_item(
     auth: RequiredRunManagementActor,
+    RequestAuth(auth_slot): RequestAuth,
     State(state): State<Arc<AppState>>,
     Path(project_id): Path<String>,
     ExtraQuery(params): ExtraQuery<WorkItemKeyQuery>,
@@ -1753,7 +1766,7 @@ async fn retrieve_work_item(
         .item_key
         .ok_or_else(|| ApiError::bad_request("itemKey is required"))?;
     // Workers read their own project's items only (denkhaus/work#991).
-    let caller = resolve_caller_project(&state, &auth, &project_id).await?;
+    let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
     let tracker = tracker_for(&state, project).await?;
     let item = tracker
@@ -1803,12 +1816,24 @@ async fn resolve_project(
 /// The run→project seam behind `self`: a run's target repository names
 /// the one work project its worker may touch (denkhaus/work#991).
 async fn run_own_project(state: &Arc<AppState>, run_id: &RunId) -> Result<WorkProject, ApiError> {
-    let projection = state.load_run_projection(run_id).await.map_err(|_| {
+    run_own_project_if_any(state, run_id).await?.ok_or_else(|| {
         ApiError::new(
             StatusCode::NOT_FOUND,
             format!("run {run_id} not found — cannot resolve its work project"),
         )
-    })?;
+    })
+}
+
+/// [`run_own_project`] for a caller that may be runless: `None` when no
+/// run answers the id (a runless supervisor token's throwaway run id,
+/// ADR-0046) instead of the not-found refusal.
+async fn run_own_project_if_any(
+    state: &Arc<AppState>,
+    run_id: &RunId,
+) -> Result<Option<WorkProject>, ApiError> {
+    let Ok(projection) = state.load_run_projection(run_id).await else {
+        return Ok(None);
+    };
     let Some(fabro_types::RunTarget::Git(target)) = projection.spec.target.as_ref() else {
         return Err(ApiError::bad_request(
             "run has no git target — its work project cannot resolve; name the project id",
@@ -1829,6 +1854,7 @@ async fn run_own_project(state: &Arc<AppState>, run_id: &RunId) -> Result<WorkPr
                 ),
             )
         })
+        .map(Some)
 }
 
 /// The work-route caller with its resolved project binding
@@ -1864,6 +1890,7 @@ impl WorkCaller {
 async fn resolve_caller_project(
     state: &Arc<AppState>,
     auth: &RequiredRunManagementActor,
+    auth_slot: &AuthContextSlot,
     project_id: &str,
 ) -> Result<WorkCaller, ApiError> {
     match &auth.0 {
@@ -1871,7 +1898,28 @@ async fn resolve_caller_project(
             project: resolve_project(state, auth, project_id).await?,
         }),
         fabro_types::Principal::Worker { run_id } => {
-            let project = run_own_project(state, run_id).await?;
+            let own = run_own_project_if_any(state, run_id).await?;
+            // A runless supervisor (ADR-0046) has no run to anchor `self`
+            // on: its explicit project id is authoritative, exactly as an
+            // explicit run selector is for its run tools. Only the
+            // supervisor capability earns this — a plain worker token
+            // whose run is gone stays refused (denkhaus/work#1709).
+            if own.is_none()
+                && project_id != "self"
+                && request_worker_scopes(auth_slot).has_supervisor()
+            {
+                return Ok(WorkCaller::RunWorker {
+                    run_id:  *run_id,
+                    project: load_project(state, project_id).await?,
+                });
+            }
+            let Some(project) = own else {
+                return Err(ApiError::bad_request(format!(
+                    "project `self` needs the caller's run, and run {run_id} names no run — a \
+                     runless session passes the project id explicitly (the work project's \
+                     id, e.g. `fabro`)"
+                )));
+            };
             if project_id == "self" || project_id == project.project_id {
                 Ok(WorkCaller::RunWorker {
                     run_id: *run_id,
@@ -2338,9 +2386,12 @@ mod resolve_self_tests {
         WorkCaller, bind_claim_to_caller, bind_granted_run_id, require_claim_held_by_run,
         resolve_caller_project, resolve_project,
     };
-    use crate::principal_middleware::RequiredRunManagementActor;
+    use crate::principal_middleware::{
+        AuthContextSlot, RequestAuth, RequestAuthContext, RequiredRunManagementActor,
+    };
     use crate::server::AppState;
     use crate::test_support::TestAppStateBuilder;
+    use crate::worker_token::WorkerScopeSet;
 
     const MINIMAL_DOT: &str = r#"digraph Test {
         graph [goal="Test"]
@@ -2506,6 +2557,7 @@ mod resolve_self_tests {
 
         let response = claim_next(
             auth,
+            plain_auth_slot(),
             State(Arc::clone(&state)),
             Path("self".to_string()),
             axum::Json(WorkClaimNextRequest {
@@ -2578,6 +2630,7 @@ mod resolve_self_tests {
 
         let response = claim_next(
             auth,
+            plain_auth_slot(),
             State(Arc::clone(&state)),
             Path("fabro".to_string()),
             axum::Json(WorkClaimNextRequest {
@@ -2616,6 +2669,7 @@ mod resolve_self_tests {
         let auth = RequiredRunManagementActor(Principal::Worker { run_id });
         let response = claim_next(
             auth,
+            plain_auth_slot(),
             State(Arc::clone(&state)),
             Path("fabro".to_string()),
             axum::Json(WorkClaimNextRequest {
@@ -2800,6 +2854,7 @@ mod resolve_self_tests {
     ) -> serde_json::Value {
         let response = super::claim_next(
             RequiredRunManagementActor(Principal::Worker { run_id }),
+            plain_auth_slot(),
             State(Arc::clone(state)),
             Path("self".to_string()),
             axum::Json(WorkClaimNextRequest {
@@ -3057,6 +3112,7 @@ mod resolve_self_tests {
     ) -> serde_json::Value {
         let response = super::claim_next(
             RequiredRunManagementActor(principal.clone()),
+            plain_auth_slot(),
             State(Arc::clone(state)),
             Path("self".to_string()),
             axum::Json(fabro_api::types::WorkClaimNextRequest {
@@ -3268,17 +3324,280 @@ mod resolve_self_tests {
         .await;
         let auth = RequiredRunManagementActor(Principal::Worker { run_id });
 
-        let caller = resolve_caller_project(&state, &auth, "self").await.unwrap();
+        let caller = resolve_caller_project(
+            &state,
+            &auth,
+            &worker_auth_slot(WorkerScopeSet::run_worker_with_agent_run_tools()).0,
+            "self",
+        )
+        .await
+        .unwrap();
         assert_eq!(caller.project().project_id, "fabro");
-        let caller = resolve_caller_project(&state, &auth, "fabro")
-            .await
-            .unwrap();
+        let caller = resolve_caller_project(
+            &state,
+            &auth,
+            &worker_auth_slot(WorkerScopeSet::run_worker_with_agent_run_tools()).0,
+            "fabro",
+        )
+        .await
+        .unwrap();
         assert_eq!(caller.project().project_id, "fabro");
 
-        let error = resolve_caller_project(&state, &auth, "other")
-            .await
-            .expect_err("a foreign project is beyond the run's scope — reads included");
+        let error = resolve_caller_project(
+            &state,
+            &auth,
+            &worker_auth_slot(WorkerScopeSet::run_worker_with_agent_run_tools()).0,
+            "other",
+        )
+        .await
+        .expect_err("a foreign project is beyond the run's scope — reads included");
         assert_eq!(error.status(), StatusCode::FORBIDDEN);
+    }
+
+    /// The request's auth slot for a worker token carrying `scopes`.
+    fn worker_auth_slot(scopes: WorkerScopeSet) -> RequestAuth {
+        let context = RequestAuthContext::authenticated_worker(RunId::new(), scopes);
+        RequestAuth(AuthContextSlot(Arc::new(std::sync::Mutex::new(context))))
+    }
+
+    /// An empty auth slot for direct handler calls whose caller is a user
+    /// (no worker scopes to read).
+    fn plain_auth_slot() -> RequestAuth {
+        RequestAuth(AuthContextSlot::initial())
+    }
+
+    /// A runless supervisor token (ADR-0046: the runless session's
+    /// throwaway run id, supervisor scope) is served by the explicit
+    /// project id — the shared resolution every work door passes through
+    /// (denkhaus/work#1709).
+    #[tokio::test]
+    async fn a_runless_supervisor_resolves_the_explicit_project() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&foreign_project())
+            .await
+            .unwrap();
+        let auth = RequiredRunManagementActor(Principal::Worker {
+            run_id: RunId::new(),
+        });
+        let auth_slot = worker_auth_slot(WorkerScopeSet::run_worker_supervisor());
+
+        let caller = resolve_caller_project(&state, &auth, &auth_slot.0, "other")
+            .await
+            .expect("the explicit project is authoritative for a runless supervisor");
+        assert_eq!(caller.project().project_id, "other");
+
+        let error = resolve_caller_project(&state, &auth, &auth_slot.0, "missing")
+            .await
+            .expect_err("an unknown project id stays a not-found");
+        assert_eq!(error.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// Without a project the runless supervisor gets the teaching error
+    /// that names the fix, never the phantom run lookup
+    /// (denkhaus/work#1709).
+    #[tokio::test]
+    async fn a_runless_supervisor_without_a_project_gets_the_teaching_error() {
+        let state = state();
+        let run_id = RunId::new();
+        let auth = RequiredRunManagementActor(Principal::Worker { run_id });
+        let auth_slot = worker_auth_slot(WorkerScopeSet::run_worker_supervisor());
+
+        let error = resolve_caller_project(&state, &auth, &auth_slot.0, "self")
+            .await
+            .expect_err("`self` has no run to resolve through");
+        assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+        let message = error.to_string();
+        assert!(
+            message.contains("runless session passes the project id explicitly"),
+            "the error teaches the fix: {message}"
+        );
+        assert!(
+            !message.contains("cannot resolve"),
+            "no phantom run lookup: {message}"
+        );
+    }
+
+    /// The supervisor capability is what earns the runless widening: a
+    /// plain worker token whose run is gone resolves no project — an
+    /// explicit id included (denkhaus/work#1709).
+    #[tokio::test]
+    async fn a_plain_worker_without_a_run_resolves_no_project() {
+        let state = state();
+        state
+            .work_store()
+            .upsert_project(&foreign_project())
+            .await
+            .unwrap();
+        let auth = RequiredRunManagementActor(Principal::Worker {
+            run_id: RunId::new(),
+        });
+        let auth_slot = worker_auth_slot(WorkerScopeSet::run_worker_with_agent_run_tools());
+
+        let error = resolve_caller_project(&state, &auth, &auth_slot.0, "other")
+            .await
+            .expect_err("a vanished run earns no explicit-project path");
+        assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+    }
+
+    use tower::ServiceExt as _;
+    /// One item for the list and the show reads of the runless door pin.
+    struct RunlessDoorTracker;
+    #[async_trait::async_trait]
+    impl TrackerProvider for RunlessDoorTracker {
+        async fn list(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _filter: WorkItemFilter,
+        ) -> anyhow::Result<Vec<WorkItem>> {
+            Ok(vec![Self::item()])
+        }
+        async fn get(
+            &self,
+            _project: &fabro_work::WorkProject,
+            item_key: &str,
+        ) -> anyhow::Result<Option<WorkItem>> {
+            Ok((item_key == "denkhaus/work#1709").then(Self::item))
+        }
+        async fn create(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _draft: fabro_work::WorkItemDraft,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn update(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _title: Option<&str>,
+            _body: Option<&str>,
+        ) -> anyhow::Result<WorkItem> {
+            anyhow::bail!("not needed")
+        }
+        async fn close(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _reason: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+        async fn comment(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _body: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+        async fn project_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+        async fn clear_claim(
+            &self,
+            _project: &fabro_work::WorkProject,
+            _item_key: &str,
+            _run_id: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("not needed")
+        }
+    }
+
+    impl RunlessDoorTracker {
+        fn item() -> WorkItem {
+            WorkItem {
+                item_key:   "denkhaus/work#1709".to_string(),
+                title:      "Runless supervisor".to_string(),
+                body:       "the spec".to_string(),
+                state:      "open".to_string(),
+                labels:     vec!["project:fabro".to_string()],
+                priority:   1,
+                url:        "https://github.com/denkhaus/work/issues/1709".to_string(),
+                updated_at: Some(Utc::now()),
+                created_at: None,
+                closed_at:  None,
+            }
+        }
+    }
+
+    async fn runless_supervisor_call(
+        state: &Arc<AppState>,
+        path_and_query: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let app = crate::test_support::build_test_router(Arc::clone(state));
+        // The runless session's token: a throwaway run id that names no
+        // run, the supervisor scope (handler/sessions.rs).
+        let token = state.test_issue_worker_token_supervisor(&RunId::new());
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(axum::http::Method::GET)
+                    .uri(format!("/api/v1{path_and_query}"))
+                    .header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"))
+                    .body(axum::body::Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request runs");
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("the body reads");
+        let body = serde_json::from_slice(&body).expect("the body is JSON");
+        (status, body)
+    }
+
+    /// End to end over the router: the runless supervisor token lists and
+    /// shows work items with an explicit project, and the same token
+    /// without one gets the teaching error (denkhaus/work#1709).
+    #[tokio::test]
+    async fn a_runless_supervisor_token_lists_and_shows_with_an_explicit_project() {
+        let state = TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .work_tracker(Arc::new(RunlessDoorTracker))
+            .build();
+        state
+            .work_store()
+            .upsert_project(&bound_project())
+            .await
+            .unwrap();
+
+        let (status, body) = runless_supervisor_call(
+            &state,
+            "/projects/fabro/work-items/item?itemKey=denkhaus%2Fwork%231709",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "the show read is served: {body}");
+        assert_eq!(
+            body["itemKey"], "denkhaus/work#1709",
+            "the show body: {body}"
+        );
+
+        let (status, body) =
+            runless_supervisor_call(&state, "/projects/fabro/work-items?limit=5").await;
+        assert_eq!(status, StatusCode::OK, "the list read is served: {body}");
+        assert_eq!(body["data"].as_array().expect("a list").len(), 1);
+
+        let (status, body) =
+            runless_supervisor_call(&state, "/projects/self/work-items?limit=5").await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "the teaching error: {body}"
+        );
+        let text = body.to_string();
+        assert!(
+            text.contains("runless session passes the project id explicitly"),
+            "the error teaches the fix: {text}"
+        );
     }
 
     /// A user names any project; `self` stays reserved for runs.
@@ -3302,9 +3621,14 @@ mod resolve_self_tests {
             auth_method: fabro_types::AuthMethod::DevToken,
             avatar_url:  None,
         }));
-        let caller = resolve_caller_project(&state, &auth, "other")
-            .await
-            .unwrap();
+        let caller = resolve_caller_project(
+            &state,
+            &auth,
+            &worker_auth_slot(WorkerScopeSet::run_worker_with_agent_run_tools()).0,
+            "other",
+        )
+        .await
+        .unwrap();
         assert_eq!(caller.project().project_id, "other");
     }
 
@@ -3472,9 +3796,14 @@ mod view_materialization_tests {
     use fabro_types::Principal;
 
     use super::{WorkItemGetQuery, get_work_item, rate_limited_detail, refresh_work_item_view};
-    use crate::principal_middleware::RequiredRunManagementActor;
+    use crate::principal_middleware::{AuthContextSlot, RequestAuth, RequiredRunManagementActor};
     use crate::server::AppState;
     use crate::test_support::TestAppStateBuilder;
+
+    /// An empty auth slot for direct handler calls whose caller is a user.
+    fn plain_auth_slot() -> RequestAuth {
+        RequestAuth(AuthContextSlot::initial())
+    }
 
     /// The scripted forge for the seam tests: one item, a read-failure
     /// switch, a quota switch, and a mutable title — the moves the pins
@@ -3670,6 +3999,7 @@ mod view_materialization_tests {
     async fn show_item(state: &Arc<AppState>) -> serde_json::Value {
         let response = get_work_item(
             user_auth(),
+            plain_auth_slot(),
             axum::extract::State(Arc::clone(state)),
             axum::extract::Path("fabro".to_string()),
             ExtraQuery(WorkItemGetQuery {
@@ -3766,6 +4096,7 @@ mod view_materialization_tests {
 
         let error = get_work_item(
             user_auth(),
+            plain_auth_slot(),
             axum::extract::State(Arc::clone(&state)),
             axum::extract::Path("fabro".to_string()),
             ExtraQuery(WorkItemGetQuery {

@@ -486,6 +486,18 @@ pub(crate) fn require_supervisor_actor(slot: &AuthContextSlot) -> Result<Princip
     }
 }
 
+/// The request's worker scopes (empty for every non-worker caller). The
+/// work routes read them to tell a runless supervisor token (ADR-0046:
+/// its run id names no run) from a run's own worker.
+pub(crate) fn request_worker_scopes(slot: &AuthContextSlot) -> WorkerScopeSet {
+    let context = slot.0.lock().expect("auth context lock poisoned");
+    if matches!(context.principal, Some(Principal::Worker { .. })) {
+        context.worker_scopes
+    } else {
+        WorkerScopeSet::default()
+    }
+}
+
 fn require_worker_or_user_for_run(
     slot: &AuthContextSlot,
     route_run_id: &RunId,
