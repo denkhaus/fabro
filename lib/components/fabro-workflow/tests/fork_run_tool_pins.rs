@@ -29,6 +29,9 @@ use fabro_workflow::run_tools::register_named_fabro_run_tools;
 use fabro_workflow::services::FabroRunToolServices;
 use serde_json::json;
 
+const PINNED_BLOB_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const PINNED_BLOB_BYTES: &[u8] = b"demoted value\nsecond line\n";
+
 struct PinBackend;
 
 macro_rules! pin_unimplemented {
@@ -47,6 +50,15 @@ impl FabroToolBackend for PinBackend {
     }
     async fn resolve_run(&self, _selector: &str) -> anyhow::Result<Run> {
         pin_unimplemented!()
+    }
+    /// The one blob the pins read (work#1714); every other hash is absent.
+    async fn read_run_blob(
+        &self,
+        _run_id: &RunId,
+        hash: &fabro_types::BlobHash,
+    ) -> anyhow::Result<Option<Vec<u8>>> {
+        let pinned: fabro_types::BlobHash = PINNED_BLOB_HEX.parse().expect("a well-formed digest");
+        Ok((hash == &pinned).then(|| PINNED_BLOB_BYTES.to_vec()))
     }
     async fn retrieve_run(&self, _run_id: &RunId) -> anyhow::Result<Run> {
         pin_unimplemented!()
@@ -268,6 +280,33 @@ fn blob_validation_rejects_malformed_references() {
         error.to_string().contains("blob reference"),
         "the error names the shape: {error}"
     );
+}
+
+#[tokio::test]
+async fn blob_reads_the_bare_digest_and_the_prefixed_reference_alike() {
+    let run_id = RunId::new();
+    let backend: Arc<dyn FabroToolBackend> = Arc::new(PinBackend);
+    let read = |r#ref: &str| {
+        let validated = fabro_tool::ValidatedBlob::try_from(fabro_tool::FabroBlobParams {
+            r#ref:  r#ref.to_owned(),
+            offset: None,
+            limit:  None,
+            run_id: None,
+        })
+        .expect("both reference forms validate");
+        let backend = Arc::clone(&backend);
+        async move { fabro_tool::blob_page(&backend, &run_id, &validated).await }
+    };
+
+    let bare = read(PINNED_BLOB_HEX).await.expect("the bare digest reads");
+    let prefixed = read(&format!("blob://sha256/{PINNED_BLOB_HEX}"))
+        .await
+        .expect("the prefixed reference reads");
+
+    assert_eq!(bare.page, prefixed.page, "one blob, one page");
+    assert_eq!(bare.bytes, prefixed.bytes);
+    assert_eq!(bare.lines, 2);
+    assert_eq!(bare.page, "demoted value\nsecond line");
 }
 
 #[test]

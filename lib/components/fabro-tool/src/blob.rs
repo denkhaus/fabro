@@ -43,7 +43,7 @@ impl TryFrom<FabroBlobParams> for ValidatedBlob {
     type Error = ToolError;
 
     fn try_from(params: FabroBlobParams) -> Result<Self, Self::Error> {
-        let hash = parse_blob_ref(params.r#ref.trim()).ok_or_else(|| {
+        let hash = parse_tool_blob_ref(&params.r#ref).ok_or_else(|| {
             ToolError::message(
                 "ref must be a blob reference (blob://sha256/<hex> or the bare digest)",
             )
@@ -56,6 +56,15 @@ impl TryFrom<FabroBlobParams> for ValidatedBlob {
             limit,
         })
     }
+}
+
+/// The two reference forms the tool's parameter promises: the prefixed
+/// `blob://sha256/<hex>` reference, or the bare hex digest. This is the
+/// tool's leniency only; fabro_types::parse_blob_ref stays strict because
+/// its other callers use it to tell a reference apart from a value.
+fn parse_tool_blob_ref(value: &str) -> Option<BlobHash> {
+    let value = value.trim();
+    parse_blob_ref(value).or_else(|| value.parse().ok())
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
@@ -147,6 +156,22 @@ mod tests {
         assert_eq!(count_lines("one"), 1);
         assert_eq!(count_lines("one\ntwo\n"), 2);
         assert_eq!(count_lines("one\ntwo"), 2);
+    }
+
+    #[test]
+    fn validation_accepts_both_reference_forms() {
+        let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let expected: BlobHash = digest.parse().expect("a well-formed digest");
+        for r#ref in [digest, &format!("blob://sha256/{digest}")] {
+            let params = FabroBlobParams {
+                r#ref:  format!("  {ref}  "),
+                offset: None,
+                limit:  None,
+                run_id: None,
+            };
+            let validated = ValidatedBlob::try_from(params).expect("an accepted reference form");
+            assert_eq!(validated.hash, expected, "{ref}");
+        }
     }
 
     #[test]
