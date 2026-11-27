@@ -21,9 +21,10 @@ use std::collections::HashSet;
 
 use chrono::Utc;
 use fabro_automation::Automation;
+use fabro_github::pull_request_forge::GitHubPullRequestForge;
 use fabro_store::platform_records::{ObservationTriageState, PlatformRecordKind};
 use fabro_types::{OrchestrationField, OrchestrationVerdict};
-use fabro_work::WorkItemFilter;
+use fabro_work::{PullRequestForge, WorkItemFilter};
 use tracing::warn;
 
 use super::AppState;
@@ -78,7 +79,7 @@ pub(crate) async fn admission_decision(
                 workflow,
                 field,
                 requires,
-            } => merger_worklist(state, field, requires, workflow).await,
+            } => merger_worklist(state, automation, field, requires, workflow).await,
             GearWorklistSpec::QueueAndClosing {
                 workflow,
                 queue_field,
@@ -110,13 +111,18 @@ pub(crate) async fn admission_decision(
     }
 }
 
-/// The merger's worklist (ADR-0039 stage E): the closable anti-join
-/// restricted to its settled requirement — the EXACT query the merger's
-/// fast-path sweep walks (`run queue --field closable --workflow develop
-/// --requires merge=enabled`), spelled by the table's Queue spec. The
-/// gate asks only "is there anything", so limit 1 answers it.
+/// The merger's worklist (ADR-0039 stage E + ADR-0040's session half,
+/// work#1704): the closable anti-join restricted to its settled
+/// requirement — the run-queue half of the fast path's sweep
+/// (`run queue --field closable --workflow develop --requires
+/// merge=enabled`) — PLUS the label door's open `merge:enabled` pull
+/// requests on the automation's git target repo (the fast path's label
+/// arm; work#1675's drift starved on exactly this half being absent).
+/// The gate asks only "is there anything", so limit 1 answers the queue
+/// and an `is_empty` answers the listing.
 async fn merger_worklist(
     state: &AppState,
+    automation: &Automation,
     field: OrchestrationField,
     requires: (OrchestrationField, OrchestrationVerdict),
     workflow: &str,
@@ -127,7 +133,60 @@ async fn merger_worklist(
         .adjudication_queue(field, Some(requires), Some(workflow), 1, Utc::now())
         .await
         .map_err(|error| error.to_string())?;
-    Ok(queue.is_empty().then_some(WorklistEmpty::MergeEnabled))
+    if !queue.is_empty() {
+        return Ok(None);
+    }
+    if merge_enabled_pull_requests_pending(state, automation).await? {
+        return Ok(None);
+    }
+    Ok(Some(WorklistEmpty::MergeEnabled))
+}
+
+/// The merger's session-PR half (ADR-0040, work#1704): open pull
+/// requests labeled [`super::gear_worklist::MERGE_ENABLED_LABEL`] on the
+/// automation's git target repo, read through the same forge the label
+/// door serves. Configuration absence counts the half EMPTY — the fast
+/// path's label arm skips its session half on a door-less server too,
+/// so the worklist truthfully holds no PR work there. An undecidable
+/// read (no git target, unresolvable credentials, a failed listing) is
+/// the `Err` the caller fails open on.
+async fn merge_enabled_pull_requests_pending(
+    state: &AppState,
+    automation: &Automation,
+) -> Result<bool, String> {
+    let Some(target) = automation.git_target() else {
+        return Err(
+            "the automation carries no git target, so the session-PR half is undecidable"
+                .to_owned(),
+        );
+    };
+    let settings = state.server_settings();
+    let credentials = state
+        .github_credentials(&settings.server.integrations.github)
+        .await
+        .map_err(|error| format!("resolving GitHub credentials failed: {error}"))?;
+    let Some(credentials) = credentials else {
+        tracing::debug!(
+            automation_id = %automation.id,
+            "GitHub integration not configured; counting the session-PR half empty"
+        );
+        return Ok(false);
+    };
+    let http_client = state.http_client().map_err(|error| error.to_string())?;
+    let forge = GitHubPullRequestForge::new(
+        credentials,
+        state.github_api_base_url.clone(),
+        http_client,
+    );
+    let listing = forge
+        .list_pull_requests(
+            &target.repo,
+            "open",
+            Some(super::gear_worklist::MERGE_ENABLED_LABEL),
+        )
+        .await
+        .map_err(|error| format!("the merge:enabled pull request listing failed: {error}"))?;
+    Ok(!listing.is_empty())
 }
 
 /// The adjudicator's two worklists (ADR-0039 stage D): pass one's merge
@@ -458,6 +517,52 @@ mod tests {
             .build()
     }
 
+    /// The merger consult's configured shape (work#1704): the GitHub
+    /// integration points at `base_url` (a local httpmock) and a static
+    /// PAT resolves from the vault — the session-PR half reads the label
+    /// listing there.
+    fn merger_state_with_github(base_url: &str) -> std::sync::Arc<AppState> {
+        TestAppStateBuilder::new()
+            .env_lookup(|_| None)
+            .vault_entries([
+                (EnvVars::OPENAI_API_KEY, "test-openai-api-key"),
+                (EnvVars::GITHUB_TOKEN, "ghu_test"),
+            ])
+            .github_api_base_url(base_url)
+            .build()
+    }
+
+    /// The empty merge:enabled listing — the forge truth of the drift
+    /// era (work#1675): no session pull requests waiting.
+    fn empty_label_listing_mock(github: &httpmock::MockServer) -> httpmock::Mock<'_> {
+        github.mock(|when, then| {
+            when.method("GET")
+                .path("/repos/fabro-sh/fabro/issues")
+                .query_param("state", "open")
+                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+            then.status(200).json_body(serde_json::json!([]));
+        })
+    }
+
+    /// One open merge:enabled pull request, in the issues-listing shape
+    /// the label door parses (an issue with a `pull_request` field).
+    fn one_label_listing_mock(github: &httpmock::MockServer) -> httpmock::Mock<'_> {
+        github.mock(|when, then| {
+            when.method("GET")
+                .path("/repos/fabro-sh/fabro/issues")
+                .query_param("state", "open")
+                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+            then.status(200).json_body(serde_json::json!([{
+                "number": 710,
+                "title": "feat: the waiting session work",
+                "labels": [{"name": "merge:enabled"}],
+                "html_url": "https://github.com/fabro-sh/fabro/pull/710",
+                "state": "open",
+                "pull_request": {"merged_at": null}
+            }]));
+        })
+    }
+
     fn project_with_lanes(lanes: &[&str]) -> fabro_work::WorkProject {
         let mut project = crate::test_support::test_work_project("fabro");
         project.lane_labels = lanes
@@ -469,12 +574,81 @@ mod tests {
 
     #[tokio::test]
     async fn merger_skips_on_a_drained_closable_queue() {
-        let state = test_state();
+        // work#1704: the consult reads the session-PR half too, so the
+        // fixture carries the configured integration and its label
+        // listing answers empty (no session work waiting).
+        let github = httpmock::MockServer::start();
+        let _empty = empty_label_listing_mock(&github);
+        let state = merger_state_with_github(&github.base_url());
         let decision = admission_decision(&state, &automation_with_workflow("merger")).await;
         assert_eq!(
             decision,
             AdmissionDecision::Skip(WorklistEmpty::MergeEnabled),
-            "a fresh store's closable queue is empty — the idle merger lap skips"
+            "an empty closable queue and no merge:enabled PR — the idle merger lap skips"
+        );
+    }
+
+    /// work#1704 (the work#1675 root cause): a waiting merge:enabled
+    /// pull request fires the otherwise-empty worklist. The drift starved
+    /// 44 hours while #710/#711 sat labeled and every scheduled slot
+    /// skipped — this pin is the consult learning the session half.
+    #[tokio::test]
+    async fn a_merge_enabled_pull_request_fires_an_empty_run_queue() {
+        let github = httpmock::MockServer::start();
+        let listing = one_label_listing_mock(&github);
+        let state = merger_state_with_github(&github.base_url());
+        let decision = admission_decision(&state, &automation_with_workflow("merger")).await;
+        assert_eq!(
+            decision,
+            AdmissionDecision::Fire,
+            "a labeled PR is merger work the empty run queue cannot see — fire"
+        );
+        assert_eq!(listing.calls(), 1, "the consult reads the label door once");
+    }
+
+    /// The fail-open contract holds on the new half: a FAILED label
+    /// listing is an undecidable consult, never a skip — the fire
+    /// proceeds and the caller's WARN names the arm.
+    #[tokio::test]
+    async fn a_failing_pull_request_read_fires_open() {
+        let github = httpmock::MockServer::start();
+        let _broken = github.mock(|when, then| {
+            when.method("GET")
+                .path("/repos/fabro-sh/fabro/issues")
+                .query_param("state", "open")
+                .query_param("labels", super::super::gear_worklist::MERGE_ENABLED_LABEL);
+            then.status(500).body("forge on fire");
+        });
+        let state = merger_state_with_github(&github.base_url());
+        let decision = admission_decision(&state, &automation_with_workflow("merger")).await;
+        assert_eq!(
+            decision,
+            AdmissionDecision::Fire,
+            "a failed PR listing cannot answer 'positively empty' — fail-open"
+        );
+    }
+
+    /// Configuration absence is not degradation: an App strategy without
+    /// an app id resolves no credentials, the label door is unavailable
+    /// on this server, and the fast path's label arm skips its session
+    /// half in exactly that state — so the consult counts the PR half
+    /// empty and the idle merger still skips.
+    #[tokio::test]
+    async fn an_unconfigured_github_integration_counts_the_pr_half_empty() {
+        let mut settings = crate::test_support::default_test_server_settings();
+        settings.server.integrations.github.strategy =
+            fabro_types::settings::server::GithubIntegrationStrategy::App;
+        settings.server.integrations.github.app_id = None;
+        let state = TestAppStateBuilder::new()
+            .runtime_settings(settings, fabro_config::RunLayer::default())
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .build();
+        let decision = admission_decision(&state, &automation_with_workflow("merger")).await;
+        assert_eq!(
+            decision,
+            AdmissionDecision::Skip(WorklistEmpty::MergeEnabled),
+            "a door-less server holds no PR work — the empty worklist skips"
         );
     }
 
@@ -666,9 +840,13 @@ mod tests {
 
     /// The end-to-end shape (denkhaus/work#1436): a scheduled merger fire
     /// against an empty worklist creates NO run — the materializer never
-    /// sees an input and the store holds no run.
+    /// sees an input and the store holds no run. work#1704: the consult
+    /// reads the session-PR half too, so the fixture carries the
+    /// configured integration and its listing answers empty.
     #[tokio::test]
     async fn a_scheduled_merger_fire_skips_run_creation_on_an_empty_worklist() {
+        let github = httpmock::MockServer::start();
+        let _empty = empty_label_listing_mock(&github);
         let materializer = TestAutomationRunMaterializer::succeed(GitRunTarget {
             repo:   "fabro-sh/fabro".to_string(),
             branch: "main".to_string(),
@@ -677,7 +855,11 @@ mod tests {
         });
         let state = TestAppStateBuilder::new()
             .env_lookup(|_| None)
-            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .vault_entries([
+                (EnvVars::OPENAI_API_KEY, "test-openai-api-key"),
+                (EnvVars::GITHUB_TOKEN, "ghu_test"),
+            ])
+            .github_api_base_url(github.base_url())
             .automation_materializer(materializer.clone())
             .build();
         seed_merger_automation(state.as_ref()).await;

@@ -50,6 +50,11 @@ pub(crate) const DEVELOP: &str = "develop";
 /// fast path all read `--workflow develop`).
 pub(crate) const SWEPT_WORKFLOW: &str = "develop";
 
+/// The label the merger's session-PR half sweeps (ADR-0040's branch
+/// door: the fast path's label arm lists open pull requests carrying it,
+/// work#1704's admission consult reads the same listing server-side).
+pub(crate) const MERGE_ENABLED_LABEL: &str = "merge:enabled";
+
 /// The observation category the triager sweeps (`--category painpoint`,
 /// `.fabro/workflows/triager/scripts/sweep.nu`) — the store matches the
 /// serde fragment, so the wire name rides here verbatim.
