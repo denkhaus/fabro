@@ -277,6 +277,18 @@ export def vendor-surface-path? [p: string]: nothing -> bool {
     $p | str starts-with 'vendor/'
 }
 
+# The loop-asset surface (work#1701): checked-in workflow assets —
+# graphs, prompts, templates (.fabro/workflows/**) — plus the run skills
+# (.fabro/skills/**). A diff here touches no crate, which is how a red
+# fabro-dot shape pin sat unseen for four days (PR #674's reconcile
+# stage, 2026-11-22..26): verify.nu's implementer stage selects the
+# fabro-dot suite and the loop-asset battery tier on this predicate.
+# `.fabro/scripts/**` keeps its own battery discipline and is
+# deliberately NOT part of this predicate.
+export def loop-asset-path? [p: string]: nothing -> bool {
+    ($p | str starts-with '.fabro/workflows/') or ($p | str starts-with '.fabro/skills/')
+}
+
 # The vendored snapshot files (work#1610): vendor/ paths MINUS the PINS
 # provenance record itself — exactly the files whose blob hashes feed
 # content_sha256. Formatting churn here is BY DESIGN never an editable

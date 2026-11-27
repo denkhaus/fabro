@@ -117,7 +117,10 @@ def touched [] {
     # the implementer stage fails fast on a churn-only vendor diff (the
     # run-01M7YV5Y class) before any crate lane.
     let vendor = (vendor-churn-split $base $paths)
-    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, help_scope: $help_scope, web: $web, vendor: $vendor}
+    # The loop-asset surface (work#1701): checked-in workflow assets the
+    # crate lanes cannot see — see the commons predicate.
+    let loop_asset = ($paths | any {|p| loop-asset-path? $p})
+    {base: $base, how: $run.how, code: $crates, tests: $test_crates, test_files: $test_files, help_scope: $help_scope, web: $web, loop_asset: $loop_asset, vendor: $vendor}
 }
 
 # Test function names declared under a test attribute in a file's Rust
@@ -266,8 +269,8 @@ def stage-implementer [] {
         $env.LAST_VERIFY_FAIL = "vendor-whitespace"
         exit 1
     }
-    if (($t.code | is-empty) and (not $t.web)) {
-        print "verify: no lib/ crates and no web surface touched — nothing to verify (parse-level checks belong to the brief)"
+    if (($t.code | is-empty) and (not $t.web) and (not $t.loop_asset)) {
+        print "verify: no lib/ crates, no web surface, and no loop-asset diff — nothing to verify (parse-level checks belong to the brief)"
         return
     }
     # Base observability (work#1427): say WHICH fallback arm grounded the
@@ -367,6 +370,35 @@ def stage-implementer [] {
             }
             print $"verify: PASS nextest ($c) \(($secs)s\)"
         }
+    }
+    # The loop-asset lane (work#1701): a diff touching checked-in
+    # workflow assets (.fabro/workflows/**, .fabro/skills/**) selects the
+    # fabro-dot suite (the shape pins — PR #674's reconcile stage sat
+    # red for four days because no crate lane ever ran them) plus the
+    # loop-asset battery tier (the same battery-runner surface the
+    # qualitygate's loop tier drives). A .fabro/scripts/** diff keeps
+    # its own battery discipline and gains nothing here.
+    if $t.loop_asset {
+        print "== nextest -p fabro-dot — loop-asset diff (work#1701): the shape pins =="
+        let t0 = (date now)
+        let res = (do { ^cargo nextest run -p fabro-dot --no-fail-fast --retries 2 } | complete)
+        let secs = (((date now) - $t0) / 1sec | math round)
+        if $res.exit_code != 0 {
+            print (output-tail ($res.stdout + $res.stderr) 3000)
+            print "verify: FAIL nextest fabro-dot (loop-asset diff) — a workflow asset changed shape or references; run `cargo insta accept` only after verifying the real graph, and ship the .snap update in the SAME diff"
+            $env.LAST_VERIFY_FAIL = "nextest-fabro-dot"
+            exit 1
+        }
+        print $"verify: PASS nextest fabro-dot \(($secs)s\)"
+        print "== loop-asset battery tier (battery-runner all) =="
+        let res = (do { ^nu .fabro/scripts/battery-runner.nu all } | complete)
+        if $res.exit_code != 0 {
+            print (output-tail ($res.stdout + $res.stderr) 3000)
+            print "verify: FAIL loop-asset batteries"
+            $env.LAST_VERIFY_FAIL = "loop-asset-batteries"
+            exit 1
+        }
+        print "verify: PASS loop-asset batteries"
     }
     # The web lane (work#1304) runs AFTER the Rust lanes, same first-red-
     # stops discipline — a mixed diff verifies both surfaces in one call.
