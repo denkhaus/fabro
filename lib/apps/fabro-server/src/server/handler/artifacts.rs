@@ -6,7 +6,6 @@ use async_zip::base::write::ZipFileWriter;
 use async_zip::error::ZipError;
 use async_zip::{Compression, ZipEntryBuilder};
 use axum::http::{HeaderMap, HeaderValue};
-use fabro_store::platform_records::PlatformRecordKind;
 use fabro_store::{ArtifactStore, BlobStore, Error as StoreError};
 use fabro_types::{BlobHash, RunProjection};
 use fabro_util::error::collect_chain;
@@ -89,15 +88,11 @@ async fn read_run_blob(
                 .into_response();
         }
     };
-    let Some(_supervisor) = cross_run_supervisor else {
+    // The supervisor's read keeps the access it had (any blob of any run,
+    // ADR-0046) and gains one bound (work#1711): never more than one
+    // bounded response. The run's own worker and users read as before.
+    if cross_run_supervisor.is_none() {
         return octet_stream_response(bytes);
-    };
-    // The supervisor's read (ADR-0046, work#1711): only a diff patch this
-    // run's records reference, and never more than one bounded response.
-    match is_run_patch_blob(state.as_ref(), &id, &blob_hash).await {
-        Ok(true) => {}
-        Ok(false) => return supervisor_blob_refusal(&id, &blob_hash).into_response(),
-        Err(response) => return response,
     }
     supervisor_bounded_blob(
         bytes,
@@ -107,57 +102,8 @@ async fn read_run_blob(
     )
 }
 
-/// Whether `blob_hash` is the patch blob of one of the run's diff
-/// records: a checkpoint's or the run-level diff's. Answered from the
-/// run's own records per request, so the reference is verified, not
-/// trusted from the caller.
-async fn is_run_patch_blob(
-    state: &AppState,
-    run_id: &RunId,
-    blob_hash: &BlobHash,
-) -> Result<bool, Response> {
-    use fabro_store::platform_records::{CheckpointRecord, PlatformRecord, RunDiffRecord};
-
-    let store = state.stores.run_summaries.platform_records();
-    for kind in [PlatformRecordKind::Checkpoint, PlatformRecordKind::RunDiff] {
-        let records = match store.read_kind(run_id, kind).await {
-            Ok(records) => records,
-            Err(err) => {
-                return Err(
-                    ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
-                        .into_response(),
-                );
-            }
-        };
-        let is_patch = records.into_iter().any(|stored| {
-            let patch = match stored.record {
-                PlatformRecord::Checkpoint(CheckpointRecord { patch_blob, .. })
-                | PlatformRecord::RunDiff(RunDiffRecord { patch_blob, .. }) => patch_blob,
-                _ => None,
-            };
-            patch.is_some_and(|patch| patch == *blob_hash)
-        });
-        if is_patch {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// The supervisor's refusal on a blob that is not one of the run's diff
-/// patches: names the restriction, so the caller tells it from run state.
-fn supervisor_blob_refusal(run_id: &RunId, blob_hash: &BlobHash) -> ApiError {
-    ApiError::forbidden_with_code(
-        format!(
-            "Access denied: a supervisor token reads only the diff patch blobs referenced by \
-             run {run_id}'s checkpoint and run.diff records; {blob_hash} is not one of them."
-        ),
-        "worker_blob_not_a_patch",
-    )
-}
-
-/// One bounded supervisor read of a patch blob. The blob is returned
-/// whole when it fits the supervisor read bound. A larger patch is paged
+/// One bounded supervisor read of a blob. The blob is returned
+/// whole when it fits the supervisor read bound. A larger blob is paged
 /// by a `Range: bytes=<start>-<end>` request (the range is clamped to the
 /// bound and answered `206` with `Content-Range`), and a range-less read
 /// is refused with the size, so `fabro_blob` pages it in bounded pieces.
@@ -170,13 +116,16 @@ fn supervisor_bounded_blob(bytes: Bytes, range: Option<&str>) -> Response {
         return ApiError::with_code_and_meta(
             StatusCode::PAYLOAD_TOO_LARGE,
             format!(
-                "Refused: the patch blob is {total} bytes, over the {SUPERVISOR_READ_MAX_BYTES}-byte \
+                "Refused: the blob is {total} bytes, over the {SUPERVISOR_READ_MAX_BYTES}-byte \
                  supervisor read cap — page it with Range: bytes=<start>-<end>."
             ),
             "supervisor_read_cap",
             serde_json::Map::from_iter([
                 ("bytes".to_string(), serde_json::json!(total)),
-                ("cap".to_string(), serde_json::json!(SUPERVISOR_READ_MAX_BYTES)),
+                (
+                    "cap".to_string(),
+                    serde_json::json!(SUPERVISOR_READ_MAX_BYTES),
+                ),
             ]),
         )
         .into_response();

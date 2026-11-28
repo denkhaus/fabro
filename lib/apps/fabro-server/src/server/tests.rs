@@ -8417,34 +8417,17 @@ async fn supervisor_worker_token_reads_another_runs_diff_inventory() {
     .await;
 }
 
-/// The supervisor reads ONLY the diff record kinds and ONLY a blob that
-/// is one of the run's diff patches: anything else is refused with the
-/// restriction named, and the Petri store doors stay the run's own
-/// worker's.
+/// The supervisor reads ONLY the diff record kinds on the records door,
+/// and the Petri store doors stay the run's own worker's.
 #[tokio::test]
-async fn supervisor_is_refused_outside_the_diff_records_and_patch_blobs_with_a_reason() {
-    let (state, app) = jwt_auth_app();
-    let patch = b"diff --git a/a b/a\n+one\n";
-    state
-        .store_ref()
-        .blobs()
-        .write(patch)
-        .await
-        .expect("the patch blob stores");
-    let unrelated = BlobHash::new(b"not a diff patch");
-    state
-        .store_ref()
-        .blobs()
-        .write(b"not a diff patch")
-        .await
-        .expect("the unrelated blob stores");
+async fn supervisor_is_refused_outside_the_diff_records_with_a_reason() {
+    let (_state, app) = jwt_auth_app();
     let (run_id, _worker_token, supervisor_token, _patch_blob) =
-        run_with_checkpoint_patch(&app, patch).await;
+        run_with_checkpoint_patch(&app, b"diff --git a/a b/a\n+one\n").await;
 
     for path in [
         format!("/runs/{run_id}/petri/platform-records?kind=run.created"),
         format!("/runs/{run_id}/petri/platform-records"),
-        format!("/runs/{run_id}/blobs/{unrelated}"),
     ] {
         let response = get(&app, &path, &supervisor_token).await;
         let body = response_json!(response, StatusCode::FORBIDDEN).await;
@@ -8455,13 +8438,53 @@ async fn supervisor_is_refused_outside_the_diff_records_and_patch_blobs_with_a_r
             "the refusal names the restriction for {path}: {detail}"
         );
     }
+
+    // The Petri blob door stays strict: the run's own worker only.
+    let blob = BlobHash::new(b"any blob");
     let petri_blob = get(
         &app,
-        &format!("/runs/{run_id}/petri/blobs/{unrelated}"),
+        &format!("/runs/{run_id}/petri/blobs/{blob}"),
         &supervisor_token,
     )
     .await;
-    assert_status!(petri_blob, StatusCode::FORBIDDEN).await;
+    let petri_blob = response_json!(petri_blob, StatusCode::FORBIDDEN).await;
+    assert!(
+        petri_blob["errors"][0]["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("supervisor capability"),
+        "the strict door names its cause: {petri_blob}"
+    );
+}
+
+/// The blob door keeps the access it had before this change
+/// (operator decision 2026-11-28): a cross-run supervisor reads any blob
+/// of any run, not only one a diff record references, and gets it whole
+/// under the cap.
+#[tokio::test]
+async fn supervisor_reads_a_blob_no_diff_record_references_whole_under_the_cap() {
+    let (state, app) = jwt_auth_app();
+    let unrelated = BlobHash::new(b"not a diff patch");
+    state
+        .store_ref()
+        .blobs()
+        .write(b"not a diff patch")
+        .await
+        .expect("the unrelated blob stores");
+    let (run_id, _worker_token, supervisor_token, _patch_blob) =
+        run_with_checkpoint_patch(&app, b"diff --git a/a b/a\n+one\n").await;
+
+    let body = response_bytes!(
+        get(
+            &app,
+            &format!("/runs/{run_id}/blobs/{unrelated}"),
+            &supervisor_token
+        )
+        .await,
+        StatusCode::OK
+    )
+    .await;
+    assert_eq!(body, b"not a diff patch");
 }
 
 /// One supervisor response never exceeds the supervisor read bound: a
