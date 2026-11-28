@@ -1,11 +1,10 @@
 //! The orchestration verdict marker (`fabro_run_mark`, ADR-0039 stage D,
 //! denkhaus/work#1107).
 //!
-//! The adjudicator's and the merger's agent stages write their verdict on
-//! a FOREIGN run through this tool — the tool twin of `fabro run mark`,
-//! both over the same endpoint with the same authorization: the server's
-//! workflow allowlist binds each gear's workflow to exactly one field
-//! (`adjudicator` writes `merge`, `merger` writes `closable`). The target
+//! A workflow's agent stages write their verdict on a FOREIGN run through
+//! this tool — the tool twin of `fabro run mark`, both over the same
+//! endpoint with the same authorization: the server checks the fields the
+//! writer run's workflow declared under `[run.grants]` (ADR-0052). The target
 //! run is ALWAYS explicit: unlike `fabro_run_set_title` there is no
 //! own-run default, because a run marking itself is the conflict of
 //! interest this door exists to end.

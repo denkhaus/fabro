@@ -352,6 +352,8 @@ async fn seed_run(
         chrono::Utc::now(),
     );
     projection.status = status;
+    projection.spec.settings.run.grants =
+        fabro_server::test_support::test_workflow_grants(workflow_slug);
     let pool = store.run_summary_store().pool();
     let mut tx = pool.begin().await.expect("seed tx");
     fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, &run_id, &projection)
@@ -430,7 +432,8 @@ async fn the_mark_door_enforces_one_writer_per_field() {
         "the response names the WRITER run"
     );
 
-    // The adjudicator cannot write the merger's field.
+    // The adjudicator's workflow declares `merge` only: it cannot write
+    // the field it did not declare.
     let response = mark_call(
         &app,
         &adjudicator_token,
@@ -448,11 +451,16 @@ async fn the_mark_door_enforces_one_writer_per_field() {
         body["errors"][0]["detail"]
             .as_str()
             .expect("refusal detail")
-            .contains("writer per field"),
-        "the field-ownership refusal teaches the rule: {body}"
+            .contains("verdict_fields")
+            && body["errors"][0]["detail"]
+                .as_str()
+                .expect("refusal detail")
+                .contains("not `closable`"),
+        "the field-ownership refusal names the declaration: {body}"
     );
 
-    // The merger cannot write the adjudicator's field.
+    // The integrating workflow declares `closable` only: it cannot write
+    // the other field.
     let response = mark_call(
         &app,
         &merger_token,
@@ -462,7 +470,7 @@ async fn the_mark_door_enforces_one_writer_per_field() {
     .await;
     response_json(response, StatusCode::FORBIDDEN, "merger marks merge").await;
 
-    // A workflow off the allowlist has no door at all.
+    // A workflow that declares no verdict field has no door at all.
     let response = mark_call(
         &app,
         &developer_token,
@@ -475,8 +483,8 @@ async fn the_mark_door_enforces_one_writer_per_field() {
         body["errors"][0]["detail"]
             .as_str()
             .expect("refusal detail")
-            .contains("allowlist"),
-        "the allowlist refusal names the boundary: {body}"
+            .contains("declares no `verdict_fields`"),
+        "the refusal names the missing declaration: {body}"
     );
 
     // A run cannot mark itself.
@@ -880,7 +888,7 @@ async fn the_merge_door_refuses_every_non_merger_shape() {
         }
     };
 
-    // A plain develop worker is not on the allowlist at all.
+    // A plain develop worker's workflow declares no merge grant.
     let refused = merge_as(&plain, &merged).await;
     assert_eq!(
         refused.status(),
@@ -899,8 +907,12 @@ async fn the_merge_door_refuses_every_non_merger_shape() {
         judge_body["errors"][0]["detail"]
             .as_str()
             .expect("detail")
-            .contains("merger"),
-        "the refusal names the merger as the only integrator: {judge_body}"
+            .contains("run.grants")
+            && judge_body["errors"][0]["detail"]
+                .as_str()
+                .expect("detail")
+                .contains("merge = true"),
+        "the refusal names the declared grant it lacks: {judge_body}"
     );
     // A run cannot merge itself.
     let self_merge = merge_as(&merger, &merger).await;
@@ -1026,7 +1038,7 @@ async fn the_resolution_push_door_refuses_every_unauthorized_shape() {
         }
     };
 
-    // A plain develop worker is not on the allowlist at all.
+    // A plain develop worker's workflow declares no merge grant.
     let refused = push_as(&plain, &targeted).await;
     assert_eq!(
         refused.status(),

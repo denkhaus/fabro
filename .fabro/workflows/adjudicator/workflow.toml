@@ -29,12 +29,21 @@ dockerfile = { path = "../../Dockerfile.toolchain" }
 # the trivial mass LLM-free, and the agent pass judges the rest —
 # verdicts, follow-up filings, parks on true policy forks. Fired
 # manually for now; the scheduler tick (the three-gear model, stage F)
-# drives it later. The workflow directory name is a CONTRACT: the mark
-# door's allowlist keys on the workflow slug `adjudicator`.
+# drives it later. What this workflow's runs may do at the engine's doors
+# is DECLARED below in [run.grants] (ADR-0052): the engine knows no
+# workflow by name.
 [run.agent]
 # The run-level switch for node-level x.fabro_tools grants (the flip
 # precedent): inert without it.
 fabro_tools = true
+
+# The engine doors this workflow's runs may use (ADR-0052): it writes the
+# `merge` verdict and closes work items through the close door. The
+# project's grant lint (scripts/lint-workflow-grants.nu) holds the
+# allow-list of this block.
+[run.grants]
+verdict_fields = ["merge"]
+work_item_close = true
 
 [run.model]
 provider = "zai"

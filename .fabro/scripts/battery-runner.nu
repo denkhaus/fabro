@@ -156,6 +156,16 @@ const SMOKES = [
     # this battery; grants-without-mentions print as advisories and stay
     # green (the grant may serve the engine's own bookkeeping).
     '.fabro/scripts/lint-tool-grants.nu'
+    # Engine-coupling lint (ADR-0052, denkhaus/work#1716): engine code
+    # must not name a fabro project workflow. The forbidden names are
+    # derived from .fabro/workflows/* at run time; a hit is red unless
+    # scripts/lint-engine-coupling-exceptions.txt lists it, and an
+    # exception without a hit is red too, so the list only shrinks.
+    'scripts/lint-engine-coupling.nu'
+    # Workflow-grants lint (ADR-0052, denkhaus/work#1716): the project's
+    # allow-list of every [run.grants] block under .fabro/workflows/, and
+    # exactly one declaring workflow per verdict field.
+    'scripts/lint-workflow-grants.nu'
 ]
 
 # Registered checked-in fixture batteries (seed fabro-ac84): the gate

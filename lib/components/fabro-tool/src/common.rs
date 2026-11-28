@@ -660,15 +660,15 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroRunMarkParams>(
             FABRO_RUN_MARK_TOOL_NAME,
-            "Mark one orchestration field of ANOTHER run with a verdict (ADR-0039): `merge` (the adjudicator's field) or `closable` (the merger's), verdict `enabled`, `refused`, or `parked` (an operator escalation the next pass resumes). The server refuses a field this run's workflow does not own and a run marking itself.",
+            "Mark one orchestration field of ANOTHER run with a verdict (ADR-0039): `merge` or `closable`, verdict `enabled`, `refused`, or `parked` (an operator escalation the next pass resumes). The server refuses a field this run's workflow did not declare under `[run.grants]`, and a run marking itself.",
         ),
         tool_definition::<crate::FabroRunQueueParams>(
             FABRO_RUN_QUEUE_TOOL_NAME,
-            "Read the adjudication queue (ADR-0039 stage D): terminal runs whose latest verdict on the field is NOT settled — `pending` (never adjudicated) or `parked` (an open operator escalation) — each with the work item of its latest claim. `field` is `merge` (the adjudicator's queue) or `closable` (the merger's); `workflow` narrows to one workflow slug such as `develop`. Re-read it to verify a packet summary before you verdict.",
+            "Read the adjudication queue (ADR-0039 stage D): terminal runs whose latest verdict on the field is NOT settled — `pending` (never adjudicated) or `parked` (an open operator escalation) — each with the work item of its latest claim. `field` is `merge` or `closable`; `workflow` narrows to one workflow slug. Re-read it to verify a packet summary before you verdict.",
         ),
         tool_definition::<crate::FabroRunMergeParams>(
             FABRO_RUN_MERGE_TOOL_NAME,
-            "Merge the target run's pull request server-side (ADR-0039 stage E): the technical integration act, the merger gear's write door. The run must carry a pull request the adjudicator marked `merge: enabled` — this tool never judges content and never writes a verdict; mark `closable` through fabro_run_mark after the merge (and your smoke) settles. A conflict answers with the merge_conflict refusal — park the run for the agent pass on exactly that signal.",
+            "Merge the target run's pull request server-side (ADR-0039 stage E): the technical integration act behind the merge door. The run must carry a pull request whose latest `merge` verdict is `enabled` — this tool never judges content and never writes a verdict; mark `closable` through fabro_run_mark after the merge (and your smoke) settles. A conflict answers with the merge_conflict refusal — park the run for the agent pass on exactly that signal.",
         ),
         tool_definition::<crate::FabroRunPushResolutionParams>(
             FABRO_RUN_PUSH_RESOLUTION_TOOL_NAME,
@@ -692,11 +692,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<ToolDefinition>> = LazyLock::new(|| {
         ),
         tool_definition::<crate::FabroObservationManageParams>(
             FABRO_OBSERVATION_MANAGE_TOOL_NAME,
-            "Record one triage decision on one observation record (ADR-0044), keyed to its (runId, seq) identity: action `no_filing` with a durable reason means no work item is warranted — the record then reads `reviewed` in the feed, never `untriaged`. Action `link_existing` writes the covering item's link (needs project + itemKey). Action `filing_blocked` parks the record when your filing write FAILED (rate limited, 4xx): it re-derives `untriaged` after the park TTL and returns to the feed (work#1585). A later filing overrides a decision. This is the triager's door; a decision always wants its reason.",
+            "Record one triage decision on one observation record (ADR-0044), keyed to its (runId, seq) identity: action `no_filing` with a durable reason means no work item is warranted — the record then reads `reviewed` in the feed, never `untriaged`. Action `link_existing` writes the covering item's link (needs project + itemKey). Action `filing_blocked` parks the record when your filing write FAILED (rate limited, 4xx): it re-derives `untriaged` after the park TTL and returns to the feed (work#1585). A later filing overrides a decision. This door serves runs whose workflow declares the `observation_triage` grant; a decision always wants its reason.",
         ),
         tool_definition::<crate::FabroObservationFeedParams>(
             FABRO_OBSERVATION_FEED_TOOL_NAME,
-            "Read the global observations feed (ADR-0044): every run's observation records in one server-paged listing, newest first, with the DERIVED triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) and linked work items. Filters compose: category (painpoint|note), triage, one exact run, text query `q`. The triager's worklist is triage=untriaged; `filing_blocked` rows are parked (a failed filing write) and return to untriaged after the park TTL.",
+            "Read the global observations feed (ADR-0044): every run's observation records in one server-paged listing, newest first, with the DERIVED triage state (untriaged, filed, in_progress, closed, reviewed, filing_blocked) and linked work items. Filters compose: category (painpoint|note), triage, one exact run, text query `q`. A triaging workflow's worklist is triage=untriaged; `filing_blocked` rows are parked (a failed filing write) and return to untriaged after the park TTL.",
         ),
         tool_definition::<crate::FabroRunWaitParams>(
             FABRO_RUN_WAIT_TOOL_NAME,

@@ -51,7 +51,7 @@ fn session_transcript_message_round_trips_the_wire_shape() {
     let parsed: SessionTranscriptMessage =
         serde_json::from_value(wire.clone()).expect("the message shape parses");
     assert_eq!(parsed.role, SessionTranscriptRole::User);
-    assert_eq!(serde_json::to_value(&parsed).unwrap(), wire);
+    assert_eq!(serde_json::to_value(parsed).unwrap(), wire);
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn session_transcript_tool_calls_round_trip_the_wire_shape() {
         serde_json::from_value(wire.clone()).expect("the tool-call shape parses");
     assert_eq!(parsed.total, 3);
     assert_eq!(parsed.errors, 1);
-    assert_eq!(serde_json::to_value(&parsed).unwrap(), wire);
+    assert_eq!(serde_json::to_value(parsed).unwrap(), wire);
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn session_transcript_budget_round_trips_the_wire_shape() {
     let parsed: SessionTranscriptBudget =
         serde_json::from_value(wire.clone()).expect("the budget shape parses");
     assert!(parsed.truncated);
-    assert_eq!(serde_json::to_value(&parsed).unwrap(), wire);
+    assert_eq!(serde_json::to_value(parsed).unwrap(), wire);
 }
 
 #[test]

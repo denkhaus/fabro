@@ -29,13 +29,22 @@ dockerfile = { path = "../../Dockerfile.toolchain" }
 # mass through the merge door (LLM-free), smokes each integrated tree,
 # and marks the verdict; the agent pass resolves real conflicts the
 # merge door reports. Fired manually for now; the scheduler tick (the
-# three-gear model, stage F) drives it later. The workflow directory
-# name is a CONTRACT: the merge door's allowlist keys on the workflow
-# slug `merger`.
+# three-gear model, stage F) drives it later. What this workflow's runs
+# may do at the engine's doors is DECLARED below in [run.grants]
+# (ADR-0052): the engine knows no workflow by name.
 [run.agent]
 # The run-level switch for node-level x.fabro_tools grants (the flip
 # precedent): inert without it.
 fabro_tools = true
+
+# The engine doors this workflow's runs may use (ADR-0052): it writes the
+# `closable` verdict, merges through the merge door, and pushes conflict
+# resolutions through the resolve push door. The project's grant lint
+# (scripts/lint-workflow-grants.nu) holds the allow-list of this block.
+[run.grants]
+verdict_fields = ["closable"]
+merge = true
+resolve_push = true
 
 [run.model]
 provider = "zai"

@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-use fabro_types::PermissionLevel;
 use fabro_types::settings::cli::{CliAuthStrategy, OutputFormat, OutputVerbosity};
 use fabro_types::settings::run::{ApprovalMode, EnvironmentNetworkMode, MergeStrategy, RunMode};
 use fabro_types::settings::server::{
@@ -8,6 +7,7 @@ use fabro_types::settings::server::{
     WebhookStrategy,
 };
 use fabro_types::settings::{Duration, InterpString, Size};
+use fabro_types::{OrchestrationField, PermissionLevel};
 
 use super::LogFilter;
 use super::cli::{CliAuthLayer, CliLoggingLayer, CliTargetLayer};
@@ -84,6 +84,15 @@ impl_combine_or_option!(
 );
 
 impl Combine for Option<Vec<String>> {
+    fn combine(self, other: Self) -> Self {
+        self.or(other)
+    }
+}
+
+/// The declared verdict fields replace wholesale: a higher layer's
+/// `[run.grants] verdict_fields` is the whole list, never an addition to a
+/// lower layer's declaration (ADR-0052).
+impl Combine for Option<Vec<OrchestrationField>> {
     fn combine(self, other: Self) -> Self {
         self.or(other)
     }

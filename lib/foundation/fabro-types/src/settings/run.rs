@@ -19,7 +19,7 @@ use super::duration::Duration;
 use super::interp::{InterpString, Namespace, ResolveCtx, ResolveError};
 use super::model_ref::ModelRef;
 use super::size::Size;
-use crate::SandboxProviderKind;
+use crate::{OrchestrationField, SandboxProviderKind};
 
 /// A structurally resolved `[run]` view for consumers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,6 +45,10 @@ pub struct RunNamespace {
     pub pull_request:  Option<PullRequestSettings>,
     pub artifacts:     ArtifactsSettings,
     pub integrations:  RunIntegrationsSettings,
+    /// The permissions the workflow declares for its runs (ADR-0052). The
+    /// engine offers the doors; the workflow definition says which of them
+    /// its runs may use. Absent: the run may use none of the granted doors.
+    pub grants:        RunGrantsSettings,
 }
 
 #[expect(
@@ -74,6 +78,7 @@ impl Default for RunNamespace {
             pull_request:  None,
             artifacts:     ArtifactsSettings::default(),
             integrations:  RunIntegrationsSettings::default(),
+            grants:        RunGrantsSettings::default(),
         }
     }
 }
@@ -1082,6 +1087,34 @@ impl RunCloneSettings {
     /// Git history depth to fetch, or `None` to fetch full history.
     pub fn depth_limit(&self) -> Option<i32> {
         (self.depth > 0).then_some(self.depth)
+    }
+}
+
+/// The permissions a workflow declares for its runs (ADR-0052, the
+/// `[run.grants]` block). Every door of the engine that writes on behalf of
+/// a run checks the grant, never the workflow's name. All fields default to
+/// "not granted".
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RunGrantsSettings {
+    /// The orchestration fields whose verdict this workflow's runs may
+    /// write.
+    pub verdict_fields:     Vec<OrchestrationField>,
+    /// The runs may write observation triage decisions.
+    pub observation_triage: bool,
+    /// The runs may close work items (under the claim rules of the door).
+    pub work_item_close:    bool,
+    /// The runs may use the merge door.
+    pub merge:              bool,
+    /// The runs may use the resolve push door.
+    pub resolve_push:       bool,
+}
+
+impl RunGrantsSettings {
+    /// Whether the workflow declares the right to write verdicts on
+    /// `field`.
+    pub fn allows_verdict(&self, field: OrchestrationField) -> bool {
+        self.verdict_fields.contains(&field)
     }
 }
 

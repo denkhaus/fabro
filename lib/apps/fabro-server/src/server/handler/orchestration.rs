@@ -5,13 +5,12 @@
 //! `fabro run queue`, `fabro observation list`).
 //!
 //! The write door is FOREIGN by design: the caller's own run (from the
-//! worker principal) is the WRITER, the path's run is the TARGET — the
-//! adjudicator and the merger write verdicts about OTHER runs. Which
-//! workflow may write which field is a hardcoded pair (the stage-D
-//! grill's carrier decision): `adjudicator` runs own `merge`, `merger`
-//! runs own `closable`, and the door refuses every crossing write —
-//! one writer per field (ADR-0039 decision 6), structural, not
-//! conventional.
+//! worker principal) is the WRITER, the path's run is the TARGET — a run
+//! writes verdicts about OTHER runs. Which fields a run may write is the
+//! declaration of its workflow definition (`[run.grants]`, ADR-0052): the
+//! door refuses every write the workflow did not declare. That each field
+//! has exactly one declaring workflow per project (ADR-0039 decision 6)
+//! is the project's check, not the engine's.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,39 +33,20 @@ use fabro_store::platform_records::{
     ObservationRecordedRecord, ObservationTriageState, PlatformRecord, PlatformRecordKind,
     RunOrchestrationRecord, StoredPlatformRecord,
 };
-use fabro_types::settings::run::MergeStrategy;
+use fabro_types::settings::run::{MergeStrategy, RunGrantsSettings};
 use fabro_types::{
     OrchestrationField, OrchestrationVerdict, Principal, PullRequestLink, PullRequestState, RunId,
 };
 use futures_util::future::join_all;
 use tracing::info;
 
-use super::super::{AppState, gear_worklist, run_records};
+use super::super::{AppState, run_records};
 use super::observation_triage;
 use super::observation_triage::{
     LinkedItemResolution, LinkedItemResolver, LinkedItemState, RESOLVE_CONCURRENCY,
 };
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
-
-/// The verdict-writer allowlist (ADR-0039 decision 6): the only workflow
-/// slugs whose runs may write orchestration verdicts, each bound to exactly
-/// one field; `owned_field_for_writer` resolves the pairing through
-/// [`crate::server::gear_worklist`]. Shared with the work-item close door
-/// (stage E): the adjudicator is the only workflow that closes work items.
-///
-/// DEBT (ADR-0052, denkhaus/work#1716): these names belong to the fabro
-/// project, not to the engine. They stay until the workflow's declared
-/// grants replace them; never add a name here.
-pub(super) const MERGE_WRITER_WORKFLOW: &str = gear_worklist::ADJUDICATOR;
-pub(in crate::server) const CLOSABLE_WRITER_WORKFLOW: &str = gear_worklist::MERGER;
-
-/// The triager's workflow slug (ADR-0044): the only workflow whose runs
-/// may write observation triage decisions — the manage door's allowlist,
-/// the mark door's posture. The triager owns global painpoint triage;
-/// user principals write through the same door unconditionally. The slug
-/// is the gear worklist table's triager entry (work#1488).
-pub(super) const TRIAGER_WORKFLOW: &str = gear_worklist::TRIAGER;
 
 /// How many runs one queue read returns at most. The queue is the
 /// adjudicator's worklist, not an archive walk: a gear that needs more
@@ -383,8 +363,8 @@ async fn decision_of_seq<'a>(
 /// passes, when the derivation re-reads it `untriaged`. Upsert: the
 /// latest decision on a record wins. Authorization mirrors
 /// the verdict door's chain: user principals write unconditionally, a
-/// workflow run only when its workflow is the triager (the hardcoded
-/// allowlist posture — the door's twin surfaces are the agent tool
+/// workflow run only when its workflow declares the `observation_triage`
+/// grant (ADR-0052 — the door's twin surfaces are the agent tool
 /// `fabro_observation_manage` and the CLI `fabro observation manage`).
 async fn manage_observation(
     RequiredRunManagementActor(principal): RequiredRunManagementActor,
@@ -441,13 +421,13 @@ async fn manage_observation(
     let by_run = match principal {
         Principal::User(_) => None,
         Principal::Worker { run_id: writer } => {
-            if !is_triage_manager_writer(&state, &writer).await? {
+            if !grants_for_writer(&state, &writer).await?.observation_triage {
                 return Err(ApiError::with_code(
                     StatusCode::FORBIDDEN,
-                    format!(
-                        "Only users and the {TRIAGER_WORKFLOW} workflow write triage \
-                         decisions (ADR-0044) — this run's workflow is not on the allowlist."
-                    ),
+                    "Only users and workflow runs whose workflow declares \
+                     `observation_triage = true` under `[run.grants]` write triage decisions \
+                     (ADR-0044, ADR-0052)."
+                        .to_string(),
                     "triage_manage_not_allowed",
                 ));
             }
@@ -596,34 +576,6 @@ async fn manage_observation(
         item_key:   None,
     })
     .into_response())
-}
-
-/// Whether the writer run's workflow is the triager (the manage door's
-/// allowlist). An unreadable writer summary is an internal error, not a
-/// silent refusal — the same posture as the verdict door.
-async fn is_triage_manager_writer(state: &AppState, writer: &RunId) -> Result<bool, ApiError> {
-    let summary = state
-        .stores
-        .run_summaries
-        .get(writer, Utc::now())
-        .await
-        .map_err(|err| {
-            tracing::error!(error = ?err, writer_run_id = %writer, "writer run summary read failed");
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Reading the writer run's summary failed.",
-            )
-        })?
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::FORBIDDEN,
-                "The writer run named by the worker token does not exist.",
-            )
-        })?;
-    Ok(matches!(
-        summary.workflow.slug.as_deref(),
-        Some(TRIAGER_WORKFLOW)
-    ))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -903,10 +855,10 @@ fn wire_acceptance(state: fabro_work::AcceptanceState) -> RunQueueEntryAcceptanc
     }
 }
 
-/// The verdict write door. Authorization is the identity chain of the
-/// stage-D grill: the worker token names the WRITER run, the writer's
-/// run summary names its workflow, the hardcoded pair binds the
-/// workflow to the field it may write. The target run is the path.
+/// The verdict write door. Authorization is the worker token's chain:
+/// the token names the WRITER run, the writer's workflow definition
+/// declares the fields its runs may write (`[run.grants]`, ADR-0052).
+/// The target run is the path.
 async fn mark_orchestration(
     RequiredRunManagementActor(principal): RequiredRunManagementActor,
     State(state): State<Arc<AppState>>,
@@ -916,37 +868,36 @@ async fn mark_orchestration(
     let Principal::Worker { run_id: writer } = principal else {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "Only workflow runs write orchestration verdicts — the adjudicator and the merger \
-             gears. Users read verdicts through the run view.",
+            "Only workflow runs write orchestration verdicts. Users read verdicts through the \
+             run view.",
             "orchestration_not_allowed",
         ));
     };
     if writer == target {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "A run cannot mark itself — the adjudicator and the merger write verdicts about \
-             OTHER runs (ADR-0039 decision 1: a run never judges itself).",
+            "A run cannot mark itself — verdicts are written about OTHER runs (ADR-0039 \
+             decision 1: a run never judges itself).",
             "orchestration_self_mark",
         ));
     }
-    let Some(owned_field) = owned_field_for_writer(&state, &writer).await? else {
+    let grants = grants_for_writer(&state, &writer).await?;
+    if grants.verdict_fields.is_empty() {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            format!(
-                "This run's workflow is not on the orchestration allowlist — only the \
-                 {MERGE_WRITER_WORKFLOW} and {CLOSABLE_WRITER_WORKFLOW} workflows write \
-                 verdicts."
-            ),
+            "This run's workflow declares no `verdict_fields` under `[run.grants]` — it writes \
+             no verdicts (ADR-0052)."
+                .to_string(),
             "orchestration_not_allowed",
         ));
-    };
-    if request.field != owned_field {
+    }
+    if !grants.allows_verdict(request.field) {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
             format!(
-                "One writer per field (ADR-0039 decision 6): this run's workflow writes \
-                 `{owned_field}`, not `{}`.",
-                request.field
+                "This run's workflow declares `verdict_fields = {:?}` under `[run.grants]`, \
+                 not `{}`.",
+                grants.verdict_fields, request.field
             ),
             "orchestration_field_not_owned",
         ));
@@ -991,42 +942,36 @@ async fn mark_orchestration(
     .into_response())
 }
 
-/// The field this writer's workflow owns, `None` when the workflow is
-/// not on the allowlist. An unreadable writer summary is an internal
-/// error, not a silent refusal: the token named a run the store cannot
-/// see. Shared by the doors that authorize on the allowlist (the
-/// verdict write door, the merge door, and the resolve push door).
-pub(in crate::server) async fn owned_field_for_writer(
+/// The grants the writer run's workflow declared (ADR-0052): read off
+/// the writer's stored run spec, where the workflow definition's
+/// `[run.grants]` block landed at admission. Every door that acts on
+/// behalf of a run checks these — the verdict write door, the merge
+/// door, the resolve push door, the triage manage door, and the
+/// work-item close door. An unreadable writer is an internal error, not
+/// a silent refusal: the token named a run the store cannot see.
+pub(in crate::server) async fn grants_for_writer(
     state: &AppState,
     writer: &RunId,
-) -> Result<Option<OrchestrationField>, ApiError> {
-    let summary = state
+) -> Result<RunGrantsSettings, ApiError> {
+    state
         .stores
         .run_summaries
-        .get(writer, Utc::now())
+        .load_petri_projection(writer)
         .await
         .map_err(|err| {
-            tracing::error!(error = ?err, writer_run_id = %writer, "writer run summary read failed");
+            tracing::error!(error = ?err, writer_run_id = %writer, "writer run projection read failed");
             ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Reading the writer run's summary failed.",
+                "Reading the writer run's projection failed.",
             )
         })?
+        .map(|projection| projection.spec.settings.run.grants.clone())
         .ok_or_else(|| {
             ApiError::new(
                 StatusCode::FORBIDDEN,
                 "The writer run named by the worker token does not exist.",
             )
-        })?;
-    Ok(summary
-        .workflow
-        .slug
-        .as_deref()
-        // The allowlist is the verdict-writer table (ADR-0039 decision 6).
-        // ADR-0052 names this slug-keyed carrier as debt: the successor
-        // is the workflow's declared grants (denkhaus/work#1716 step 3).
-        .and_then(gear_worklist::by_slug)
-        .and_then(|gear| gear.owned_field))
+        })
 }
 
 /// The merger's merge door (ADR-0039 stage E): merge the TARGET run's
@@ -1047,37 +992,24 @@ async fn merge_run(
     let Principal::Worker { run_id: writer } = principal else {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "Only workflow runs merge pull requests — the merger gear. Users merge through \
-             GitHub.",
+            "Only workflow runs merge pull requests. Users merge through GitHub.",
             "merge_not_allowed",
         ));
     };
     if writer == target {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "A run cannot merge itself — the merger integrates OTHER runs (ADR-0039 decision 1).",
+            "A run cannot merge itself — a run integrates OTHER runs (ADR-0039 decision 1).",
             "merge_self",
         ));
     }
-    let Some(owned_field) = owned_field_for_writer(&state, &writer).await? else {
+    if !grants_for_writer(&state, &writer).await?.merge {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            format!(
-                "This run's workflow is not on the orchestration allowlist — only the \
-                 {MERGE_WRITER_WORKFLOW} and {CLOSABLE_WRITER_WORKFLOW} workflows write \
-                 verdicts or merge."
-            ),
+            "Only workflow runs whose workflow declares `merge = true` under `[run.grants]` \
+             merge pull requests (ADR-0052)."
+                .to_string(),
             "merge_not_allowed",
-        ));
-    };
-    if owned_field != OrchestrationField::Closable {
-        return Err(ApiError::with_code(
-            StatusCode::FORBIDDEN,
-            format!(
-                "Only the {CLOSABLE_WRITER_WORKFLOW} merges pull requests — this run's workflow \
-                 writes `{owned_field}` verdicts, it does not integrate."
-            ),
-            "merge_not_merger",
         ));
     }
     // The target must exist and settle its projection — the PR and the

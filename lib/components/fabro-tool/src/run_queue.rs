@@ -26,11 +26,12 @@ pub struct FabroRunQueueParams {
     pub field:    FabroOrchestrationField,
     /// Restrict the anti-join to runs whose latest verdict on the
     /// NAMED OTHER field IS this verdict — `<field>=<verdict>`, for
-    /// example `merge=enabled`. The merger's worklist. The requirement
-    /// must name the OTHER field and cannot combine with `verdict`.
+    /// example `merge=enabled`. The integrating workflow's worklist. The
+    /// requirement must name the OTHER field and cannot combine with
+    /// `verdict`.
     pub requires: Option<String>,
-    /// Only runs of this workflow slug, e.g. `develop`. Optional — the
-    /// adjudicator reads the develop line only.
+    /// Only runs of this workflow slug. Optional; absent reads every
+    /// workflow's runs.
     pub workflow: Option<String>,
     /// List exactly the runs settled on this verdict instead of the
     /// unsettled anti-join. Optional (stage E). `enabled` or `refused`;

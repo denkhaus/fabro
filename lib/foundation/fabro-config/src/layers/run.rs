@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use fabro_types::OrchestrationField;
 use fabro_types::settings::run::{
     ApprovalMode, HookEvent, McpHttpProtocol, MergeStrategy, RunMode,
 };
@@ -58,6 +59,8 @@ pub struct RunLayer {
     pub interviews:          Option<InterviewsLayer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent:               Option<RunAgentLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grants:              Option<RunGrantsLayer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hooks:               Vec<HookEntry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -350,6 +353,24 @@ pub struct RunRunBranchLayer {
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub push:    Option<bool>,
+}
+
+/// `[run.grants]` — the permissions the workflow declares for its runs
+/// (ADR-0052). The field list replaces wholesale across layers, so a
+/// higher layer never adds a field to a lower layer's declaration.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, fabro_macros::Combine)]
+#[serde(deny_unknown_fields)]
+pub struct RunGrantsLayer {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verdict_fields:     Option<Vec<OrchestrationField>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observation_triage: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_item_close:    Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge:              Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolve_push:       Option<bool>,
 }
 
 /// Legacy `[run.meta_branch]` input, accepted and ignored on config load.

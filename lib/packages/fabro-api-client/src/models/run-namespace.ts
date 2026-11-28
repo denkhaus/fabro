@@ -51,6 +51,9 @@ import type { RunGitSettings } from './run-git-settings';
 import type { RunGoal } from './run-goal';
 // May contain unused imports in some cases
 // @ts-ignore
+import type { RunGrantsSettings } from './run-grants-settings';
+// May contain unused imports in some cases
+// @ts-ignore
 import type { RunIntegrationsSettings } from './run-integrations-settings';
 // May contain unused imports in some cases
 // @ts-ignore
@@ -89,4 +92,5 @@ export interface RunNamespace {
     'pull_request': PullRequestSettings | null;
     'artifacts': ArtifactsSettings;
     'integrations': RunIntegrationsSettings;
+    'grants': RunGrantsSettings;
 }
