@@ -955,10 +955,10 @@ async fn session_search_door_finds_by_title_anchor_and_text() {
     let (second_run, _second_workspace) = create_run(&app).await;
 
     let archaeology = create_titled_session(&app, &first_run, "Deploy archaeology").await;
-    let _unrelated = create_titled_session(&app, &second_run, "Something else").await;
+    let unrelated = create_titled_session(&app, &second_run, "Something else").await;
     delete_openai_credential(&app).await;
     submit_failing_turn(&app, &archaeology, "why did the nightly stall").await;
-    submit_failing_turn(&app, &_unrelated, "entirely different topic").await;
+    submit_failing_turn(&app, &unrelated, "entirely different topic").await;
 
     // By title.
     let response = get_json(&app, "/sessions/search?q=ARCHAEOLOGY", None).await;

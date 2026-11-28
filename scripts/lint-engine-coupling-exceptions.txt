@@ -1,0 +1,19 @@
+# Exceptions of scripts/lint-engine-coupling.nu (ADR-0052).
+#
+# Format: <path> <quoted-literal> — <reason>
+# An exception covers that literal anywhere in that file. A line that
+# matches no current hit fails the lint, so this list only shrinks. A
+# line may cover only a word that is NOT a workflow slug of this project;
+# a real slug use is never excepted — fix the code.
+#
+# Every line below is an unrelated word that happens to equal the name
+# of a workflow directory under .fabro/workflows/ (a git branch name, a
+# Slack envelope type, a message type). No engine file names a workflow
+# of this project.
+
+apps/fabro-web/app/components/chats/composer-chips.tsx "develop" — git branch name, not a workflow slug
+apps/fabro-web/app/routes/start.tsx "develop" — git branch name, not a workflow slug
+apps/fabro-web/app/routes/work.tsx "develop" — tracker lane id that shares the workflow's name; lane options are project data and should come from the project definition (denkhaus/work#1716 follow-up)
+apps/fabro-web/app/lib/cross-tab-sse.ts "hello" — cross-tab SSE message type, not a workflow slug
+apps/fabro-web/app/lib/petri-fixtures.ts "hello" — test fixture name (a bundled petri example graph), not a workflow slug
+lib/components/fabro-slack/src/socket.rs "hello" — Slack Socket Mode envelope type, not a workflow slug

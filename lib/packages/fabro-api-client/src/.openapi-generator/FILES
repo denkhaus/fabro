@@ -425,6 +425,7 @@ models/run-git-settings.ts
 models/run-goal-file.ts
 models/run-goal-inline.ts
 models/run-goal.ts
+models/run-grants-settings.ts
 models/run-graph-edge.ts
 models/run-graph-node.ts
 models/run-graph.ts

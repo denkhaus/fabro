@@ -18,11 +18,12 @@
 //!   per push — the capability-class audit (ADR-0019's second instance of the
 //!   server-side, workflow-gated, audited door).
 //!
-//! Scoping fixed by ADR-0047: the door is the merger workflow's only,
-//! the branch is always `fabro/run/<target>` (never caller-supplied),
-//! and the door refuses main, any other ref, and every force push.
-//! The sandbox never receives a forge credential — the weaker
-//! token-in-sandbox posture is the ADR's rejected alternative.
+//! Scoping fixed by ADR-0047: the door serves runs whose workflow
+//! declares the `resolve_push` grant (ADR-0052), the branch is always
+//! `fabro/run/<target>` (never caller-supplied), and the door refuses main, any
+//! other ref, and every force push. The sandbox never receives a forge
+//! credential — the weaker token-in-sandbox posture is the ADR's rejected
+//! alternative.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -46,7 +47,7 @@ use tokio::process::Command as TokioCommand;
 use tokio::sync::OwnedMutexGuard;
 use tracing::{info, warn};
 
-use super::handler::orchestration::{CLOSABLE_WRITER_WORKFLOW, owned_field_for_writer};
+use super::handler::orchestration::grants_for_writer;
 use super::run_publish::{TokenMint, mint_push_token, push_snapshot_commit};
 use super::{AppState, run_records};
 use crate::error::ApiError;
@@ -90,8 +91,7 @@ pub(super) async fn push_run_resolution(
     let Principal::Worker { run_id: writer } = principal else {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "Only workflow runs push resolutions — the merger gear's resolve pass. Users push \
-             through the forge.",
+            "Only workflow runs push resolutions. Users push through the forge.",
             "resolution_push_not_allowed",
         ));
     };
@@ -104,26 +104,15 @@ pub(super) async fn push_run_resolution(
             "resolution_push_self",
         ));
     }
-    // The merger workflow only — the merge door's allowlist, the same
-    // writer read.
-    let Some(owned_field) = owned_field_for_writer(&state, &writer).await? else {
+    // The workflow's declaration is the allowlist: a run pushes
+    // resolutions only when its workflow declares the grant (ADR-0052).
+    if !grants_for_writer(&state, &writer).await?.resolve_push {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            format!(
-                "This run's workflow is not on the orchestration allowlist — only the \
-                 merger ({CLOSABLE_WRITER_WORKFLOW}) pushes resolutions."
-            ),
+            "Only workflow runs whose workflow declares `resolve_push = true` under \
+             `[run.grants]` push resolutions (ADR-0052)."
+                .to_string(),
             "resolution_push_not_allowed",
-        ));
-    };
-    if owned_field != OrchestrationField::Closable {
-        return Err(ApiError::with_code(
-            StatusCode::FORBIDDEN,
-            format!(
-                "Only the {CLOSABLE_WRITER_WORKFLOW} pushes resolutions — this run's workflow \
-                 does not integrate."
-            ),
-            "resolution_push_not_merger",
         ));
     }
     // The target must exist and settle its projection — the PR, the

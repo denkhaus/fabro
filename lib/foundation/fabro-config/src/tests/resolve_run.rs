@@ -1,6 +1,8 @@
-use fabro_types::SandboxProviderKind;
 use fabro_types::settings::InterpString;
-use fabro_types::settings::run::{ApprovalMode, EnvironmentNetworkMode, RunGoal, RunMode};
+use fabro_types::settings::run::{
+    ApprovalMode, EnvironmentNetworkMode, RunGoal, RunGrantsSettings, RunMode,
+};
+use fabro_types::{OrchestrationField, SandboxProviderKind};
 
 use crate::{MergeMap, SettingsLayer};
 
@@ -402,6 +404,68 @@ depth = 0
     .run;
 
     assert_eq!(settings.clone.depth, 0);
+}
+
+/// ADR-0052 (denkhaus/work#1716): the permissions a run holds are the
+/// workflow's declaration, parsed from `[run.grants]` — absent, nothing is
+/// granted.
+#[test]
+fn grants_default_to_nothing_and_come_from_the_declaration() {
+    let ungranted = super::workflow_settings_from_toml(
+        r"
+_version = 1
+",
+    )
+    .expect("a definition without grants should resolve")
+    .run;
+    assert_eq!(
+        ungranted.grants,
+        RunGrantsSettings::default(),
+        "no declaration, no grant"
+    );
+    assert!(
+        !ungranted
+            .grants
+            .allows_verdict(OrchestrationField::Closable)
+    );
+
+    let granted = super::workflow_settings_from_toml(
+        r#"
+_version = 1
+
+[run.grants]
+verdict_fields = ["closable"]
+merge = true
+resolve_push = true
+"#,
+    )
+    .expect("declared grants should resolve")
+    .run;
+    let grants = granted.grants;
+    assert!(grants.allows_verdict(OrchestrationField::Closable));
+    assert!(!grants.allows_verdict(OrchestrationField::Merge));
+    assert!(grants.merge && grants.resolve_push);
+    assert!(!grants.observation_triage && !grants.work_item_close);
+}
+
+/// The engine knows no grant by name: an unknown key is refused, never
+/// silently ignored.
+#[test]
+fn rejects_an_unknown_grant_key() {
+    let error = super::workflow_settings_from_toml(
+        r"
+_version = 1
+
+[run.grants]
+merge_everything = true
+",
+    )
+    .expect_err("an unknown grant should not resolve");
+
+    assert!(
+        error.to_string().contains("run.grants"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

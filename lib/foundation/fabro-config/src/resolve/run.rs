@@ -8,9 +8,10 @@ use fabro_types::settings::run::{
     McpServerSettings, McpTransport, MergeStrategy, NotificationProviderSettings,
     NotificationRouteSettings, PreparedStep, PreparedStepRun, PullRequestSettings,
     ResolvedMcpEntry, RunAgentSettings, RunBranchSettings, RunCheckpointSettings, RunCloneSettings,
-    RunExecutionSettings, RunGitSettings, RunGoal, RunIntegrationsGithubSettings,
-    RunIntegrationsSettings, RunInterviewsSettings, RunModelControls, RunModelSettings,
-    RunNamespace, RunPrepareSettings, RunScmSettings, ScmGitHubSettings, TlsMode,
+    RunExecutionSettings, RunGitSettings, RunGoal, RunGrantsSettings,
+    RunIntegrationsGithubSettings, RunIntegrationsSettings, RunInterviewsSettings,
+    RunModelControls, RunModelSettings, RunNamespace, RunPrepareSettings, RunScmSettings,
+    ScmGitHubSettings, TlsMode,
 };
 use fabro_util::workspace_glob::WorkspaceGlob;
 
@@ -19,9 +20,9 @@ use crate::{
     EnvironmentLayer, HookAgentMarker, HookEntry, HookTlsMode, InterviewProviderLayer,
     InterviewsLayer, McpEntryLayer, MergeMap, ModelRefOrSplice, NotificationProviderLayer,
     NotificationRouteLayer, RunAgentLayer, RunArtifactsLayer, RunCheckpointLayer, RunCloneLayer,
-    RunExecutionLayer, RunGitLayer, RunGoalLayer, RunIntegrationsGithubLayer, RunIntegrationsLayer,
-    RunLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer, RunRunBranchLayer, RunScmLayer,
-    StickyMap, StringOrSplice,
+    RunExecutionLayer, RunGitLayer, RunGoalLayer, RunGrantsLayer, RunIntegrationsGithubLayer,
+    RunIntegrationsLayer, RunLayer, RunModelLayer, RunPrepareLayer, RunPullRequestLayer,
+    RunRunBranchLayer, RunScmLayer, StickyMap, StringOrSplice,
 };
 
 pub fn resolve_run(
@@ -69,6 +70,7 @@ pub fn resolve_run(
             .collect(),
         interviews: resolve_interviews(layer.interviews.as_ref()),
         agent: resolve_agent(layer.agent.as_ref(), mcp_server_catalog, errors),
+        grants: resolve_grants(layer.grants.as_ref()),
         hooks: layer
             .hooks
             .iter()
@@ -424,6 +426,24 @@ fn resolve_interviews(interviews: Option<&InterviewsLayer>) -> RunInterviewsSett
 fn resolve_interview_provider(provider: &InterviewProviderLayer) -> InterviewProviderSettings {
     InterviewProviderSettings {
         channel: provider.channel.clone(),
+    }
+}
+
+fn resolve_grants(grants: Option<&RunGrantsLayer>) -> RunGrantsSettings {
+    RunGrantsSettings {
+        verdict_fields:     grants
+            .and_then(|grants| grants.verdict_fields.clone())
+            .unwrap_or_default(),
+        observation_triage: grants
+            .and_then(|grants| grants.observation_triage)
+            .unwrap_or(false),
+        work_item_close:    grants
+            .and_then(|grants| grants.work_item_close)
+            .unwrap_or(false),
+        merge:              grants.and_then(|grants| grants.merge).unwrap_or(false),
+        resolve_push:       grants
+            .and_then(|grants| grants.resolve_push)
+            .unwrap_or(false),
     }
 }
 

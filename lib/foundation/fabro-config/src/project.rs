@@ -35,8 +35,8 @@ pub struct WorkflowLocation {
     pub graph: PathBuf,
     /// `workflow.toml` providing `[run.*]` settings, when present.
     pub toml:  Option<PathBuf>,
-    /// Display name for the workflow (e.g. `"hello"` for
-    /// `.fabro/workflows/hello/workflow.fabro`).
+    /// Display name for the workflow: the directory name under
+    /// `.fabro/workflows/`.
     pub slug:  Option<String>,
 }
 

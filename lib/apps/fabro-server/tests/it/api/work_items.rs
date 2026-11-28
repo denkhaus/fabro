@@ -1751,14 +1751,23 @@ mod closure_radius {
     /// carries no slug, and the close authority reads the summary's
     /// slug through the run-summary store.
     async fn seed_adjudicator_run(state: &Arc<AppState>) -> RunId {
-        // The intent path derives the workflow slug from the entrypoint
-        // directory — `adjudicator/workflow.fabro` names the run's
-        // workflow exactly what the close authority's allowlist reads.
-        fabro_server::test_support::create_test_run_with_workflow_dir(
+        seed_run_in_dir(state, Some(DECLARED_CLOSING_GRANTS)).await
+    }
+
+    /// The `[run.grants]` block a closing run's workflow declares
+    /// (ADR-0052): the name of the workflow plays no part.
+    const DECLARED_CLOSING_GRANTS: &str = "_version = 1\n[run.grants]\nwork_item_close = true\n";
+
+    /// A run created through the intent path with its entrypoint in the
+    /// `adjudicator` directory, with or without a workflow definition
+    /// beside it.
+    async fn seed_run_in_dir(state: &Arc<AppState>, config_toml: Option<&str>) -> RunId {
+        fabro_server::test_support::create_test_run_with_workflow_definition(
             state,
             "denkhaus/fabro",
             "denkhaus",
             Some("adjudicator"),
+            config_toml,
         )
         .await
     }
@@ -1948,6 +1957,82 @@ mod closure_radius {
         assert!(
             detail.contains("closable"),
             "the refusal teaches the verdict it waits for: {detail}"
+        );
+    }
+
+    /// ADR-0052 (denkhaus/work#1716): the engine knows no workflow by
+    /// name. A run whose entrypoint sits in the `adjudicator` directory
+    /// but whose workflow declares nothing closes no item — the name
+    /// that used to be the allowlist authorizes nobody. The refusal
+    /// teaches the declaration.
+    #[tokio::test]
+    async fn a_workflow_named_adjudicator_without_a_declaration_closes_nothing() {
+        use fabro_store::platform_records::RunOrchestrationRecord;
+        use fabro_types::{OrchestrationField, OrchestrationVerdict};
+
+        let tracker = RadiusTracker::with_items(vec![item(1, "open")]);
+        let (app, state, records) = app_with_state(Arc::clone(&tracker)).await;
+        let named_run = seed_run_in_dir(&state, None).await;
+        let develop = RunId::new();
+        let merger = RunId::new();
+
+        let granted = body_json(
+            json_call(
+                &app,
+                Method::POST,
+                "/projects/fabro/claims",
+                &json!({
+                    "itemKey": "denkhaus/work#1",
+                    "runId": develop.to_string(),
+                    "lane": "loop"
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert!(
+            granted["claim"]["claimId"].is_string(),
+            "the seeded claim grants: {granted}"
+        );
+        records
+            .append(
+                &develop,
+                &PlatformRecord::RunOrchestration(RunOrchestrationRecord {
+                    field:   OrchestrationField::Closable,
+                    verdict: OrchestrationVerdict::Enabled,
+                    by_run:  Some(merger),
+                }),
+                None,
+            )
+            .await
+            .expect("closable verdict seed");
+
+        let token = state.test_issue_worker_token_with_run_tools(&named_run);
+        let refused = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(api("/projects/fabro/work-items/close"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "itemKey": "denkhaus/work#1",
+                            "reason": "the name alone must not close"
+                        }))
+                        .expect("close fixture serializes"),
+                    ))
+                    .expect("close request builds"),
+            )
+            .await
+            .expect("close request runs");
+        let status = refused.status();
+        let body = body_json(refused).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "the body read: {body}");
+        let encoded = body.to_string();
+        assert!(
+            encoded.contains("close_not_adjudicator") && encoded.contains("run.grants"),
+            "the refusal names the rule and the declaration: {encoded}"
         );
     }
 

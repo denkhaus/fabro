@@ -292,6 +292,19 @@ lint-nu:
 lint-test-asserts:
     nu scripts/lint-test-asserts.nu
 
+# Engine-coupling lint (ADR-0052, denkhaus/work#1716): engine code must
+# not name a fabro project workflow. Names come from .fabro/workflows/*;
+# exceptions live in scripts/lint-engine-coupling-exceptions.txt and a
+# stale one fails, so the list can only shrink.
+lint-engine-coupling:
+    nu scripts/lint-engine-coupling.nu
+
+# Workflow-grants lint (ADR-0052, denkhaus/work#1716): the project's
+# allow-list of the [run.grants] blocks under .fabro/workflows/, plus
+# the one-declaring-workflow rule per verdict field.
+lint-workflow-grants:
+    nu scripts/lint-workflow-grants.nu
+
 # Vendored fork crates (fabro-eeee/work#1253, ADR-0034): vendor/petri,
 # vendor/pebble, and vendor/sandbox-driver are SNAPSHOTS of the denkhaus
 # fork branches, consumed

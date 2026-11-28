@@ -748,15 +748,15 @@ async fn close_work_item(
     }
     let caller = resolve_caller_project(&state, &auth, &auth_slot, &project_id).await?;
     let project = caller.project();
-    // Worker closes carry the adjudicator exception (ADR-0039 stage E):
-    // the ONLY worker closer is a run of the adjudicator workflow, and
-    // only for an item whose claim's run the merger enabled
-    // (`closable: enabled`). The own-claim arm is retired — a develop
-    // run never closes its item (decision 1); the adjudicator is the
-    // only closer (decision 6). The authorized close LANDS the claim
+    // Worker closes (ADR-0039 stage E): a run closes an item only when
+    // its workflow declares the `work_item_close` grant (ADR-0052), and
+    // only for an item whose claim's run carries `closable: enabled`.
+    // The own-claim arm is retired — a run never closes its own item
+    // (decision 1); the closing pass is the closer (decision 6). The
+    // authorized close LANDS the claim
     // (merge-complete) instead of releasing it.
     let adjudicator_claim =
-        adjudicator_close_authority(&state, &auth, project, &request.item_key).await?;
+        worker_close_authority(&state, &auth, project, &request.item_key).await?;
     // The closure-radius gate (ADR-0038), blocking half only (work#1434):
     // a claimed item whose BLOCKING radius is open — open work items
     // linked through non-painpoint observations of its runs — is
@@ -2063,12 +2063,12 @@ async fn require_claim_held_by_run(
 }
 
 /// Resolve the worker-close authority (ADR-0039 stage E). `Ok(None)` is
-/// the user path (unchanged). A worker must run the `adjudicator`
-/// workflow AND the item's claim must belong to a run the merger
-/// enabled (`closable: enabled`) — the returned claim is the one the
-/// close will LAND. Every other worker shape refuses, teaching the
-/// rule it broke.
-async fn adjudicator_close_authority(
+/// the user path (unchanged). A worker's workflow must declare the
+/// `work_item_close` grant (ADR-0052) AND the item's claim must belong to
+/// a run whose `closable` verdict is `enabled` — the returned claim is
+/// the one the close will LAND. Every other worker shape refuses,
+/// teaching the rule it broke.
+async fn worker_close_authority(
     state: &Arc<AppState>,
     auth: &RequiredRunManagementActor,
     project: &WorkProject,
@@ -2077,29 +2077,15 @@ async fn adjudicator_close_authority(
     let fabro_types::Principal::Worker { run_id } = &auth.0 else {
         return Ok(None);
     };
-    let summary = state
-        .stores
-        .run_summaries
-        .get(run_id, chrono::Utc::now())
-        .await
-        .map_err(|error| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("reading the caller's run summary failed: {error}"),
-            )
-        })?
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::FORBIDDEN,
-                "the worker run named by the token does not exist",
-            )
-        })?;
-    if summary.workflow.slug.as_deref() != Some(super::orchestration::MERGE_WRITER_WORKFLOW) {
+    if !super::orchestration::grants_for_writer(state, run_id)
+        .await?
+        .work_item_close
+    {
         return Err(ApiError::with_code(
             StatusCode::FORBIDDEN,
-            "only the adjudicator closes work items — a run never closes its own item; the \
-             adjudicator's closing pass closes it once the merger enabled closable \
-             (ADR-0039 decisions 1 and 6)",
+            "only a run whose workflow declares `work_item_close = true` under `[run.grants]` \
+             closes work items — a run never closes its own item; the closing pass closes it \
+             once another run enabled closable (ADR-0039 decisions 1 and 6, ADR-0052)",
             "close_not_adjudicator",
         ));
     }

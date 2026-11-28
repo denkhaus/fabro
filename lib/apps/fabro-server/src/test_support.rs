@@ -22,6 +22,7 @@ use fabro_llm::lithos_catalog::Catalog;
 use fabro_static::EnvVars;
 use fabro_store::{ArtifactStore, Database, test_support as store_test_support};
 use fabro_types::settings::ServerAuthMethod;
+use fabro_types::settings::run::RunGrantsSettings;
 use fabro_types::{
     AuthMethod, IdpIdentity, SandboxProviderKind, ServerSettings, WorkflowVersion,
     WorkflowVersionId,
@@ -414,6 +415,33 @@ pub(crate) fn test_secret_snapshot(pool: DbPool) -> anyhow::Result<Vault> {
 
 /// A fully wired test project: the shape an automation binds to
 /// (tracker provider, repository, and label are what the fire gate checks).
+/// The grants a test run's workflow declares (ADR-0052). The slug is a
+/// label for the reader only: the doors authorize on the `[run.grants]`
+/// declaration in the run's spec, and this is the block the seeded run
+/// stands for. The verdict-writing workflow owns `merge` and closes
+/// items; the integrating one owns `closable` and the doors; the triaging
+/// one writes triage decisions; any other slug declares nothing.
+pub fn test_workflow_grants(workflow_slug: &str) -> RunGrantsSettings {
+    use fabro_types::OrchestrationField;
+    use fabro_types::settings::run::RunGrantsSettings;
+
+    let mut grants = RunGrantsSettings::default();
+    match workflow_slug {
+        "adjudicator" => {
+            grants.verdict_fields = vec![OrchestrationField::Merge];
+            grants.work_item_close = true;
+        }
+        "merger" => {
+            grants.verdict_fields = vec![OrchestrationField::Closable];
+            grants.merge = true;
+            grants.resolve_push = true;
+        }
+        "triager" => grants.observation_triage = true,
+        _ => {}
+    }
+    grants
+}
+
 pub fn test_work_project(project_id: &str) -> fabro_work::WorkProject {
     fabro_work::WorkProject {
         project_id:               project_id.to_owned(),
@@ -950,16 +978,28 @@ pub async fn create_test_run_with_target(
     create_test_run_with_workflow_dir(state, repo, branch, None).await
 }
 
-/// The workflow-slug variant (ADR-0039 stage E): the intent path derives
-/// the run's workflow slug from the entrypoint directory, so a run of
-/// the `adjudicator` (or `merger`) workflow needs an entrypoint inside
-/// that directory — the orchestration allowlists read the summary's
-/// slug.
+/// The variant with a workflow directory: the intent path derives the
+/// run's workflow slug from the entrypoint directory.
 pub async fn create_test_run_with_workflow_dir(
     state: &Arc<AppState>,
     repo: &str,
     branch: &str,
     workflow_dir: Option<&str>,
+) -> fabro_types::RunId {
+    create_test_run_with_workflow_definition(state, repo, branch, workflow_dir, None).await
+}
+
+/// The variant with a workflow DEFINITION beside the entrypoint
+/// (ADR-0052): `config_toml` is the text of the sibling `workflow.toml`
+/// the admission parses, so the created run carries whatever the
+/// definition declares — a `[run.grants]` block, for a run meant to pass
+/// a door.
+pub async fn create_test_run_with_workflow_definition(
+    state: &Arc<AppState>,
+    repo: &str,
+    branch: &str,
+    workflow_dir: Option<&str>,
+    config_toml: Option<&str>,
 ) -> fabro_types::RunId {
     const MINIMAL_DOT: &str = r#"digraph Test {
         graph [goal="Test"]
@@ -973,7 +1013,18 @@ pub async fn create_test_run_with_workflow_dir(
     };
     let entrypoint =
         fabro_types::WorkflowPath::new(&entrypoint_path).expect("a static workflow path");
-    let files = std::collections::BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
+    let config_path = match workflow_dir {
+        Some(dir) => format!("{dir}/workflow.toml"),
+        None => "workflow.toml".to_string(),
+    };
+    let mut files =
+        std::collections::BTreeMap::from([(entrypoint.clone(), MINIMAL_DOT.to_string())]);
+    if let Some(config) = config_toml {
+        files.insert(
+            fabro_types::WorkflowPath::new(&config_path).expect("a static config path"),
+            config.to_string(),
+        );
+    }
     let version =
         fabro_types::WorkflowVersion::new(entrypoint, files, std::collections::BTreeMap::default())
             .expect("the static workflow version should build");

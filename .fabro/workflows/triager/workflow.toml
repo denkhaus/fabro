@@ -25,13 +25,19 @@ dockerfile = { path = "../../Dockerfile.toolchain" }
 # gear. One pass = one run: the sweep reads the observation feed's
 # untriaged painpoints (feed-driven, workflow-agnostic — no verdict
 # semantics needed), and the agent pass judges each one — file a linked
-# work item, link an existing one, or record a no_filing decision. The
-# workflow directory name is a CONTRACT: the manage door's allowlist
-# keys on the workflow slug `triager`.
+# work item, link an existing one, or record a no_filing decision. What
+# this workflow's runs may do at the engine's doors is DECLARED below in
+# [run.grants] (ADR-0052): the engine knows no workflow by name.
 [run.agent]
 # The run-level switch for node-level x.fabro_tools grants: inert
 # without it.
 fabro_tools = true
+
+# The engine door this workflow's runs may use (ADR-0052): it writes
+# observation triage decisions. The project's grant lint
+# (scripts/lint-workflow-grants.nu) holds the allow-list of this block.
+[run.grants]
+observation_triage = true
 
 [run.model]
 provider = "zai"

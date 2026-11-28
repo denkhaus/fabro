@@ -393,6 +393,7 @@ export * from './run-git-settings';
 export * from './run-goal';
 export * from './run-goal-file';
 export * from './run-goal-inline';
+export * from './run-grants-settings';
 export * from './run-graph';
 export * from './run-graph-edge';
 export * from './run-graph-node';

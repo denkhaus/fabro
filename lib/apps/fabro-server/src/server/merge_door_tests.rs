@@ -57,6 +57,7 @@ pub(super) async fn seed_run(
         reason: fabro_types::SuccessReason::Completed,
     };
     projection.pull_request = pull_request;
+    projection.spec.settings.run.grants = crate::test_support::test_workflow_grants(workflow_slug);
     let pool = state.stores.run_summaries.pool();
     let mut tx = pool.begin().await.expect("seed tx");
     fabro_store::RunSummaryStore::write_petri_run_row_on_connection(&mut tx, run_id, &projection)
