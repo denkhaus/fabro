@@ -64,9 +64,12 @@ pub(crate) struct RequireWorkerRunScoped(pub(crate) RunId);
 /// blob and timeline reads): the run's own worker, or a worker token
 /// carrying the supervisor capability (ADR-0046) reaching any run.
 pub(crate) struct RequireRunContentReader(pub(crate) RunId);
-/// The same read door for a route with one more path segment after the
-/// run id (a blob hash), handed back as its text for the handler to parse.
-pub(crate) struct RequireRunContentSegment(pub(crate) RunId, pub(crate) String);
+/// Marks a request whose actor is a worker token carrying the supervisor
+/// capability reading a run OTHER than its own (ADR-0046). The handler
+/// then applies the supervisor's bounds: the record kinds and blobs the
+/// diff inventory needs, and the per-response byte ceiling. Absent for a
+/// user and for a run's own worker, who keep their read as it was.
+pub(crate) struct CrossRunSupervisorRead;
 /// A worker-scoped route with one more path segment after the run id, handed
 /// back as its text for the handler to parse.
 pub(crate) struct RequireWorkerRunSegment(pub(crate) RunId, pub(crate) String);
@@ -337,20 +340,40 @@ impl FromRequestParts<Arc<AppState>> for RequireRunContentReader {
     }
 }
 
-impl FromRequestParts<Arc<AppState>> for RequireRunContentSegment {
-    type Rejection = Response;
+// The trait stays qualified: importing it makes every Path extraction
+// in this module ambiguous between the required and the optional impl.
+#[allow(
+    clippy::absolute_paths,
+    reason = "importing OptionalFromRequestParts makes Path extraction ambiguous"
+)]
+impl axum::extract::OptionalFromRequestParts<Arc<AppState>> for CrossRunSupervisorRead {
+    type Rejection = Infallible;
 
     async fn from_request_parts(
         parts: &mut Parts,
         state: &Arc<AppState>,
-    ) -> Result<Self, Self::Rejection> {
-        let Path((id, segment)): Path<(String, String)> = Path::from_request_parts(parts, state)
+    ) -> Result<Option<Self>, Self::Rejection> {
+        let Ok(Path(params)) =
+            <Path<HashMap<String, String>> as FromRequestParts<Arc<AppState>>>::from_request_parts(
+                parts, state,
+            )
             .await
-            .map_err(IntoResponse::into_response)?;
-        let run_id = parse_run_id_path(&id)?;
-        require_worker_or_supervisor_for_run(&auth_slot_from_parts(parts), &run_id)
-            .map_err(IntoResponse::into_response)?;
-        Ok(Self(run_id, segment))
+        else {
+            return Ok(None);
+        };
+        let Some(route_run_id) = params.get("id").and_then(|id| id.parse::<RunId>().ok()) else {
+            return Ok(None);
+        };
+        let slot = auth_slot_from_parts(parts);
+        let context = slot.0.lock().expect("auth context lock poisoned");
+        Ok(match &context.principal {
+            Some(Principal::Worker { run_id })
+                if context.worker_scopes.has_supervisor() && *run_id != route_run_id =>
+            {
+                Some(Self)
+            }
+            _ => None,
+        })
     }
 }
 

@@ -276,6 +276,28 @@ pub async fn classify_http_response(
     }))
 }
 
+/// The server's supervisor read cap on a blob (`supervisor_read_cap`):
+/// the blob's total size and the per-response cap from the failure's
+/// `meta`. `None` for every other failure.
+#[must_use]
+pub fn supervisor_read_cap(err: &anyhow::Error) -> Option<(usize, usize)> {
+    let failure = api_failure_for(err)?;
+    if failure.code.as_deref() != Some("supervisor_read_cap") {
+        return None;
+    }
+    let field = |name: &str| {
+        failure
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.get(name))
+            .and_then(serde_json::Value::as_u64)
+    };
+    Some((
+        usize::try_from(field("bytes")?).ok()?,
+        usize::try_from(field("cap")?).ok()?,
+    ))
+}
+
 pub fn is_not_found_error(err: &anyhow::Error) -> bool {
     api_failure_for(err).is_some_and(|failure| failure.status == fabro_http::StatusCode::NOT_FOUND)
 }

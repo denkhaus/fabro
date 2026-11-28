@@ -49,6 +49,7 @@ use super::*;
 use crate::automation_materializer::AutomationRunMaterializeInput;
 use crate::github_webhooks::compute_signature;
 use crate::jwt_auth::{AuthMode, ConfiguredAuth};
+use crate::run_files_security::SUPERVISOR_READ_MAX_BYTES;
 use crate::test_support::*;
 use crate::worker_control::{
     LocalWorkerControlBus, WorkerControlAcks, WorkerControlBus, WorkerControlCursor,
@@ -8283,152 +8284,292 @@ async fn run_tool_worker_token_can_use_client_backend_routes_across_runs() {
 /// diff inventory's three reads — the checkpoint records, the patch
 /// blob and the checkpoint timeline — accept a supervisor token whose
 /// run id names no real run. Before the fix they were strict-equality
-/// worker (or user-only) doors and answered a bare "Access denied."
-#[tokio::test]
-async fn supervisor_worker_token_reads_another_runs_diff_inventory() {
-    let (_state, app) = jwt_auth_app();
+/// A run with a checkpoint whose patch blob is `patch`, its own worker's
+/// token, and a supervisor token minted for a throwaway run id, as a
+/// runless Ask Fabro session's backend carries.
+async fn run_with_checkpoint_patch(
+    app: &Router,
+    patch: &[u8],
+) -> (RunId, String, String, BlobHash) {
     let user_jwt = issue_test_user_jwt();
-    let run_id = create_run_with_bearer(&app, &user_jwt).await;
+    let run_id = create_run_with_bearer(app, &user_jwt).await;
     let worker_token = issue_test_worker_token(&run_id);
-    let supervisor_token = issue_test_supervisor_worker_token();
-
-    // The run's own worker stores a checkpoint with a patch blob.
-    let open = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!("/runs/{run_id}/petri/open")))
-                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({ "access": "create", "owner": "worker-1" }).to_string(),
-                ))
-                .expect("the open request builds"),
-        )
-        .await
-        .expect("the open request routes");
-    assert_status!(open, StatusCode::OK).await;
-    let blob = app
-        .clone()
-        .oneshot(bearer_request(
-            Method::POST,
-            &format!("/runs/{run_id}/petri/blobs?owner=worker-1"),
-            &worker_token,
-            Body::from("diff --git a/a b/a\n"),
-        ))
-        .await
-        .unwrap();
-    let blob = response_json!(blob, StatusCode::OK).await;
-    let patch_blob: BlobHash = blob["hash"]
-        .as_str()
-        .expect("the blob hash")
-        .parse()
-        .expect("the stored blob is a blob hash");
-    let checkpoint = PlatformRecord::Checkpoint(CheckpointRecord {
-        execution:      1,
-        firing:         1,
-        attempt:        Some(1),
-        workspace:      None,
-        git_commit_sha: Some("c2b0a".to_string()),
-        diff_summary:   None,
-        patch_blob:     Some(patch_blob),
-        operation:      None,
-    });
+    let patch_blob = BlobHash::new(patch);
+    let append = json!({
+        "execution": 1,
+        "firing": 1,
+        "record": serde_json::to_value(PlatformRecord::Checkpoint(CheckpointRecord {
+            execution:      1,
+            firing:         1,
+            attempt:        Some(1),
+            workspace:      None,
+            git_commit_sha: Some("c2b0a".to_string()),
+            diff_summary:   None,
+            patch_blob:     Some(patch_blob),
+            operation:      None,
+        }))
+        .expect("the record encodes"),
+    })
+    .to_string();
+    let request = Request::builder()
+        .method(Method::POST)
+        .uri(api(&format!("/runs/{run_id}/petri/platform-records")))
+        .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(append))
+        .expect("the append request builds");
     let append = app
         .clone()
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(api(&format!("/runs/{run_id}/petri/platform-records")))
-                .header(header::AUTHORIZATION, format!("Bearer {worker_token}"))
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    json!({
-                        "execution": 1,
-                        "firing": 1,
-                        "record": serde_json::to_value(&checkpoint).expect("the record encodes"),
-                    })
-                    .to_string(),
-                ))
-                .expect("the append request builds"),
+        .oneshot(request)
+        .await
+        .expect("the append routes");
+    assert_status!(append, StatusCode::OK).await;
+    (
+        run_id,
+        worker_token,
+        issue_test_supervisor_worker_token(),
+        patch_blob,
+    )
+}
+
+async fn get(app: &Router, path: &str, bearer: &str) -> axum::response::Response {
+    app.clone()
+        .oneshot(bearer_request(Method::GET, path, bearer, Body::empty()))
+        .await
+        .expect("the request routes")
+}
+
+/// The read doors behind `fabro_run_diffs` (work#1680, work#1711) for a
+/// supervisor token whose run id names no real run: the two diff record
+/// kinds, the patch blob, and the checkpoint timeline.
+#[tokio::test]
+async fn supervisor_worker_token_reads_another_runs_diff_inventory() {
+    let (state, app) = jwt_auth_app();
+    let patch = b"diff --git a/a b/a\n+one\n";
+    state
+        .store_ref()
+        .blobs()
+        .write(patch)
+        .await
+        .expect("the patch blob stores");
+    let (run_id, _worker_token, supervisor_token, patch_blob) =
+        run_with_checkpoint_patch(&app, patch).await;
+
+    for kind in ["checkpoint", "run.diff"] {
+        let records = response_json!(
+            get(
+                &app,
+                &format!("/runs/{run_id}/petri/platform-records?kind={kind}"),
+                &supervisor_token,
+            )
+            .await,
+            StatusCode::OK
         )
-        .await
-        .expect("the append request routes");
-    let appended = response_json!(append, StatusCode::OK).await;
-    let checkpoint_seq = appended["seq"]
-        .as_u64()
-        .expect("the append answers the stored seq");
+        .await;
+        let records = records["records"].as_array().expect("a record list");
+        let patches: Vec<&str> = records
+            .iter()
+            .filter(|record| record["record"]["patch_blob"].is_string())
+            .filter_map(|record| record["record"]["patch_blob"].as_str())
+            .collect();
+        if kind == "checkpoint" {
+            assert_eq!(patches, [patch_blob.to_string()], "kind {kind}");
+        } else {
+            assert!(
+                patches.is_empty(),
+                "no run-level diff was recorded: {patches:?}"
+            );
+        }
+    }
 
-    // The append stays the run's own worker's door: the supervisor reads.
-    let foreign_append = app
-        .clone()
-        .oneshot(bearer_request(
-            Method::POST,
-            &format!("/runs/{run_id}/petri/platform-records"),
-            &supervisor_token,
-            Body::from(
-                json!({ "record": serde_json::to_value(&checkpoint).expect("the record encodes") })
-                    .to_string(),
-            ),
-        ))
-        .await
-        .expect("the foreign append routes");
-    assert_status!(foreign_append, StatusCode::FORBIDDEN).await;
+    let response = get(
+        &app,
+        &format!("/runs/{run_id}/blobs/{patch_blob}"),
+        &supervisor_token,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response_bytes!(response, StatusCode::OK).await;
+    assert_eq!(body, patch);
 
-    let records = app
-        .clone()
-        .oneshot(bearer_request(
-            Method::GET,
-            &format!("/runs/{run_id}/petri/platform-records?kind=checkpoint"),
-            &supervisor_token,
-            Body::empty(),
-        ))
-        .await
-        .unwrap();
-    let records = response_json!(records, StatusCode::OK).await;
-    assert_eq!(records["records"][0]["seq"], checkpoint_seq);
-    assert_eq!(
-        records["records"][0]["record"]["patch_blob"],
-        patch_blob.to_string()
-    );
-
-    let patch = app
-        .clone()
-        .oneshot(bearer_request(
-            Method::GET,
-            &format!("/runs/{run_id}/petri/blobs/{patch_blob}"),
-            &supervisor_token,
-            Body::empty(),
-        ))
-        .await
-        .unwrap();
-    let patch = response_bytes!(patch, StatusCode::OK).await;
+    let timeline = response_json!(
+        get(&app, &format!("/runs/{run_id}/timeline"), &supervisor_token).await,
+        StatusCode::OK
+    )
+    .await;
     assert!(
-        patch.starts_with(b"diff --git"),
-        "the supervisor pages the patch: {}",
-        String::from_utf8_lossy(&patch)
+        timeline["entries"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty()),
+        "the timeline answers: {timeline}"
     );
 
-    let timeline = app
+    // The timeline door keeps the logged-in user (ADR-0046).
+    response_json!(
+        get(
+            &app,
+            &format!("/runs/{run_id}/timeline"),
+            &issue_test_user_jwt()
+        )
+        .await,
+        StatusCode::OK
+    )
+    .await;
+}
+
+/// The supervisor reads ONLY the diff record kinds and ONLY a blob that
+/// is one of the run's diff patches: anything else is refused with the
+/// restriction named, and the Petri store doors stay the run's own
+/// worker's.
+#[tokio::test]
+async fn supervisor_is_refused_outside_the_diff_records_and_patch_blobs_with_a_reason() {
+    let (state, app) = jwt_auth_app();
+    let patch = b"diff --git a/a b/a\n+one\n";
+    state
+        .store_ref()
+        .blobs()
+        .write(patch)
+        .await
+        .expect("the patch blob stores");
+    let unrelated = BlobHash::new(b"not a diff patch");
+    state
+        .store_ref()
+        .blobs()
+        .write(b"not a diff patch")
+        .await
+        .expect("the unrelated blob stores");
+    let (run_id, _worker_token, supervisor_token, _patch_blob) =
+        run_with_checkpoint_patch(&app, patch).await;
+
+    for path in [
+        format!("/runs/{run_id}/petri/platform-records?kind=run.created"),
+        format!("/runs/{run_id}/petri/platform-records"),
+        format!("/runs/{run_id}/blobs/{unrelated}"),
+    ] {
+        let response = get(&app, &path, &supervisor_token).await;
+        let body = response_json!(response, StatusCode::FORBIDDEN).await;
+        let detail = body["errors"][0]["detail"].as_str().unwrap_or_default();
+        assert_ne!(detail, "Access denied.", "no bare denial for {path}");
+        assert!(
+            detail.contains("supervisor token reads only"),
+            "the refusal names the restriction for {path}: {detail}"
+        );
+    }
+    let petri_blob = get(
+        &app,
+        &format!("/runs/{run_id}/petri/blobs/{unrelated}"),
+        &supervisor_token,
+    )
+    .await;
+    assert_status!(petri_blob, StatusCode::FORBIDDEN).await;
+}
+
+/// One supervisor response never exceeds the supervisor read bound: a
+/// patch over the cap is refused with its size, and paged by `Range`
+/// into pieces of at most the cap.
+#[tokio::test]
+async fn supervisor_blob_reads_are_bounded() {
+    let (state, app) = jwt_auth_app();
+    let patch = vec![b'a'; SUPERVISOR_READ_MAX_BYTES + 10];
+    state
+        .store_ref()
+        .blobs()
+        .write(&patch)
+        .await
+        .expect("the patch blob stores");
+    let (run_id, _worker_token, supervisor_token, patch_blob) =
+        run_with_checkpoint_patch(&app, &patch).await;
+    let path = format!("/runs/{run_id}/blobs/{patch_blob}");
+
+    let response = get(&app, &path, &supervisor_token).await;
+    let body = response_json!(response, StatusCode::PAYLOAD_TOO_LARGE).await;
+    assert_eq!(body["errors"][0]["code"], "supervisor_read_cap");
+    let detail = body["errors"][0]["detail"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        detail.contains(&format!("{} bytes", patch.len())),
+        "the refusal names the size: {detail}"
+    );
+
+    let last = SUPERVISOR_READ_MAX_BYTES;
+    let page = app
         .clone()
         .oneshot(bearer_request(
             Method::GET,
-            &format!("/runs/{run_id}/timeline"),
+            &path,
             &supervisor_token,
             Body::empty(),
         ))
         .await
-        .unwrap();
-    let timeline = response_json!(timeline, StatusCode::OK).await;
+        .unwrap()
+        .into_parts()
+        .0;
+    let _ = page;
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri(api(&path))
+        .header(header::AUTHORIZATION, format!("Bearer {supervisor_token}"))
+        .header(header::RANGE, format!("bytes=0-{last}"))
+        .body(Body::empty())
+        .expect("the range request builds");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("the range request routes");
+    let status = response.status();
+    let content_range = response
+        .headers()
+        .get(header::CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let page = response_bytes!(response, StatusCode::PARTIAL_CONTENT).await;
+    let _ = status;
+    assert_eq!(page.len(), SUPERVISOR_READ_MAX_BYTES);
+    assert_eq!(page, patch[..SUPERVISOR_READ_MAX_BYTES]);
     assert_eq!(
-        timeline["entries"][0]["checkpoint_seq"], checkpoint_seq,
-        "the timeline labels the supervisor's inventory: {timeline}"
+        content_range.as_deref(),
+        Some(format!("bytes 0-{}/{}", SUPERVISOR_READ_MAX_BYTES - 1, patch.len()).as_str())
     );
 }
 
-/// The same doors refuse a worker token WITHOUT the supervisor
-/// capability, and the refusal names the cause: the token's run binding
+/// The run's own worker reads what it read before: every record kind
+/// and the whole list, its Petri blobs, and a blob over the supervisor
+/// cap whole, with no range.
+#[tokio::test]
+async fn the_runs_own_worker_keeps_its_unbounded_reads() {
+    let (state, app) = jwt_auth_app();
+    let patch = vec![b'a'; SUPERVISOR_READ_MAX_BYTES + 10];
+    state
+        .store_ref()
+        .blobs()
+        .write(&patch)
+        .await
+        .expect("the patch blob stores");
+    let (run_id, worker_token, _supervisor_token, patch_blob) =
+        run_with_checkpoint_patch(&app, &patch).await;
+
+    for path in [
+        format!("/runs/{run_id}/petri/platform-records?kind=run.created"),
+        format!("/runs/{run_id}/petri/platform-records"),
+    ] {
+        response_json!(get(&app, &path, &worker_token).await, StatusCode::OK).await;
+    }
+    let body = response_bytes!(
+        get(
+            &app,
+            &format!("/runs/{run_id}/blobs/{patch_blob}"),
+            &worker_token
+        )
+        .await,
+        StatusCode::OK
+    )
+    .await;
+    assert_eq!(body.len(), patch.len());
+}
+
 /// and the missing capability, not a bare "Access denied.".
 #[tokio::test]
 async fn worker_token_without_supervisor_scope_is_refused_from_the_diff_doors_with_a_reason() {
