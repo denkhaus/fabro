@@ -31,6 +31,18 @@ classes, and the architecture gate.
   output stays non-English and is named as such. The mechanical net
   lives in `reference/integrate.md` (the staged-diff regex).
 
+## Project-workflow-name gate (ADR-0052)
+
+- The engine references no workflow of a project by name. In every reviewed
+  diff, a project workflow name (`merger`, `adjudicator`, `triager`,
+  `develop`, and any name another project gives its workflows) as a literal
+  in `lib/**` or `apps/**` is a FINDING, not a judgement call — including in
+  tests: a test that pins the coupling is as much a finding as the code.
+  Fold it into a declaration in `workflow.toml` or `project.toml`. The
+  mechanical net is the engine-coupling lint named in
+  `scripts/qualitygate.nu`; until it is registered, the review reads the
+  diff by hand for it.
+
 ## Fork-feature regression check
 
 - Run the fork-only presence suites of every crate you touched: for

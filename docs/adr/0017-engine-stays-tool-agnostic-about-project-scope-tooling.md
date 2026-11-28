@@ -49,3 +49,11 @@ bleiben."
 - The pinned path relies on the documented clone layout; changing the
   `/repos` layout or the repository identity is a contract break that
   must revise this ADR and the toolchain image.
+
+## Amendment (2026-11-28, ADR-0052)
+
+The same boundary holds for WORKFLOW NAMES: the engine references no workflow
+of a project by name, and everything a workflow needs from the engine is a
+declaration in the workflow definition or the project definition. ADR-0017 had
+no mechanical check and the fabro project's own workflow names leaked into the
+engine (denkhaus/work#1716). ADR-0052 records the decision and the lint.

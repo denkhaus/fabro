@@ -6,6 +6,16 @@ demand — when a rule's WHY matters, or when auditing the skill against
 drift. Incident ids are tracker legacy ids (fabro-xxxx) unless named
 otherwise.
 
+## Engine / project boundary (SKILL.md standing rules, ADR-0052)
+
+- 2026-11-28 work#1716: the server held a fixed table naming the fabro
+  project's workflows and skipped scheduled fires on it; the merger gear was
+  enabled and silent for 18 slots, and the status read it as fire drift.
+  ADR-0039 stage D had recorded the hardcoding as a deliberate decision, three
+  items built on it, tests pinned it, and nothing enforced ADR-0017 ->
+  the engine knows no project workflow; declarations only; the coupling vet
+  and the review gate. (select.md, review.md)
+
 ## Orientation / world (SKILL.md Phase 0, reference/orient.md)
 
 - 2026-10-04 roster: a second /iterate alive in the same checkout found

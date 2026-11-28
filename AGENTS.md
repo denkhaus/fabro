@@ -230,6 +230,24 @@ live under `lib/components/`, the foundational ones under
 - **OpenAPI-first** — `fabro-api.yaml` drives Rust type + client generation (progenitor) and TypeScript client generation (openapi-generator)
 - **Checkpoint/resume** — Workflows can be paused, checkpointed, and resumed
 
+### Engine knows no project workflow (ADR-0052)
+
+- **Fabro is a multi-project tool.** A project defines any workflow in any
+  constellation. The engine (`lib/**`, `apps/**`) never references a
+  workflow of a project by name: no slug table, no allowlist, no constant.
+- **Everything is a declaration.** What a workflow needs from the engine —
+  when a scheduled fire is skipped, which fields its runs may write, which
+  doors they may use — is declared in the workflow definition
+  (`workflow.toml`) or the project definition (`project.toml`).
+- **Dogfooding is a special case, never a license.** Fabro develops itself
+  with its own workflows (the merger, the adjudicator, the triager, develop).
+  They exist only in this project. A change that makes the engine know one of
+  them is a regression, not a shortcut. Engine work for Fabro's own line is
+  always a capability plus a declaration in `.fabro/`.
+- **In a design, "the engine knows workflow X" ends the discussion.** Redesign
+  it as a declaration. In a diff, a project workflow name as a literal in
+  engine code is a review finding.
+
 ## Strategy docs
 
 When working in an area covered by a strategy doc, read the relevant document
