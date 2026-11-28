@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_zip::base::write::ZipFileWriter;
 use async_zip::error::ZipError;
 use async_zip::{Compression, ZipEntryBuilder};
-use axum::http::HeaderValue;
+use axum::http::{HeaderMap, HeaderValue};
 use fabro_store::{ArtifactStore, BlobStore, Error as StoreError};
 use fabro_types::{BlobHash, RunProjection};
 use fabro_util::error::collect_chain;
@@ -20,12 +20,13 @@ use tracing::warn;
 
 use super::super::{
     ApiError, AppState, ArtifactEntry, ArtifactKey, ArtifactListResponse, AsyncWriteExt, Body,
-    Bytes, HashMap, IntoResponse, Json, NodeArtifact, Path, Query, RequireRunBlob,
-    RequireRunScoped, RequiredUser, Response, Router, RunArtifactEntry, RunArtifactListResponse,
-    RunId, StageArtifactEntry, State, StatusCode, WriteBlobResponse, get, header,
-    octet_stream_response, parse_run_id_path, parse_stage_id_path, post, reject_if_archived,
-    required_query_param, validate_relative_artifact_path,
+    Bytes, CrossRunSupervisorRead, HashMap, IntoResponse, Json, NodeArtifact, Path, Query,
+    RequireRunBlob, RequireRunScoped, RequiredUser, Response, Router, RunArtifactEntry,
+    RunArtifactListResponse, RunId, StageArtifactEntry, State, StatusCode, WriteBlobResponse, get,
+    header, octet_stream_response, parse_run_id_path, parse_stage_id_path, post,
+    reject_if_archived, required_query_param, validate_relative_artifact_path,
 };
+use crate::run_files_security::SUPERVISOR_READ_MAX_BYTES;
 
 pub(super) fn routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -72,18 +73,98 @@ async fn write_run_blob(
 
 async fn read_run_blob(
     RequireRunBlob(id, blob_hash): RequireRunBlob,
+    cross_run_supervisor: Option<CrossRunSupervisorRead>,
+    headers: HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Response {
     if let Err(err) = state.load_run_projection(&id).await {
         return err.into_response();
     }
-    match state.store_ref().blobs().read(&blob_hash).await {
-        Ok(Some(bytes)) => octet_stream_response(bytes),
-        Ok(None) => ApiError::not_found("Blob not found.").into_response(),
+    let bytes = match state.store_ref().blobs().read(&blob_hash).await {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return ApiError::not_found("Blob not found.").into_response(),
         Err(err) => {
-            ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+            return ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
+                .into_response();
         }
+    };
+    // The supervisor's read keeps the access it had (any blob of any run,
+    // ADR-0046) and gains one bound (work#1711): never more than one
+    // bounded response. The run's own worker and users read as before.
+    if cross_run_supervisor.is_none() {
+        return octet_stream_response(bytes);
     }
+    supervisor_bounded_blob(
+        bytes,
+        headers
+            .get(header::RANGE)
+            .and_then(|value| value.to_str().ok()),
+    )
+}
+
+/// One bounded supervisor read of a blob. The blob is returned
+/// whole when it fits the supervisor read bound. A larger blob is paged
+/// by a `Range: bytes=<start>-<end>` request (the range is clamped to the
+/// bound and answered `206` with `Content-Range`), and a range-less read
+/// is refused with the size, so `fabro_blob` pages it in bounded pieces.
+fn supervisor_bounded_blob(bytes: Bytes, range: Option<&str>) -> Response {
+    let total = bytes.len();
+    let Some(range) = range else {
+        if total <= SUPERVISOR_READ_MAX_BYTES {
+            return octet_stream_response(bytes);
+        }
+        return ApiError::with_code_and_meta(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "Refused: the blob is {total} bytes, over the {SUPERVISOR_READ_MAX_BYTES}-byte \
+                 supervisor read cap — page it with Range: bytes=<start>-<end>."
+            ),
+            "supervisor_read_cap",
+            serde_json::Map::from_iter([
+                ("bytes".to_string(), serde_json::json!(total)),
+                (
+                    "cap".to_string(),
+                    serde_json::json!(SUPERVISOR_READ_MAX_BYTES),
+                ),
+            ]),
+        )
+        .into_response();
+    };
+    let requested = range
+        .strip_prefix("bytes=")
+        .and_then(|spec| spec.split_once('-'))
+        .and_then(|(start, end)| Some((start.parse::<usize>().ok()?, end.parse::<usize>().ok()?)));
+    let Some((start, end)) = requested.filter(|(start, end)| start <= end) else {
+        return ApiError::bad_request("Range must be bytes=<start>-<end> with start at most end.")
+            .into_response();
+    };
+    if start >= total {
+        return ApiError::new(
+            StatusCode::RANGE_NOT_SATISFIABLE,
+            "Range start is past the blob.",
+        )
+        .into_response();
+    }
+    let end = end
+        .min(
+            start
+                .saturating_add(SUPERVISOR_READ_MAX_BYTES)
+                .saturating_sub(1),
+        )
+        .min(total - 1);
+    let slice = bytes.slice(start..=end);
+    let mut response = Response::new(Body::from(slice));
+    let _ = response.headers_mut().insert(
+        header::CONTENT_RANGE,
+        HeaderValue::from_str(&format!("bytes {start}-{end}/{total}"))
+            .expect("a content range header is valid ASCII"),
+    );
+    let _ = response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+    response
 }
 
 /// Where an artifact's bytes are: the blob table, for one the run's

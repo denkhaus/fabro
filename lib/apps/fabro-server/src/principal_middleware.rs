@@ -60,6 +60,16 @@ pub(crate) struct RequiredRunManagementActor(pub(crate) Principal);
 pub(crate) struct RequiredRunToolActor(pub(crate) Principal);
 pub(crate) struct RequireRunScoped(pub(crate) RunId);
 pub(crate) struct RequireWorkerRunScoped(pub(crate) RunId);
+/// A worker read door into run content (the diff inventory's record,
+/// blob and timeline reads): the run's own worker, or a worker token
+/// carrying the supervisor capability (ADR-0046) reaching any run.
+pub(crate) struct RequireRunContentReader(pub(crate) RunId);
+/// Marks a request whose actor is a worker token carrying the supervisor
+/// capability reading a run OTHER than its own (ADR-0046). The handler
+/// then applies the supervisor's bounds: the record kinds and blobs the
+/// diff inventory needs, and the per-response byte ceiling. Absent for a
+/// user and for a run's own worker, who keep their read as it was.
+pub(crate) struct CrossRunSupervisorRead;
 /// A worker-scoped route with one more path segment after the run id, handed
 /// back as its text for the handler to parse.
 pub(crate) struct RequireWorkerRunSegment(pub(crate) RunId, pub(crate) String);
@@ -313,6 +323,60 @@ impl FromRequestParts<Arc<AppState>> for RequireWorkerRunScoped {
     }
 }
 
+impl FromRequestParts<Arc<AppState>> for RequireRunContentReader {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let Path(id): Path<String> = Path::from_request_parts(parts, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let run_id = parse_run_id_path(&id)?;
+        require_worker_or_supervisor_for_run(&auth_slot_from_parts(parts), &run_id)
+            .map_err(IntoResponse::into_response)?;
+        Ok(Self(run_id))
+    }
+}
+
+// The trait stays qualified: importing it makes every Path extraction
+// in this module ambiguous between the required and the optional impl.
+#[allow(
+    clippy::absolute_paths,
+    reason = "importing OptionalFromRequestParts makes Path extraction ambiguous"
+)]
+impl axum::extract::OptionalFromRequestParts<Arc<AppState>> for CrossRunSupervisorRead {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Option<Self>, Self::Rejection> {
+        let Ok(Path(params)) =
+            <Path<HashMap<String, String>> as FromRequestParts<Arc<AppState>>>::from_request_parts(
+                parts, state,
+            )
+            .await
+        else {
+            return Ok(None);
+        };
+        let Some(route_run_id) = params.get("id").and_then(|id| id.parse::<RunId>().ok()) else {
+            return Ok(None);
+        };
+        let slot = auth_slot_from_parts(parts);
+        let context = slot.0.lock().expect("auth context lock poisoned");
+        Ok(match &context.principal {
+            Some(Principal::Worker { run_id })
+                if context.worker_scopes.has_supervisor() && *run_id != route_run_id =>
+            {
+                Some(Self)
+            }
+            _ => None,
+        })
+    }
+}
+
 impl FromRequestParts<Arc<AppState>> for RequireWorkerRunSegment {
     type Rejection = Response;
 
@@ -481,7 +545,13 @@ pub(crate) fn require_supervisor_actor(slot: &AuthContextSlot) -> Result<Princip
         Some(Principal::Worker { run_id }) if context.worker_scopes.has_supervisor() => {
             Ok(Principal::Worker { run_id: *run_id })
         }
-        Some(Principal::Worker { .. }) => Err(ApiError::forbidden()),
+        Some(Principal::Worker { run_id }) => Err(ApiError::forbidden_with_code(
+            format!(
+                "Access denied: this worker token is bound to run {run_id} and lacks the \
+                 supervisor capability this door requires."
+            ),
+            "worker_supervisor_scope_required",
+        )),
         None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
     }
 }
@@ -522,7 +592,42 @@ fn require_worker_for_run(slot: &AuthContextSlot, route_run_id: &RunId) -> Resul
     let context = slot.0.lock().expect("auth context lock poisoned");
     match &context.principal {
         Some(Principal::Worker { run_id }) if run_id == route_run_id => Ok(()),
-        Some(Principal::Worker { .. } | Principal::User(_)) => Err(ApiError::forbidden()),
+        Some(Principal::Worker { run_id }) => Err(ApiError::forbidden_with_code(
+            format!(
+                "Access denied: this worker token is bound to run {run_id} and cannot reach run \
+                 {route_run_id}; reading another run needs the supervisor capability."
+            ),
+            "worker_run_scope_mismatch",
+        )),
+        Some(Principal::User(_)) => Err(ApiError::forbidden()),
+        None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
+    }
+}
+
+/// The run-content read guard (ADR-0046, work#1680): the run's own
+/// worker passes, and so does a worker token carrying the supervisor
+/// capability — the cross-run read the supervisor mode grants. A worker
+/// token without it is refused with the reason, so the refusal tells
+/// policy apart from run state.
+fn require_worker_or_supervisor_for_run(
+    slot: &AuthContextSlot,
+    route_run_id: &RunId,
+) -> Result<(), ApiError> {
+    let context = slot.0.lock().expect("auth context lock poisoned");
+    match &context.principal {
+        Some(Principal::Worker { run_id })
+            if run_id == route_run_id || context.worker_scopes.has_supervisor() =>
+        {
+            Ok(())
+        }
+        Some(Principal::Worker { run_id }) => Err(ApiError::forbidden_with_code(
+            format!(
+                "Access denied: this worker token is bound to run {run_id} and lacks the \
+                 supervisor capability, so it cannot read run {route_run_id}."
+            ),
+            "worker_run_scope_mismatch",
+        )),
+        Some(Principal::User(_)) => Err(ApiError::forbidden()),
         None | Some(_) => Err(auth_rejection(context.auth_status, context.auth_error_code)),
     }
 }

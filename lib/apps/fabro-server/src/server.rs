@@ -145,9 +145,9 @@ use crate::github_webhooks::{
 use crate::jwt_auth::{self, AuthMode};
 use crate::petri_runs::PetriRuns;
 use crate::principal_middleware::{
-    AuthContextSlot, RequestAuth, RequestAuthContext, RequireRunBlob, RequireRunManagementTarget,
-    RequireRunScoped, RequireWorkerRunScoped, RequireWorkerRunSegment, RequiredUser,
-    principal_middleware,
+    AuthContextSlot, CrossRunSupervisorRead, RequestAuth, RequestAuthContext, RequireRunBlob,
+    RequireRunContentReader, RequireRunManagementTarget, RequireRunScoped, RequireWorkerRunScoped,
+    RequireWorkerRunSegment, RequiredSupervisorActor, RequiredUser, principal_middleware,
 };
 use crate::request_id::{self, RequestId};
 use crate::run_files::{FilesInFlight, new_files_in_flight};

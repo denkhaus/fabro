@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use bytes::Bytes;
 use fabro_api::types;
 use fabro_api::types::RunControlAcknowledgement;
-use fabro_http::header::{ACCEPT, AUTHORIZATION};
+use fabro_http::header::{ACCEPT, AUTHORIZATION, RANGE};
 use fabro_types::settings::run::MergeStrategy;
 use fabro_types::{
     BlobHash, Model, ModelTestMode, PairId, PairMessageRecord, PairMessageRequest, PairRecord,
@@ -28,7 +28,7 @@ use tokio::time;
 use crate::credential::Credential;
 use crate::error::{
     ApiError, ApiFailure, api_failure_for, classify_api_error, classify_http_response,
-    convert_type, is_not_found_error, raw_response_failure_error,
+    convert_type, is_not_found_error, raw_response_failure_error, supervisor_read_cap,
 };
 use crate::session::OAuthSession;
 use crate::target::ServerTarget;
@@ -3369,6 +3369,11 @@ impl Client {
         Ok(response.into_inner().hash)
     }
 
+    /// Read one of the run's blobs. A supervisor token reading a diff
+    /// patch over the server's supervisor read cap gets the cap refusal
+    /// (`supervisor_read_cap`) and this method pages the blob in bounded
+    /// `Range` pieces, so one response never exceeds the cap and the
+    /// caller still receives the whole blob.
     pub async fn read_run_blob(
         &self,
         run_id: &RunId,
@@ -3395,10 +3400,35 @@ impl Client {
             Err(err) => {
                 let err = classify_api_error(err).await.error;
                 if is_not_found_error(&err) {
-                    Ok(None)
-                } else {
-                    Err(err)
+                    return Ok(None);
                 }
+                let Some((total, cap)) = supervisor_read_cap(&err) else {
+                    return Err(err);
+                };
+                let mut bytes = Vec::new();
+                let url = format!("{}/api/v1/runs/{run_id}/blobs/{blob_hash}", self.base_url());
+                while bytes.len() < total {
+                    let start = bytes.len();
+                    let end = start.saturating_add(cap).saturating_sub(1).min(total - 1);
+                    let range = format!("bytes={start}-{end}");
+                    let url = url.clone();
+                    let response = self
+                        .send_http(move |http_client| {
+                            let url = url.clone();
+                            let range = range.clone();
+                            async move { http_client.get(&url).header(RANGE, &range).send().await }
+                        })
+                        .await?;
+                    let status = response.status();
+                    let chunk = response.bytes().await?;
+                    let chunk = chunk.to_vec();
+                    anyhow::ensure!(
+                        status == fabro_http::StatusCode::PARTIAL_CONTENT && !chunk.is_empty(),
+                        "the server did not page blob {blob_hash} of run {run_id}: status {status}"
+                    );
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(Some(Bytes::from(bytes)))
             }
         }
     }
@@ -4045,6 +4075,56 @@ mod tests {
             "labels": {},
             "env": {}
         })
+    }
+
+    /// A supervisor read the server caps (work#1711): the cap refusal
+    /// (`supervisor_read_cap`) turns into bounded `Range` pages, and the
+    /// caller still receives the whole blob.
+    #[tokio::test]
+    async fn read_run_blob_pages_a_capped_supervisor_read_by_range() {
+        let server = MockServer::start_async().await;
+        let blob = BlobHash::new(b"paged patch");
+        let path = format!("/api/v1/runs/01KRBZW4DW0000000000000002/blobs/{blob}");
+        let patch: Vec<u8> = (0..2500u32)
+            .map(|index| u8::try_from(index % 251).expect("a byte"))
+            .collect();
+        let cap = 1000_u64;
+        let refusal = server
+            .mock_async(|when, then| {
+                when.method(GET).path(path.clone()).header_missing("range");
+                then.status(413).json_body(json!({
+                    "errors": [{
+                        "detail": "Refused: the patch blob is 2500 bytes, over the 1000-byte supervisor read cap",
+                        "code": "supervisor_read_cap",
+                        "meta": {"bytes": patch.len(), "cap": cap}
+                    }]
+                }));
+            })
+            .await;
+        let mut pages = Vec::new();
+        for (start, end) in [(0, 999), (1000, 1999), (2000, 2499)] {
+            let slice = patch[start..=end].to_vec();
+            pages.push(
+                server
+                    .mock_async(|when, then| {
+                        when.method(GET)
+                            .path(path.clone())
+                            .header("range", format!("bytes={start}-{end}"));
+                        then.status(206).body(slice);
+                    })
+                    .await,
+            );
+        }
+        let client = Client::new_no_proxy(&server.url("")).unwrap();
+        let run_id: RunId = "01KRBZW4DW0000000000000002".parse().unwrap();
+
+        let read = client.read_run_blob(&run_id, &blob).await.unwrap();
+
+        refusal.assert_calls_async(1).await;
+        for page in &pages {
+            page.assert_calls_async(1).await;
+        }
+        assert_eq!(read.expect("the blob is read").to_vec(), patch);
     }
 
     #[tokio::test]

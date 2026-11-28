@@ -34,10 +34,12 @@ use fabro_util::error::collect_chain;
 use serde_json::{Map, Value, json};
 
 use super::super::{
-    ApiError, AppState, Bytes, IntoResponse, Json, Query, RequireWorkerRunScoped,
-    RequireWorkerRunSegment, Response, Router, RunId, State, StatusCode, octet_stream_response,
-    settle_managed_run_at_finish, settle_managed_run_at_terminal_record,
+    ApiError, AppState, Bytes, CrossRunSupervisorRead, IntoResponse, Json, Query,
+    RequireRunContentReader, RequireWorkerRunScoped, RequireWorkerRunSegment, Response, Router,
+    RunId, State, StatusCode, octet_stream_response, settle_managed_run_at_finish,
+    settle_managed_run_at_terminal_record,
 };
+use crate::run_files_security::SUPERVISOR_READ_MAX_BYTES;
 
 /// The largest batch of records one append may carry. Petri batches an
 /// execution's records per step, and a step's output can be large.
@@ -235,34 +237,95 @@ async fn read_blob(
     }
 }
 
-/// The run's platform records, of one kind when the query names it.
+/// The record kinds the cross-run supervisor reads (ADR-0046): the two
+/// `fabro_run_diffs` inventories — each checkpoint's diff and the
+/// run-level diff. Every other kind stays the run's own worker's.
+const SUPERVISOR_RECORD_KINDS: &[PlatformRecordKind] =
+    &[PlatformRecordKind::Checkpoint, PlatformRecordKind::RunDiff];
+
+/// The run's platform records, of one kind when the query names it. The
+/// run's own worker reads as before. A supervisor token reading another
+/// run (work#1711) names one of [`SUPERVISOR_RECORD_KINDS`] and gets an
+/// answer within the supervisor read bound; the append below stays the
+/// run's own worker's.
 async fn list_platform_records(
-    RequireWorkerRunScoped(id): RequireWorkerRunScoped,
+    RequireRunContentReader(id): RequireRunContentReader,
+    cross_run_supervisor: Option<CrossRunSupervisorRead>,
     State(state): State<Arc<AppState>>,
     Query(query): Query<KindQuery>,
 ) -> Response {
+    let kind = match query.kind.as_deref().map(str::parse::<PlatformRecordKind>) {
+        Some(Ok(kind)) => Some(kind),
+        Some(Err(_)) => {
+            let kind = query.kind.as_deref().unwrap_or_default();
+            return ApiError::bad_request(format!("`{kind}` is not a platform record kind."))
+                .into_response();
+        }
+        None => None,
+    };
+    if cross_run_supervisor.is_some()
+        && !kind.is_some_and(|kind| SUPERVISOR_RECORD_KINDS.contains(&kind))
+    {
+        return supervisor_record_kind_refusal(query.kind.as_deref()).into_response();
+    }
     let store = state.stores.run_summaries.platform_records();
-    let records = match query.kind.as_deref() {
-        Some(kind) => match kind.parse::<PlatformRecordKind>() {
-            Ok(kind) => store.read_kind(&id, kind).await,
-            Err(_) => {
-                return ApiError::bad_request(format!("`{kind}` is not a platform record kind."))
-                    .into_response();
-            }
-        },
+    let records = match kind {
+        Some(kind) => store.read_kind(&id, kind).await,
         None => store.read(&id).await,
     };
-    match records {
-        Ok(records) => match records
-            .into_iter()
-            .map(|stored| wire_platform_record(&stored))
-            .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(records) => Json(PetriPlatformRecordList { records }).into_response(),
-            Err(err) => err.into_response(),
-        },
-        Err(err) => platform_store_error_response(id, &err),
+    let records = match records {
+        Ok(records) => records,
+        Err(err) => return platform_store_error_response(id, &err),
+    };
+    let records = match records
+        .into_iter()
+        .map(|stored| wire_platform_record(&stored))
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(records) => records,
+        Err(err) => return err.into_response(),
+    };
+    let list = PetriPlatformRecordList { records };
+    if cross_run_supervisor.is_some() {
+        // The records door has no paging form, so an oversized inventory
+        // is refused with its cause rather than cut or returned whole.
+        let bytes = serde_json::to_vec(&list).unwrap_or_default();
+        if bytes.len() > SUPERVISOR_READ_MAX_BYTES {
+            return ApiError::with_code(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                format!(
+                    "Refused: the {} record list of run {id} is {} bytes, over the \
+                     {}-byte supervisor read cap.",
+                    query.kind.as_deref().unwrap_or_default(),
+                    bytes.len(),
+                    SUPERVISOR_READ_MAX_BYTES
+                ),
+                "supervisor_read_cap",
+            )
+            .into_response();
+        }
+        return (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            Bytes::from(bytes),
+        )
+            .into_response();
     }
+    Json(list).into_response()
+}
+
+/// The supervisor's refusal outside its record kinds: names what it may
+/// read, so the caller tells the restriction from run state.
+fn supervisor_record_kind_refusal(kind: Option<&str>) -> ApiError {
+    ApiError::forbidden_with_code(
+        format!(
+            "Access denied: a supervisor token reads only the checkpoint and run.diff records \
+             of another run (the fabro_run_diffs inventory); kind {} is the run's own \
+             worker's to read.",
+            kind.unwrap_or("<the whole record list>")
+        ),
+        "worker_record_kind_restricted",
+    )
 }
 
 /// Store one platform record for the run and wake its projector.

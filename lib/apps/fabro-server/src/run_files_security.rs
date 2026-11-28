@@ -18,6 +18,12 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use tracing::info;
 
 /// Basename patterns — applied to the final path segment only.
+/// The byte ceiling of ONE response to a supervisor read (the runless Ask
+/// Fabro session's backend, ADR-0046): the sandbox tool-file door, and
+/// the cross-run diff doors over run content (work#1711). A read that
+/// would exceed it is refused or paged, never returned whole.
+pub(crate) const SUPERVISOR_READ_MAX_BYTES: usize = 256 * 1024;
+
 const BASENAME_GLOBS: &[&str] = &[
     ".env",
     ".env.*",

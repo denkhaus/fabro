@@ -24,17 +24,13 @@ use super::super::{
     reject_if_archived,
 };
 use crate::principal_middleware::RequiredSupervisorActor;
-use crate::run_files_security::is_sensitive;
+use crate::run_files_security::{SUPERVISOR_READ_MAX_BYTES, is_sensitive};
 use crate::sandbox_access::{self, ProviderAccess};
 
 /// The deepest directory walk a supervisor tool listing may ask for —
 /// the tool clamps to the same bound client-side
 /// (`fabro_tool::RUN_FILES_MAX_DEPTH`).
 const TOOL_LIST_MAX_DEPTH: usize = 4;
-/// The largest file one supervisor tool read returns; a larger file
-/// REFUSES the read instead of truncating it (the bounded-refuse
-/// contract, work#1680).
-const TOOL_FILE_MAX_BYTES: usize = 256 * 1024;
 
 const MAX_TERMINAL_CONTROL_BYTES: usize = 4096;
 const DEFAULT_VNC_NO_VNC_PORT: u16 = 6080;
@@ -845,12 +841,12 @@ async fn get_sandbox_tool_file(
         .into_response();
     }
     let bytes = match fs::metadata(temp.path()).await {
-        Ok(metadata) if metadata.len() > TOOL_FILE_MAX_BYTES as u64 => {
+        Ok(metadata) if metadata.len() > SUPERVISOR_READ_MAX_BYTES as u64 => {
             return ApiError::bad_request(format!(
                 "Refused: the file is {} bytes, over the {}-byte read cap — read it in \
                  pieces with fabro_run_files, or page it through a run's own agent.",
                 metadata.len(),
-                TOOL_FILE_MAX_BYTES
+                SUPERVISOR_READ_MAX_BYTES
             ))
             .into_response();
         }
