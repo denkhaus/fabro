@@ -1209,6 +1209,10 @@ async fn build_runless_agent(
     // fresh throwaway id that names no real run. Strict-equality worker
     // doors can never match it, so the sentinel grants nothing beyond the
     // scope the grill's capability decision already carries.
+    // Work doors read the supervisor scope: since denkhaus/work#1709 the
+    // session's explicit project id is authoritative for them, and an
+    // omitted project gets a teaching error instead of a lookup of this
+    // throwaway run id.
     let worker_token = issue_worker_token_with_scopes(
         state.worker_token_keys(),
         &RunId::new(),
