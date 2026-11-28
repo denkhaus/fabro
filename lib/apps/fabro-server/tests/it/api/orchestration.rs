@@ -2562,7 +2562,8 @@ async fn the_manage_door_parks_a_failed_filing_for_the_ttl() {
     // reads filing_blocked) but keeps the untouched record — the drop
     // is per-row, not a page coincidence. The total counts the
     // MATERIALIZED membership, young parks included — the documented
-    // asymmetry (the design names it, the admission gate rides it).
+    // asymmetry (the design names it; the retired gear admission gate of
+    // work#1436 rode it).
     let untriaged =
         triage_feed_page(&app, &triager_token, "triage=untriaged&category=painpoint").await;
     let feed = untriaged["observations"].as_array().expect("feed array");

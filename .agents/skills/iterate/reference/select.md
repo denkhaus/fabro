@@ -128,6 +128,13 @@ each rule.
   artifacts live: a lane bug in PROJECT_FACTS and a zombie doc item).
   A vetting pass over the lane pools is standing backlog work, not
   ceremony.
+- COUPLING VET (ADR-0052, the work#1716 regression): every item that
+  touches `lib/**` or `apps/**` is read for one question before it is
+  selected — does it make the engine name a workflow of this project? A slug
+  table, an allowlist keyed by a workflow name, a constant such as "merger"
+  in engine code: the item is re-scoped to a declaration in `workflow.toml`
+  or `project.toml` before any work starts. Dogfooding is not an argument;
+  the fabro line's costs are the project's business, solved in `.fabro/`.
 - LANE ADMISSION IS DECIDED PER ITEM, NEVER PER BUNDLE: a tranche
   proposal presents EVERY candidate separately with its vet result
   named — what the relevance check found, what the item's body

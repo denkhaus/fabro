@@ -49,16 +49,15 @@ use super::observation_triage::{
 use crate::error::ApiError;
 use crate::principal_middleware::RequiredRunManagementActor;
 
-/// The workflow allowlist (ADR-0039 stage D grill, hardcoded carrier
-/// decision): the only workflow slugs whose runs may write orchestration
-/// verdicts, each bound to exactly one field. The slugs are the gear
-/// worklist table's ([`crate::server::gear_worklist`], work#1488) — the
-/// writer of a field IS the gear whose worklist sweeps its queue, and
-/// `owned_field_for_writer` resolves the pairing through the table. The
-/// names are stable, line-owned contracts — a change is a deliberate
-/// code edit, not a settings knob. Shared with the work-item close door
-/// (stage E): the adjudicator is the only workflow that closes work
-/// items.
+/// The verdict-writer allowlist (ADR-0039 decision 6): the only workflow
+/// slugs whose runs may write orchestration verdicts, each bound to exactly
+/// one field; `owned_field_for_writer` resolves the pairing through
+/// [`crate::server::gear_worklist`]. Shared with the work-item close door
+/// (stage E): the adjudicator is the only workflow that closes work items.
+///
+/// DEBT (ADR-0052, denkhaus/work#1716): these names belong to the fabro
+/// project, not to the engine. They stay until the workflow's declared
+/// grants replace them; never add a name here.
 pub(super) const MERGE_WRITER_WORKFLOW: &str = gear_worklist::ADJUDICATOR;
 pub(in crate::server) const CLOSABLE_WRITER_WORKFLOW: &str = gear_worklist::MERGER;
 
@@ -1023,11 +1022,11 @@ pub(in crate::server) async fn owned_field_for_writer(
         .workflow
         .slug
         .as_deref()
-        // The allowlist IS the gear worklist table (work#1488, ADR-0039
-        // decision 6): a workflow writes a field when its gear sweeps
-        // that field's queue.
+        // The allowlist is the verdict-writer table (ADR-0039 decision 6).
+        // ADR-0052 names this slug-keyed carrier as debt: the successor
+        // is the workflow's declared grants (denkhaus/work#1716 step 3).
         .and_then(gear_worklist::by_slug)
-        .and_then(|gear| gear.spec.queue_field()))
+        .and_then(|gear| gear.owned_field))
 }
 
 /// The merger's merge door (ADR-0039 stage E): merge the TARGET run's

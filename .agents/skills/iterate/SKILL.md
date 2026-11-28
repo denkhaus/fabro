@@ -470,6 +470,16 @@ reality.
   `denkhaus` and the work commits appear in origin/denkhaus.
 - Tool-agnostic engine (ADR-0017): engine components never reference
   project-scope tooling by name.
+- ENGINE KNOWS NO PROJECT WORKFLOW (ADR-0052, user directive 2026-11-28):
+  Fabro is a multi-project tool; a project defines any workflow in any
+  constellation, and the engine (`lib/**`, `apps/**`) references none of them
+  by name. Everything a workflow needs from the engine is a DECLARATION in
+  `workflow.toml` or `project.toml` — fire conditions, grants, every
+  allowance. Dogfooding (ADR-0012) is a special case, never a license: the
+  merger, the adjudicator, the triager and develop exist only in this project,
+  and a design that makes the engine know one of them is a regression. In a
+  grill, the answer "the engine knows workflow X" ends the branch — redesign
+  it as a declaration.
 - Upstream posture (ADR-0024 + ADR-0027): the platform base is FROZEN
   at 0.362.0-nightly and the ENGINE DEPENDENCIES are frozen — a dep
   bump is a deliberate decision with a recorded reason and its pin edit

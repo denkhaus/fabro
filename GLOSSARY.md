@@ -241,15 +241,14 @@ row and `fabro ps -a --workflow watchdog` carry the meta-stall
 visibility.
 
 ## Gear
-
-A scheduler-driven workflow (ADR-0039 decision 9) with its own cron
-tick and `on_overlap: skip`, coupled to the other gears ONLY through
-the orchestration fields — no messaging conventions. The three serial
-line gears: develop (item-driven, direct fire), adjudicator
-(run-driven), merger (merge-marker-driven). The watchdog watches the
-gears but is not a gear itself. A gear IS an automation — the word
-names the line's instance class, not a different mechanism; the
-scheduler fires it like any automation.
+A scheduler-driven workflow with its own cron tick and `on_overlap: skip`.
+Gears of one project are coupled ONLY through the orchestration fields; the
+engine knows no gear by name. When a scheduled fire is skipped and what a
+gear's runs may write are declared in the gear's workflow definition. The
+watchdog watches the gears but is not a gear itself. A gear IS an automation:
+the word names the role in a project, not a different mechanism. Developing
+Fabro with its own gears is dogfooding and never a reason for the engine to
+name a gear (ADR-0052).
 
 ## Wedge
 
