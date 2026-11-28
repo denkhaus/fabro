@@ -3,7 +3,7 @@ use std::fmt;
 use std::path::Path;
 
 use fabro_types::settings::run::McpServerSettings;
-use fabro_types::settings::{RunNamespace, WorkflowNamespace};
+use fabro_types::settings::{RunNamespace, ScheduleNamespace, WorkflowNamespace};
 use fabro_types::{ServerSettings, UserSettings, WorkflowSettings};
 use fabro_util::error::SharedError;
 
@@ -514,6 +514,9 @@ impl WorkflowSettingsBuilder {
                 project,
                 workflow,
                 run,
+                // Replaced by the resolver of the `[schedule]` layer
+                // (denkhaus/work#1716 step 2).
+                schedule: ScheduleNamespace::default(),
             },
             errors,
         )

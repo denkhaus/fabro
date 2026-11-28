@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::settings::{
     AskNamespace, CliNamespace, ObjectStoreSettings, ProjectNamespace, RunNamespace,
-    ServerNamespace, WorkflowNamespace,
+    ScheduleNamespace, ServerNamespace, WorkflowNamespace,
 };
 
 /// The server's resolved settings: the `[server]` namespace and the
@@ -51,6 +51,10 @@ pub struct WorkflowSettings {
     pub project:  ProjectNamespace,
     pub workflow: WorkflowNamespace,
     pub run:      RunNamespace,
+    /// The definition's declaration about its scheduled fires
+    /// (`[schedule]`, ADR-0052).
+    #[serde(default)]
+    pub schedule: ScheduleNamespace,
 }
 
 impl WorkflowSettings {

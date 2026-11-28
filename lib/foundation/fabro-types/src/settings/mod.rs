@@ -17,6 +17,7 @@ pub mod model_ref;
 pub mod project;
 pub mod public_url;
 pub mod run;
+pub mod schedule;
 pub mod server;
 pub mod size;
 pub mod workflow;
@@ -46,6 +47,7 @@ pub use run::{
     RunInterviewsSettings, RunModelControls, RunModelSettings, RunNamespace, RunPrepareSettings,
     RunScmSettings, ScmGitHubSettings, TlsMode,
 };
+pub use schedule::{ScheduleNamespace, VerdictRequirement, WhenEmptyCondition};
 pub use server::{
     GithubIntegrationSettings, IntegrationWebhooksSettings, LogDestination, ObjectStoreSettings,
     ServerApiSettings, ServerArtifactsSettings, ServerAuthGithubSettings, ServerAuthMethod,
