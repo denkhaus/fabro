@@ -841,29 +841,6 @@ pub(crate) async fn fire_scheduled_automation_run(
             }
         }
     }
-    // Gear admission gate (denkhaus/work#1436): before ANY run-creation
-    // work (environment resolution, checkout, materialization, sandbox),
-    // consult the gear's server-side worklist. Only a POSITIVE empty
-    // answer skips — a failed consult fires as today (fail-open: the
-    // gears are the line's recovery path, a flaky read must not wedge
-    // them; the error distinction is logged inside the gate). This kills
-    // the idle-slot lap itself (22-47s of sandbox create + cook + prune
-    // per empty slot, plus the cold-cook exposure on every new tip); the
-    // gear graphs keep their internal sweeps as the authoritative
-    // re-check. Manual/API fires stay unconditional (handler::automations).
-    if let super::automation_admission::AdmissionDecision::Skip(empty) =
-        super::automation_admission::admission_decision(state.as_ref(), &automation).await
-    {
-        info!(
-            automation_id = %automation_id,
-            trigger_id = %trigger_id,
-            workflow = %automation.workflow,
-            due_at = %due_at,
-            reason = %empty,
-            "Scheduled fire skipped: the gear's worklist is empty (work#1436 admission gate)"
-        );
-        return;
-    }
     let run_id = RunId::new();
     let environment_id = match handler::automations::resolve_automation_environment(
         state.as_ref(),
@@ -1302,6 +1279,71 @@ pub(crate) mod tests {
 
     fn second_due_time() -> DateTime<Utc> {
         dt("2026-05-29T00:02:00Z")
+    }
+
+    /// denkhaus/work#1716 (the work#1436 regression): the engine knows no
+    /// workflow by name. A scheduled fire creates a run whatever the
+    /// workflow is called and whatever the server-side queues hold — a
+    /// project decides in its own workflow definition whether a lap is
+    /// idle, the scheduler never does. The fixture is the shape the
+    /// retired admission gate skipped: the workflow named `merger`, an
+    /// empty store, and no session pull request waiting.
+    #[tokio::test]
+    async fn a_scheduled_fire_creates_a_run_whatever_the_workflow_name_and_worklist() {
+        let materializer = succeeding_materializer();
+        // The GitHub integration is configured but resolves no
+        // credentials: the shape in which the retired gate answered
+        // "positively empty" instead of failing open.
+        let mut settings = crate::test_support::default_test_server_settings();
+        settings.server.integrations.github.strategy =
+            fabro_types::settings::server::GithubIntegrationStrategy::App;
+        settings.server.integrations.github.app_id = None;
+        let state = TestAppStateBuilder::new()
+            .runtime_settings(settings, fabro_config::RunLayer::default())
+            .env_lookup(|_| None)
+            .vault_entries([(EnvVars::OPENAI_API_KEY, "test-openai-api-key")])
+            .automation_materializer(materializer.clone())
+            .build();
+        seed_work_project(state.as_ref()).await;
+        state
+            .automation_store()
+            .create(AutomationDraft {
+                work_project:    Some("fabro".to_owned()),
+                on_overlap:      None,
+                id:              AutomationId::new("named-workflow")
+                    .expect("test automation id should be valid"),
+                name:            "named workflow".to_string(),
+                description:     None,
+                environment_id:  Some("default".to_string()),
+                target:          target(),
+                workflow_source: None,
+                workflow:        "merger".to_string(),
+                triggers:        vec![schedule_trigger("schedule", "* * * * *", true)],
+            })
+            .await
+            .expect("test automation should be created");
+
+        // Two ticks, the planner contract: the first arms the cursor at
+        // the next boundary, the second fires it.
+        let mut planner = AutomationSchedulePlanner::default();
+        run_due_schedules_once(state.clone(), &mut planner, prime_time()).await;
+        run_due_schedules_once(state.clone(), &mut planner, first_due_time()).await;
+
+        assert_eq!(
+            materializer.captured_inputs().len(),
+            1,
+            "the fire reaches the materializer whatever the workflow is called"
+        );
+        assert_eq!(
+            materializer.captured_inputs().len(),
+            1,
+            "the fire reaches the materializer whatever the workflow is called"
+        );
+        assert_eq!(
+            stored_runs(state.as_ref()).await.len(),
+            1,
+            "the empty queues hold nobody back — one run exists behind the fire"
+        );
     }
 
     #[test]

@@ -171,7 +171,6 @@ use crate::{
 };
 
 pub(crate) mod acceptance;
-mod automation_admission;
 pub(crate) mod automation_breaker;
 mod automation_scheduler;
 pub(crate) mod fork_env_build_reaper;

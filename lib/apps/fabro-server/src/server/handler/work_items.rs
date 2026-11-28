@@ -29,8 +29,8 @@ use fabro_work::{
 };
 
 use super::super::{
-    ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode,
-    gear_worklist, get, post, run_records,
+    ApiError, AppState, IntoResponse, Json, Path, Response, Router, State, StatusCode, get, post,
+    run_records,
 };
 use crate::principal_middleware::{
     AuthContextSlot, RequestAuth, RequiredRunManagementActor, RequiredUser, request_worker_scopes,
@@ -1439,6 +1439,23 @@ async fn served_item(
     Ok(served.pop().expect("one served item per input item"))
 }
 
+/// The claim pool (denkhaus/work#1488): the one bounded lane read the claim
+/// door serves. `Open` is the claimable reality — the pool answers "is there
+/// work a lap could claim", not "is there any item".
+const CLAIM_POOL: ClaimPoolSpec = ClaimPoolSpec {
+    page:  50,
+    state: WorkItemStateFilter::Open,
+};
+
+/// The claim pool's read parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ClaimPoolSpec {
+    /// The lane read's page size (claim_next's `limit`).
+    page:  usize,
+    /// Which item states the pool enumerates.
+    state: WorkItemStateFilter,
+}
+
 async fn claim_next(
     auth: RequiredRunManagementActor,
     RequestAuth(auth_slot): RequestAuth,
@@ -1472,15 +1489,14 @@ async fn claim_next(
     let items = tracker
         .list(project, WorkItemFilter {
             lane:     Some(request.lane.clone()),
-            // The pool read is the table's claim-pool spec (work#1488):
-            // the admission gate's consult walks the same page and the
-            // same OPEN filter, so the two answers cannot disagree.
-            limit:    gear_worklist::CLAIM_POOL.page,
+            // The claim pool reads OPEN items on one bounded page
+            // (work#1488): `Open` is the claimable reality, not `All`.
+            limit:    CLAIM_POOL.page,
             query:    None,
             label:    None,
             priority: None,
             page:     1,
-            state:    gear_worklist::CLAIM_POOL.state,
+            state:    CLAIM_POOL.state,
         })
         .await
         .map_err(tracker_failed)?;
